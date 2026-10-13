@@ -5,6 +5,7 @@
 **Evidence (read-only):** `C:\work\ynab-import-android` — code and tests, `docs/archive/` spec/plan pairs, every merged PR description.
 **Method:** AIUP Marketplace `aiup-core` at commit `05af8163838df704620ebe1121cd6019dbce276c` (2026-10-13), local clone `C:\work\marketplace`; book corpus `C:\work\book-context-martinelli-spec-driven-dev\corpus`. If `git -C C:\work\marketplace rev-parse HEAD` differs, stop and ask.
 **Gate tool:** `python tools/lint_specs.py` (wraps the Marketplace `spec_lint.py`).
+**Phase 0 evidence (2026-10-13):** merged PRs = 81 (`scratch/pr_history.md`); archived specs = 11 (`docs/archive/*spec*.md`; 24 files in `docs/archive/` in total); `ynab-import-android` commit read = `46efbf004a98d802a30aba7dbd7601624bd1f19f` (`origin/main` after fetch, same as local HEAD, read from disk).
 
 ---
 
@@ -111,7 +112,7 @@ One block per phase, written by the orchestrator in the phase's commit. This is 
 
 | Phase | Skill(s) followed | Followed as written? | Deviations and why | Skill silent on | Lint result (E/W/I) | Assumptions / Open | Re-dispatches | Notes |
 |---|---|---|---|---|---|---|---|---|
-| 0 | | | | | | | | |
+| 0 | `reverse-engineer` stage 1 (discovery) | Partly — stage 1 scoped to the plan's Phase 0 list | Did not search auth/role configuration (skill's richest actor source) because it is outside the Phase 0 list, so it is owed to Phase 4. Did not read `references/stack-signals.md`; stack read from Gradle files and the module layout. Model tier `flash` has no Claude equivalent, so the orchestrator ran it on `haiku` (the fast tier). | Android/Kotlin projects with no SQL/ORM: no Room, DataStore or DDL; persistence is JSON files behind a `FileStore` port. No receivers, services or workers; one launcher activity. | 0/0/0 | Assumed: "archived spec" = `docs/archive/*spec*.md` (11 of 24 archive files). Open: O-01. | 0 | Gate green on first dispatch: 81 PRs in dump = 81 from `gh`. Plan said local predecessor HEAD was `9068c74`. The operator fast-forwarded local `main` to `46efbf0` at 12:59 before the run (reflog), and content = `origin/main`. |
 | 1 | | | | | | | | |
 | Vision gate | — | — | — | — | — | — | — | operator diff: |
 | 2 | | | | | | | | |
@@ -141,6 +142,7 @@ One block per phase, written by the orchestrator in the phase's commit. This is 
 
 | ID | From phase | Question | Recommended answer | Operator's answer |
 |---|---|---|---|---|
+| O-01 | 0 | `docs/decision_journal_spec.md` and `docs/decision_journal_plan.md` live in predecessor `docs/`, not `docs/archive/`. Are they live intent or archived intent? | Treat the spec as intent on the same footing as the archived specs (it is the latest designed intent for the journal); treat the plan as history only. Phases 1–4 read it accordingly. | |
 
 ## 7. Plan closed
 
