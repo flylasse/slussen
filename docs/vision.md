@@ -63,7 +63,8 @@ starts from a specification instead of from the code.
   transactions the predecessor already uploaded.
 - **Shareability.** Slussen is developed as a public repository that holds no personal data, bank information or
   credentials. An adopting developer can build Slussen from it with their own accounts, Data Providers and
-  Budget App configuration, and has a clear operating model for each, without editing Slussen's core rules.
+  Budget App configuration, starting from the repository's configuration templates, and has a clear operating
+  model for each, without editing Slussen's core rules.
 
 ## Scope
 
@@ -145,8 +146,10 @@ starts from a specification instead of from the code.
   can replace YNAB without rewriting how Slussen fetches, compares, reviews and decides.
 - **Proof against the real Budget App.** Any guarantee that depends on how YNAB behaves is shown by a test
   against a real, throwaway YNAB budget before uploads that rely on it are trusted.
-- **Sensitive data.** Transaction data, account numbers, credentials and bank sessions are never written to logs,
-  and bank sessions are never included in device backups. The repository, including its specifications, tests
+- **Sensitive data.** By default, logs contain no transaction data or account numbers. The operator can switch
+  on detailed logging that includes them, for troubleshooting; those logs stay on the device. Credentials and
+  bank sessions are never written to logs, even then. Neither logs nor bank sessions are ever included in device
+  backups. The repository, including its specifications, tests
   and fixtures, contains no real account names, account numbers, transactions or credentials.
 - **Specification first.** Slussen is developed with the AI Unified Process: the specification in `docs/` is the
   source of truth, and the predecessor app is evidence of intent, not a template to copy.
@@ -163,7 +166,8 @@ starts from a specification instead of from the code.
   any upload relies on that behaviour.
 - No bank consent lapses without the operator being warned first, and no bank access is spent on a request that
   Slussen knew would fail.
-- The public repository contains no personal data or credentials, and a fresh clone builds with example
-  configuration only.
+- The public repository contains no personal data or credentials. It provides a configuration template for each
+  Data Provider and the Budget App in this build (SimpleFIN, Enable Banking, YNAB) that shows an adopting
+  developer what to fill in and where to get it, without being a working configuration.
 - Adding a Data Provider, a file format or a Budget App touches only that part and the build's configuration,
   not the rules for comparing, reviewing and deciding.
