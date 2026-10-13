@@ -113,7 +113,7 @@ One block per phase, written by the orchestrator in the phase's commit. This is 
 | Phase | Skill(s) followed | Followed as written? | Deviations and why | Skill silent on | Lint result (E/W/I) | Assumptions / Open | Re-dispatches | Notes |
 |---|---|---|---|---|---|---|---|---|
 | 0 | `reverse-engineer` stage 1 (discovery) | Partly — stage 1 scoped to the plan's Phase 0 list | Did not search auth/role configuration (skill's richest actor source) because it is outside the Phase 0 list, so it is owed to Phase 4. Did not read `references/stack-signals.md`; stack read from Gradle files and the module layout. Model tier `flash` has no Claude equivalent, so the orchestrator ran it on `haiku` (the fast tier). | Android/Kotlin projects with no SQL/ORM: no Room, DataStore or DDL; persistence is JSON files behind a `FileStore` port. No receivers, services or workers; one launcher activity. | 0/0/0 | Assumed: "archived spec" = `docs/archive/*spec*.md` (11 of 24 archive files). Open: O-01. | 0 | Gate green on first dispatch: 81 PRs in dump = 81 from `gh`. Plan said local predecessor HEAD was `9068c74`. The operator fast-forwarded local `main` to `46efbf0` at 12:59 before the run (reflog), and content = `origin/main`. |
-| 1 | | | | | | | | |
+| 1 | Marketplace template `docs/templates/vision.md`; book ch. 02, ch. 08 step 1 (`init`) | Yes for structure: headings and order are exactly the template's | The book has the vision written by hand; here it is drafted from evidence (planned deviation, corrected at the vision gate). Template asks for a secondary user role; the draft states there is none rather than inventing one. Mission adds a short note on the predecessor and the rename. Goals with no evidence-backed number are stated as trends. | Vision length/detail (book example is ~10 lines; draft is 135); whether vendor names and regulatory numbers belong in a vision (placed under Constraints); brownfield successor concerns (continuity, migration, predecessor as intent); how to mark inferred vs evidenced content. | 0/0/0 (`spec_lint.py` does not check `vision.md`, so the lint part of this gate cannot fail; the real gate is the template-heading comparison, which the orchestrator ran) | Assumed A1–A7 (vendors only in Constraints; single role; zero targets for safety goals; clean takeover is an inference; journal in scope per O-01; README viewer omitted; reinstall durability in scope). Open: O-02, O-01 still pending. | 0 | Gate green on first dispatch. VG-01..VG-13 are in §6 for the operator. |
 | Vision gate | — | — | — | — | — | — | — | operator diff: |
 | 2 | | | | | | | | |
 | 3 | | | | | | | | |
@@ -127,11 +127,26 @@ One block per phase, written by the orchestrator in the phase's commit. This is 
 
 | ID | Choice in the draft | Alternative | Operator's decision |
 |---|---|---|---|
+| VG-01 | Single operator, private build with credentials embedded at build time, sideloaded, no server | Multi-operator product: runtime credentials, server-side signing for Enable Banking, distribution | |
+| VG-02 | Android-native on the phone (driven by SCA/BankID); no language or framework fixed | Fix Kotlin/Compose as a constraint, or open other platforms | |
+| VG-03 | YNAB is the only destination; pluggable destinations not promised | Keep "pluggable destination" as a goal or constraint | |
+| VG-04 | File import in scope only for the one account with no feed (Fidelity HSA CSV), contradicting the predecessor's "not a file importer" | Drop file import, or generalise it to any bank export format | |
+| VG-05 | Transfer detection in scope (opt-in, same budget and currency, includes lonely legs) | Make it core and always on, or defer it from the rebuild | |
+| VG-06 | Decision journal and self-audit export in scope (per O-01); analysis happens outside the app | Defer the journal, or bring analysis into the app | |
+| VG-07 | Accounts configured per build; in-app account mapping/onboarding out | In-app mapping and onboarding (predecessor README's stated future direction) | |
+| VG-08 | No background, scheduled or automatic fetch; no notifications | Opt-in scheduled fetch and an expiry notification (predecessor deferred items NAV D3, AUTH) | |
+| VG-09 | Clean takeover from the predecessor with no duplicates is a goal (drafter's inference, not evidenced) | Fresh start with an operator-chosen cutover date, no identity continuity | |
+| VG-10 | Only YNAB mutation besides create is clearing a transfer counterpart Slussen itself created | Strictly create-only, or allow wider edits (category, payee) | |
+| VG-11 | Sources limited to the aggregator, Enable Banking and one file format; Plaid and others out | Leave room for a third online source | |
+| VG-12 | Moving an account's history to another YNAB account is out | Bring Move back into scope (predecessor deferred O3) | |
+| VG-13 | Reinstall durability (export/import of identities and decisions) in scope | Leave it out of the vision as an implementation concern | |
 
 **Drift** (predecessor spec vs PR vs code; never resolved silently):
 
 | ID | Artifact | Spec says | Code does | Since | Proposed resolution |
 |---|---|---|---|---|---|
+| D-01 | predecessor `README.md` | "Seven Gradle modules" | Eight modules, including `source-fidelity-hsa` | PR #46 | README is stale; Slussen specs follow the code. No vision impact. |
+| D-02 | predecessor `README.md` | Fidelity HSA file import listed as "options being explored" | File source is built | PR #46 | Treated as in scope (VG-04). |
 
 **Review findings (Phase 5) and dispositions (Phase 6):**
 
@@ -143,6 +158,7 @@ One block per phase, written by the orchestrator in the phase's commit. This is 
 | ID | From phase | Question | Recommended answer | Operator's answer |
 |---|---|---|---|---|
 | O-01 | 0 | `docs/decision_journal_spec.md` and `docs/decision_journal_plan.md` live in predecessor `docs/`, not `docs/archive/`. Are they live intent or archived intent? | Treat the spec as intent on the same footing as the archived specs (it is the latest designed intent for the journal); treat the plan as history only. Phases 1–4 read it accordingly. | |
+| O-02 | 1 | The vision's trend-based success measures (e.g. transfer re-link rate, missed transfers measured from the journal) have no numeric targets in the evidence. What targets? | Leave as trends for the bootstrap; set numbers once the journal yields a baseline. | |
 
 ## 7. Plan closed
 
