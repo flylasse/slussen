@@ -2,10 +2,13 @@
 
 ## Mission
 
-Slussen brings one household's bank transactions into YNAB, from a phone, without manual entry and without
-duplicates. The operator keeps the household's money in several YNAB budgets in different currencies, fed by
+Budgeting apps such as YNAB have a common failure point: reliable connectivity to banking sources, especially when a user has multiple, less common, or international financial institutions.  No connectivity = incomplete transaction data in your budgeting app = failure to do household budgeting. 
+
+Slussen's mission is to close this gap as a phone app the user can rely on when they are on the go, always be sure the budgeting app is up to date with latest transactions from all sources, and where they are able to see all bank balances in one place for easy reconciliation.
+
+Slussen brings one household's bank transactions into the target budgeting app, from a phone, without manual entry and without duplicates. The operator keeps the household's money in several YNAB budgets in different currencies, fed by
 US cards and bank accounts, a US health savings account, and Swedish bank accounts. Without Slussen, each
-transaction is typed in by hand, or comes in through import paths that post without review and often link a
+transaction is typed in by hand, painful csv exports, or through import paths that post without review and may link a
 transfer to the wrong account.
 
 Slussen fetches transactions and balances from the operator's banks and compares each transaction with what YNAB
