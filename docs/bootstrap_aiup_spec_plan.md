@@ -24,8 +24,8 @@ The operator starts **one orchestrator session on the strongest model** and tell
 
 ## 2. Prerequisites (operator, before kickoff)
 
-- [ ] GitHub CLI installed and authenticated with read access to `flylasse/ynab-import-android` (`winget install GitHub.cli`, then `gh auth login`; check with `gh pr list --repo flylasse/ynab-import-android --state merged --limit 1`). **Not installed as of 2026-10-13.** Without it Phase 0 cannot fetch PR descriptions, and Phase 0 stops.
-- [ ] `python tools/lint_specs.py --self-test` prints `self-test passed`.
+- [x] GitHub CLI installed and authenticated with read access to `flylasse/ynab-import-android`. Verified 2026-10-13: gh 2.102.0, account `flylasse`, scope `repo`, 81 merged PRs visible. **gh is not on PATH in shells started before the install** — agents call it by full path: `& "C:\Program Files\GitHub CLI\gh.exe"`.
+- [x] `python tools/lint_specs.py --self-test` prints `self-test passed` (verified 2026-10-13).
 - [ ] `git -C C:\work\slussen status` clean on `initial-aiup-scaffolding`.
 
 ## 3. Phase table
@@ -51,9 +51,9 @@ Every phase prompt starts with: *"Read `C:\work\slussen\AGENTS.md` and this plan
 
 Read `C:\work\marketplace\aiup-core\skills\reverse-engineer\SKILL.md`, stage 1 (project discovery), for what to look for.
 
-1. `gh pr list --repo flylasse/ynab-import-android --state merged --limit 500 --json number,title,mergedAt,body` → `scratch/pr_history.md`, one section per PR in number order: number, title, merge date, full body. No summarising. If `gh` is missing or unauthenticated, stop and report.
-2. `scratch/source_inventory.md`: in `ynab-import-android`, list with paths: the Gradle modules; the user-facing entry points (screens, ViewModels, workers, receivers); domain classes and enums; persistence (Room entities, DataStore, files); the test directories with file counts; every file in `docs/` and `docs/archive/`. Lists and paths only, no interpretation.
-3. In the plan header, record PR count, archived spec count, and the `ynab-import-android` commit read (`git -C C:\work\ynab-import-android rev-parse origin/main`). The evidence is `origin/main`, not the current local branch.
+1. `& "C:\Program Files\GitHub CLI\gh.exe" pr list --repo flylasse/ynab-import-android --state merged --limit 500 --json number,title,mergedAt,body` → `scratch/pr_history.md`, one section per PR in number order: number, title, merge date, full body. No summarising. If `gh` fails or is unauthenticated, stop and report.
+2. `scratch/source_inventory.md`: first run `git -C C:\work\ynab-import-android fetch origin`, then read the tree at `origin/main`. If `git -C C:\work\ynab-import-android diff --stat HEAD origin/main` is empty and `status` is clean (true on 2026-10-13: local `9068c74` has the same content as `origin/main` `46efbf0`), read the files from disk; otherwise use `git show origin/main:<path>` and never check out or modify the operator's local branch. List with paths: the Gradle modules; the user-facing entry points (screens, ViewModels, workers, receivers); domain classes and enums; persistence (Room entities, DataStore, files); the test directories with file counts; every file in `docs/` and `docs/archive/`. Lists and paths only, no interpretation.
+3. In the plan header, record PR count, archived spec count, and the `ynab-import-android` commit read (`git -C C:\work\ynab-import-android rev-parse origin/main`). The evidence is `origin/main` after the fetch, not the current local branch. All later phases read the predecessor at that same commit.
 
 ### Phase 1 — Vision, requirements, glossary (`inherit`)
 
