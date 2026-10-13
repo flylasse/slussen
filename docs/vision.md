@@ -7,8 +7,8 @@ household has multiple, less common, or international financial institutions. No
 transaction data in the Budget App, and that means household budgeting fails.
 
 Slussen's mission is to close this gap with a phone app the operator can rely on when they are on the go. They can
-always be sure the Budget App is up to date with the latest transactions from all sources, and they can see all
-bank balances in one place for easy reconciliation.
+always see at a glance whether the Budget App is up to date with each source, and what to do if it is not, and
+they can see all bank balances in one place for easy reconciliation.
 
 Slussen brings one household's bank transactions into its Budget App, from a phone, without manual entry and
 without duplicates. A household may keep its money in several budgets in different currencies, fed by US
@@ -16,7 +16,7 @@ cards and bank accounts, a health savings account, foreign bank accounts and cre
 
 Slussen fetches transactions and balances from the operator's banks and compares each transaction with what the
 Budget App already holds. It shows the operator, per transaction, whether it is new, already in the Budget App, a
-match for an entry the operator typed, or possibly brought in by another import path, and aggregates account balances in one place. It writes only after the operator confirms, and only the transactions that are new. The whole fetch, review and upload cycle runs on the
+match for an entry the operator typed, or possibly brought in by another import path, and aggregates account balances in one place. It writes only after the operator confirms, and only transactions not already in the Budget App. A transaction that matches an entry the operator typed is sent too, so that the Budget App can pair the two instead of holding both. The whole fetch, review and upload cycle runs on the
 phone.
 
 Slussen is not a budgeting tool and does not categorise, plan or report. The Budget App stays the system of
@@ -44,21 +44,33 @@ starts from a specification instead of from the code.
 ## Goals
 
 - **Exactly once.** Slussen creates zero duplicate transactions in the Budget App, even after a retry, timeout,
-  crash, reinstall, or re-mapping of an account. It silently drops zero transactions it is responsible for. A
+  crash, reinstall, or re-mapping of an account. It silently drops zero transactions it is responsible for: a transaction it cannot reliably
+  identify, or one whose counterpart was changed in the Budget App, goes to the operator for review instead of
+  being merged or lost. A
   collision with a transaction created by another import path is shown to the operator for a decision and is
-  never resolved silently. Slussen owns this guarantee itself: it uses the Budget App's own duplicate protection
-  where that exists, but does not depend on it.
+  never resolved silently. Slussen owns this guarantee itself: it keeps its own durable record of what it has
+  sent, which survives a reinstall, and uses the Budget App's own duplicate protection where that exists, but
+  does not depend on it. The guarantee covers what Slussen sends: another importer feeding the same account can
+  still create duplicates, which is why each account has one import path.
 - **Nothing is written without confirmation.** Every write to the Budget App follows an explicit confirmation of
   a plan that states the budget, the accounts, the number of transactions, and the total inflow and outflow.
-  Fetching and comparing never write.
+  What is written is exactly what was confirmed: if the Budget App has changed since the plan was shown, or the
+  plan is too old, nothing is written and the operator reviews again. Fetching and comparing never write.
+- **Never guess an account.** If Slussen cannot be certain which bank account a feed belongs to, it stops and
+  asks the operator. It never silently sends one bank account's transactions to another account.
+- **Truthful outcomes, isolated failures.** Slussen tells the operator truthfully what was and was not written,
+  including when the outcome of an upload is unknown, and never shows an unconfirmed write as done. A failure in
+  one source or account never blocks or corrupts another.
 - **One import path per account.** Every operator account that has a transaction feed or a file export is
   imported through Slussen, not typed in by hand and not fed by a second importer in parallel. An account no
   source exposes stays a manually kept account in the Budget App.
 - **Transfers land linked.** A transfer between two of the operator's accounts in the same budget, such as a
   card payment or a move between bank accounts, arrives in the Budget App as one linked transfer. The operator
   then does not have to re-link it there.
-- **Bank access is spent carefully.** Slussen never contacts a bank it knows will refuse the request, such as one
-  with an expired authorization. It stays inside the regulatory limit on unattended access to each account.
+- **Bank access is spent carefully.** Slussen contacts a bank only when the operator starts a fetch, never on its
+  own. It never contacts a bank it knows will refuse the request, such as one with an expired authorization. It
+  honours a bank's or Data Provider's instruction to wait, even when the operator retries, and it holds back
+  repeat fetches for a while after a successful one.
 - **A clean takeover.** Replacing the predecessor app on the operator's phone creates no duplicates of
   transactions the predecessor already uploaded.
 - **Shareability.** Slussen is developed as a public repository that holds no personal data, bank information or
@@ -75,7 +87,8 @@ starts from a specification instead of from the code.
   consent per bank.
 - Getting and renewing that bank consent from the phone: the operator authenticates once per bank with the
   bank's own Strong Customer Authentication (for example BankID), which authorizes Slussen on the phone until the
-  consent expires, and is warned before a consent expires.
+  consent expires. Whenever the operator opens the app, a consent that will expire soon is flagged together with
+  the action that renews it.
 - Importing a downloaded transaction file for an account that has no usable transaction feed (for instance, a US
   health savings account whose transactions SimpleFIN does not provide), while its balance can still come from a
   Data Provider where one supports it. In this build one file format is supported.
@@ -85,6 +98,9 @@ starts from a specification instead of from the code.
   defer it, or deliberately re-upload one that was deleted in the Budget App. Each decision can be changed until
   upload.
 - Uploading only on explicit confirmation of a reviewed plan, per budget or per account.
+- Uploading only transactions inside a bounded date window. A transaction that is too old or dated in the future
+  is shown to the operator as such and never disappears silently, including one that ages out while it waits for
+  the operator's review.
 - Detecting transfers between the operator's own accounts in the same budget and currency, and posting them as
   one linked transfer. This includes a transfer whose other side has not arrived yet. The operator turns the
   feature on and off and reviews guessed pairings.
@@ -98,7 +114,8 @@ starts from a specification instead of from the code.
 - Keeping a decision journal: what Slussen fetched, what it concluded, what the operator overrode, and what later
   happened to each import in the Budget App. The operator can export it, together with the Budget App's current
   data, for review outside the app.
-- Keeping the operator's account identities and decisions across a reinstall of the app.
+- Keeping the operator's account identities, decisions and the record of what was sent across a reinstall of the
+  app. Bank authorizations do not survive a reinstall: the operator authorizes each bank again.
 
 ### Out of scope
 
@@ -140,7 +157,8 @@ starts from a specification instead of from the code.
   amount within a date window, it never matches two imports to each other, and it keeps an import identifier
   locked even after the transaction is deleted.
 - **Extensible Data Providers and file formats.** A Data Provider or file format other than those in this build
-  can be added without changing how Slussen compares, reviews and decides.
+  can be added without changing how Slussen compares, reviews and decides. Each one states whether it gives every
+  transaction a stable reference; transactions without one are reviewed, never guessed.
 - **Replaceable Budget App.** The Budget App is one external destination. Slussen's rules are stated in its own
   terms, and everything that depends on one Budget App's behaviour is kept separate, so that another Budget App
   can replace YNAB without rewriting how Slussen fetches, compares, reviews and decides.
@@ -158,14 +176,14 @@ starts from a specification instead of from the code.
 
 - The operator uses Slussen as the only import path for every account a source exposes and stops entering those
   transactions by hand. The predecessor app is retired from the phone.
-- The decision journal shows no import that the operator later had to delete in YNAB as a duplicate, and no
-  transaction that went missing.
+- The decision journal shows no import sent by Slussen that the operator later had to delete in YNAB as a
+  duplicate, and no transaction that went missing.
 - The decision journal shows few imports that the operator later re-linked as a transfer in YNAB, and that count
   falls over time.
 - The tests against a throwaway YNAB budget pass for matching, deletion, merging and transfer behaviour before
   any upload relies on that behaviour.
-- No bank consent lapses without the operator being warned first, and no bank access is spent on a request that
-  Slussen knew would fail.
+- Every time the operator opens the app while a bank consent is about to expire, they are warned, and no bank
+  access is spent on a request that Slussen knew would fail.
 - The public repository contains no personal data or credentials. It provides a configuration template for each
   Data Provider and the Budget App in this build (SimpleFIN, Enable Banking, YNAB) that shows an adopting
   developer what to fill in and where to get it, without being a working configuration.
