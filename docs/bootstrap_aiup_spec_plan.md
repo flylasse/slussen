@@ -1,173 +1,133 @@
-# Plan: Bootstrap AIUP Living Specification Core for Slussen
+# Plan: Bootstrap the AIUP Specification Core for Slussen
 
-**Initiative:** Slussen AIUP Specification Bootstrapping  
-**Source Baseline:** `C:\work\ynab-import-android` (code, tests, `docs/archive/`, PR history)  
-**Target Repository:** `C:\work\slussen`  
-**Branch:** `initial-aiup-scaffolding`  
-**Authoritative Methodology:** Simon Martinelli's *Spec-Driven Development: From Specs to Code with AI Agents* (Apress 2026) & AIUP Marketplace  
-**Tooling Runner:** `python tools/lint_specs.py`  
-**Orchestration Stance:** Top tier model across all phases; one commit per phase; mandatory green `spec_lint` gate before proceeding to the next phase.
+**Initiative:** Mine `ynab-import-android` into a living AIUP specification for Slussen, before any Slussen code exists.
+**Target repo / branch:** `C:\work\slussen`, branch `initial-aiup-scaffolding`, one PR at the end.
+**Evidence (read-only):** `C:\work\ynab-import-android` — code and tests, `docs/archive/` spec/plan pairs, every merged PR description.
+**Method:** AIUP Marketplace `aiup-core` at commit `05af8163838df704620ebe1121cd6019dbce276c` (2026-10-13), local clone `C:\work\marketplace`; book corpus `C:\work\book-context-martinelli-spec-driven-dev\corpus`. If `git -C C:\work\marketplace rev-parse HEAD` differs, stop and ask.
+**Gate tool:** `python tools/lint_specs.py` (wraps the Marketplace `spec_lint.py`).
 
 ---
 
-## 0. Executive Summary & The Religious Rule
+## 1. How this plan is executed (global prompt for the orchestrator)
 
-The purpose of this plan is to establish the permanent, living **Specification Core** for Slussen before any application code or scaffolding is written.
+The operator starts **one orchestrator session on the strongest model** and tells it to execute this plan. The orchestrator:
 
-Martinelli's AIUP process is treated as **strict doctrine**:
-1. **The specification in `docs/` is the single source of truth.**
-2. Code and tests are downstream derived artifacts.
-3. Every behavior must be covered by a use case; every rule must have a stable ID.
-4. **Change the specification first, then synchronize the code.**
-5. Specifications outlive plans: this plan will close and archive to `docs/archive/`, leaving `docs/` as the permanent living baseline.
+1. **Runs Phases 0–5 end to end without the operator**, then **stops at Phase 6**, the operator's approval gate. Phase 7 runs only after the operator has approved.
+2. **Dispatches each phase to its own sub-agent** with a clean context, the phase's prompt from §4 (verbatim, plus the paths it needs), and the model named in the phase table. `inherit` = the orchestrator's model. The orchestrator does not write the phase's artifacts itself.
+3. **Runs the phase gate itself** after the sub-agent returns. It never accepts a sub-agent's report that the gate passed.
+4. **Makes exactly one commit per phase** after the gate is green, with the message given in the phase table, and pushes it before starting the next phase. If the gate is red: one re-dispatch of the same phase with the gate output (on `inherit` if the phase ran on a lower tier, recorded as an upward re-dispatch), then one fix commit at most. Still red → stop and report. Never skip a phase, never pull work forward from a later phase.
+5. **Sub-agents cannot ask the operator.** Every Marketplace skill tells the agent to ask clarifying questions; in this run each sub-agent takes the skill's recommended option, and returns its **Clarified / Assumed / Open** items (the skills' own reporting format). The orchestrator copies them into §6 and the operator answers them at Phase 6.
+6. **Updates §5 (evaluation log) and §6 (drift and open questions) in the same commit as the phase.** These are the main output of the pilot, not paperwork.
+7. Does not touch `ynab-import-android`, `marketplace` or the book repo, and never commits anything under `scratch/`.
 
----
+**Why these model choices.** Phase 0 is mechanical extraction with no interpretation, so it runs on a fast tier, with an automatic upward re-dispatch if its gate fails. Phases 1–3 and 5 are synthesis across three sources where correctness is the point, so they run on the strongest tier. Phase 4 is the adversarial review: it runs on a **different model** from the authoring phases (Centaur's cross-model review rule), and only reports, as `/spec-review` requires.
 
-## 1. Authoritative Reference Materials on Disk
+## 2. Prerequisites (operator, before kickoff)
 
-Every executing agent MUST read the designated reference files before writing artifacts for a phase:
+- [ ] GitHub CLI installed and authenticated with read access to `flylasse/ynab-import-android` (`winget install GitHub.cli`, then `gh auth login`; check with `gh pr list --repo flylasse/ynab-import-android --state merged --limit 1`). **Not installed as of 2026-10-13.** Without it Phase 0 cannot fetch PR descriptions, and Phase 0 stops.
+- [ ] `python tools/lint_specs.py --self-test` prints `self-test passed`.
+- [ ] `git -C C:\work\slussen status` clean on `initial-aiup-scaffolding`.
 
-| Phase | Core Book Chapter (`C:\work\book-context-martinelli-spec-driven-dev\corpus\chapters\`) | AIUP Skill Contract (`C:\work\marketplace\aiup-core\skills\`) |
-|---|---|---|
-| **Phase 0** | `08-case-study-building-a-simple-task-manager.md` | `reverse-engineer/SKILL.md` |
-| **Phase 1** | `03-from-requirements-to-specs.md` | `requirements/SKILL.md` (and glossary section) |
-| **Phase 2** | `03-from-requirements-to-specs.md` § Entity Model | `entity-model/SKILL.md` |
-| **Phase 3** | `04-writing-executable-specifications.md` § Use Case Diagrams | `use-case-diagram/SKILL.md` |
-| **Phase 4** | `04-writing-executable-specifications.md` § Specifications | `use-case-spec/SKILL.md` + `use-case-spec/references/format-spec.md` |
-| **Phase 5** | `10-best-practices-pitfalls-and-the-road-ahead.md` | `spec-review/SKILL.md` + `spec-review/references/review-checklist.md` |
+## 3. Phase table
 
----
+| Phase | What | Writes | Model | Gate (orchestrator runs it) | Commit message |
+|---|---|---|---|---|---|
+| 0 | Extract evidence | `scratch/pr_history.md`, `scratch/source_inventory.md`; §5 and plan header counts | `flash` | PR count in dump = `gh` merged-PR count; inventory lists entry points, domain classes, persistence, tests, archived specs; `lint_specs.py` exits 0 | `docs: phase 0 - extract predecessor evidence` |
+| 1 | Vision, requirements, glossary | `docs/vision.md`, `docs/requirements.md`, `docs/glossary.md` | `inherit` | `lint_specs.py` exits 0 (`FR_UNCOVERED` warnings expected) | `docs: phase 1 - vision, requirements catalog, glossary` |
+| 2 | Entity model | `docs/entity_model.md` | `inherit` | `lint_specs.py` exits 0 | `docs: phase 2 - entity model` |
+| 3 | Use case diagram and specifications | `docs/use_cases.puml`, `docs/use_cases/UC-*.md` | `inherit` | `lint_specs.py --strict` exits 0 | `docs: phase 3 - use case diagram and specifications` |
+| 4 | Adversarial spec review (report only) | findings into §6 | `pro` | every finding has an ID and a location; no file under `docs/` other than this plan changed | `docs: phase 4 - adversarial spec review findings` |
+| 5 | Dispositions | `docs/**` fixes; disposition per finding in §6 | `inherit` | `lint_specs.py --strict` exits 0; every Phase 4 finding has a disposition (fixed / rejected with reason / Open for operator) | `docs: phase 5 - review dispositions` |
+| 6 | **Operator approval — orchestrator stops here** | operator answers §6, sets `**Status:** Approved` | operator | — | operator's own commit |
+| 7 | Close and archive | plan → `docs/archive/` | `inherit` | `lint_specs.py --strict` exits 0; §7 filled | `docs: phase 7 - close bootstrap plan` |
 
-## 2. Target Deliverables in `slussen/docs/`
+Phase 3 combines the diagram and the specifications on purpose: `spec_lint.py` reports a use case in the diagram without a specification as an `ERROR` (`SPEC_MISSING`), so a diagram-only commit cannot pass a gate.
 
-| Artifact | File Path | AIUP Standard / Description |
-|---|---|---|
-| **Vision** | `docs/vision.md` | Core problem, primary user, key constraints, on-device SCA requirements, and invariants. |
-| **Glossary** | `docs/glossary.md` | Domain taxonomy + mandatory **Synonyms to Avoid** table. |
-| **Requirements** | `docs/requirements.md` | Catalog of `FR-xxx`, `NFR-xxx`, and `C-xxx` IDs. |
-| **Entity Model** | `docs/entity_model.md` | Mermaid ER diagram (relationships only) + strict 5-column attribute tables using the 8 closed AIUP types. |
-| **Use Case Diagram** | `docs/use_cases.puml` | PlantUML diagram showing actors and 4–8 aggregated use cases. |
-| **Use Case Specs** | `docs/use_cases/UC-XXX-*.md` | 4–8 normative use case specifications with scoped `BR-xxx` rules and drift notes. |
-| **Drift Report** | `scratch/drift_report.md` | Audit log tracking divergences between archived predecessor specs, PRs, and code. |
+## 4. Phase prompts
 
----
+Every phase prompt starts with: *"Read `C:\work\slussen\AGENTS.md` and this plan's §1. You are the executor for Phase N only. Write only the files listed for your phase. Return your Clarified / Assumed / Open items, and any place where you could not follow the skill exactly and why."*
 
-## 3. Phase Execution Table
+### Phase 0 — Extract evidence (`flash`)
 
-| Phase | Description | Deliverables | Model | Blocked By | Gate / Acceptance Criteria |
-|:---|:---|:---|:---:|:---:|:---|
-| **Phase 0** | Archaeological Extraction & Tooling Setup | `scratch/pr_history.md`, `scratch/domain_inventory.md` | Top Tier | — | Predecessor PRs dumped; domain models inventoried; `python tools/lint_specs.py` verified. |
-| **Phase 1** | Vision, Glossary & Requirements Catalog | `docs/vision.md`, `docs/glossary.md`, `docs/requirements.md` | Top Tier | Phase 0 | `requirements.md` has `FR-`, `NFR-`, `C-` IDs; glossary has synonyms table; `lint_specs` passes. |
-| **Phase 2** | Entity Model & Data Dictionary | `docs/entity_model.md` | Top Tier | Phase 1 | `### UPPER_SNAKE_CASE` headings; 1-sentence descriptions; 5-column tables; closed types only; `lint_specs` passes. |
-| **Phase 3** | Use Case Diagram & Actor Synthesis | `docs/use_cases.puml` | Top Tier | Phase 2 | 4–8 aggregated use cases; PlantUML valid; all use cases mapped to `FR-` IDs; `lint_specs` passes. |
-| **Phase 4** | Detailed Use Case Specifications | `docs/use_cases/UC-XXX-*.md` | Top Tier | Phase 3 | All 4–8 use cases written to normative format; scoped `BR-xxx` rules; failure postconditions = minimal guarantees; `lint_specs` passes. |
-| **Phase 5** | Spec Lint Verification & Operator Approval | `docs/use_cases/*.md` (`**Status:** Approved`) | Top Tier | Phase 4 | `python tools/lint_specs.py --strict` exits 0 with zero errors/warnings; operator sets status to `Approved`. |
-| **Phase 6** | Plan Close & Archival | `docs/archive/bootstrap_aiup_spec_plan.md` | Top Tier | Phase 5 | "Plan Closed" section completed; plan moved to archive; `docs/` clean for Construction Phase 1. |
+Read `C:\work\marketplace\aiup-core\skills\reverse-engineer\SKILL.md`, stage 1 (project discovery), for what to look for.
 
----
+1. `gh pr list --repo flylasse/ynab-import-android --state merged --limit 500 --json number,title,mergedAt,body` → `scratch/pr_history.md`, one section per PR in number order: number, title, merge date, full body. No summarising. If `gh` is missing or unauthenticated, stop and report.
+2. `scratch/source_inventory.md`: in `ynab-import-android`, list with paths: the Gradle modules; the user-facing entry points (screens, ViewModels, workers, receivers); domain classes and enums; persistence (Room entities, DataStore, files); the test directories with file counts; every file in `docs/` and `docs/archive/`. Lists and paths only, no interpretation.
+3. In the plan header, record PR count, archived spec count, and the `ynab-import-android` commit read (`git -C C:\work\ynab-import-android rev-parse origin/main`). The evidence is `origin/main`, not the current local branch.
 
-## 4. Phase Dispatch Instructions (Paste-Ready Prompts)
+### Phase 1 — Vision, requirements, glossary (`inherit`)
 
-### Phase 0: Archaeological Extraction & Tooling Setup
-* **Read First:** `C:\work\marketplace\aiup-core\skills\reverse-engineer\SKILL.md` (Workflow §1–§3).
-* **Actions:**
-  1. Extract merge commits and PR descriptions from `C:\work\ynab-import-android` into `scratch/pr_history.md`.
-  2. Inventory domain entities, enums, and data classes from `ynab-import-android/domain/` and `app/` into `scratch/domain_inventory.md`.
-  3. Verify `python tools/lint_specs.py` runs cleanly.
-* **Gate:** `scratch/pr_history.md` contains the 80 PRs; `python tools/lint_specs.py` exits 0.
-* **Commit:** `docs: phase 0 - extract predecessor git history and inventory domain models`
+Read: book chapters `02` and `03`; `C:\work\marketplace\aiup-core\skills\requirements\SKILL.md` and its references; `reverse-engineer/SKILL.md` stages 1–2. Sources: `ynab-import-android/README.md`, `docs/archive/*_spec-v*.md` (intent and rules as designed), `scratch/pr_history.md` (later decisions), the code where the specs are silent.
 
----
+1. `docs/vision.md`: what the system is and is not, the actor, the scope boundary. Use the Marketplace template `C:\work\marketplace\docs\templates\vision.md`. **Deviation to log:** in the book the vision is written by hand; here it is drafted from evidence and reviewed by the operator at Phase 6.
+2. `docs/requirements.md` and `docs/glossary.md`, exactly in the `requirements` skill's format (FR as user stories, NFR measurable, constraints with Source where regulatory, Status column, glossary with synonyms to avoid). Requirement count follows from the evidence; there is no target number.
+3. Where the archived specs, PRs and code disagree about a requirement, do not choose silently: write the requirement the code currently satisfies, and add a drift entry to the return (`FR-xxx: spec <file> §x says A; code does B; since PR #n`).
 
-### Phase 1: Vision, Glossary & Requirements Catalog
-* **Read First:**
-  - `C:\work\book-context-martinelli-spec-driven-dev\corpus\chapters\03-from-requirements-to-specs.md`
-  - `C:\work\marketplace\aiup-core\skills\requirements\SKILL.md`
-* **Actions:**
-  1. Author `docs/vision.md`: Define the core problem (secure European bank import onto phone with SCA), single-operator workflow (fetch $\to$ reconcile $\to$ upload), and non-negotiable invariants (YNAB is system of record; no auto-posting without operator review).
-  2. Author `docs/glossary.md`: Define domain terms (Connection, Consent, Leg, Transfer Match, Delta Sync, One-sided Transfer, Decision Journal) and provide a strict **Synonyms to Avoid** table.
-  3. Author `docs/requirements.md`: Synthesize `FR-001`..`FR-040` (functional capabilities), `NFR-001`..`NFR-010` (security, performance, on-device execution), and `C-001`..`C-010` (banking rate limits, Android KeyStore, YNAB delta sync API).
-* **Gate:** Run `python tools/lint_specs.py`. Zero errors.
-* **Commit:** `docs: phase 1 - establish vision, glossary, and requirements catalog`
+### Phase 2 — Entity model (`inherit`)
 
----
+Read: `C:\work\marketplace\aiup-core\skills\entity-model\SKILL.md`, its `references/` including `clarify-checklist.md`; `reverse-engineer/SKILL.md` on entity sources. Sources: `docs/requirements.md`, `docs/glossary.md`, the domain and persistence classes listed in `scratch/source_inventory.md`.
 
-### Phase 2: Entity Model & Data Dictionary
-* **Read First:** `C:\work\marketplace\aiup-core\skills\entity-model\SKILL.md`.
-* **Actions:**
-  1. Mine domain models from `scratch/domain_inventory.md` and `ynab-import-android/domain/`.
-  2. Author `docs/entity_model.md`:
-     - Mermaid ER diagram with relationship lines only (NO attributes in diagram boxes).
-     - Entities named with `### UPPER_SNAKE_CASE` headings (e.g. `### BANK_CONNECTION`, `### TRANSACTION_LEG`).
-     - Exactly one sentence description under each entity heading.
-     - Exactly 5 columns: `Attribute | Description | Data Type | Length/Precision | Validation Rules`.
-     - Data types restricted strictly to the 8 closed AIUP types: `Long`, `String`, `Integer`, `Decimal`, `Boolean`, `Date`, `DateTime`, `BLOB`.
-* **Gate:** Run `python tools/lint_specs.py`. Zero errors.
-* **Commit:** `docs: phase 2 - generate entity model and data dictionary`
+Write `docs/entity_model.md` exactly to the skill. **Deviation to log:** the predecessor has no SQL schema or migrations, which `reverse-engineer` ranks as the authoritative entity source; entities come from Kotlin domain and persistence classes. Model the business entities, not Android storage mechanics; record what was left out and why.
 
----
+### Phase 3 — Use case diagram and specifications (`inherit`)
 
-### Phase 3: Use Case Diagram & Actor Synthesis
-* **Read First:** `C:\work\marketplace\aiup-core\skills\use-case-diagram\SKILL.md`.
-* **Actions:**
-  1. Model actors: `Operator` (primary), `Banking Provider` (secondary system), `YNAB API` (secondary system).
-  2. Aggregate behaviors into 4–8 use cases:
-     - `UC-001`: Manage Bank Connections & Consents
-     - `UC-002`: Fetch & Ingest Bank Transactions
-     - `UC-003`: Reconcile Transactions & Match Transfers
-     - `UC-004`: Review & Upload to YNAB
-     - `UC-005`: Manage Budgets & Account Mappings
-     - `UC-006`: Audit Decision Journal
-  3. Generate `docs/use_cases.puml`.
-* **Gate:** Aggregated count between 4 and 8; PlantUML syntax valid; `python tools/lint_specs.py` passes.
-* **Commit:** `docs: phase 3 - generate use case diagram`
+Read: book chapter `04`; `reverse-engineer/SKILL.md` stages 2–7; `use-case-diagram/SKILL.md`; `use-case-spec/SKILL.md` and `references/format-spec.md`, `example.md`, `clarify-checklist.md`. Sources: the entry points in `scratch/source_inventory.md`, the tests (they state intended behaviour), the archived specs, the PR history, `docs/requirements.md`, `docs/entity_model.md`.
 
----
+1. Find actors and aggregate entry points into use cases by actor goal, following `reverse-engineer` stage 3 including its self-check. A hypothesis from an earlier skim (Manage bank connections, Fetch transactions, Reconcile and match transfers, Review and upload to YNAB, Manage budgets and account mapping, Audit decision journal) is **only a hypothesis**; the phase derives its own set and records in the return where and why it differs. If it ends with more than 8 use cases, justify that in the return.
+2. Write `docs/use_cases.puml` and one `docs/use_cases/UC-XXX-<kebab-name>.md` per use case, `**Status:** Draft`, every active FR linked from at least one use case.
+3. Specifications describe the behaviour Slussen must have, not the history: no PR numbers or archive references inside the use cases. Drift goes in the return, as in Phase 1.
+4. Run `python tools/lint_specs.py --strict` yourself before returning, and fix until it passes.
 
-### Phase 4: Detailed Use Case Specifications
-* **Read First:**
-  - `C:\work\book-context-martinelli-spec-driven-dev\corpus\chapters\04-writing-executable-specifications.md`
-  - `C:\work\marketplace\aiup-core\skills\use-case-spec\SKILL.md`
-  - `C:\work\marketplace\aiup-core\skills\use-case-spec\references\format-spec.md`
-* **Actions:**
-  1. Write `docs/use_cases/UC-001-manage-bank-connections.md` through `UC-006-audit-decision-journal.md`.
-  2. Strictly adhere to the normative format grammar (Overview, Preconditions, Main Success Scenario, Alternative Flows, Postconditions, Business Rules).
-  3. Every step in business-level prose (no SQL, HTTP methods, or library names).
-  4. Failure postconditions state minimal guarantees, not error messages.
-  5. Scoped business rules `### BR-001: <Name>` numbered from 1 per file.
-  6. Document any drift from predecessor specs in the rule description, citing the PR number.
-* **Gate:** All 6 use cases present; `python tools/lint_specs.py` passes.
-* **Commit:** `docs: phase 4 - author normative use case specifications UC-001 through UC-006`
+### Phase 4 — Adversarial spec review (`pro`, report only)
 
----
+Read: `C:\work\marketplace\aiup-core\skills\spec-review\SKILL.md` and `references/review-checklist.md`; book chapter `10`. Review `docs/` against the skills and against the evidence. Prompt stance: *find what would make a developer build the wrong app from this spec — missing behaviour the predecessor has, rules stated but not enforced, invented behaviour with no evidence, steps that leak implementation, aggregation that mirrors screens. No compliments. Report only; never edit `docs/`.* Each finding: ID `R-nn`, location, what is wrong, evidence path. The orchestrator writes them into §6.
 
-### Phase 5: Spec Lint Verification & Operator Review
-* **Read First:** `C:\work\marketplace\aiup-core\skills\spec-review\SKILL.md`.
-* **Actions:**
-  1. Run `python tools/lint_specs.py --strict`.
-  2. Fix any warnings or errors.
-  3. Present the complete living specification corpus to the operator.
-  4. Upon operator review and confirmation, update `**Status:** Approved` in each use case file.
-* **Gate:** `python tools/lint_specs.py --strict` exits 0 with zero findings; operator approval confirmed.
-* **Commit:** `docs: phase 5 - pass strict spec_lint and mark use cases approved`
+### Phase 5 — Dispositions (`inherit`)
 
----
+For every `R-nn`: fix it in `docs/`, or reject it with a reason, or mark it Open for the operator. Record the disposition in §6. Gate: `--strict` passes.
 
-### Phase 6: Plan Close & Archival
-* **Actions:**
-  1. Complete Section 5 ("Plan Closed") below: record what shipped, drift findings, and owed items.
-  2. Move `docs/bootstrap_aiup_spec_plan.md` to `docs/archive/bootstrap_aiup_spec_plan.md`.
-  3. Verify `docs/` is clean and contains only the living Specification Core.
-* **Gate:** Plan moved to `docs/archive/`; working tree clean; repo ready for Construction Phase 1.
-* **Commit:** `docs: phase 6 - close and archive bootstrap AIUP specification plan`
+### Phase 6 — Operator approval (operator)
 
----
+The operator reads `docs/` and §6, answers the Open items (as edits to the specifications), and sets each use case that holds to `**Status:** Approved`. Construction does not start before this.
 
-## 5. Plan Closed (To be completed upon Phase 6)
+### Phase 7 — Close (`inherit`)
 
-*This section will be filled out when the initiative concludes.*
+Fill §7, move this file to `docs/archive/bootstrap_aiup_spec_plan.md`, open the PR. `docs/` then holds only the specification.
 
-- **Date Closed:** 
-- **What Shipped:** 
-- **Drift Uncovered Between Predecessor Specs and Code:** 
-- **Owed Items / Open Questions for Construction:** 
+## 5. Methodology evaluation log
+
+One block per phase, written by the orchestrator in the phase's commit. This is the evidence the operator will use to judge AIUP.
+
+| Phase | Skill(s) followed | Followed as written? | Deviations and why | Skill silent on | Lint result (E/W/I) | Assumptions / Open | Re-dispatches | Notes |
+|---|---|---|---|---|---|---|---|---|
+| 0 | | | | | | | | |
+| 1 | | | | | | | | |
+| 2 | | | | | | | | |
+| 3 | | | | | | | | |
+| 4 | | | | | | | | |
+| 5 | | | | | | | | |
+
+## 6. Drift, review findings and open questions
+
+**Drift** (predecessor spec vs PR vs code; never resolved silently):
+
+| ID | Artifact | Spec says | Code does | Since | Proposed resolution |
+|---|---|---|---|---|---|
+
+**Review findings (Phase 4) and dispositions (Phase 5):**
+
+| ID | Location | Finding | Evidence | Disposition |
+|---|---|---|---|---|
+
+**Open questions for the operator (Phase 6):**
+
+| ID | From phase | Question | Recommended answer | Operator's answer |
+|---|---|---|---|---|
+
+## 7. Plan closed
+
+- **Date closed:**
+- **What shipped:**
+- **Drift resolved / carried:**
+- **Owed to construction:**
+- **Verdict on the method (operator):**
