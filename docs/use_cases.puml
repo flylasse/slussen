@@ -1,0 +1,49 @@
+@startuml Use Cases Overview
+left to right direction
+
+actor "Operator" as operator
+actor "Adopting Developer" as developer
+actor "Data Provider" as provider
+actor "Bank" as bank
+actor "Budget App" as budgetapp
+
+rectangle "Slussen" {
+    usecase "UC-001\nFetch Transactions" as UC001
+    usecase "UC-002\nImport a Transaction File" as UC002
+    usecase "UC-003\nCompare With the Budget App" as UC003
+    usecase "UC-004\nReview Doubtful Transactions" as UC004
+    usecase "UC-005\nReview Transfers" as UC005
+    usecase "UC-006\nUpload to the Budget App" as UC006
+    usecase "UC-007\nGrant Bank Consent" as UC007
+    usecase "UC-008\nCheck Import Status" as UC008
+    usecase "UC-009\nManage Account Mappings" as UC009
+    usecase "UC-010\nAdjust Settings" as UC010
+    usecase "UC-011\nExport the Decision Journal" as UC011
+    usecase "UC-012\nSet Up an Own Build" as UC012
+}
+
+operator --> UC001
+operator --> UC002
+operator --> UC003
+operator --> UC004
+operator --> UC005
+operator --> UC006
+operator --> UC007
+operator --> UC008
+operator --> UC009
+operator --> UC010
+operator --> UC011
+developer --> UC012
+
+UC001 --> provider
+UC003 --> budgetapp
+UC006 --> budgetapp
+UC007 --> provider
+UC007 --> bank
+UC011 --> budgetapp
+
+UC001 ..> UC003 : <<include>>
+UC002 ..> UC003 : <<include>>
+UC006 ..> UC003 : <<include>>
+
+@enduml
