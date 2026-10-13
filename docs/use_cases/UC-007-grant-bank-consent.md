@@ -20,12 +20,12 @@
 ## Main Success Scenario
 
 1. Operator asks to grant the Bank Consent of a Bank, or to renew it, from any place where Slussen shows that the Bank Consent is missing, expiring or expired.
-2. Slussen starts a consent request for the Bank with the Data Provider.
+2. Slussen starts a Consent Request for the Bank with the Data Provider, which makes every earlier Consent Request of this Bank unanswerable.
 3. Data Provider hands Slussen the way to the Bank's Strong Customer Authentication.
 4. Slussen sends the Operator to the Bank's Strong Customer Authentication.
 5. Operator completes the Strong Customer Authentication with the Bank.
 6. Bank confirms the consent to the Data Provider, and the Operator returns to Slussen with the result.
-7. Slussen checks that the result answers the most recent consent request for this Bank, arrives within 15 minutes of it and has not been used before.
+7. Slussen checks that the result answers the most recent Consent Request for this Bank, arrives within 15 minutes of it and has not been used before.
 8. Slussen stores the Bank Consent with its expiry date, replacing any earlier Bank Consent of this Bank.
 9. Slussen identifies each Bank Account the Bank Consent covers as a Bank Account of the Build Configuration (UC-009 BR-004).
 10. Slussen shows the Bank Consent as valid, with its expiry date and the Bank Accounts it covers.
@@ -43,7 +43,7 @@
 
 ### A2: Result Not Accepted
 
-**Trigger:** The result does not answer the most recent consent request for this Bank, arrives later than 15 minutes after it, was used before, or cannot be read (step 7)  
+**Trigger:** The result does not answer the most recent Consent Request for this Bank, arrives later than 15 minutes after it, was used before, or cannot be read (step 7)  
 **Flow:**
 
 1. Slussen rejects the result and stores no Bank Consent.
@@ -52,13 +52,23 @@
 
 ### A3: Data Provider Refuses
 
-**Trigger:** The Data Provider refuses to start the consent request or to confirm the consent (step 3)  
+**Trigger:** The Data Provider refuses to start the Consent Request (step 3)  
 **Flow:**
 
-1. Slussen shows the Data Provider's refusal as the Blocked Reason of the Bank's Bank Accounts.
-2. Use case ends.
+1. Slussen stores no new Bank Consent and keeps any earlier Bank Consent of the Bank unchanged.
+2. Slussen shows the Data Provider's refusal as the Blocked Reason of the Bank's Bank Accounts.
+3. Use case ends.
 
-### A4: Bank Account Only Probably Recognised
+### A4: Data Provider Does Not Confirm the Consent
+
+**Trigger:** The Data Provider refuses to confirm the Bank Consent after the Strong Customer Authentication (step 6)  
+**Flow:**
+
+1. Slussen stores no new Bank Consent and keeps any earlier Bank Consent of the Bank unchanged.
+2. Slussen shows the Data Provider's refusal as the Blocked Reason of the Bank's Bank Accounts.
+3. Use case ends.
+
+### A5: Bank Account Only Probably Recognised
 
 **Trigger:** A Bank Account the Bank Consent covers can only be proposed as a likely match (step 9)  
 **Flow:**
@@ -66,7 +76,7 @@
 1. Slussen does not use that Bank Account's transactions yet and asks the Operator to confirm the proposed Bank Account (UC-009).
 2. Use case continues at step 10.
 
-### A5: Bank Account Not Identified
+### A6: Bank Account Not Identified
 
 **Trigger:** Two Bank Accounts of the Build Configuration are possible for one covered Bank Account, or two Account Mappings would point to the same one (step 9)  
 **Flow:**
@@ -95,7 +105,7 @@ One Strong Customer Authentication grants the Bank Consent for all of the Operat
 
 ### BR-002: One-Time Consent Request
 
-A consent request is valid for at most 15 minutes, is accepted at most once, and is rejected when it is not the most recent request for that Bank.
+A Consent Request is valid for at most 15 minutes, is accepted at most once, and is rejected when it is not the most recent Consent Request for that Bank.
 
 ### BR-003: Renewal Is a New Grant
 
@@ -107,7 +117,7 @@ The expiry date is the one the Bank grants, about 90 days after the Strong Custo
 
 ### BR-005: Bank Consents Stay on This Installation
 
-Bank Consents and consent requests in progress are never included in device backups or transfers and are not restored after a reinstall; the Operator grants each Bank Consent again.
+Bank Consents and Consent Requests in progress are never included in device backups or transfers and are not restored after a reinstall; the Operator grants each Bank Consent again.
 
 ### BR-006: Consent Data Is Never Logged
 

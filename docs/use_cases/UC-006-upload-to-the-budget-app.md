@@ -10,7 +10,7 @@
 **Trigger:** Operator asks to upload one Budget or one Bank Account  
 **Status:** Draft  
 
-**Requirements:** [FR-002, FR-030, FR-033, FR-034, FR-035, FR-036, FR-037, FR-038, FR-039, FR-041, FR-042, FR-044, FR-047, FR-052, FR-053, FR-055, FR-057, FR-066, NFR-001, NFR-002, NFR-003, NFR-004, NFR-010, NFR-015, NFR-016, C-009, C-011, C-012](../requirements.md)
+**Requirements:** [FR-002, FR-030, FR-033, FR-034, FR-035, FR-036, FR-037, FR-038, FR-039, FR-041, FR-042, FR-044, FR-047, FR-052, FR-053, FR-055, FR-057, FR-064, FR-066, NFR-001, NFR-002, NFR-003, NFR-004, NFR-010, NFR-015, NFR-016, C-009, C-011, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -20,17 +20,18 @@
 ## Main Success Scenario
 
 1. Operator asks to upload one Budget, or one Bank Account of a Budget.
-2. Slussen prepares an Upload Plan from the Eligible Transactions in that scope and from the Transfer Counterparts to be marked cleared.
+2. Slussen prepares an Upload Plan from the Eligible Transactions in that scope and from the Transfer Counterparts to be marked cleared, records it in the Decision Journal (UC-011 BR-001), and pauses other work while the plan awaits confirmation (BR-005).
 3. Slussen shows the Upload Plan: the Budget, the Budget Accounts, the number of transactions to create and to send as a match for a Typed Entry, the total inflow, the total outflow, every Transfer Counterpart that will be marked cleared, and when the plan expires.
 4. Operator confirms the Upload Plan.
 5. Slussen checks that the Upload Plan has not expired and reads the Budget App again to check that the Budget App, the Bank Transactions and the configuration are unchanged since the plan was prepared.
-6. Slussen records each Eligible Transaction of the plan in the Sent Record with its import identifier and the outcome not yet known.
-7. Slussen sends the Eligible Transactions to the Budget App, each with its import identifier, cleared and not approved, and each Transfer as one linked transfer through one Transfer Leg.
+6. Slussen records each Eligible Transaction of the plan in the Sent Record with its Import Identifier, its Budget Account and the outcome not yet known, and locks the Account Mapping of every Bank Account concerned (UC-009 BR-003).
+7. Slussen sends the Eligible Transactions to the Budget App, each with its Import Identifier, marked cleared and waiting for the Operator's approval (BR-008), with payee and memo shortened where the Budget App requires it (BR-015), and each Transfer as one linked transfer through one Transfer Leg.
 8. Budget App reports for each transaction that it was created or that it already held it.
-9. Slussen records the reported outcome of each transaction in the Sent Record and locks the Account Mapping of every Bank Account through which a transaction was written (UC-009 BR-003).
+9. Slussen records the reported outcome of each transaction in the Sent Record.
 10. Slussen marks cleared every Transfer Counterpart that the Upload Plan states.
 11. Slussen compares the Bank Transactions of the uploaded Budget with the Budget App again (UC-003).
-12. Slussen shows per Budget Account which transactions were written, which were not and which have an unknown outcome.
+12. Slussen records the upload with the outcome of each transaction in the Decision Journal and ends the pause.
+13. Slussen shows per Budget Account which transactions were written, which were not and which have an unknown outcome.
 
 ## Alternative Flows
 
@@ -39,7 +40,7 @@
 **Trigger:** The scope holds no Eligible Transaction and no Transfer Counterpart to be marked cleared (step 2)  
 **Flow:**
 
-1. Slussen shows that there is nothing to upload.
+1. Slussen shows that there is nothing to upload and prepares no Upload Plan.
 2. Use case ends.
 
 ### A2: Operator Cancels the Upload Plan
@@ -47,36 +48,62 @@
 **Trigger:** Operator cancels instead of confirming (step 4)  
 **Flow:**
 
-1. Slussen discards the Upload Plan and makes fetching and configuration changes available again.
+1. Slussen discards the Upload Plan and ends the pause (BR-005).
 2. Use case ends.
 
 ### A3: Decision Changed While the Plan Awaits Confirmation
 
-**Trigger:** Operator changes a Review Decision or a transfer decision while the Upload Plan awaits confirmation (step 4)  
+**Trigger:** Operator changes a Review Decision or a Transfer Decision while the Upload Plan awaits confirmation (step 4)  
 **Flow:**
 
 1. Slussen replaces the Upload Plan with a new one prepared from the changed decisions, with a new expiry.
 2. Use case continues at step 3.
 
-### A4: Plan Expired or Something Changed
+### A4: Plan Expires Before Confirmation
+
+**Trigger:** The Upload Plan reaches its expiry while it awaits confirmation (step 4)  
+**Flow:**
+
+1. Slussen discards the Upload Plan, ends the pause and shows that the plan expired.
+2. Use case ends.
+
+### A5: Plan Expired or Something Changed
 
 **Trigger:** The Upload Plan has expired, or the Budget App, the Bank Transactions or the configuration changed since it was prepared (step 5)  
 **Flow:**
 
-1. Slussen writes nothing and discards the Upload Plan.
+1. Slussen writes nothing, discards the Upload Plan and ends the pause.
 2. Slussen shows why the plan no longer holds and returns the Operator to the review of the Budget.
 3. Use case ends.
 
-### A5: Outcome Unknown
+### A6: Budget App Cannot Be Read or Refuses Slussen's Credentials
 
-**Trigger:** The Budget App does not answer within the time limit or the connection is lost before it reports the outcome (step 8)  
+**Trigger:** The Budget App does not answer, is unavailable, or answers that the service credentials of the Build Configuration are not valid or not allowed (step 5)  
 **Flow:**
 
-1. Slussen keeps the outcome Unknown in the Sent Record for the transactions concerned and shows them as not confirmed, never as written.
-2. Slussen keeps these transactions available for upload under the same import identifiers.
+1. Slussen writes nothing, discards the Upload Plan and ends the pause.
+2. Slussen shows that the Budget App could not be read, or the Blocked Reason "configuration error" with the action that removes it: correct the Build Configuration (UC-012).
+3. Use case ends.
+
+### A7: Sent Record Cannot Be Stored
+
+**Trigger:** Slussen cannot store the Sent Record of the plan completely (step 6)  
+**Flow:**
+
+1. Slussen sends nothing, discards the Upload Plan and ends the pause.
+2. Slussen shows that the upload did not start and why.
+3. Use case ends.
+
+### A8: Outcome Unknown
+
+**Trigger:** The Budget App does not answer within the time limit of NFR-016 or the connection is lost before it reports the outcome (step 8)  
+**Flow:**
+
+1. Slussen records the outcome Unknown in the Sent Record for the transactions concerned and shows them as not confirmed, never as written.
+2. Slussen keeps these transactions available for upload under the same Import Identifiers and for the same Budget Accounts (BR-007).
 3. Use case continues at step 11.
 
-### A6: Budget App Rejects Transactions
+### A9: Budget App Rejects Transactions
 
 **Trigger:** The Budget App rejects the transactions of a Budget Account (step 8)  
 **Flow:**
@@ -85,7 +112,7 @@
 2. Slussen shows the rejection with the Budget App's reason.
 3. Use case continues at step 9 for the transactions of the other Budget Accounts.
 
-### A7: Budget App Cannot Link a Transfer
+### A10: Budget App Cannot Link a Transfer
 
 **Trigger:** The Budget App offers no way to link a Transfer to the other Budget Account (step 7)  
 **Flow:**
@@ -94,7 +121,7 @@
 2. Slussen keeps the other Transfer Leg as an ordinary Bank Transaction, so that it is uploaded too and not suppressed.
 3. Use case continues at step 8.
 
-### A8: Marking a Transfer Counterpart Cleared Fails
+### A11: Marking a Transfer Counterpart Cleared Fails
 
 **Trigger:** The Budget App does not mark a Transfer Counterpart cleared (step 10)  
 **Flow:**
@@ -102,7 +129,7 @@
 1. Slussen leaves the Transfer Counterpart uncleared, shows that, and includes it again in the next Upload Plan of the Budget.
 2. Use case continues at step 11.
 
-### A9: Comparison After the Upload Fails
+### A12: Comparison After the Upload Fails
 
 **Trigger:** The Budget App cannot be read after the upload (step 11)  
 **Flow:**
@@ -114,18 +141,21 @@
 
 ### Success Postconditions
 
-- Every confirmed Eligible Transaction exists exactly once in its Budget Account in the Budget App, cleared and not approved.
-- The Sent Record holds every transaction sent, with its import identifier and confirmed outcome.
-- The Account Mapping of every Bank Account through which a transaction was written is locked.
+- Every confirmed Eligible Transaction exists exactly once in its Budget Account in the Budget App, marked cleared and waiting for the Operator's approval.
+- The Sent Record holds every transaction sent, with its Import Identifier, its Budget Account and its confirmed outcome.
+- The Account Mapping of every Bank Account through which a transaction was sent is locked.
 - Every Transfer Counterpart the plan stated is marked cleared.
-- The upload plan and the upload are recorded in the Decision Journal.
+- The Upload Plan and the upload are recorded in the Decision Journal, unless the Decision Journal is switched off.
+- Other work is available again.
 
 ### Failure Postconditions
 
 - Nothing is written without a confirmed Upload Plan that has not expired and still matches the Budget App, the Bank Transactions and the configuration.
+- Nothing is sent that is not first recorded in the Sent Record.
 - No transaction is shown as written unless the Budget App confirmed it.
 - No Bank Transaction whose Sent Record shows it written or already present is sent again, except by a Re-upload decision.
 - No existing Budget App transaction is changed, except that a Transfer Counterpart created by Slussen's own upload is marked cleared.
+- No Upload Plan stays open after the use case ends, so other work is available again.
 
 ## Business Rules
 
@@ -147,19 +177,19 @@ Immediately before writing, Slussen checks the Budget App, the Bank Transactions
 
 ### BR-005: Other Work Pauses While a Plan Awaits Confirmation
 
-At most one Upload Plan awaits confirmation at a time. While it waits, fetching, file imports, reading the Budget App and configuration changes are unavailable; only confirming, cancelling and changing Review Decisions or transfer decisions are allowed.
+At most one Upload Plan awaits confirmation at a time. From the moment it is prepared until it is written, cancelled, discarded or expires, fetching, file imports, reading the Budget App, granting or renewing a Bank Consent, Account Mapping changes and changes to Operator Settings are unavailable; only confirming, cancelling and changing Review Decisions or Transfer Decisions are allowed. Looking at the import status stays available.
 
 ### BR-006: Exactly Once Through the Sent Record
 
-Slussen sends each Bank Transaction to the Budget App at most once, based on its own Sent Record, even after a retry, timeout, crash, reinstall or re-mapping of a Bank Account. The import identifier sent with each transaction lets the Budget App refuse a second copy where it supports that, but Slussen does not depend on it.
+Slussen sends each Bank Transaction to the Budget App at most once, based on its own Sent Record, even after a retry, timeout, crash, reinstall or re-mapping of a Bank Account. A transaction is recorded in the Sent Record before it is sent. The Import Identifier sent with each transaction lets the Budget App refuse a second copy where it supports that, but Slussen does not depend on it.
 
 ### BR-007: Unknown Outcomes Are Resent Safely
 
-A transaction with an unknown outcome stays available for upload and is sent again under the same import identifier, so that a later upload creates nothing that already arrived.
+A transaction with an unknown outcome stays available for upload and is sent again under the same Import Identifier and to the same Budget Account recorded in its Sent Record, so that a later upload creates nothing that already arrived. A later Comparison resolves the outcome when the Budget App holds the transaction (UC-003 BR-017).
 
-### BR-008: Created Cleared and Not Approved
+### BR-008: Created Cleared and Waiting for Approval
 
-Every transaction Slussen creates in the Budget App arrives cleared and not approved.
+Every transaction Slussen creates in the Budget App arrives marked cleared and waiting for the Operator's approval, using the Budget App's own markers for both (C-009).
 
 ### BR-009: A Transfer Is Written Through One Transfer Leg
 
@@ -181,6 +211,10 @@ A rejection or an unknown outcome for one Budget Account leaves the transactions
 
 Right after an upload, Slussen compares the uploaded Budget with the Budget App again, so that uploaded transactions are not offered for upload again.
 
-### BR-014: Kept Across a Reinstall
+### BR-014: Sent Record Kept Across a Reinstall
 
-The Sent Record, the identities of the Bank Accounts and the Review Decisions and transfer decisions are included in device backups and restored after a reinstall. Bank Consents are not restored (UC-007 BR-005).
+The Sent Record is included in device backups and restored after a reinstall, together with the Bank Account identifications and Account Mappings (UC-009 BR-006) and the Review Decisions and Transfer Decisions. Bank Consents are not restored (UC-007 BR-005).
+
+### BR-015: Long Payee and Memo
+
+When a payee or memo is longer than the Budget App accepts (C-009), Slussen sends it shortened to the accepted length. The stored Bank Transaction keeps the full text.

@@ -18,18 +18,17 @@
 
 ## Main Success Scenario
 
-1. Operator asks to export the Decision Journal.
-2. Slussen asks whether payee and memo text are to be replaced by codes, and where to save the file.
-3. Operator chooses whether to replace payee and memo text and chooses the place for the file.
-4. Slussen reads the current transactions of the Operator's Budgets from the Budget App.
-5. Slussen writes the Journal Export with the entries of the Decision Journal and the Budget App's current transactions, replacing payee and memo text by codes when the Operator chose that.
-6. Slussen shows that the export is complete, with the number of entries it holds.
+1. Slussen asks whether payee and memo text are to be replaced by codes, and where to save the file.
+2. Operator chooses whether to replace payee and memo text and chooses the place for the file.
+3. Slussen reads the current transactions of the Operator's Budgets from the Budget App.
+4. Slussen writes the Journal Export with the entries of the Decision Journal and the Budget App's current transactions, replacing payee and memo text by codes when the Operator chose that.
+5. Slussen shows that the export is complete, with the number of entries it holds.
 
 ## Alternative Flows
 
 ### A1: Operator Cancels
 
-**Trigger:** Operator does not choose a place for the file (step 3)  
+**Trigger:** Operator does not choose a place for the file (step 2)  
 **Flow:**
 
 1. Slussen writes no file.
@@ -37,16 +36,16 @@
 
 ### A2: Budget App Cannot Be Read
 
-**Trigger:** The Budget App does not answer or cannot be reached (step 4)  
+**Trigger:** The Budget App does not answer or cannot be reached (step 3)  
 **Flow:**
 
-1. Slussen uses its stored copy of the Budget App's transactions instead.
-2. Slussen states in the Journal Export that the Budget App's transactions come from the stored copy, with its time.
-3. Use case continues at step 5.
+1. Slussen uses its stored copy of the Budget App Transactions instead (UC-003).
+2. Slussen states in the Journal Export that the Budget App's transactions come from the stored copy, with the time of the last successful read of each Budget.
+3. Use case continues at step 4.
 
 ### A3: File Cannot Be Written
 
-**Trigger:** The file cannot be written completely at the chosen place (step 5)  
+**Trigger:** The file cannot be written completely at the chosen place (step 4)  
 **Flow:**
 
 1. Slussen shows that the export failed and why.
@@ -68,7 +67,7 @@
 
 ### BR-001: What the Decision Journal Records
 
-The Decision Journal records what Slussen fetched, the Transaction Status it gave each Bank Transaction, every Review Decision and transfer decision together with what Slussen had proposed, every Upload Plan and upload, every Account Mapping change, every settings change, and what later happened in the Budget App to each transaction Slussen sent.
+The Decision Journal records every Bank Transaction that Slussen received from a Fetch or a Transaction File for the first time or with changed content, every change of the Transaction Status it gave a Bank Transaction, every Review Decision and Transfer Decision together with what Slussen had proposed, every Upload Plan and upload, every Account Mapping change, every change to an Operator Setting and every clearing of the Decision Journal, the start of every session, and what later happened in the Budget App to each transaction Slussen sent.
 
 ### BR-002: The Journal Only Observes
 

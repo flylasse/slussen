@@ -9,7 +9,7 @@
 **Trigger:** Adopting Developer decides to build Slussen from the public repository for their own household  
 **Status:** Draft  
 
-**Requirements:** [FR-056, FR-070, FR-071, FR-072, FR-073, NFR-014, NFR-015, C-001, C-002, C-003, C-004, C-005, C-008, C-010, C-013](../requirements.md)
+**Requirements:** [FR-043, FR-056, FR-070, FR-071, FR-072, FR-073, NFR-014, NFR-015, C-001, C-002, C-003, C-004, C-005, C-008, C-010, C-013, C-014](../requirements.md)
 
 ## Preconditions
 
@@ -20,7 +20,7 @@
 
 1. Adopting Developer opens the Configuration Templates.
 2. Slussen's repository shows for each Data Provider and for the Budget App of this build a Configuration Template that states what to fill in and where to get it.
-3. Adopting Developer fills in a Build Configuration, kept outside the repository, with their Budgets, Bank Accounts, Account Mappings and service credentials.
+3. Adopting Developer fills in a Build Configuration, kept outside the repository, with their Budgets, Bank Accounts with their Bank Account Identities, Account Mappings, Transfer Descriptions, daily request limits and service credentials; an operator coming from the Predecessor App keeps its Bank Account Identities (UC-003 BR-002).
 4. Adopting Developer builds Slussen.
 5. Slussen's build checks that the Build Configuration is complete and consistent and includes it in the built app.
 6. Adopting Developer installs the built app directly on their own phone.
@@ -30,7 +30,7 @@
 
 ### A1: Build Configuration Incomplete or Inconsistent
 
-**Trigger:** The Build Configuration lacks a required entry or maps two Bank Accounts to one Budget Account (step 5)  
+**Trigger:** The Build Configuration lacks a required entry, gives two Bank Accounts the same Bank Account Identity, or maps two Bank Accounts to one Budget Account (step 5)  
 **Flow:**
 
 1. Slussen's build names each missing or inconsistent entry and produces no app.
@@ -93,12 +93,8 @@ When a built app leaves the Operator's control, every service credential include
 
 ### BR-005: Every Source Declares Its Stable Reference
 
-Every Data Provider and File Format states whether it gives each transaction a Stable Reference. Transactions without one are reviewed, never guessed (UC-003 BR-012).
+Every Data Provider states whether it gives each transaction a Stable Reference, and every File Format states how its transactions get one (UC-002 BR-002). Transactions without one are reviewed, never guessed (UC-003 BR-012).
 
 ### BR-006: Core Rules Stay Untouched
 
 Adding a Data Provider or File Format, or replacing the Budget App, changes none of the rules that fetch, compare, review and decide; everything that depends on one Budget App's behaviour lives in that Budget App's own part.
-
-### BR-007: Runs Only on the Phone
-
-The built app runs natively on the Operator's phone (C-001), stores everything on that device, and has no server, remote access or synchronisation between devices.

@@ -9,7 +9,7 @@
 **Trigger:** Operator selects a doubtful Bank Transaction to decide on it  
 **Status:** Draft  
 
-**Requirements:** [FR-009, FR-022, FR-023, FR-024, FR-028, FR-029, FR-066, NFR-002, NFR-010](../requirements.md)
+**Requirements:** [FR-009, FR-022, FR-023, FR-024, FR-028, FR-029, FR-054, FR-066, NFR-002, NFR-010](../requirements.md)
 
 ## Preconditions
 
@@ -20,10 +20,10 @@
 1. Operator selects a Bank Transaction with the status Possible Import By Other Path.
 2. Slussen shows the Bank Transaction with its date, payee, amount, Bank Account and the reason it is doubtful, together with the choices Already Present, Import Anyway and Defer.
 3. Operator chooses Already Present.
-4. Slussen shows the Budget App transactions that resemble it, each with its date, payee, amount and Budget Account.
-5. Operator chooses the Budget App transaction that is the same as the Bank Transaction.
-6. Slussen stores the Review Decision together with the chosen Budget App transaction, its Budget Account and its amount.
-7. Slussen gives the Bank Transaction its new Transaction Status and updates the number of Eligible Transactions of the Budget.
+4. Slussen shows the Imports by an Other Import Path that resemble it (UC-003 BR-007), each with its date, payee, amount and Budget Account.
+5. Operator chooses the Budget App Transaction that is the same as the Bank Transaction.
+6. Slussen stores the Review Decision together with the chosen Budget App Transaction, its Budget Account and its amount.
+7. Slussen gives the Bank Transaction the Transaction Status that follows from the decision (BR-006) and updates the number of Eligible Transactions of the Budget.
 8. Slussen records in the Decision Journal the Operator's decision together with the status Slussen had proposed.
 
 ## Alternative Flows
@@ -33,7 +33,7 @@
 **Trigger:** Operator chooses Import Anyway (step 3)  
 **Flow:**
 
-1. Slussen stores the Review Decision Import Anyway, so that the Bank Transaction becomes eligible as a new transaction.
+1. Slussen stores the Review Decision Import Anyway.
 2. Use case continues at step 7.
 
 ### A2: Defer
@@ -46,15 +46,15 @@
 
 ### A3: Exactly One Resembling Transaction
 
-**Trigger:** Only one Budget App transaction resembles the Bank Transaction (step 4)  
+**Trigger:** Only one Import by an Other Import Path resembles the Bank Transaction (step 4)  
 **Flow:**
 
-1. Slussen takes that Budget App transaction as the chosen one.
+1. Slussen takes that Budget App Transaction as the chosen one.
 2. Use case continues at step 6.
 
-### A4: Transaction Needs Review
+### A4: Transaction Needs Review or Its Transfer Counterpart Changed
 
-**Trigger:** Operator selects a Bank Transaction with the status Needs Review (step 1)  
+**Trigger:** Operator selects a Bank Transaction with the status Needs Review or Transfer Counterpart Changed (step 1)  
 **Flow:**
 
 1. Slussen shows the Bank Transaction with the reason it needs review and the choices Import Anyway and Defer.
@@ -67,7 +67,7 @@
 
 1. Slussen shows the Bank Transaction with its status and the choice Re-upload, which is off.
 2. Operator switches Re-upload on.
-3. Slussen stores the Review Decision Re-upload, so that the Bank Transaction becomes eligible as a new transaction under a new import identifier.
+3. Slussen stores the Review Decision Re-upload.
 4. Use case continues at step 7.
 
 ### A6: Change or Clear an Earlier Decision
@@ -93,7 +93,7 @@
 **Trigger:** An Upload Plan awaits confirmation when the decision is stored (step 7)  
 **Flow:**
 
-1. Slussen replaces the Upload Plan with a new one prepared from the changed decisions, with a new expiry (UC-006).
+1. Slussen replaces the Upload Plan as UC-006 A3 describes.
 2. Use case continues at step 8.
 
 ## Postconditions
@@ -102,7 +102,7 @@
 
 - The Bank Transaction has the Operator's Review Decision, and its Transaction Status follows it.
 - The Review Decision is kept across later Fetches and Comparisons and across a reinstall of the app.
-- The decision is recorded in the Decision Journal.
+- The decision is recorded in the Decision Journal, unless the Decision Journal is switched off.
 
 ### Failure Postconditions
 
@@ -114,15 +114,15 @@
 
 ### BR-001: Choices per Transaction Status
 
-Possible Import By Other Path and Decision No Longer Holds offer Already Present, Import Anyway and Defer. Needs Review offers Import Anyway and Defer. Deleted In Budget App, Merged In Budget App and Decision No Longer Holds offer Re-upload. Deferred offers changing or clearing the decision.
+Possible Import By Other Path offers Already Present, Import Anyway and Defer. Decision No Longer Holds offers Already Present, Import Anyway, Defer and Re-upload. Needs Review and Transfer Counterpart Changed offer Import Anyway and Defer. Deleted In Budget App and Merged In Budget App offer Re-upload. Deferred offers changing or clearing the decision.
 
 ### BR-002: Already Present Names the Transaction
 
-An Already Present decision always names one specific Budget App transaction. When several resemble the Bank Transaction, the Operator chooses it from a list that shows date, payee, amount and Budget Account; its Budget Account and amount are recorded so that UC-003 BR-009 can recheck the decision.
+An Already Present decision always names one specific Budget App Transaction. When several resemble the Bank Transaction, the Operator chooses it from a list that shows date, payee, amount and Budget Account; its Budget Account and amount are recorded so that UC-003 BR-009 can recheck the decision.
 
 ### BR-003: Re-upload Is Deliberate
 
-Re-upload is chosen per Bank Transaction and is off by default. A re-uploaded transaction is sent as a new transaction under a new import identifier derived from its own one and the number of earlier re-uploads; once uploaded, it counts as Already In Budget App.
+Re-upload is chosen per Bank Transaction and is off by default. A re-uploaded transaction is sent as a new transaction under a new Import Identifier derived from its own one and the number of earlier re-uploads (C-014), and only while it lies inside the Upload Window (UC-003 BR-011); once uploaded, it counts as Already In Budget App.
 
 ### BR-004: Decisions Change Until Upload
 
@@ -131,3 +131,7 @@ A Review Decision can be changed or cleared any number of times until its Bank T
 ### BR-005: Every Decision Is Journaled
 
 Every Review Decision, change and clearing is recorded in the Decision Journal together with the Transaction Status Slussen had given. Recording never delays or blocks the decision (UC-011 BR-002).
+
+### BR-006: Status After a Decision
+
+Already Present gives the status Already In Budget App while the decision holds (UC-003 BR-009). Import Anyway and Re-upload give the status New, so that the Bank Transaction is eligible as a new transaction; for a transaction without a Stable Reference, its Import Identifier comes from UC-003 BR-002. Defer gives the status Deferred. Clearing a decision gives the status the Comparison gives without a decision (UC-003 BR-001).

@@ -5,11 +5,11 @@
 **Use Case ID:** UC-008  
 **Use Case Name:** Check Import Status  
 **Primary Actor:** Operator  
-**Goal:** See at a glance, per Budget, whether the Budget App is up to date with each Source and Bank Account, how each Account Balance compares with its Budget Account, and what to do wherever something is blocked  
+**Goal:** See at a glance, for every Budget, whether the Budget App is up to date with each Source and Bank Account, how each Account Balance compares with its Budget Account, and what to do wherever something is blocked  
 **Trigger:** Operator opens Slussen  
 **Status:** Draft  
 
-**Requirements:** [FR-003, FR-011, FR-012, FR-032, FR-060, FR-061, FR-062, FR-063, FR-064, FR-065, NFR-005](../requirements.md)
+**Requirements:** [FR-003, FR-011, FR-012, FR-032, FR-060, FR-061, FR-062, FR-063, FR-064, FR-065, FR-066, NFR-005](../requirements.md)
 
 ## Preconditions
 
@@ -17,25 +17,25 @@
 
 ## Main Success Scenario
 
-1. Operator opens Slussen.
-2. Slussen shows the Bank Transactions, Transaction Statuses and Account Balances it last stored, without contacting any Source or the Budget App.
-3. Slussen shows every Bank Consent that expires within 7 days, with its expiry date and the action that renews it (UC-007).
+1. Slussen shows, from what it last stored and without contacting any Source or the Budget App, an overview of every Budget with its number of Eligible Transactions, its number of Bank Transactions waiting for a decision, and whether any of its Sources or Bank Accounts is blocked.
+2. Slussen shows every Bank Consent that expires within 7 days, with its expiry date and the action that renews it (UC-007).
+3. Slussen records the start of the session in the Decision Journal (UC-011 BR-001).
 4. Operator selects a Budget.
-5. Slussen shows only that Budget's Sources, Bank Accounts and Bank Transactions and its number of Eligible Transactions.
-6. Slussen shows for each Source and Bank Account the Source Health of its last Fetch and, separately, its Freshness.
-7. Slussen shows each Bank Account's Account Balance next to the balance of its Budget Account in the Budget App, with the difference.
+5. Slussen shows only that Budget's Sources, Bank Accounts and Bank Transactions with their Transaction Statuses.
+6. Slussen shows for each Source and Bank Account its Source Health, separately its Freshness, and the number of its Bank Transactions not yet uploaded (BR-003).
+7. Slussen shows each Bank Account's Account Balance next to the balance of its Budget Account in the Budget App, with the difference and the time each balance was read.
 8. Slussen shows, for every Bank Account or Source that cannot be fetched or uploaded, its Blocked Reason together with the action that removes it.
 
 ## Alternative Flows
 
 ### A1: Stored Data Cannot Be Read
 
-**Trigger:** A part of the stored data cannot be read (step 2)  
+**Trigger:** A part of the stored data cannot be read (step 1)  
 **Flow:**
 
 1. Slussen keeps the unreadable original unchanged and starts that part from its last good content, or from its default content when there is none.
 2. Slussen shows a notice naming the part that could not be read.
-3. Use case continues at step 3.
+3. Use case continues at step 2.
 
 ### A2: Account Balance Outdated
 
@@ -53,12 +53,12 @@
 1. Slussen hides the difference and shows the Blocked Reason "currency mismatch".
 2. Use case continues at step 7 for the next Bank Account.
 
-### A4: No Account Balance
+### A4: Balance Not Known
 
-**Trigger:** No Account Balance is stored for a Bank Account (step 7)  
+**Trigger:** No Account Balance is stored for a Bank Account, or the Budget App has not yet reported the balance of its Budget Account (step 7)  
 **Flow:**
 
-1. Slussen shows that no Account Balance is known and shows no difference.
+1. Slussen shows which balance is not known and shows no difference.
 2. Use case continues at step 7 for the next Bank Account.
 
 ### A5: Recent Fetch Outcomes
@@ -81,7 +81,7 @@
 
 ### Success Postconditions
 
-- The Operator has seen, for the selected Budget, the Source Health, Freshness, Account Balances, differences and Blocked Reasons of every Source and Bank Account.
+- The Operator has seen, for every Budget, its number of Eligible Transactions and whether anything is blocked, and for the selected Budget the Source Health, Freshness, transactions not yet uploaded, Account Balances, differences and Blocked Reasons of every Source and Bank Account.
 
 ### Failure Postconditions
 
@@ -100,7 +100,7 @@ Every opening of Slussen shows each Bank Consent that expires within 7 days, wit
 
 ### BR-003: Health and Freshness Are Separate
 
-Source Health shows only the outcome of the last Fetch. Freshness shows only how old the data is. Old data never changes the Source Health.
+Source Health shows only the outcome of the last Fetch, or of the last Transaction File import for a file-imported Bank Account (UC-002 BR-006). Freshness shows only how old the data is. Old data never changes the Source Health. Next to both, Slussen shows how many Bank Transactions of the Source or Bank Account are not yet uploaded: Eligible Transactions and those waiting for a decision.
 
 ### BR-004: Outdated Balances
 
@@ -108,15 +108,15 @@ When an Account Balance is older than 36 hours (a number the Operator can change
 
 ### BR-005: Balance Difference
 
-The difference is the Account Balance minus the balance of the Budget Account in the Budget App, both in the Budget's currency.
+The difference is the Account Balance minus the balance of the Budget Account as the Budget App last reported it (UC-003), both in the Budget's currency, shown with the time each balance was read.
 
 ### BR-006: Blocked Reasons and Their Remedies
 
-Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; daily limit reached, the start of the next day; configuration error or currency mismatch, correct the Build Configuration (UC-012).
+Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; waiting after a failure, the time the wait ends and the action that retries now (UC-001); daily limit reached, the start of the next day; configuration error or currency mismatch, correct the Build Configuration (UC-012).
 
 ### BR-007: One Budget at a Time
 
-Each Budget, with its own currency, is shown as its own workspace with only its own Sources, Bank Accounts, Bank Transactions and number of Eligible Transactions.
+Each Budget, with its own currency, is shown as its own workspace with only its own Sources, Bank Accounts, Bank Transactions and number of Eligible Transactions. The overview of every Budget shows counts and blocked states only and never mixes the transactions of two Budgets.
 
 ### BR-008: Recent Fetches
 
