@@ -1,0 +1,35 @@
+# --- Secrets & machine-specific (NEVER commit) ---
+/local.properties
+/secrets/
+bin/
+*.keystore
+*.jks
+key.properties
+
+# --- Gradle ---
+.gradle/
+build/
+/captures/
+
+# --- Android / Kotlin ---
+*.apk
+*.aab
+*.ap_
+*.dex
+.cxx/
+.externalNativeBuild/
+/.kotlin/
+
+# --- IDE ---
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# --- Scratch / intermediate mining artifacts ---
+scratch/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+__pycache__/
