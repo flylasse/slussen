@@ -37,6 +37,12 @@ Two easy-to-miss rules, both from the skills (check the skill if in doubt):
 - `entity-model`: Data Type is one of `Long, String, Integer, Decimal, Boolean, Date, DateTime` only; Validation Rules is exactly one row of the skill's closed vocabulary table.
 - `reverse-engineer` / `use-case-spec`: aggregate by actor goal, not by screen or endpoint, and keep steps at business level (no SQL, HTTP, framework or protocol names).
 
+Three project rules for every specification, decided by the operator. The linter cannot check them, so check them by hand:
+
+- **Never a bare "account".** Always write Bank Account or Budget Account, or a glossary compound such as Retired Account.
+- **No fixed numbers Slussen chooses.** Every time, window, count or limit that Slussen itself chooses is an Operator Setting, with a default and a range, or a Build Configuration value, and every place that uses it says so ("8 hours by default, a number the operator can change"). Only numbers set by an outside party (law, bank, Data Provider, Budget App) are fixed, and each one names its source. The rule covers behaviour the operator experiences (times, windows, counts, limits), not storage sizes such as the field lengths in `docs/entity_model.md`.
+- **Defined terms in Title Case, identifiers in code notation.** A glossary term is written in Title Case wherever it is meant in its defined sense (Bank Transaction, Upload Plan, Funded By); everything else is ordinary lowercase English (payee, memo). Entity and attribute names keep their code-style spelling and are written in code notation whenever they appear in prose (`BANK_ACCOUNT`, `funded_by_budget_account_id`); the attribute tables of `docs/entity_model.md` keep the skill's own format. Attribute values such as Credit Card or Needs Review are written in Title Case without code notation.
+
 ## 3. Deterministic gate
 
 ```powershell

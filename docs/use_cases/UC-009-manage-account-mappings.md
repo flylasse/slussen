@@ -6,10 +6,10 @@
 **Use Case Name:** Manage Account Mappings  
 **Primary Actor:** Operator  
 **Goal:** Have every Bank Account identified with certainty and sending its transactions to exactly one Budget Account, and pause or resume a Bank Account without losing anything  
-**Trigger:** Operator asks to confirm, identify again, retire or restore a Bank Account, or to check how the Bank Accounts are mapped  
+**Trigger:** Operator asks to confirm, identify again, retire or restore a Bank Account, to set its Funded By or Transfer Partner, or to check how the Bank Accounts are mapped  
 **Status:** Draft  
 
-**Requirements:** [FR-042, FR-056, FR-057, FR-058, FR-059, FR-066, FR-075, NFR-010, NFR-017, C-012](../requirements.md)
+**Requirements:** [FR-042, FR-056, FR-057, FR-058, FR-059, FR-066, FR-075, FR-091, NFR-010, NFR-017, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -18,7 +18,7 @@
 
 ## Main Success Scenario
 
-1. Slussen shows each Bank Account with its Bank, its Source, the Budget and Budget Account it is mapped to, its Start Date, whether its Account Mapping is locked and why, whether it is identified, and whether it is a Retired Account.
+1. Slussen shows each Bank Account with its Bank, its Source, the Budget and Budget Account it is mapped to, its Funded By when it is a credit card or its Transfer Partner otherwise, its Start Date, whether its Account Mapping is locked and why, whether it is identified, and whether it is a Retired Account.
 2. Operator selects a Bank Account that waits for confirmation of a proposed match.
 3. Slussen shows the proposed Bank Account as the Source describes it, with its name, kind, currency and the last four digits of its number, and the other Bank Accounts the Source offers.
 4. Operator confirms the proposed Bank Account.
@@ -97,6 +97,17 @@
 1. Slussen keeps the locked Account Mapping, uploads nothing to the other Budget Account, and shows the reason that transactions were already sent through it.
 2. Use case continues at step 2.
 
+### A9: Set, Change or Clear Funded By or Transfer Partner
+
+**Trigger:** Operator chooses to set, change or clear the Funded By of a credit card Bank Account or the Transfer Partner of another Bank Account (step 2)
+**Flow:**
+
+1. Slussen shows the Budget Accounts of the same Budget other than the Bank Account's own, including those Slussen does not fetch.
+2. Operator chooses one, or clears the value.
+3. Slussen stores the Funded By or the Transfer Partner and detects the Transfers among the Bank Transactions not yet uploaded again (UC-005 BR-006).
+4. Slussen records the old and the new value in the Decision Journal.
+5. Use case ends.
+
 ## Postconditions
 
 ### Success Postconditions
@@ -118,7 +129,7 @@ A Bank Account has at most one Account Mapping, and a Budget Account receives th
 
 ### BR-002: Mappings Come From the Build Configuration
 
-Bank Accounts with their Start Dates, Budgets and Account Mappings are set in the Build Configuration. Slussen offers no way to add a Bank Account, to choose a Budget Account or to move a locked Account Mapping to another Budget Account inside the app.
+Bank Accounts with their Start Dates, Budgets and Account Mappings are set in the Build Configuration. Slussen offers no way to add a Bank Account, to choose the Budget Account of an Account Mapping or to move a locked Account Mapping to another Budget Account inside the app. The Funded By and the Transfer Partner are not part of the Build Configuration; they are set in the app (BR-008).
 
 ### BR-003: Lock at the First Send
 
@@ -139,3 +150,7 @@ How the Source identifies each Bank Account, and the Account Mappings with their
 ### BR-007: Identify Again Only Before the Lock
 
 A Bank Account can be identified again only while its Account Mapping is not locked. Until the Operator confirms a new identification, the current one stays in use.
+
+### BR-008: Funded By and Transfer Partner Are Set in the App
+
+A credit card Bank Account can have a Funded By and every other Bank Account a Transfer Partner (UC-005 BR-006). Both start empty, have no default in the build or the Build Configuration, and are set, changed or cleared here or kept from the Operator's answer when reviewing Transfers (UC-005). They are included in device backups and kept across a reinstall, a restore and an upgrade with the Account Mappings (BR-006).

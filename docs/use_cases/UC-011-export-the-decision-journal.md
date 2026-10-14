@@ -55,7 +55,7 @@
 
 ### Success Postconditions
 
-- A Journal Export exists at the place the Operator chose, holding the Decision Journal and the Budget App's transactions together with their source.
+- A Journal Export exists at the place the Operator chose, holding the Decision Journal and the Budget App's transactions together with where they come from.
 
 ### Failure Postconditions
 
@@ -67,11 +67,11 @@
 
 ### BR-001: What the Decision Journal Records
 
-The Decision Journal records every Bank Transaction that Slussen received from a Fetch or a Transaction File for the first time or with changed content, every change of the Transaction Status it gave a Bank Transaction, every Review Decision and Transfer Decision together with what Slussen had proposed, every Upload Plan and upload, every Account Mapping change, every change to an Operator Setting and every clearing of the Decision Journal, the start of every session, and what later happened in the Budget App to each transaction Slussen sent. Every entry about a Bank Transaction names its Bank Account and its Import Identifier, because an Import Identifier is unique only within one Bank Account.
+The Decision Journal records every Bank Transaction that Slussen received from a Fetch or a Transaction File for the first time or with changed content, every change of the Transaction Status it gave a Bank Transaction, every Review Decision and Transfer Decision together with what Slussen had proposed, every Upload Plan and Upload, every Account Mapping change, every change to an Operator Setting and every clearing of the Decision Journal, the start of every session, and what later happened in the Budget App to each transaction Slussen sent. Every entry about a Bank Transaction names its Bank Account and its Import Identifier, because an Import Identifier is unique only within one Bank Account.
 
 ### BR-002: The Journal Only Observes
 
-The Decision Journal is a record only. Recording, exporting or failing to record changes no Transaction Status, Upload Plan or upload.
+The Decision Journal is a record only. Recording, exporting or failing to record changes no Transaction Status, Upload Plan or Upload.
 
 ### BR-003: No Secrets in the Journal
 

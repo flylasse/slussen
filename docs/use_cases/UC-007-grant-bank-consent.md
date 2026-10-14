@@ -25,7 +25,7 @@
 4. Slussen sends the Operator to the Bank's Strong Customer Authentication.
 5. Operator completes the Strong Customer Authentication with the Bank.
 6. Bank confirms the consent to the Data Provider, and the Operator returns to Slussen with the result.
-7. Slussen checks that the result answers the most recent Consent Request for this Bank, arrives within 15 minutes of it and has not been used before.
+7. Slussen checks that the result answers the most recent Consent Request for this Bank, arrives within the Consent Request lifetime and has not been used before (BR-002).
 8. Slussen stores the Bank Consent with the expiry date the Bank or Data Provider reports, replacing any earlier Bank Consent of this Bank (BR-004).
 9. Slussen identifies each Bank Account the Bank Consent covers as a Bank Account of the Build Configuration (UC-009 BR-004).
 10. Slussen shows the Bank Consent as valid, with its expiry date and the Bank Accounts it covers.
@@ -43,7 +43,7 @@
 
 ### A2: Result Not Accepted
 
-**Trigger:** The result does not answer the most recent Consent Request for this Bank, arrives later than 15 minutes after it, was used before, or cannot be read (step 7)  
+**Trigger:** The result does not answer the most recent Consent Request for this Bank, arrives after the Consent Request lifetime has passed, was used before, or cannot be read (step 7)  
 **Flow:**
 
 1. Slussen rejects the result and stores no Bank Consent.
@@ -118,7 +118,7 @@ One Strong Customer Authentication grants the Bank Consent for all of the Operat
 
 ### BR-002: One-Time Consent Request
 
-A Consent Request is valid for at most 15 minutes, is accepted at most once, and is rejected when it is not the most recent Consent Request for that Bank.
+A Consent Request is valid for at most the Consent Request lifetime (15 minutes by default, a number the Operator can change, UC-010), is accepted at most once, and is rejected when it is not the most recent Consent Request for that Bank.
 
 ### BR-003: Renewal Is a New Grant
 

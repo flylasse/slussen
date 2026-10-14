@@ -6,8 +6,8 @@
 **Use Case Name:** Compare With the Budget App  
 **Primary Actor:** Operator  
 **Secondary Actors:** Budget App  
-**Goal:** Give every stored Bank Transaction a current Transaction Status from what the Budget App holds, so that the Operator sees per transaction whether it is new, already there or needs a decision, without spending any bank access  
-**Trigger:** Operator asks Slussen to read the Budget App again, or Fetch Transactions, Import a Transaction File or Upload to the Budget App reaches its comparison step  
+**Goal:** Give every stored Bank Transaction a current Transaction Status from what the Budget App holds, so that the Operator sees per transaction whether it is new, already there or needs a decision, without spending any Bank access  
+**Trigger:** Operator asks Slussen to read the Budget App again, or Fetch Transactions, Import a Transaction File or Upload to the Budget App reaches its Comparison step  
 **Status:** Draft  
 
 **Requirements:** [FR-009, FR-019, FR-020, FR-021, FR-023, FR-024, FR-025, FR-026, FR-027, FR-030, FR-031, FR-032, FR-038, FR-040, FR-046, FR-061, FR-066, FR-074, FR-075, FR-086, NFR-002, NFR-004, NFR-015, NFR-016, C-009, C-011, C-012](../requirements.md)
@@ -52,7 +52,7 @@
 **Trigger:** The currency of a Bank Account differs from the currency of the Budget it is mapped to (step 2)  
 **Flow:**
 
-1. Slussen blocks the Bank Account from upload and makes none of its Bank Transactions eligible.
+1. Slussen blocks the Bank Account from Upload and makes none of its Bank Transactions eligible.
 2. Slussen shows the Blocked Reason "currency mismatch" for the Bank Account.
 3. Use case continues at step 2 for the other Bank Accounts.
 
@@ -109,7 +109,7 @@ The first rule that applies gives the Transaction Status: a Bank Account with a 
 
 ### BR-002: Import Identifier
 
-Slussen derives the Import Identifier of each Bank Transaction itself, the same way every time, from the Source Key of its Data Provider or File Format and its Stable Reference. A Bank Transaction without a Stable Reference takes, in place of the Stable Reference, its date, amount, payee and memo together with its position among the identical transactions of its Bank Account, so that each such transaction keeps its own Import Identifier when the Operator decides to import it. A Re-upload adds the number of the Re-upload (UC-004 BR-003). The same inputs always give the same Import Identifier and different inputs give different ones. Every Import Identifier begins with a fixed marker that identifies Slussen and fits the length the Budget App accepts (C-009). Slussen does not take over the Import Identifiers of the Predecessor App or of any other import path.
+Slussen derives the Import Identifier of each Bank Transaction itself, the same way every time, from the Source Key of its Data Provider or File Format and its Stable Reference. A Bank Transaction without a Stable Reference takes, in place of the Stable Reference, its date, amount, payee and memo together with its position among the identical transactions of its Bank Account, so that each such transaction keeps its own Import Identifier when the Operator decides to import it. A Re-upload adds the number of the Re-upload (UC-004 BR-003). The same inputs always give the same Import Identifier and different inputs give different ones. Every Import Identifier begins with a fixed marker that identifies Slussen and fits the length the Budget App accepts (C-009). Slussen does not take over the Import Identifiers of the Predecessor App or of any Other Import Path.
 
 ### BR-003: Already in the Budget App
 
@@ -125,11 +125,11 @@ A Bank Transaction that the Budget App merged into a Typed Entry after Slussen s
 
 ### BR-006: Match for a Typed Entry
 
-A Bank Transaction for which the Budget Account holds a Typed Entry with the same amount, dated within the Budget App's Matching Date Window before or after it, is Match For Typed Entry. It is shown with the number of such Typed Entries and is sent on upload, so that the Budget App pairs the two (C-009).
+A Bank Transaction for which the Budget Account holds a Typed Entry with the same amount, dated within the Budget App's Matching Date Window before or after it, is Match For Typed Entry. It is shown with the number of such Typed Entries and is sent on Upload, so that the Budget App pairs the two (C-009).
 
 ### BR-007: Possible Import by Another Path
 
-A Bank Transaction for which the Budget Account holds an Import created by an Other Import Path, with the same amount and dated within the Matching Date Window before or after it, is Possible Import By Other Path. Such Imports are the ones that resemble it. It is held back from upload until the Operator decides (UC-004). This is what protects a Bank Account that another import path, such as the Predecessor App, fed before Slussen took it over: a transaction that looks like one that path already sent is never written without the Operator's decision.
+A Bank Transaction for which the Budget Account holds an Import created by an Other Import Path, with the same amount and dated within the Matching Date Window before or after it, is Possible Import By Other Path. Such Imports are the ones that resemble it. It is held back from Upload until the Operator decides (UC-004). This is what protects a Bank Account that another import path, such as the Predecessor App, fed before Slussen took it over: a transaction that looks like one that path already sent is never written without the Operator's decision.
 
 ### BR-008: Own Uploads Recognised
 
@@ -153,7 +153,7 @@ A Bank Transaction without a Stable Reference, or one its Source could not inter
 
 ### BR-013: Currency Mismatch
 
-A Bank Account whose currency differs from its Budget's currency is blocked from upload with the reason shown, and its balance difference is hidden (UC-008). No amount is ever converted.
+A Bank Account whose currency differs from its Budget's currency is blocked from Upload with the reason shown, and its balance difference is hidden (UC-008). No amount is ever converted.
 
 ### BR-014: Eligible Transactions
 
@@ -173,4 +173,4 @@ At every Comparison, a Sent Record whose outcome is not yet known or unknown is 
 
 ### BR-018: Start Date
 
-A Bank Transaction that has not been sent and is dated before the Start Date that the Build Configuration sets for its Bank Account is Before Start Date. It stays visible with that reason and is never offered for upload, also not through a Review Decision. A Bank Account without a Start Date has no such limit; its transactions are bounded by the Upload Window only.
+A Bank Transaction that has not been sent and is dated before the Start Date that the Build Configuration sets for its Bank Account is Before Start Date. It stays visible with that reason and is never offered for Upload, also not through a Review Decision. A Bank Account without a Start Date has no such limit; its transactions are bounded by the Upload Window only.

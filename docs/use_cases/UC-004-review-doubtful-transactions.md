@@ -57,7 +57,7 @@
 **Trigger:** Operator selects a Bank Transaction with the status Needs Review or Transfer Counterpart Changed (step 1)  
 **Flow:**
 
-1. Slussen shows the Bank Transaction with the reason it needs review and the choices Import Anyway and Defer.
+1. Slussen shows the Bank Transaction with the reason it Needs Review and the choices Import Anyway and Defer.
 2. Use case continues at step 3, where the Operator chooses one of these two.
 
 ### A5: Re-upload a Deleted Transaction

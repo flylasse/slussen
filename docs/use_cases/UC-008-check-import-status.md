@@ -66,7 +66,7 @@
 **Trigger:** Operator asks for the recent Fetch outcomes (step 8)  
 **Flow:**
 
-1. Slussen shows the 60 most recent Fetches with Source, time, whether the Operator or the Fetch Schedule started them, and outcome.
+1. Slussen shows the most recent Fetches (BR-008) with Source, time, whether the Operator or the Fetch Schedule started them, and outcome.
 2. Use case ends.
 
 ### A6: Operator Takes the Remedy
@@ -104,7 +104,7 @@ Source Health shows only the outcome of the last Fetch, or of the last Transacti
 
 ### BR-004: Outdated Balances
 
-When an Account Balance is older than 36 hours (a number the Operator can change, UC-010), its difference is hidden and the Account Balance is marked as outdated.
+When an Account Balance is older than 36 hours (36 by default, a number the Operator can change, UC-010), its difference is hidden and the Account Balance is marked as outdated.
 
 ### BR-005: Balance Difference
 
@@ -112,7 +112,7 @@ The difference is the Account Balance minus the balance of the Budget Account as
 
 ### BR-006: Blocked Reasons and Their Remedies
 
-Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; a failed Fetch, the time of the failure and the action that fetches again (UC-001); request limit reached or access limit reached, the time the limit frees up; configuration error or currency mismatch, correct the Build Configuration (UC-012).
+Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; a failed Fetch, the time of the failure and the action that fetches again (UC-001); Request Limit reached or access limit reached, the time the limit frees up; configuration error or currency mismatch, correct the Build Configuration (UC-012).
 
 ### BR-007: One Budget at a Time
 
@@ -120,4 +120,4 @@ Each Budget, with its own currency, is shown as its own workspace with only its 
 
 ### BR-008: Recent Fetches
 
-Slussen keeps the 60 most recent Fetches with Source, time, who started them and outcome. Every time Slussen shows is in the device's local time.
+Slussen keeps the most recent Fetches with Source, time, who started them and outcome: 60 by default, a number the Operator can change (UC-010). Every time Slussen shows is in the device's local time.
