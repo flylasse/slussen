@@ -158,8 +158,8 @@ continue its history, identities or Import Identifiers.
 - **Android phone, on the device.** Slussen runs natively on the operator's Android phone, so that the operator
   can fetch, review and upload wherever they are. Everything Slussen stores stays on the device.
 - **Private build for one operator.** Each installation is built for one operator. That operator's Bank Accounts and
-  service credentials come from configuration kept outside the repository and are included at build time. The
-  built app is installed directly on the phone and must never be published, because the credentials can be
+  service credentials come from configuration kept in a location the repository ignores and never committed, and are
+  included at build time. The built app is installed directly on the phone and must never be published, because the credentials can be
   extracted from it. The design keeps its concerns separated, so that being built for one operator does not rule
   out later features such as several operators.
 - **Banking regulation (PSD2).** European banks allow an application without the Bank Account holder present four

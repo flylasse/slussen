@@ -8,7 +8,7 @@
 **Secondary Actors:** Bank, Data Provider  
 **Goal:** Decide whether Slussen may read the Operator's Bank Accounts at one Bank through a Data Provider, by granting or renewing the Bank Consent once for that Bank until it expires, or by revoking it  
 **Trigger:** Operator asks to grant, renew or revoke the Bank Consent of a Bank  
-**Status:** Draft  
+**Status:** Approved  
 
 **Requirements:** [FR-010, FR-011, FR-042, FR-058, FR-082, NFR-008, NFR-009, NFR-013, C-006, C-007](../requirements.md)
 

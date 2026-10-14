@@ -8,7 +8,7 @@
 **Secondary Actors:** Budget App  
 **Goal:** Obtain a Journal Export that holds the Decision Journal together with the Budget App's current transactions, so that the Operator can measure outside the app how often Slussen was right  
 **Trigger:** Operator asks to export the Decision Journal  
-**Status:** Draft  
+**Status:** Approved  
 
 **Requirements:** [FR-066, FR-068, NFR-006, NFR-011, NFR-012](../requirements.md)
 

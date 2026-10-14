@@ -8,7 +8,7 @@
 **Secondary Actors:** Data Provider  
 **Goal:** Bring the latest booked Bank Transactions and Account Balances of the Bank Accounts that one Data Provider reads into Slussen, compared with the Budget App, while spending no more Bank access than needed  
 **Trigger:** Operator starts a Fetch of a Data Provider or of all Data Providers at once, or the time of a Scheduled Fetch arrives  
-**Status:** Draft  
+**Status:** Approved  
 
 **Requirements:** [FR-001, FR-004, FR-005, FR-008, FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-058, FR-064, FR-066, FR-076, FR-077, FR-078, FR-079, FR-080, NFR-002, NFR-004, NFR-007, NFR-008, NFR-016, NFR-018, C-006, C-007, C-012](../requirements.md)
 

@@ -7,7 +7,7 @@
 **Primary Actor:** Operator  
 **Goal:** Bring the Bank Transactions of a Bank Account that has no usable transaction feed into Slussen from a Transaction File, compared with the Budget App, without typing them  
 **Trigger:** Operator asks to import a Transaction File for a Bank Account  
-**Status:** Draft  
+**Status:** Approved  
 
 **Requirements:** [FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-063, FR-066, FR-083, FR-085, FR-086, NFR-002, NFR-005, NFR-014, C-010, C-012](../requirements.md)
 

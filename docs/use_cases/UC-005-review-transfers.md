@@ -7,7 +7,7 @@
 **Primary Actor:** Operator  
 **Goal:** Confirm or correct each Transfer between the Operator's own Bank Accounts in one Budget, so that every Transfer arrives in the Budget App as one linked transfer between the intended Budget Accounts  
 **Trigger:** Operator asks to review the Transfers of a Budget  
-**Status:** Draft  
+**Status:** Approved  
 
 **Requirements:** [FR-029, FR-046, FR-092, FR-052, FR-089, FR-048, FR-049, FR-050, FR-051, FR-054, FR-066, NFR-002, NFR-010](../requirements.md)
 

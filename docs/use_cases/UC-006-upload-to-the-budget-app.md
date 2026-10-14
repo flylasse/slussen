@@ -8,7 +8,7 @@
 **Secondary Actors:** Budget App  
 **Goal:** Write exactly the confirmed Eligible Transactions of one Budget, or of one Bank Account, to the Budget App, each exactly once, and know truthfully what was written  
 **Trigger:** Operator asks to upload one Budget or one Bank Account  
-**Status:** Draft  
+**Status:** Approved  
 
 **Requirements:** [FR-030, FR-033, FR-034, FR-035, FR-036, FR-037, FR-038, FR-039, FR-041, FR-042, FR-044, FR-047, FR-052, FR-053, FR-055, FR-057, FR-064, FR-066, FR-074, FR-077, FR-090, NFR-001, NFR-002, NFR-003, NFR-004, NFR-010, NFR-015, NFR-016, NFR-017, C-009, C-011, C-012](../requirements.md)
 

@@ -7,7 +7,7 @@
 **Primary Actor:** Operator  
 **Goal:** Give every doubtful Bank Transaction the Operator's Review Decision, so that it is uploaded, held back or recognised as already present exactly as the Operator intends and never silently  
 **Trigger:** Operator selects a doubtful Bank Transaction to decide on it  
-**Status:** Draft  
+**Status:** Approved  
 
 **Requirements:** [FR-009, FR-022, FR-023, FR-024, FR-028, FR-029, FR-054, FR-066, NFR-002, NFR-010](../requirements.md)
 

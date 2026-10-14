@@ -7,7 +7,7 @@
 **Primary Actor:** Operator  
 **Goal:** See at a glance, for every Budget, whether the Budget App is up to date with each Source and Bank Account, how each Account Balance compares with its Budget Account, and what to do wherever something is blocked  
 **Trigger:** Operator opens Slussen  
-**Status:** Draft  
+**Status:** Approved  
 
 **Requirements:** [FR-003, FR-011, FR-012, FR-032, FR-060, FR-061, FR-062, FR-063, FR-064, FR-065, FR-066, NFR-005, NFR-018](../requirements.md)
 

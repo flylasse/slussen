@@ -8,7 +8,7 @@
 **Secondary Actors:** Budget App  
 **Goal:** Give every stored Bank Transaction a current Transaction Status from what the Budget App holds, so that the Operator sees per transaction whether it is new, already there or needs a decision, without spending any Bank access  
 **Trigger:** Operator asks Slussen to read the Budget App again, or Fetch Transactions, Import a Transaction File or Upload to the Budget App reaches its Comparison step  
-**Status:** Draft  
+**Status:** Approved  
 
 **Requirements:** [FR-009, FR-019, FR-020, FR-021, FR-023, FR-024, FR-025, FR-026, FR-027, FR-030, FR-031, FR-032, FR-038, FR-040, FR-046, FR-061, FR-066, FR-074, FR-075, FR-086, NFR-002, NFR-004, NFR-015, NFR-016, C-009, C-011, C-012](../requirements.md)
 

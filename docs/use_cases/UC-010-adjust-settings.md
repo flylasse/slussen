@@ -7,7 +7,7 @@
 **Primary Actor:** Operator  
 **Goal:** Set Slussen's Operator Settings to how the Operator wants to work, including the Fetch Schedule, the size and contents of the Decision Journal and Detailed Logging  
 **Trigger:** Operator asks to change an Operator Setting  
-**Status:** Draft  
+**Status:** Approved  
 
 **Requirements:** [FR-001, FR-012, FR-014, FR-016, FR-017, FR-030, FR-046, FR-051, FR-062, FR-065, FR-066, FR-067, FR-069, FR-076, FR-081, FR-087, FR-088, FR-089, FR-090, NFR-003, NFR-006, NFR-007, NFR-008, NFR-010, NFR-013, NFR-016, NFR-017](../requirements.md)
 

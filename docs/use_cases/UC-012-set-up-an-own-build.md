@@ -7,7 +7,7 @@
 **Primary Actor:** Adopting Developer  
 **Goal:** Obtain a working Slussen for the Adopting Developer's own household, built from the public repository with their own Bank Accounts, Budgets, Account Mappings and credentials, without changing how Slussen compares, reviews and decides  
 **Trigger:** Adopting Developer decides to build Slussen from the public repository for their own household  
-**Status:** Draft  
+**Status:** Approved  
 
 **Requirements:** [FR-056, FR-070, FR-071, FR-072, FR-073, FR-075, FR-083, FR-084, FR-085, FR-093, NFR-014, NFR-015, C-001, C-002, C-003, C-004, C-005, C-008, C-010, C-013](../requirements.md)
 

@@ -7,7 +7,7 @@
 **Primary Actor:** Operator  
 **Goal:** Have every Bank Account identified with certainty and sending its transactions to exactly one Budget Account, and pause or resume a Bank Account without losing anything  
 **Trigger:** Operator asks to confirm, identify again, retire or restore a Bank Account, to set its Funded By or Transfer Partner, or to check how the Bank Accounts are mapped  
-**Status:** Draft  
+**Status:** Approved  
 
 **Requirements:** [FR-042, FR-056, FR-057, FR-058, FR-059, FR-066, FR-075, FR-091, NFR-010, NFR-017, C-012](../requirements.md)
 
