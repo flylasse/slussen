@@ -21,7 +21,7 @@
 1. Slussen asks whether payee and memo text are to be replaced by codes, and where to save the file.
 2. Operator chooses whether to replace payee and memo text and chooses the place for the file.
 3. Slussen reads the current transactions of the Operator's Budgets from the Budget App.
-4. Slussen writes the Journal Export with the entries of the Decision Journal and the Budget App's current transactions, replacing payee and memo text by codes when the Operator chose that.
+4. Slussen writes the Journal Export with the entries of the Decision Journal, each transaction named by its Bank Account and its Import Identifier, and the Budget App's current transactions, replacing payee and memo text by codes when the Operator chose that.
 5. Slussen shows that the export is complete, with the number of entries it holds.
 
 ## Alternative Flows
@@ -67,7 +67,7 @@
 
 ### BR-001: What the Decision Journal Records
 
-The Decision Journal records every Bank Transaction that Slussen received from a Fetch or a Transaction File for the first time or with changed content, every change of the Transaction Status it gave a Bank Transaction, every Review Decision and Transfer Decision together with what Slussen had proposed, every Upload Plan and upload, every Account Mapping change, every change to an Operator Setting and every clearing of the Decision Journal, the start of every session, and what later happened in the Budget App to each transaction Slussen sent.
+The Decision Journal records every Bank Transaction that Slussen received from a Fetch or a Transaction File for the first time or with changed content, every change of the Transaction Status it gave a Bank Transaction, every Review Decision and Transfer Decision together with what Slussen had proposed, every Upload Plan and upload, every Account Mapping change, every change to an Operator Setting and every clearing of the Decision Journal, the start of every session, and what later happened in the Budget App to each transaction Slussen sent. Every entry about a Bank Transaction names its Bank Account and its Import Identifier, because an Import Identifier is unique only within one Bank Account.
 
 ### BR-002: The Journal Only Observes
 
@@ -84,3 +84,7 @@ The Decision Journal is never included in device backups. It leaves the device o
 ### BR-005: Consistent Codes
 
 When payee and memo text are replaced by codes, the same text always gets the same code within one Journal Export, so that the export can still be analysed.
+
+### BR-006: Facts, Not Conclusions
+
+A Journal Export holds the recorded facts and the Budget App's transactions only. It draws no conclusions and computes no measures, such as how often Slussen was right; the analysis happens outside the app.

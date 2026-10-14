@@ -9,11 +9,10 @@
 **Trigger:** Operator asks to review the Transfers of a Budget  
 **Status:** Draft  
 
-**Requirements:** [FR-029, FR-045, FR-046, FR-048, FR-049, FR-050, FR-051, FR-054, FR-066, NFR-002, NFR-010](../requirements.md)
+**Requirements:** [FR-029, FR-046, FR-048, FR-049, FR-050, FR-051, FR-054, FR-066, NFR-002, NFR-010](../requirements.md)
 
 ## Preconditions
 
-- Transfer detection is switched on (UC-010).
 - The Bank Transactions have Transaction Statuses from a Comparison (UC-003).
 
 ## Main Success Scenario
@@ -105,9 +104,9 @@
 
 ## Business Rules
 
-### BR-001: Transfer Detection Is Opt-in
+### BR-001: Transfer Detection Is Always On
 
-Transfer detection is off by default and switched on or off by the Operator (UC-010). While it is off, every Bank Transaction is treated as an ordinary transaction.
+Slussen always detects Transfers; there is no setting that switches detection off. The Operator can still split any Transfer that has not been uploaded into ordinary transactions (A1).
 
 ### BR-002: Detecting a Transfer
 

@@ -10,7 +10,7 @@
 **Trigger:** Operator asks to upload one Budget or one Bank Account  
 **Status:** Draft  
 
-**Requirements:** [FR-002, FR-030, FR-033, FR-034, FR-035, FR-036, FR-037, FR-038, FR-039, FR-041, FR-042, FR-044, FR-047, FR-052, FR-053, FR-055, FR-057, FR-064, FR-066, NFR-001, NFR-002, NFR-003, NFR-004, NFR-010, NFR-015, NFR-016, C-009, C-011, C-012](../requirements.md)
+**Requirements:** [FR-030, FR-033, FR-034, FR-035, FR-036, FR-037, FR-038, FR-039, FR-041, FR-042, FR-044, FR-047, FR-052, FR-053, FR-055, FR-057, FR-064, FR-066, FR-074, FR-077, NFR-001, NFR-002, NFR-003, NFR-004, NFR-010, NFR-015, NFR-016, NFR-017, C-009, C-011, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -161,7 +161,7 @@
 
 ### BR-001: Confirmation Before Every Write
 
-Slussen writes to the Budget App only after the Operator confirms an Upload Plan. Nothing is uploaded automatically, in the background or on a schedule.
+Slussen writes to the Budget App only after the Operator confirms an Upload Plan. Nothing is uploaded automatically, in the background or on a schedule; a Scheduled Fetch never prepares an Upload Plan (UC-001 BR-013).
 
 ### BR-002: Scope of an Upload Plan
 
@@ -177,7 +177,7 @@ Immediately before writing, Slussen checks the Budget App, the Bank Transactions
 
 ### BR-005: Other Work Pauses While a Plan Awaits Confirmation
 
-At most one Upload Plan awaits confirmation at a time. From the moment it is prepared until it is written, cancelled, discarded or expires, fetching, file imports, reading the Budget App, granting or renewing a Bank Consent, Account Mapping changes and changes to Operator Settings are unavailable; only confirming, cancelling and changing Review Decisions or Transfer Decisions are allowed. Looking at the import status stays available.
+At most one Upload Plan awaits confirmation at a time. From the moment it is prepared until it is written, cancelled, discarded or expires, fetching (a Scheduled Fetch that falls due starts when the pause ends), file imports, reading the Budget App, granting, renewing or revoking a Bank Consent, Account Mapping changes and changes to Operator Settings are unavailable; only confirming, cancelling and changing Review Decisions or Transfer Decisions are allowed. Looking at the import status stays available.
 
 ### BR-006: Exactly Once Through the Sent Record
 
@@ -211,9 +211,9 @@ A rejection or an unknown outcome for one Budget Account leaves the transactions
 
 Right after an upload, Slussen compares the uploaded Budget with the Budget App again, so that uploaded transactions are not offered for upload again.
 
-### BR-014: Sent Record Kept Across a Reinstall
+### BR-014: Sent Record Kept Across a Reinstall, Restore or Upgrade
 
-The Sent Record is included in device backups and restored after a reinstall, together with the Bank Account identifications and Account Mappings (UC-009 BR-006) and the Review Decisions and Transfer Decisions. Bank Consents are not restored (UC-007 BR-005).
+The Sent Record is included in device backups, restored after a reinstall and kept on an upgrade of the same build, together with the stored Bank Transactions, the Bank Account identifications and Account Mappings (UC-009 BR-006) and the Review Decisions and Transfer Decisions. Bank Consents are not restored (UC-007 BR-005).
 
 ### BR-015: Long Payee and Memo
 

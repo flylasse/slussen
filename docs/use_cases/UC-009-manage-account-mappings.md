@@ -9,7 +9,7 @@
 **Trigger:** Operator asks to confirm, identify again, retire or restore a Bank Account, or to check how the Bank Accounts are mapped  
 **Status:** Draft  
 
-**Requirements:** [FR-042, FR-056, FR-057, FR-058, FR-059, FR-066, NFR-010, C-012](../requirements.md)
+**Requirements:** [FR-042, FR-056, FR-057, FR-058, FR-059, FR-066, FR-075, NFR-010, NFR-017, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -18,7 +18,7 @@
 
 ## Main Success Scenario
 
-1. Slussen shows each Bank Account with its Bank, its Source, the Budget and Budget Account it is mapped to, whether its Account Mapping is locked and why, whether it is identified, and whether it is a Retired Account.
+1. Slussen shows each Bank Account with its Bank, its Source, the Budget and Budget Account it is mapped to, its Start Date, whether its Account Mapping is locked and why, whether it is identified, and whether it is a Retired Account.
 2. Operator selects a Bank Account that waits for confirmation of a proposed match.
 3. Slussen shows the proposed Bank Account as the Source describes it, with its name, kind, currency and the last four digits of its number, and the other Bank Accounts the Source offers.
 4. Operator confirms the proposed Bank Account.
@@ -59,7 +59,7 @@
 **Flow:**
 
 1. Slussen marks the Bank Account as a Retired Account, so that it is no longer fetched, compared, matched or uploaded.
-2. Slussen keeps its Bank Account Identity, its identification, its Account Mapping and its history.
+2. Slussen keeps its identification, its Account Mapping, its Start Date and its history.
 3. Slussen records the change in the Decision Journal.
 4. Use case ends.
 
@@ -68,7 +68,7 @@
 **Trigger:** Operator chooses to restore a Retired Account (step 2)  
 **Flow:**
 
-1. Slussen restores the Bank Account with its Bank Account Identity, its identification, its Account Mapping and its history, so that it is fetched, compared and uploaded again.
+1. Slussen restores the Bank Account with its identification, its Account Mapping, its Start Date and its history, so that it is fetched, compared and uploaded again.
 2. Slussen records the change in the Decision Journal.
 3. Use case ends.
 
@@ -102,7 +102,7 @@
 ### Success Postconditions
 
 - Every confirmed Bank Account is identified with certainty and sends its transactions to exactly one Budget Account.
-- A Retired Account keeps its Bank Account Identity, identification, Account Mapping and history.
+- A Retired Account keeps its identification, Account Mapping, Start Date and history.
 - Every change is recorded in the Decision Journal, unless the Decision Journal is switched off.
 
 ### Failure Postconditions
@@ -118,7 +118,7 @@ A Bank Account has at most one Account Mapping, and a Budget Account receives th
 
 ### BR-002: Mappings Come From the Build Configuration
 
-Bank Accounts with their Bank Account Identities, Budgets and Account Mappings are set in the Build Configuration. Slussen offers no way to add a Bank Account or to choose a Budget Account inside the app.
+Bank Accounts with their Start Dates, Budgets and Account Mappings are set in the Build Configuration. Slussen offers no way to add a Bank Account, to choose a Budget Account or to move a locked Account Mapping to another Budget Account inside the app.
 
 ### BR-003: Lock at the First Send
 
@@ -130,11 +130,11 @@ Slussen uses a Bank Account's transactions only when it identifies the Bank Acco
 
 ### BR-005: Retire and Restore
 
-A Retired Account is neither fetched, compared, matched nor uploaded. It keeps its Bank Account Identity, identification, Account Mapping and history and can be restored at any time.
+A Retired Account is neither fetched, compared, matched nor uploaded. It keeps its identification, Account Mapping, Start Date and history and can be restored at any time.
 
-### BR-006: Identifications Survive a Reinstall
+### BR-006: Identifications Survive a Reinstall, Restore or Upgrade
 
-How the Source identifies each Bank Account, and the Account Mappings with their locks, are included in device backups and restored after a reinstall. The Bank Account Identities come from the Build Configuration and never change.
+How the Source identifies each Bank Account, and the Account Mappings with their locks, are included in device backups, restored after a reinstall and kept on an upgrade of the same build.
 
 ### BR-007: Identify Again Only Before the Lock
 

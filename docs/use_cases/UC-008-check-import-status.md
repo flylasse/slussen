@@ -9,7 +9,7 @@
 **Trigger:** Operator opens Slussen  
 **Status:** Draft  
 
-**Requirements:** [FR-003, FR-011, FR-012, FR-032, FR-060, FR-061, FR-062, FR-063, FR-064, FR-065, FR-066, NFR-005](../requirements.md)
+**Requirements:** [FR-003, FR-011, FR-012, FR-032, FR-060, FR-061, FR-062, FR-063, FR-064, FR-065, FR-066, NFR-005, NFR-018](../requirements.md)
 
 ## Preconditions
 
@@ -18,13 +18,13 @@
 ## Main Success Scenario
 
 1. Slussen shows, from what it last stored and without contacting any Source or the Budget App, an overview of every Budget with its number of Eligible Transactions, its number of Bank Transactions waiting for a decision, and whether any of its Sources or Bank Accounts is blocked.
-2. Slussen shows every Bank Consent that expires within 7 days, with its expiry date and the action that renews it (UC-007).
+2. Slussen shows every Bank Consent that expires within the consent warning lead time, with its expiry date and the action that renews it (UC-007).
 3. Slussen records the start of the session in the Decision Journal (UC-011 BR-001).
 4. Operator selects a Budget.
 5. Slussen shows only that Budget's Sources, Bank Accounts and Bank Transactions with their Transaction Statuses.
-6. Slussen shows for each Source and Bank Account its Source Health, separately its Freshness, and the number of its Bank Transactions not yet uploaded (BR-003).
+6. Slussen shows for each Source and Bank Account its Source Health with its time, separately its Freshness, and the number of its Bank Transactions not yet uploaded (BR-003).
 7. Slussen shows each Bank Account's Account Balance next to the balance of its Budget Account in the Budget App, with the difference and the time each balance was read.
-8. Slussen shows, for every Bank Account or Source that cannot be fetched or uploaded, its Blocked Reason together with the action that removes it.
+8. Slussen shows, for every Bank Account or Source that cannot be fetched or uploaded, its Blocked Reason together with the action that removes it or the time it ends.
 
 ## Alternative Flows
 
@@ -66,7 +66,7 @@
 **Trigger:** Operator asks for the recent Fetch outcomes (step 8)  
 **Flow:**
 
-1. Slussen shows the 60 most recent Fetches with Source, time and outcome.
+1. Slussen shows the 60 most recent Fetches with Source, time, whether the Operator or the Fetch Schedule started them, and outcome.
 2. Use case ends.
 
 ### A6: Operator Takes the Remedy
@@ -96,7 +96,7 @@ Opening Slussen shows only stored data. It never contacts a Source, a Bank or th
 
 ### BR-002: Expiry Warning
 
-Every opening of Slussen shows each Bank Consent that expires within 7 days, with its expiry date and the renew action. The warning never blocks a Fetch.
+Every opening of Slussen shows each Bank Consent whose reported expiry date lies within the consent warning lead time (7 days by default, a number the Operator can change, UC-010), with its expiry date and the renew action. The warning never blocks a Fetch. It appears only when Slussen is opened and is never a notification.
 
 ### BR-003: Health and Freshness Are Separate
 
@@ -112,7 +112,7 @@ The difference is the Account Balance minus the balance of the Budget Account as
 
 ### BR-006: Blocked Reasons and Their Remedies
 
-Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; waiting after a failure, the time the wait ends and the action that retries now (UC-001); daily limit reached, the start of the next day; configuration error or currency mismatch, correct the Build Configuration (UC-012).
+Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; a failed Fetch, the time of the failure and the action that fetches again (UC-001); request limit reached or access limit reached, the time the limit frees up; configuration error or currency mismatch, correct the Build Configuration (UC-012).
 
 ### BR-007: One Budget at a Time
 
@@ -120,4 +120,4 @@ Each Budget, with its own currency, is shown as its own workspace with only its 
 
 ### BR-008: Recent Fetches
 
-Slussen keeps the 60 most recent Fetches with Source, time and outcome.
+Slussen keeps the 60 most recent Fetches with Source, time, who started them and outcome. Every time Slussen shows is in the device's local time.

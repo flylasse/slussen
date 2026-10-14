@@ -122,7 +122,7 @@ An Already Present decision always names one specific Budget App Transaction. Wh
 
 ### BR-003: Re-upload Is Deliberate
 
-Re-upload is chosen per Bank Transaction and is off by default. A re-uploaded transaction is sent as a new transaction under a new Import Identifier derived from its own one and the number of earlier re-uploads (C-014), and only while it lies inside the Upload Window (UC-003 BR-011); once uploaded, it counts as Already In Budget App.
+Re-upload is chosen per Bank Transaction and is off by default. A re-uploaded transaction is sent as a new transaction under a new Import Identifier derived from its own one and the number of earlier re-uploads (UC-003 BR-002), and only while it lies inside the Upload Window (UC-003 BR-011); once uploaded, it counts as Already In Budget App.
 
 ### BR-004: Decisions Change Until Upload
 

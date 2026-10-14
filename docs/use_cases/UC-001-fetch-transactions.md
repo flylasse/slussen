@@ -7,10 +7,10 @@
 **Primary Actor:** Operator  
 **Secondary Actors:** Data Provider  
 **Goal:** Bring the latest booked Bank Transactions and Account Balances of the Bank Accounts that one Data Provider reads into Slussen, compared with the Budget App, while spending no more bank access than needed  
-**Trigger:** Operator starts a Fetch of a Data Provider, or of all Data Providers at once  
+**Trigger:** Operator starts a Fetch of a Data Provider or of all Data Providers at once, or the time of a Scheduled Fetch arrives  
 **Status:** Draft  
 
-**Requirements:** [FR-001, FR-002, FR-004, FR-005, FR-008, FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-058, FR-064, FR-066, NFR-002, NFR-004, NFR-007, NFR-008, NFR-016, C-006, C-007, C-012](../requirements.md)
+**Requirements:** [FR-001, FR-004, FR-005, FR-008, FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-058, FR-064, FR-066, FR-076, FR-077, FR-078, FR-079, FR-080, NFR-002, NFR-004, NFR-007, NFR-008, NFR-016, NFR-018, C-006, C-007, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -20,9 +20,9 @@
 ## Main Success Scenario
 
 1. Operator starts a Fetch of a Data Provider.
-2. Slussen checks that the Data Provider is in no Back-off, is not within its Fetch Cooldown and has not reached its daily request limit.
+2. Slussen checks that the Data Provider is in no Back-off, is not within its Fetch Cooldown and has not reached its Request Limit.
 3. Slussen selects the Bank Accounts to read: every Bank Account of the Data Provider that is not a Retired Account and whose Bank has a valid Bank Consent when the Data Provider needs one.
-4. Slussen asks the Data Provider for the transactions and the balance of each selected Bank Account for the fetch period.
+4. Slussen asks the Data Provider, with the Operator present, for the transactions and the balance of each selected Bank Account for the fetch period, and keeps each request as a Provider Request (BR-007).
 5. Data Provider delivers the transactions and the Account Balance of each selected Bank Account.
 6. Slussen identifies each delivered Bank Account with certainty as one Bank Account of the Build Configuration.
 7. Slussen keeps the booked Bank Transactions with an amount other than zero and leaves out the others.
@@ -35,7 +35,7 @@
 
 ### A1: Data Provider Asked Slussen to Wait
 
-**Trigger:** A Back-off with cause Request To Wait that the Data Provider or a Bank asked for has not ended yet (step 2)  
+**Trigger:** A Back-off with cause Request To Wait that the Data Provider or a Bank asked for has not ended yet, or, in a Scheduled Fetch, a Back-off with cause Request Limit Warning has not ended yet (step 2)  
 **Flow:**
 
 1. Slussen does not contact the Data Provider, or the Bank that asked to wait.
@@ -53,35 +53,17 @@
 3. Slussen records the Fetch with outcome Served From Fetch Cooldown.
 4. Use case ends.
 
-### A3: Daily Request Limit Reached
+### A3: Request Limit Reached
 
-**Trigger:** The Data Provider's daily request limit is reached (step 2)  
+**Trigger:** The Data Provider's Request Limit is reached in the preceding 24 hours (step 2)  
 **Flow:**
 
 1. Slussen does not contact the Data Provider.
-2. Slussen shows the Blocked Reason "daily limit reached" and that the limit resets at the start of the next day.
-3. Slussen records the Fetch with outcome Daily Limit Reached.
+2. Slussen shows the Blocked Reason "request limit reached" with the time the oldest counted Provider Request leaves the 24 hours.
+3. Slussen records the Fetch with outcome Request Limit Reached.
 4. Use case ends.
 
-### A4: Waiting After a Transient Failure
-
-**Trigger:** A Back-off with cause Transient Failure for the Data Provider has not ended yet (step 2)  
-**Flow:**
-
-1. Slussen does not contact the Data Provider.
-2. Slussen shows the Blocked Reason "waiting after a failure" with the time the Back-off ends and the action that retries the Data Provider now.
-3. Slussen records the Fetch with outcome Waiting For Back-off.
-4. Use case ends.
-
-### A5: Operator Retries Now
-
-**Trigger:** Operator chooses to retry now a Data Provider that waits after a transient failure (step 1)  
-**Flow:**
-
-1. Slussen ends the Back-off with cause Transient Failure of that Data Provider.
-2. Use case continues at step 2.
-
-### A6: Bank Without Valid Bank Consent
+### A4: Bank Without Valid Bank Consent
 
 **Trigger:** The Bank of one or more Bank Accounts has no Bank Consent, or its Bank Consent has expired (step 3)  
 **Flow:**
@@ -90,27 +72,27 @@
 2. Slussen shows for each of them the Blocked Reason "missing consent" with the action that grants it (UC-007).
 3. Use case continues at step 4 for the Bank Accounts of the other Banks, or ends when no Bank Account is left to read.
 
-### A7: Data Provider Asks Slussen to Wait
+### A5: Data Provider Asks Slussen to Wait
 
 **Trigger:** The Data Provider answers that Slussen must wait before asking again, for the whole Data Provider or for one Bank (step 5)  
 **Flow:**
 
-1. Slussen starts a Back-off with cause Request To Wait, for the whole Data Provider or only for that Bank, that lasts the period the Data Provider names, or 8 hours when it names none.
+1. Slussen starts a Back-off with cause Request To Wait, for the whole Data Provider or only for that Bank, that lasts the period the Data Provider names, or 8 hours when it names none (BR-004).
 2. Slussen keeps the previously stored Bank Transactions and Account Balances of the affected Bank Accounts unchanged.
 3. Slussen shows the Blocked Reason "waiting for the provider" with the time the Back-off ends.
 4. Use case continues at step 6 for the Bank Accounts that were delivered, or ends when none was delivered.
 
-### A8: Data Provider Does Not Answer Usably
+### A6: Data Provider Does Not Answer Usably
 
-**Trigger:** The Data Provider does not answer within the time limit of NFR-016, is unavailable, or gives an answer Slussen cannot read (step 5)  
+**Trigger:** In a Fetch the Operator started, the Data Provider does not answer within the time limit of NFR-016, is unavailable, or gives an answer Slussen cannot read (step 5)  
 **Flow:**
 
-1. Slussen starts a Back-off with cause Transient Failure of 30 minutes for the Data Provider.
-2. Slussen keeps the previously stored Bank Transactions and Account Balances unchanged.
-3. Slussen records the Fetch with outcome Failed and shows the failure as the Source Health of the Data Provider.
+1. Slussen keeps the previously stored Bank Transactions and Account Balances unchanged.
+2. Slussen records the Fetch with outcome Failed and shows the failure with its time as the Source Health of the Data Provider.
+3. Slussen starts no Back-off: the Operator can start a Fetch again at any time (BR-005).
 4. Use case ends.
 
-### A9: Data Provider Refuses Slussen's Credentials
+### A7: Data Provider Refuses Slussen's Credentials
 
 **Trigger:** The Data Provider answers that the service credentials of the Build Configuration are not valid or not allowed (step 5)  
 **Flow:**
@@ -120,7 +102,7 @@
 3. Slussen shows the Blocked Reason "configuration error" with the action that removes it: correct the Build Configuration (UC-012).
 4. Use case ends.
 
-### A10: Failure for One Bank Account
+### A8: Failure for One Bank Account
 
 **Trigger:** The Data Provider reports a failure for one Bank Account while delivering the others (step 5)  
 **Flow:**
@@ -129,7 +111,7 @@
 2. Slussen records the outcome Failed for that Bank Account and shows the reason as its Blocked Reason.
 3. Use case continues at step 6 for the other Bank Accounts.
 
-### A11: Bank Consent Refused Before Its Expiry
+### A9: Bank Consent Refused Before Its Expiry
 
 **Trigger:** The Data Provider reports that a Bank no longer accepts its Bank Consent (step 5)  
 **Flow:**
@@ -139,7 +121,7 @@
 3. Slussen shows the Blocked Reason "missing consent" with the action that grants it again (UC-007).
 4. Use case continues at step 6 for the other Bank Accounts.
 
-### A12: Bank Account Not Identified With Certainty
+### A10: Bank Account Not Identified With Certainty
 
 **Trigger:** A delivered Bank Account cannot be identified with certainty as a Bank Account of the Build Configuration (step 6)  
 **Flow:**
@@ -149,14 +131,62 @@
 3. Slussen records the outcome Not Recognised or Ambiguous Bank Account for that Bank Account.
 4. Use case continues at step 7 for the other Bank Accounts.
 
-### A13: Fetch of All Data Providers
+### A11: Fetch of All Data Providers
 
 **Trigger:** Operator starts a Fetch of all Data Providers at once (step 1)  
 **Flow:**
 
-1. Slussen runs steps 2 to 9 for each Data Provider in turn, each under its own Back-off, Fetch Cooldown and daily request limit.
-2. Slussen handles a Data Provider that waits, is within its Fetch Cooldown, has reached its daily request limit, fails or refuses the credentials as A1, A2, A3, A4, A8 or A9 describe, for that Data Provider only, and goes on with the next Data Provider (BR-010).
+1. Slussen runs steps 2 to 9 for each Data Provider in turn, each under its own Back-off, Fetch Cooldown and Request Limit.
+2. Slussen handles a Data Provider that waits, is within its Fetch Cooldown, has reached its Request Limit, fails or refuses the credentials as A1, A2, A3, A6 or A7 describe, for that Data Provider only, and goes on with the next Data Provider (BR-010).
 3. Use case continues at step 10.
+
+### A12: Scheduled Fetch
+
+**Trigger:** The time of a Scheduled Fetch arrives under the Fetch Schedule (step 1)  
+**Flow:**
+
+1. Slussen runs steps 2 to 9 for each Data Provider in turn as A11 describes, without the Operator present, so that every request to a Data Provider that needs a Bank Consent is an Unattended Access (BR-012).
+2. Slussen compares the stored Bank Transactions with the Budget App (UC-003) and records each Fetch as started by the Fetch Schedule, with its outcome for each Bank Account.
+3. Slussen updates the New Transaction Notification with the number of unprocessed Bank Transactions, or removes it when that number is 0 (BR-014).
+4. Slussen prepares no Upload Plan and writes nothing to the Budget App (BR-013).
+5. Use case ends.
+
+### A13: Unattended Access Limit Reached
+
+**Trigger:** In a Scheduled Fetch, a Bank Account read through a Data Provider that needs a Bank Consent has had 4 Unattended Accesses of its transactions or of its balance in the preceding 24 hours (step 3)  
+**Flow:**
+
+1. Slussen leaves that Bank Account out without contacting its Bank.
+2. Slussen shows the Blocked Reason "access limit reached" for the Bank Account with the time the limit frees up.
+3. Slussen records the outcome Access Limit Reached for that Bank Account.
+4. Use case continues at step 4 for the other Bank Accounts, or ends when no Bank Account is left to read.
+
+### A14: Transient Failure in a Scheduled Fetch
+
+**Trigger:** In a Scheduled Fetch, the Data Provider does not answer within the time limit of NFR-016, is unavailable, or gives an answer Slussen cannot read (step 5)  
+**Flow:**
+
+1. Slussen keeps the previously stored data unchanged, records the Fetch with outcome Failed and shows the failure with its time as the Source Health of the Data Provider.
+2. Slussen does not contact that Data Provider again before the next Scheduled Fetch, unless the Operator starts a Fetch (BR-005).
+3. Use case continues at step 2 for the next Data Provider, or ends when none is left.
+
+### A15: Data Provider Warns About Its Request Limit
+
+**Trigger:** The Data Provider warns that Slussen is near or over its Request Limit (step 5)
+**Flow:**
+
+1. Slussen starts a Back-off with cause Request Limit Warning for the Data Provider that lasts 24 hours from the first warning, so that no Scheduled Fetch contacts it until then (BR-015).
+2. Slussen shows the warning with the time it ends and the risk that further requests can get Slussen's access to the Data Provider disabled.
+3. Use case continues at step 6 for the Bank Accounts that were delivered.
+
+### A16: Operator Fetches Despite a Request Limit Warning
+
+**Trigger:** The Operator starts a Fetch of a Data Provider whose Back-off with cause Request Limit Warning has not ended yet (step 2)
+**Flow:**
+
+1. Slussen shows the warning, the time it ends and the risk that further requests can get Slussen's access to the Data Provider disabled, and asks the Operator to confirm the Fetch.
+2. Operator confirms, or cancels and the use case ends.
+3. Use case continues at step 3.
 
 ## Postconditions
 
@@ -164,21 +194,24 @@
 
 - Every Bank Transaction delivered for an identified Bank Account is stored and has a Transaction Status from the Comparison.
 - The Account Balance of every identified Bank Account is stored with the time the Data Provider reported it.
-- The Fetch is recorded with its outcome for each Bank Account, and a Fetch Cooldown starts for the Data Provider.
+- The Fetch is recorded with who started it and its outcome for each Bank Account, and a Fetch Cooldown starts for the Data Provider.
+- Every request sent is kept as a Provider Request with its time.
 - The Bank Transactions received are recorded in the Decision Journal, unless the Decision Journal is switched off.
+- After a Scheduled Fetch, the New Transaction Notification shows the number of unprocessed Bank Transactions, or is absent when that number is 0.
 
 ### Failure Postconditions
 
-- Nothing is written to the Budget App.
+- Nothing is written to the Budget App, and no Upload Plan is prepared.
 - The stored Bank Transactions and Account Balances of every Bank Account that was not read successfully are unchanged.
 - No Bank is contacted without a valid Bank Consent, and no Data Provider is contacted during a Back-off it asked for.
+- No Data Provider receives more requests than its Request Limit, and no Bank Account more Unattended Accesses than the limit, in any 24 hours.
 - No transaction of one Bank Account is stored as a transaction of another Bank Account.
 
 ## Business Rules
 
-### BR-001: Fetch Only When the Operator Starts It
+### BR-001: Fetch Only When the Operator or the Fetch Schedule Starts It
 
-Slussen contacts a Data Provider only in a Fetch the Operator starts. It never fetches when the app is opened, in the background or on a schedule.
+Slussen contacts a Data Provider only in a Fetch the Operator starts or in a Scheduled Fetch. It never fetches when the app is opened.
 
 ### BR-002: Booked Transactions Only
 
@@ -190,19 +223,19 @@ A transaction with an amount of zero is left out.
 
 ### BR-004: Requests to Wait Are Honoured
 
-When a Data Provider or a Bank asks Slussen to wait, Slussen does not contact it until the period it named has ended, or for 8 hours when it named no period, also when the Operator starts a Fetch. No action of the Operator ends such a Back-off. The Back-off applies to the whole Data Provider or to the one Bank that asked.
+When a Data Provider or a Bank asks Slussen to wait, Slussen does not contact it until the period it named has ended, or for 8 hours when it named no period. Such a Back-off holds for a Fetch the Operator starts and for a Scheduled Fetch alike; no action of the Operator ends it. It applies to the whole Data Provider or to the one Bank that asked. A warning about the Request Limit is not a request to wait and follows BR-015.
 
-### BR-005: Back-off After a Transient Failure
+### BR-005: No Wait After a Transient Failure
 
-After a timeout, an outage or an unreadable answer, Slussen records a Back-off with cause Transient Failure of 30 minutes and shows it with the Source Health. During it, a Fetch of that Data Provider does not contact it, unless the Operator explicitly chooses to retry it now, which ends the Back-off. A refusal of credentials or of a Bank Consent is not a transient failure and starts no Back-off.
+A timeout, an outage or an unreadable answer starts no Back-off. Slussen shows the failure with its time, and the Operator can start a Fetch again at any time. A Scheduled Fetch that meets such a failure is not repeated; the Data Provider is next contacted by the next Scheduled Fetch or by a Fetch the Operator starts. A refusal of credentials or of a Bank Consent is not a transient failure.
 
 ### BR-006: Fetch Cooldown
 
-For 60 minutes after a successful Fetch of a Data Provider (a number the Operator can change or set to 0 to switch off, UC-010), a new Fetch of that Data Provider is answered from the stored data without contacting it. A Fetch that delivered no Bank Account does not start a Fetch Cooldown.
+For 60 minutes after a successful Fetch of a Data Provider (a number the Operator can change or set to 0 to switch off, UC-010), a new Fetch of that Data Provider, started by the Operator or as a Scheduled Fetch, is answered from the stored data without contacting it. A Fetch that delivered no Bank Account does not start a Fetch Cooldown.
 
-### BR-007: Daily Request Limit
+### BR-007: Request Limit
 
-Slussen sends at most the daily request limit of the Data Provider per calendar day. The limit is set per Data Provider in the Build Configuration (24 by default). The count survives a restart of the app, and the limit is not lifted by a Fetch the Operator starts.
+Slussen keeps every request it sends to a Data Provider as a Provider Request with its time, and sends a Data Provider at most its Request Limit of requests in the preceding 24 hours (24 by default, set per Data Provider in the Build Configuration). The count survives a restart of the app, does not depend on calendar day or time zone, and is not lifted by a Fetch the Operator starts. Times are shown in the device's local time.
 
 ### BR-008: No Contact Without Bank Consent
 
@@ -214,8 +247,24 @@ A Fetch asks for the transactions of the last 60 days.
 
 ### BR-010: Failures Stay Isolated
 
-A failure, a Back-off, a Fetch Cooldown or a reached daily request limit of one Data Provider or one Bank Account leaves the Fetch, the Comparison and the upload of every other Data Provider and Bank Account unaffected.
+A failure, a Back-off, a Fetch Cooldown, a reached Request Limit or a reached Unattended Access limit of one Data Provider or one Bank Account leaves the Fetch, the Comparison and the upload of every other Data Provider and Bank Account unaffected.
 
 ### BR-011: Balance of a File-Imported Bank Account
 
 For a Bank Account whose transactions come from Transaction Files, the Account Balance is taken from the Data Provider that the Build Configuration names for its balance, during a Fetch of that Data Provider.
+
+### BR-012: Operator Present or Unattended
+
+A Fetch the Operator starts is made with the Operator present and is never counted against the Unattended Access limit. A Scheduled Fetch is unattended: through a Data Provider that needs a Bank Consent, it reads the transactions of a Bank Account at most 4 times and its balance at most 4 times in any 24 hours (C-006), counted from the Provider Requests of the preceding 24 hours.
+
+### BR-013: Fetch Schedule
+
+Scheduled Fetches follow the Fetch Schedule (UC-010): 2 in any 24 hours by default, evenly spaced, which the Operator can lower to 1 or to 0 to switch them off. A Scheduled Fetch fetches all Data Providers and compares, and never prepares an Upload Plan, writes to the Budget App or waits for an answer from the Operator. A Scheduled Fetch that falls due while an Upload Plan awaits confirmation starts when that pause ends (UC-006 BR-005).
+
+### BR-014: New Transaction Notification
+
+Slussen shows one silent, low-priority New Transaction Notification, also shown as a badge on the app icon, with the number of unprocessed Bank Transactions: the Eligible Transactions plus the Bank Transactions with the status Possible Import By Other Path, Needs Review, Decision No Longer Holds, Guessed Transfer or Transfer Counterpart Changed, of every Bank Account that is not a Retired Account. Whether the Operator has looked at them does not matter. The notification is updated after each Scheduled Fetch and whenever the number changes, for example after a Review Decision or an upload, and disappears when the number is 0. A later update replaces it instead of adding another one. Slussen shows no other notification. When the device does not allow notifications, the number is not shown and nothing else changes.
+
+### BR-015: Request Limit Warning
+
+When a Data Provider warns that Slussen is near or over its Request Limit, Slussen starts a Back-off with cause Request Limit Warning that lasts 24 hours from the first warning. During it, no Scheduled Fetch contacts that Data Provider. A Fetch the Operator starts is still allowed: Slussen first shows the warning, the time it ends and the risk that further requests can get Slussen's access to the Data Provider disabled, and goes ahead when the Operator confirms. A Data Provider's request to wait (BR-004) is never overridden this way.
