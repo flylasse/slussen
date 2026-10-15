@@ -11,6 +11,53 @@
 
 ---
 
+## 0. Resume here (state as of 2026-10-14)
+
+This section lets a fresh orchestrator session (local or cloud) pick up the plan on branch `construction-kickoff`. Read `AGENTS.md`, then this section, then §1, §3 and §6. Update this section in every commit that moves the plan forward.
+
+**Where the plan stands:** inside the **architecture gate**, waiting for the operator's **external re-review**.
+
+**Done so far:**
+- Phases 0, 1 and 2 are complete.
+- All 28 findings (A-01..A-28) are dispositioned in §6.
+- Specification changes S-01..S-11 are committed (`8709366`).
+- The ADRs are revised (`9b4ae1f`): ADR-001..ADR-008, all still Proposed.
+
+**Next steps, in order:**
+1. **Operator:** runs the re-review prompt in §4 "Architecture gate — external re-review" in Codex CLI on this branch. Codex commits `docs/reviews/phase2b_architecture_rereview.md` with the message `docs: architecture gate - external re-review` and pushes.
+2. **Orchestrator:** `git pull`, then runs the gate.
+   - The reviewer's commit changes only that file.
+   - Every A-nn has a verdict: Resolved, Partly or Not resolved.
+   - Every new B-nn has an ID, a location, evidence and a severity.
+3. **Orchestrator:** copies the result into §6.
+   - The A-nn verdicts go into the Disposition column.
+   - The B-nn findings go into a new table, "Re-review findings".
+   - Fill the §5 row "Architecture gate".
+   - Commit `docs: architecture gate - record re-review in plan` and push.
+4. **Orchestrator and operator:** discuss every Partly, Not resolved and High or Medium B-nn.
+   - A specification change goes to a sub-agent first (§1.3).
+   - An ADR fix goes to a sub-agent.
+   - Both follow the pattern of commits `8709366` and `9b4ae1f`.
+5. **Operator:** sets each ADR to `Status: Accepted` and says "resume". The operator commits this, or asks the orchestrator to. Then Phase 3 starts.
+
+**Environment for a session that is not on the operator's Windows machine:**
+- `scratch/` is git-ignored and does not exist in a fresh clone. Everything a later phase needs from it is already in this plan:
+  - the Phase 0 inventory summary is in §5 row 0;
+  - the operator's answers are in §6;
+  - the re-review prompt is in §4.
+- The gate tool `tools/lint_specs.py` needs the AIUP Marketplace clone at the pinned commit in the header. Clone `https://github.com/AI-Unified-Process/marketplace` and check out that commit. Then set `SLUSSEN_MARKETPLACE` to the clone's root. Without it, the tool looks in `C:\work\marketplace` and in a `marketplace` folder next to the repository.
+- Evidence repositories, **read-only**. Never commit to them or push to them.
+  - The predecessor `https://github.com/flylasse/ynab-import-android`, commit `46efbf0`. Phase 4 needs its six `docs/archive/*mockup*.html` files.
+  - The book `https://github.com/flylasse/book-context-martinelli-spec-driven-dev`.
+- The Android SDK, JDK 17 and `adb` (§2) are needed from Phase 6 on. Phase 9 needs the operator's machine and phone.
+- **Git:**
+  - Commits use the operator's configured identity, which is not the real email address.
+  - End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+  - End the PR body with "🤖 Generated with [Claude Code](https://claude.com/claude-code)".
+  - `main` is protected by the "Force PR" ruleset.
+  - Files use CRLF; keep it when editing.
+- **Private data:** no agent reads, writes or prints the operator's Build Configuration (`build-config/local/`), §1.2.
+
 ## 1. How this plan is executed (global prompt for the orchestrator)
 
 The rules of the bootstrap plan's §1 apply unchanged: one sub-agent per phase with a clean context and the verbatim §4 prompt; the orchestrator runs every gate itself; one commit per phase, pushed before the next phase starts; one re-dispatch and at most one fix commit on a red gate; sub-agents return Clarified / Assumed / Open; §5 and §6 are updated in the phase's commit; `ynab-import-android`, `marketplace` and the book repo are never touched, and `scratch/` is never committed. In addition:
@@ -42,6 +89,7 @@ The rules of the bootstrap plan's §1 apply unchanged: one sub-agent per phase w
 | 0 | Extract construction evidence | `scratch/construction_inventory.md`; plan header | `flash` | inventory lists the predecessor's modules with their dependencies, the six mockups with the screens they show, and the toolchain versions; `lint_specs.py --strict` exits 0 | `docs: phase 0 - extract construction evidence` |
 | 1 | Architecture decisions (proposed) | `docs/adr/ADR-001..` | `inherit` | every ADR has Context, Decision, Consequences and Status Proposed; ADR-001 names every module and every allowed dependency; every use case maps to the modules it touches; `lint_specs.py --strict` exits 0 | `docs: phase 1 - architecture decisions proposed` |
 | 2 | Adversarial architecture review (report only), **external reviewer** | `docs/reviews/phase2_architecture_review.md` (reviewer's commit); findings copied into §6 (orchestrator's commit) | external: Codex CLI (OpenAI), run by the operator | the reviewer's commit changes only its review file; every finding has an ID, a location and evidence; the orchestrator's follow-up commit changes only this plan | reviewer: `docs: phase 2 - architecture review findings (external)`; orchestrator: `docs: phase 2 - record external review in plan` |
+| 2b | External re-review (report only), inside the architecture gate, after the specification changes and the ADR revision | `docs/reviews/phase2b_architecture_rereview.md` (reviewer's commit); result copied into §6 (orchestrator's commit) | external: Codex CLI (OpenAI), run by the operator (O-P2-04) | the reviewer's commit changes only its review file; every A-nn has a verdict; every B-nn has an ID, a location, evidence and a severity; the orchestrator's follow-up commit changes only this plan | reviewer: `docs: architecture gate - external re-review`; orchestrator: `docs: architecture gate - record re-review in plan` |
 | — | **Architecture gate — orchestrator stops here** | operator discusses the ADRs and the findings, the ADRs are revised, each ADR is set to Accepted | operator | operator says "resume" | operator's own commit |
 | 3 | Project-rule check | `tools/check_project_rules.py` (+ self-test) | `inherit` | `--self-test` passes; the check runs clean on current `docs/`; it fails on planted bare "account", on an unmarked Slussen number and on a lowercase glossary term | `tools: phase 3 - project rule check` |
 | 4 | HTML mockups and icon proposals | `docs/mockups/*.html`, `docs/mockups/index.html`, `docs/mockups/icon-*.svg` | `inherit` | every operator-facing step of UC-001..UC-011 is reachable on a mockup screen (traceability table in `index.html`); only invented names and amounts; `check_project_rules.py` exits 0 | `docs: phase 4 - screen mockups and icon proposals` |
@@ -123,6 +171,52 @@ The orchestrator then runs the gate:
 - Every finding has an ID, a location and evidence.
 
 It then copies the findings into §6, with the reviewer's model and version, and fills §5 in its own commit.
+
+### Architecture gate — external re-review (Codex CLI)
+
+The operator starts Codex CLI with GPT-6 Astra at Max reasoning (as in Phase 2), in the repository on branch `construction-kickoff`, at or after commit `9b4ae1f`, and gives it this prompt verbatim. The module list is already filled in, with a placeholder for the bank-specific module.
+
+```text
+You are an external reviewer of architecture decisions for Slussen, an Android app that fetches bank
+transactions and uploads them to a budgeting app. The project uses Martinelli's AI Unified Process (AIUP):
+the specification in docs/ is Approved and is the source of truth; the architecture decisions in docs/adr/
+are Proposed. You reviewed an earlier version (docs/reviews/phase2_architecture_review.md, findings
+A-01..A-28, reviewed commit d592aa2). Since then the Operator decided dispositions (docs/construction_kickoff_plan.md
+§6), the specification was changed (S-01..S-10 in that table) and the ADRs were revised; ADR-007 and ADR-008 are new.
+
+Review the change since commit 00720b1 (git diff 00720b1..HEAD -- docs/), and read ADR-007 and ADR-008 in full.
+Read AGENTS.md first.
+
+The predecessor app's Gradle modules, for comparison only (not a template):
+- :domain (kotlin.jvm; no project dependencies)
+- :source-simplefin, :source-enablebanking, :source-<bank-file> (kotlin.jvm; depend on :domain)
+- :budget-ynab (kotlin.jvm, serialization; depends on :domain)
+- :platform (android.library; depends on :domain; included only with an Android SDK)
+- :app (android.application, compose; depends on every module; included only with an Android SDK)
+- :test-support (api :domain; implementation on every source/budget module)
+- a root verifyArchitecture task wired into every subproject's check.
+
+Your job:
+1. For each A-01..A-28: is it resolved by the specification change and/or the ADR revision as its disposition
+   says? Answer Resolved / Partly / Not resolved, with evidence (file and section).
+2. New findings introduced by the revision (B-01, B-02, ...), in particular in ADR-007 (coordinator and Upload
+   protocol) and ADR-008 (Import Identifier protocol), and any contradiction between the revised ADRs and the
+   changed specification.
+3. Anything that contradicts AGENTS.md, its three project rules included.
+
+Rules:
+- Do not modify any file except the review file below. Do not edit the ADRs or the specification.
+- Do not access anything outside this repository, and do not read scratch/.
+- Every new finding gets an ID B-nn, a location (file and section), the evidence, a severity (High, Medium, Low)
+  and, in one line, what would fix it. Mark a finding "uncertain" when you are not sure.
+- End with a short verdict: can the Operator set the ADRs to Accepted, and which findings block that.
+
+Write the review to docs/reviews/phase2b_architecture_rereview.md with a header naming yourself (model and
+version) and the commit you reviewed (git rev-parse HEAD). Then commit only that file with the message
+"docs: architecture gate - external re-review" and push the branch. Do nothing else.
+```
+
+The orchestrator then runs the gate in §0 step 2 and records the result as in §0 step 3.
 
 ### Phase 3 — Project-rule check (`inherit`)
 

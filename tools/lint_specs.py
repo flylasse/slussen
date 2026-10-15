@@ -14,14 +14,24 @@ import os
 import subprocess
 import sys
 
-MARKETPLACE_LINTER = r"C:\work\marketplace\aiup-core\skills\spec-review\scripts\spec_lint.py"
+LINTER_PATH = os.path.join("aiup-core", "skills", "spec-review", "scripts", "spec_lint.py")
+
+
+def find_linter(repo_root):
+    """The Marketplace clone: $SLUSSEN_MARKETPLACE, C:\\work\\marketplace, or ../marketplace."""
+    roots = [os.environ.get("SLUSSEN_MARKETPLACE"), r"C:\work\marketplace",
+             os.path.join(os.path.dirname(repo_root), "marketplace")]
+    candidates = [os.path.join(r, LINTER_PATH) for r in roots if r]
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+    print("spec_lint.py not found; looked in: " + ", ".join(candidates), flush=True)
+    sys.exit(2)
 
 
 def main():
-    if not os.path.isfile(MARKETPLACE_LINTER):
-        print(f"spec_lint.py not found at {MARKETPLACE_LINTER}", flush=True)
-        sys.exit(2)
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    MARKETPLACE_LINTER = find_linter(repo_root)
     docs_dir = os.path.join(repo_root, "docs")
     cmd = [sys.executable, MARKETPLACE_LINTER, "--docs", docs_dir] + sys.argv[1:]
     print("Running: " + " ".join(cmd), flush=True)
