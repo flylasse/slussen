@@ -152,7 +152,7 @@ Every Review Decision, change and clearing is recorded in the Decision Journal t
 
 ### BR-006: Status After a Decision
 
-Already Present gives the status Already In Budget App while the decision holds (UC-003 BR-009). Import Anyway and Re-upload give the status New, so that the Bank Transaction is eligible as a new transaction; for a transaction without a Stable Reference, its Import Identifier comes from UC-003 BR-002. Defer gives the status Deferred. Clearing a decision gives the status the Comparison gives without a decision (UC-003 BR-001).
+Already Present gives the status Already In Budget App while the decision holds (UC-003 BR-009). Import Anyway and Re-upload give the status New, so that the Bank Transaction is eligible as a new transaction, except that Import Anyway on a Transfer Leg that was Needs Review because it resembles an Import with Slussen's marker in a form Slussen does not support lets it follow its Transfer (UC-003 BR-008, UC-005 BR-010), and Defer on it holds the whole Transfer back; for a transaction without a Stable Reference, its Import Identifier comes from UC-003 BR-002. Defer gives the status Deferred. Clearing a decision gives the status the Comparison gives without a decision (UC-003 BR-001).
 
 ### BR-007: Unreadable Transactions Are Never Uploaded
 

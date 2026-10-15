@@ -109,7 +109,7 @@ Slussen's stored copy of one transaction in a Budget Account as it last read it 
 
 #### Constraints
 
-- Every `import_identifier` that begins with the marker of Slussen's own Import Identifiers (FR-074) is Slussen's: `entered_by` is Slussen when the rest of it has a form Slussen supports, and Slussen Unsupported Format when it does not. Such a transaction is never Other Import Path; a Bank Transaction that resembles one with Slussen Unsupported Format goes to the Operator for review (UC-003 BR-008).
+- Every `import_identifier` that begins with the marker of Slussen's own Import Identifiers (FR-074) is Slussen's: `entered_by` is Slussen when the rest of it has a form Slussen supports, and Slussen Unsupported Format when it does not. Such a transaction is never Other Import Path; a Bank Transaction that resembles one with Slussen Unsupported Format goes to the Operator for review (UC-003 BR-008), also when it is a Transfer Leg, and its Transfer is not eligible until the Operator's Review Decision on that Transfer Leg.
 - An Import of the Predecessor App or of any other importer, whose `import_identifier` does not begin with Slussen's marker, is Other Import Path.
 - `merged_into_reference` is filled exactly when `state` is Merged.
 - `transfer_link_reference`, `merged_into_reference`, `cleared` and `approved` are stored as the Budget App reported them at the last read, so that a linked Upload whose answer was lost can be settled from stored data after a restart (UC-003 BR-017).

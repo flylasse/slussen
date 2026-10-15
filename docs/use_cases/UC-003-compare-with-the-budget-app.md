@@ -105,7 +105,7 @@
 
 ### BR-001: Order of the Comparison
 
-The first rule that applies gives the Transaction Status: a Bank Account with a currency mismatch is blocked (BR-013); a transaction whose Import Identifier, or the Import Identifier of a Re-upload of it, is held in its Budget Account is Already In Budget App (BR-003); one Slussen sent that was deleted or merged in the Budget App is Deleted In Budget App or Merged In Budget App (BR-004, BR-005), unless the Operator chose Re-upload; one whose earlier send has an unknown outcome is Outcome Unknown (BR-017); one dated before the Start Date of its Bank Account is Before Start Date (BR-018); one dated outside the Upload Window is Too Old or In The Future (BR-011); one with a Review Decision follows that decision (BR-009, BR-010, UC-004 BR-006); one without a Stable Reference is Needs Review (BR-012); one that is a Transfer Leg follows the Transfer (UC-005 BR-010); one that resembles an Import whose Import Identifier begins with Slussen's marker in a form Slussen does not support is Needs Review (BR-008); one that resembles an Import by an Other Import Path is Possible Import By Other Path (BR-007); one that matches a Typed Entry is Match For Typed Entry (BR-006); every other transaction is New.
+The first rule that applies gives the Transaction Status: a Bank Account with a currency mismatch is blocked (BR-013); a transaction whose Import Identifier, or the Import Identifier of a Re-upload of it, is held in its Budget Account is Already In Budget App (BR-003); one Slussen sent that was deleted or merged in the Budget App is Deleted In Budget App or Merged In Budget App (BR-004, BR-005), unless the Operator chose Re-upload; one whose earlier send has an unknown outcome is Outcome Unknown (BR-017); one dated before the Start Date of its Bank Account is Before Start Date (BR-018); one dated outside the Upload Window is Too Old or In The Future (BR-011); one with a Review Decision follows that decision (BR-009, BR-010, UC-004 BR-006); one without a Stable Reference is Needs Review (BR-012); one that resembles an Import whose Import Identifier begins with Slussen's marker in a form Slussen does not support is Needs Review (BR-008), also when it is a Transfer Leg; one that is a Transfer Leg follows the Transfer (UC-005 BR-010); one that resembles an Import by an Other Import Path is Possible Import By Other Path (BR-007); one that matches a Typed Entry is Match For Typed Entry (BR-006); every other transaction is New.
 
 ### BR-002: Import Identifier
 
@@ -133,7 +133,7 @@ A Bank Transaction for which the Budget Account holds an Import created by an Ot
 
 ### BR-008: Own Uploads Recognised
 
-An Import whose Import Identifier begins with Slussen's marker (BR-002) is Slussen's own and is never treated as an Import by an Other Import Path, also when the rest of its Import Identifier has a form Slussen does not support. Because Slussen cannot match such an Import to one of its own Bank Transactions, a Bank Transaction that resembles it (same amount, within the Matching Date Window) is Needs Review and goes to the Operator for review (UC-004). An Import of the Predecessor App or of any other importer is an Import by an Other Import Path.
+An Import whose Import Identifier begins with Slussen's marker (BR-002) is Slussen's own and is never treated as an Import by an Other Import Path, also when the rest of its Import Identifier has a form Slussen does not support. Because Slussen cannot match such an Import to one of its own Bank Transactions, a Bank Transaction that resembles it (same amount, within the Matching Date Window) is Needs Review and goes to the Operator for review (UC-004). This holds before Transfer detection: when that Bank Transaction is a Transfer Leg, its whole Transfer is not eligible, whichever Transfer Leg would write it, until the Operator has made a Review Decision on that Transfer Leg (UC-005 BR-010). Import Anyway then lets the Transfer Leg follow its Transfer; Defer holds the whole Transfer back. An Import of the Predecessor App or of any other importer is an Import by an Other Import Path.
 
 ### BR-009: Already-Present Decision Rechecked
 
@@ -157,7 +157,7 @@ A Bank Account whose currency differs from its Budget's currency is blocked from
 
 ### BR-014: Eligible Transactions
 
-A Bank Transaction is an Eligible Transaction when its status is New, Match For Typed Entry, Outcome Unknown under the conditions of BR-017, or Transfer Leg for the Transfer Leg that writes its Transfer (UC-006 BR-009), it lies in the Upload Window that applies to it (BR-011) and not before the Start Date of its Bank Account, and its Bank Account is neither blocked nor a Retired Account.
+A Bank Transaction is an Eligible Transaction when its status is New, Match For Typed Entry, Outcome Unknown under the conditions of BR-017, or Transfer Leg for the Transfer Leg that writes its Transfer (UC-006 BR-009) when no Transfer Leg of that Transfer waits for a Review Decision under BR-008, it lies in the Upload Window that applies to it (BR-011) and not before the Start Date of its Bank Account, and its Bank Account is neither blocked nor a Retired Account.
 
 ### BR-015: Comparing Never Writes
 
