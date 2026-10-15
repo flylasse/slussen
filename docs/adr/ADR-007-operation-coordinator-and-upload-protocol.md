@@ -150,7 +150,11 @@ Budget App capabilities are resolved here, never while writing (A-10):
   by the defined read of §6 step 8 (B-01).
 
 A plan is prepared from the stored statuses of the latest completed Comparison (§3a); the read and the final checks at
-confirmation (§6) are what make sure they are still current.
+confirmation (§6) are what make sure they are still current. Eligibility is UC-003 BR-014 as those statuses give it: in
+particular, a Transfer one of whose Transfer Legs is Needs Review because it resembles a Slussen Unsupported Format
+Import (UC-003 BR-008) yields no item at all, neither through that Transfer Leg nor through the other, until the
+Operator's Review Decision on that Transfer Leg; after Import Anyway the Transfer is planned by the rules above, after
+Defer the whole Transfer stays out (UC-004 BR-006, UC-005 BR-010; S-16).
 
 ### 5. While the plan is open
 
@@ -331,3 +335,5 @@ is listed in ADR-005 §7.
 - B-07: §6 step 5 (expiry and date-dependent eligibility rechecked with one `now` after the network read, expiry
   repeated inside O-7), §9.
 - S-12: §3a and §6 step 8 (reconciliation and clearing use the stored links and Cleared values).
+- C-01 (final check, with S-16): §4 (a Transfer with a Transfer Leg under review for a Slussen Unsupported Format
+  resemblance yields no item until the Review Decision on that Transfer Leg).

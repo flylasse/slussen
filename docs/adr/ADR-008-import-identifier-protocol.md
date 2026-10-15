@@ -42,7 +42,8 @@ change. Such a decision needs its own record, which ADR-001 (contracts) and ADR-
 - UC-003 BR-001, BR-008 and the `BUDGET_APP_TRANSACTION` constraints (changed by S-14): every Import Identifier that
   begins with Slussen's marker is Slussen's; `entered_by` is Slussen when the rest has a form Slussen supports and
   Slussen Unsupported Format when it does not; such a transaction is never Other Import Path, and a Bank Transaction
-  that resembles one with Slussen Unsupported Format is Needs Review.
+  that resembles one with Slussen Unsupported Format is Needs Review, also when it is a Transfer Leg, and its whole
+  Transfer is not eligible until the Operator's Review Decision on that Transfer Leg (S-16).
 - Phase 2b re-review: B-08 (Form C normalisation merged distinct Stable References before collision detection),
   B-09 (the fingerprint kept digits only and had no scope), B-10 (ownership was recognised by the full format).
 
@@ -66,7 +67,7 @@ SLS1-<26 characters from the alphabet a-z and 2-7>
     checked for ownership.
   - *Supported format:* an owned Import Identifier matching `^SLS[1-9]-[a-z2-7]{26}$` for a version this build
     produces gets `entered_by` Slussen; any other owned one gets `entered_by` Slussen Unsupported Format. It is never
-    Other Import Path, and a Bank Transaction that resembles it is Needs Review (UC-003 BR-001, BR-008). Only an exact
+    Other Import Path, and a Bank Transaction that resembles it is Needs Review (UC-003 BR-001, BR-008); this check comes before Transfer detection: when that Bank Transaction is a Transfer Leg, its whole Transfer is not eligible, whichever Transfer Leg would write it, until the Operator's Review Decision on that Transfer Leg; Import Anyway lets the Transfer Leg follow its Transfer, Defer holds the whole Transfer back (UC-003 BR-001, BR-008, BR-014; UC-004 BR-006; UC-005 BR-010; S-16). Only an exact
     equality with a Sent Record's or Bank Transaction's Import Identifier ever settles a send (UC-003 BR-003, BR-017);
     an unsupported one settles nothing.
 
@@ -256,8 +257,8 @@ field(the Bank's reference as the Data Provider delivers it, empty when it names
 - A collision costs one transaction a review (or one file a rejection) instead of a silent merge or a duplicate.
 - The marker `SLS` is fixed for ever. Because ownership is "begins with `SLS`" (S-14), an Other Import Path that
   happened to write identifiers beginning with `SLS` would be taken for Slussen: its transactions would be Slussen
-  Unsupported Format and the Bank Transactions resembling them would go to review, never be uploaded without the
-  Operator's decision. That is the safe direction. The live tests against a throwaway YNAB Budget (ADR-005 §7, E-10) check that YNAB's own
+  Unsupported Format and the Bank Transactions resembling them would go to review, also as Transfer Legs, whose whole
+  Transfer then waits, never be uploaded without the Operator's decision. That is the safe direction. The live tests against a throwaway YNAB Budget (ADR-005 §7, E-10) check that YNAB's own
   Bank import writes identifiers of another form.
 
 ## Alternatives
@@ -299,5 +300,7 @@ field(the Bank's reference as the Data Provider delivers it, empty when it names
 - B-09: §7 row and §8 (fingerprint keeps letters, scoped by Data Provider and Bank).
 - B-10 (with S-14): §1 (ownership = begins with `SLS`; supported format a separate test; Slussen Unsupported Format,
   never Other Import Path), Consequences.
+- C-01 (final check, with S-16): §1 and the Consequences (the review precedes Transfer eligibility; the whole Transfer
+  waits for the Review Decision on that Transfer Leg).
 - A-02 in part: §6 and the Consequences make the identifier independent of the Budget App, which the refusal of a
   reused Import Identifier (ADR-001 §4.2, ADR-007 §6) depends on.
