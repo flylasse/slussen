@@ -57,3 +57,15 @@ Which mode a phase must pass is stated in the active plan. A phase is not comple
 - Branch + PR; never commit to `main`.
 - When executing a plan: one commit per phase, pushed before the next phase starts.
 - `scratch/` is git-ignored working material (PR dumps, inventories). It is never committed.
+
+## 5. Versioning
+
+`VERSION` (repo root, plain `major.minor.revision`) is the single source of truth for the app's version name; the build reads it directly. **Every PR includes a `VERSION` bump; single commits do not bump it.**
+
+| Tier | When |
+|---|---|
+| **revision** `+0.0.1` | **The default for every PR**, whatever it contains, including new capabilities. The agent applies it automatically. |
+| **minor** `+0.1.0`, revision reset to 0 | **Operator decision only**, given explicitly for that PR in the request itself. A tier named in a plan is a planning hint, not that instruction. |
+| **major** `+1.0.0`, minor and revision reset to 0 | **Operator decision only**, as for minor. |
+
+When in doubt, revision.
