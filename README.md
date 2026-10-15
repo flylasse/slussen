@@ -18,5 +18,5 @@ This repository follows Simon Martinelli's **AI Unified Process (AIUP)** combine
 
 ### Status
 
-**Stage: AIUP Specification Bootstrapping.**  
-The repository is currently mining the three-source baseline (code/tests, archived specs, and PR history) from `ynab-import-android` to establish the living `docs/` specification core before construction begins. See [`docs/bootstrap_aiup_spec_plan.md`](docs/bootstrap_aiup_spec_plan.md).
+**Stage: specification approved; construction not started.**  
+The living specification in `docs/` (vision, requirements, glossary, entity model and use cases UC-001..UC-012, all Approved) was bootstrapped from the predecessor `ynab-import-android` with AIUP. The closed bootstrap plan, with its methodology evaluation log and what is owed to construction, is archived at [`docs/archive/bootstrap_aiup_spec_plan.md`](docs/archive/bootstrap_aiup_spec_plan.md).

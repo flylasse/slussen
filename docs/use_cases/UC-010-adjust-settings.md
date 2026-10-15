@@ -1,0 +1,169 @@
+# Use Case: Adjust Settings
+
+## Overview
+
+**Use Case ID:** UC-010  
+**Use Case Name:** Adjust Settings  
+**Primary Actor:** Operator  
+**Goal:** Set Slussen's Operator Settings to how the Operator wants to work, including the Fetch Schedule, the size and contents of the Decision Journal and Detailed Logging  
+**Trigger:** Operator asks to change an Operator Setting  
+**Status:** Approved  
+
+**Requirements:** [FR-001, FR-012, FR-014, FR-016, FR-017, FR-030, FR-046, FR-051, FR-062, FR-065, FR-066, FR-067, FR-069, FR-076, FR-081, FR-087, FR-088, FR-089, FR-090, NFR-003, NFR-006, NFR-007, NFR-008, NFR-010, NFR-013, NFR-016, NFR-017](../requirements.md)
+
+## Preconditions
+
+- No Upload Plan is awaiting confirmation (UC-006 BR-005).
+
+## Main Success Scenario
+
+1. Slussen shows the current value of each Operator Setting: Upload Window, fetch period, Fetch Cooldown, Fetch Schedule, default wait, Request Limit warning pause, request timeout, Upload Plan lifetime, Consent Request lifetime, number of recent Fetches kept, Upload as Cleared (only when the Budget App supports the Cleared marker), Card Payment Descriptions, Bank Transfer Descriptions, transfer pairing days, Lonely Transfer grace period, outdated-balance limit, consent warning lead time, Decision Journal on or off with its size limit, warning threshold and current size, and Detailed Logging.
+2. Operator changes the value of an Operator Setting.
+3. Slussen checks that the value lies within the allowed range of the Operator Setting (BR-002).
+4. Slussen stores the value and applies it from the next Fetch, Scheduled Fetch, Comparison, Upload or opening of the app on.
+5. Slussen gives every stored Bank Transaction its Transaction Status again under the new value, without contacting the Budget App or any Source.
+6. Slussen records the change in the Decision Journal.
+
+## Alternative Flows
+
+### A1: Value Outside the Allowed Range
+
+**Trigger:** The value lies outside the allowed range of the Operator Setting (step 3)  
+**Flow:**
+
+1. Slussen refuses the value, keeps the previous one and shows the allowed range.
+2. Use case continues at step 2.
+
+### A2: Lower the Decision Journal Size Limit
+
+**Trigger:** Operator sets the Decision Journal size limit below its current size (step 2)  
+**Flow:**
+
+1. Slussen asks the Operator to confirm, stating that the oldest entries will be removed.
+2. Operator confirms, or cancels and the use case ends.
+3. Use case continues at step 3.
+
+### A3: Clear the Decision Journal
+
+**Trigger:** Operator chooses to clear the Decision Journal (step 2)  
+**Flow:**
+
+1. Slussen asks the Operator to confirm.
+2. Operator confirms.
+3. Slussen removes every entry of the Decision Journal, records that the Decision Journal was cleared as its first new entry, and changes nothing else.
+4. Use case ends.
+
+### A4: Decision Journal Near Its Limit
+
+**Trigger:** The Decision Journal has reached the journal warning threshold of its size limit (step 1)  
+**Flow:**
+
+1. Slussen shows a warning with the current size and the limit.
+2. Use case continues at step 2.
+
+### A5: Switch On Detailed Logging
+
+**Trigger:** Operator switches Detailed Logging on (step 2)  
+**Flow:**
+
+1. Slussen states that the device logs will then contain transaction data and Bank Account numbers, stay on the device, and never contain credentials or Bank Consent data.
+2. Use case continues at step 4.
+
+### A6: Change the Fetch Schedule
+
+**Trigger:** Operator changes the Fetch Schedule (step 2)  
+**Flow:**
+
+1. Slussen states how many Scheduled Fetches it will make in any 24 hours under the new Fetch Schedule (2 by default), or that it will make none when the value is 0, and that a Scheduled Fetch never uploads.
+2. Use case continues at step 3.
+
+### A7: Edit a Description List
+
+**Trigger:** Operator chooses to add, change or remove an entry of the Card Payment Descriptions or the Bank Transfer Descriptions (step 2)
+**Flow:**
+
+1. Slussen checks that the entry is not empty and that the same list holds no equal entry (BR-008).
+2. Slussen stores the changed list and detects the Transfers among the Bank Transactions not yet uploaded again (BR-009).
+3. Slussen records the list before and after the change in the Decision Journal as a configuration change.
+4. Use case continues at step 5.
+
+### A8: Restore a Default Description List
+
+**Trigger:** Operator chooses to restore the default list of Card Payment Descriptions or of Bank Transfer Descriptions (step 2)
+**Flow:**
+
+1. Slussen asks the Operator to confirm, showing the default list.
+2. Operator confirms, or cancels and the use case ends.
+3. Slussen records the current list in the Decision Journal as a configuration change, then replaces it with the default list (BR-007).
+4. Slussen detects the Transfers among the Bank Transactions not yet uploaded again (BR-009).
+5. Use case continues at step 5.
+
+### A9: Switch Upload as Cleared
+
+**Trigger:** Operator switches Upload as Cleared on or off (step 2)
+**Flow:**
+
+1. Slussen states that the change applies only to Upload Plans prepared from now on, changes nothing already in the Budget App, and that while the setting is off Slussen marks nothing Cleared, including Transfer Counterparts, so that clearing is left to the Operator in the Budget App.
+2. Use case continues at step 4.
+
+## Postconditions
+
+### Success Postconditions
+
+- The Operator Setting has the new value, and the Transaction Statuses reflect it.
+- The change is recorded in the Decision Journal, unless the Decision Journal is switched off.
+
+### Failure Postconditions
+
+- Every Operator Setting keeps its previous value.
+- No Transaction Status, Upload Plan or Upload is affected by the Decision Journal.
+
+## Business Rules
+
+### BR-001: Operator Settings and Defaults
+
+By default the Upload Window is 7 days, the fetch period 60 days, the Fetch Cooldown 60 minutes, the Fetch Schedule 2 Scheduled Fetches in any 24 hours, the default wait 8 hours, the Request Limit warning pause 24 hours, the request timeout 30 seconds, the Upload Plan lifetime 10 minutes, the Consent Request lifetime 15 minutes, the number of recent Fetches kept 60, Upload as Cleared on, the transfer pairing days 5, the Lonely Transfer grace period 6 days, the outdated-balance limit 36 hours, the consent warning lead time 7 days, the Decision Journal on with a size limit of 50 MB and a warning threshold of 80%, and Detailed Logging off. Transfer detection is always on and is not an Operator Setting (UC-005 BR-001). The default Card Payment and Bank Transfer Descriptions are listed in BR-007. The Request Limit of each Data Provider, the Upload Window of each File Format and the Start Dates are set in the Build Configuration and are not Operator Settings. Numbers fixed by an outside party are not Operator Settings either: the PSD2 access limit (C-006), the consent length the Bank or Data Provider reports (C-007) and the Budget App's own rules (C-009).
+
+### BR-002: Allowed Ranges
+
+The Upload Window lies between 1 and 60 days, the fetch period between 7 and 180 days, the Fetch Cooldown between 0 and 1440 minutes (0 switches it off), the default wait between 1 and 48 hours, the Request Limit warning pause between 1 and 72 hours, the request timeout between 10 and 120 seconds, the Upload Plan lifetime between 1 and 60 minutes, the Consent Request lifetime between 5 and 30 minutes, the number of recent Fetches kept between 10 and 500, the Fetch Schedule between 0 and 2 Scheduled Fetches in any 24 hours (0 switches them off), the transfer pairing days and the Lonely Transfer grace period between 0 and 30 days, the outdated-balance limit between 1 and 720 hours, the consent warning lead time between 1 and 60 days, the Decision Journal size limit between 10 and 500 MB, and its warning threshold between 50% and 95% of the size limit. Every value is a whole number.
+
+### BR-003: Journal Size Limit
+
+The Decision Journal stays within its size limit by removing its oldest entries, and Slussen warns when it reaches the warning threshold (80% of the limit by default).
+
+### BR-004: Journal Never Affects Decisions
+
+Switching off, clearing, filling or losing the Decision Journal changes no Transaction Status, Upload Plan or Upload, and a failure to record an entry never fails or delays an Operator action.
+
+### BR-005: Detailed Logging Boundaries
+
+With Detailed Logging off, device logs contain no transaction amounts, payees, memos or Bank Account numbers. In every mode, device logs contain no credentials, Bank Consent data, authentication codes or one-time values.
+
+### BR-006: Settings Are Kept
+
+The Operator Settings are included in device backups, restored after a reinstall and kept on an upgrade of the same build. There is no action that resets them to their defaults, with one exception: the Card Payment Descriptions and the Bank Transfer Descriptions can each be restored to their default list (A8), and the list they replace is recorded in the Decision Journal first.
+
+### BR-007: Default Description Lists
+
+The default lists ship with the build from the repository, not from the Build Configuration.
+
+| Card Payment Descriptions | Bank Transfer Descriptions |
+|---|---|
+| AUTOPAY | ÖVERFÖRING |
+| AUTOMATIC PAYMENT | OVERFORING |
+| PAYMENT - THANK | INTERNET TRANSFER |
+| AUTO-PMT | EXPRESS INTERNET TRANSFER |
+| ACH PMT | AMERICAN EXPRESS TRANSFER |
+| AMERICAN EXPRESS ACH PMT | ONLINE TRANSFER |
+| CITI AUTOPAY | TRANSFER |
+| CRD AUTOPAY | XFER |
+| CITICARDAP |  |
+
+### BR-008: Valid Description Entries
+
+An entry is a non-empty text. Within one list, no two entries are equal when compared without regard to case and accents. A `*` stands for any characters (UC-005 BR-012); no other character has a special meaning.
+
+### BR-009: Description Changes Apply Only Before Upload
+
+A change to either list, including a restore, applies only to Transfers none of whose Transfer Legs has been uploaded. An uploaded Transfer keeps its outcome. A Transfer that has a Transfer Decision of the Operator keeps that decision; the changed lists only decide which Transfers Slussen proposes among the other Bank Transactions not yet uploaded.
