@@ -65,6 +65,23 @@ The path is canonical: the build resolves `build-config/local/` with symbolic li
 requires the result to be exactly `<real path of the repository root>/build-config/local`, and requires that neither
 the directory nor any file in it is a link (P-2).
 
+**Other files in `build-config/local/`, and an optional private Git repository** (the Operator's decision of
+2026-10-15):
+
+- Files other than the Build Configuration files may sit in `build-config/local/`. This includes a `.git` folder and
+  a `.gitignore` of the Operator's own private Git repository, which the Operator may use, optionally, to version and
+  back up their Build Configuration. The public repository ignores the whole folder (the `.gitignore` line above), so
+  nothing of the private repository can be committed to it.
+- The build reads there only the `<name>.properties` files of §2 that lie directly in `build-config/local/`; every
+  other file and every subfolder is ignored by §3 and §6. A folder that holds only such other files (for example only
+  a private repository) is an absent Build Configuration (§3). The build refuses only what §5 names.
+- P-2 does **not descend** into `build-config/local/.git/`: its link check and its Git checks apply to
+  `build-config/local/` itself and to every file in it outside `.git/`. (A `.git` that is a file, as in a Git
+  worktree, is an ordinary file there and is checked like one.) A nested repository therefore never fails P-1 to P-6
+  or packaging: P-1, P-5 and P-6 look only outside `build-config/local/`, and P-3 and P-4 never look inside it.
+- This ADR does not prescribe how the Operator backs up the folder. No agent reads, writes or lists it, as before
+  (§8).
+
 ### 2. Files and format
 
 Java properties files in UTF-8, because they allow comments, need no library in the build, and are what an Android
@@ -144,7 +161,7 @@ The rules, applied only when at least one Build Configuration file is present:
 
 - a key appears twice in one file, a required key is missing, a key is not in its file's template (catches
   misspellings), or a value is still a placeholder;
-- a file has no template, `slussen.properties` is missing while another Build Configuration file is present, or a
+- a `<name>.properties` file directly in `build-config/local/` has no template (other files are ignored, §1), `slussen.properties` is missing while another Build Configuration file is present, or a
   plug-in that a Bank Account names, or the Budget App,
   has a template with at least one required key and no file; a plug-in without a template, or whose template has only
   optional keys, needs no file (A-22);
@@ -222,7 +239,11 @@ for it. This is the reading FR-093 states since S-11.
   a small fixture project that uses the same convention plugins and has no `build-config/local/`, and asserts that it
   fails with the message of UC-012 A1, and that `check` on the same fixture passes. A second fixture with a misplaced
   file asserts the message of A6; a third holds renamed fragments with a white-space separator and with an escaped key
-  and asserts that P-5 refuses each (B-13). All run in `check` (ADR-001 §6.4).
+  and asserts that P-5 refuses each (B-13). A fourth holds a nested private Git repository inside
+  `build-config/local/` (an initialised `.git` with one commit of invented content, and its own `.gitignore`) beside a
+  valid invented Build Configuration, with the outer `.gitignore` line: it asserts that every check of §5 and the
+  generator pass, and that `git ls-files` and `git check-ignore` run from the outer repository report nothing under
+  `build-config/local/` as tracked and every file there as ignored (§1). All run in `check` (ADR-001 §6.4).
 - The tasks read the files during execution, not during Gradle's configuration phase, and declare them as file
   inputs, so their values are kept out of Gradle's configuration cache.
 - At run time the core takes the configured Budgets, Banks, Bank Accounts and Account Mappings from the generated
@@ -248,6 +269,10 @@ writes, lists the contents of, or prints it; tests use `BuildConfiguration.ABSEN
 or install task, or the live tests, with the real Build Configuration (O-P1-06, O-P1-07).
 
 ## Consequences
+
+- The Operator may keep `build-config/local/` as a private Git repository to version and back up the Build
+  Configuration (the Operator's decision of 2026-10-15). The build ignores it, P-2 does not descend into its `.git/`,
+  and a fixture in the TestKit tests proves that it fails no check (§1, §6).
 
 - An Adopting Developer copies each template they need from `build-config/` to `build-config/local/`, drops
   `.template` from the name and replaces the placeholders, choosing a Configuration Key for each Bank Account that
@@ -307,3 +332,6 @@ or install task, or the live tests, with the real Build Configuration (O-P1-06, 
   Failed; the packaging-refusal test also checks that `check` passes).
 - B-13: §5 P-5 (the reader's properties parser: white-space separators, continuations, comments and escapes; empty
   value refused), §6 (renamed-fragment negative tests).
+- The Operator's decision of 2026-10-15 (an optional nested private Git repository in `build-config/local/`): §1 (other
+  files allowed, only the §2 files read, P-2 does not descend into `.git/`, no backup method prescribed), §6 (nested
+  repository fixture), Consequences.
