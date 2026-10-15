@@ -51,6 +51,49 @@ the static checks were claimed to prove more than they can (A-09 to A-15, A-18 t
 
 ## Decision
 
+### Module map
+
+Allowed project dependencies of §2: a solid arrow points from the depending module to its dependency in production
+configurations; dashed boxes are test-only; the dependencies allowed in tests only are in the §2 table and are not
+drawn; an arrow from or to a group stands for every module in it.
+
+```mermaid
+flowchart TB
+    subgraph android["Android modules"]
+        app[":app<br/>composition root"]
+        persistence[":persistence"]
+    end
+    subgraph plugins["Plug-ins, attached through :plugin-api only"]
+        simplefin[":provider-simplefin<br/>Data Provider"]
+        enablebanking[":provider-enablebanking<br/>Data Provider"]
+        ynab[":budgetapp-ynab<br/>Budget App"]
+        fileformat[":fileformat-#lt;export-format#gt;<br/>File Pre-processor"]
+    end
+    core[":core"]
+    subgraph contracts[":plugin-api"]
+        pluginapi[":plugin-api<br/>contracts"]
+        fixtures["testFixtures<br/>contract tests, @UseCase"]
+    end
+    subgraph testonly["Test-only modules"]
+        testing[":testing<br/>fakes"]
+        archtests[":architecture-tests"]
+    end
+
+    app --> persistence
+    app --> core
+    app --> plugins
+    persistence --> core
+    plugins --> pluginapi
+    core -->|api| pluginapi
+    testing --> core
+
+
+    classDef testOnly stroke-dasharray: 5 5
+    class testing,archtests,fixtures testOnly
+```
+
+The text of this ADR is authoritative; the diagram only illustrates it.
+
 ### 1. Modules
 
 Package root is `slussen`. Every module owns exactly one package root and nothing else.
