@@ -4,6 +4,7 @@
 **Target repo / branch:** `C:\work\slussen`, branch `construction-kickoff` (from `main` at `852c4d2`), one PR at the end.
 **Specification (input, Approved):** `docs/vision.md`, `docs/requirements.md`, `docs/glossary.md`, `docs/entity_model.md`, `docs/use_cases.puml`, `docs/use_cases/UC-001..UC-012`. What the bootstrap left owed to construction is §7 of `docs/archive/bootstrap_aiup_spec_plan.md`.
 **Evidence (read-only):** `C:\work\ynab-import-android`: its Gradle module layout and its six HTML mockups in `docs/archive/*mockup*.html`.
+**Phase 0 evidence (2026-10-14):** predecessor commit read = 46efbf004a98d802a30aba7dbd7601624bd1f19f (origin/main after fetch); modules = 8; mockups = 6.
 **Method:** AIUP Marketplace at commit `05af8163838df704620ebe1121cd6019dbce276c`, local clone `C:\work\marketplace`. There is **no Android/Kotlin stack plugin** (bootstrap O-03), so construction follows `docs/workflow.md` (construction inputs, traceability markers, requirement status) and uses `aiup-vaadin-jooq/skills/implement` as the pattern for the implementation phase, with every deviation recorded in §5. If `git -C C:\work\marketplace rev-parse HEAD` differs, stop and ask.
 **Version:** this PR sets `VERSION` to `0.1.0` (operator decision: first version of Slussen; the merged bootstrap PR counts as 0.0.0). Later PRs follow `AGENTS.md` §5.
 **Gate tools:** `python tools/lint_specs.py --strict`; from Phase 3 on, `tools/check_project_rules.py`; from Phase 6 on, `gradlew build` (compile, unit tests, Konsist architecture tests).
@@ -175,7 +176,7 @@ Same columns as the bootstrap plan. One row per phase, written by the orchestrat
 
 | Phase | Skill(s) followed | Followed as written? | Deviations and why | Skill silent on | Gate result | Assumptions / Open | Re-dispatches | Notes |
 |---|---|---|---|---|---|---|---|---|
-| 0 | | | | | | | | |
+| 0 | none (mechanical extraction; no AIUP skill covers construction evidence) | — | Model tier `flash` has no Claude equivalent; ran on `haiku`, as in the bootstrap. The executor replaced operator bank and account names in mockup headings with `<bank>`/`<account>` placeholders in the inventory (not asked, harmless). | Construction evidence for a brownfield successor: AIUP's construction skills assume an empty or same-stack codebase. | `lint_specs.py --strict` 0/0/0 | Assumed: 'modules' = the 8 in `settings.gradle.kts`, 2 of them SDK-conditional; mockup screens and states read from headings and labels only. Open: none. | 0 | Gate green on first dispatch: inventory lists 8 modules with plugins and project dependencies, the toolchain (Gradle 8.14.1, Kotlin 2.3.21, AGP 8.12.0, Compose BOM 2025.06.00, JUnit 5.11.4, JVM 17, compileSdk/targetSdk 35, minSdk 26), the 6 mockups with screens and states, and 9 JSON stores plus the journal in `noBackupFilesDir`. Predecessor read at `46efbf0`, unchanged since the bootstrap. Notable evidence for Phase 1: the predecessor already enforced boundaries with a custom `verifyArchitecture` task wired into `check`, and made `:platform`/`:app` conditional on an installed Android SDK. |
 | 1 | | | | | | | | |
 | 2 | | | | | | | | |
 | Architecture gate | | | | | | | | |
