@@ -3,7 +3,8 @@
 ## Status
 
 Proposed (2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the Phase 2
-review and the specification changes S-01 to S-10). The Operator sets it to Accepted at the architecture gate.
+review and the specification changes S-01 to S-10; revised 2026-10-15 after the Phase 2b re-review and S-12 to S-14).
+The Operator sets it to Accepted at the architecture gate.
 
 ## Context
 
@@ -24,7 +25,9 @@ depend on one Data Provider, one File Format or one Budget App:
   `BANK_ACCOUNT.configured` (FR-096); S-05 the Budget App capability "refuses a reused Import Identifier"; S-06 the
   Recovery Check (FR-095, `RECOVERY_CHECK`); S-07 the Unreadable Transaction (`UNREADABLE_TRANSACTION`); S-08 the
   Offered Bank Account (`OFFERED_BANK_ACCOUNT`); S-09 `BUDGET_APP_TRANSACTION.memo`; NFR-019 and C-015 the backup size
-  warning.
+  warning; S-11 NFR-020 identifier uniqueness; S-12 the stored copy keeps Transfer link, merge target, Cleared and
+  approved (`BUDGET_APP_TRANSACTION`, UC-003 BR-020); S-14 marker ownership and `entered_by` Slussen Unsupported Format
+  (UC-003 BR-001, BR-008).
 
 The Operator decided (bootstrap plan O-03): Gradle modules for the core, each Budget App, each Data Provider, each
 File Pre-processor and the app, enforced by Konsist architecture tests, recorded in an ADR before construction. The
@@ -117,7 +120,7 @@ this ADR.
 
 The core reaches everything outside it through interfaces it owns in `slussen.core.port`:
 
-- storage ports whose methods are the named atomic storage operations O-1 to O-13 of ADR-002 §3 (for example
+- storage ports whose methods are the named atomic storage operations O-1 to O-14 of ADR-002 §3 (for example
   `FileImportStore.importWhole`, `BudgetAppCopyStore.applyChangeSet`, `UploadStore.confirmPlan`), implemented by
   `:persistence`; the core never opens a transaction itself and never composes one atomic step from two port calls;
 - `DecisionJournalRecorder` (write-only, returns `Unit`, never throws to the caller) and `DecisionJournalReader`
@@ -142,8 +145,10 @@ comes from, never a constant of the core.
 
 Shared value types in `slussen.pluginapi.value`: `Amount` (signed thousandths of the currency unit as `Long`,
 entity model precision `12,3`), `CurrencyCode` (ISO 4217), `Secret` (a credential or session value whose
-`toString()` returns a fixed mask; ADR-006), `BankAccountNumber` (masked like `Secret`; the core turns it into the
-one-way `bank_account_fingerprint` and the `last_four_digits` of an Offered Bank Account, and never stores it),
+`toString()` returns a fixed mask; ADR-006), `BankAccountNumber` (the number as the Data Provider delivers it,
+letters and formatting included, masked like `Secret`; the core turns it into the one-way `bank_account_fingerprint`,
+scoped by Data Provider and Bank, and the `last_four_digits` of an Offered Bank Account, ADR-008 §8, and never stores
+it),
 `PluginSettings` (the plug-in's own Build Configuration values, ADR-003).
 
 #### 4.0 Every network request: admission, counting, timeout and cancellation
@@ -249,7 +254,11 @@ sealed interface ProviderTransaction {
   closed `UnreadableReason` (`MissingDate`, `UnreadableDate`, `MissingAmount`, `UnreadableAmount`, `MissingCurrency`,
   `UnreadableStructure`). The core stores it as an `UNREADABLE_TRANSACTION` with status Needs Review (UC-001 BR-016,
   A17) unless `booked` is known to be false (a pending item is left out, UC-001 BR-002). The core also uses the reason
-  "Import Identifier collision" (ADR-008 §5).
+  "Import Identifier collision" (ADR-008 §5, NFR-020), and `UnreadableStructure` for an `Interpretable` whose
+  `stableReference` is not well-formed Unicode (ADR-008 §2).
+- **Stable References are opaque (B-08).** `stableReference` is passed on exactly as the Data Provider delivered it;
+  neither the plug-in nor the core normalises, trims or changes its case (ADR-008 §2). The same holds for the
+  `reference` of the Standard Import Format (§4.3).
 - **Offered Bank Accounts (S-08, A-15).** `bankAccounts` lists every Bank Account the Data Provider delivered, with
   the description UC-009 step 3 shows. The core replaces the stored Offered Bank Accounts of that Data Provider (or of
   one Bank through it) with this list in one storage operation (ADR-002 §3, O-2), keeping only `last_four_digits` and
@@ -318,7 +327,7 @@ A Budget App plug-in qualifies only when it provides all of these; there is no s
 |---|---|---|
 | F-1 | Stores the Import Identifier sent with a created transaction and returns it on every read of that transaction | UC-003 BR-003, BR-017, FR-074 |
 | F-2 | Answers a write per item: `Created(reference)`, `AlreadyPresent(reference?)`, `Rejected(reason)` or `Unknown`; a refusal because the Import Identifier is already held is `AlreadyPresent`, never `Rejected` | UC-006 steps 8-9, A8, A9; BR-007 |
-| F-3 | Reads all changes of a Budget since an opaque cursor, including deletions and merges, and returns the next cursor; reading again from the same cursor returns at least the same changes, so applying them twice changes nothing | UC-003 BR-016; ADR-002 §3 O-4 |
+| F-3 | Reads all changes of a Budget since an opaque cursor, including deletions and merges, and returns the next cursor; reading again from the same cursor returns at least the same changes, so applying them twice changes nothing. Also reads one transaction by its reference (`readTransaction`), with the same fields | UC-003 BR-016; ADR-002 §3 O-4; ADR-007 §6 step 8 |
 | F-4 | Reports for each read transaction its entry kind, its link to the other side when it is one side of a linked transfer, and whether it is Cleared and approved (§4.2.3) | UC-003 BR-004, BR-005, BR-008; UC-005 BR-009, BR-010; UC-006 BR-010, BR-011 |
 | F-5 | Creates every transaction waiting for the Operator's approval | UC-006 BR-008, FR-044 |
 | F-6 | Declares the numbers of `BudgetAppProfile` with their source | C-009, NFR-015 |
@@ -342,6 +351,9 @@ ADR, not a new switch read by the core.
 ##### 4.2.3 Reading: the normalized read model (A-09, A-10, A-23)
 
 - `BudgetAppReader.readBudgets(context)` returns each Budget and its Budget Accounts with name, currency and balance.
+- `BudgetAppReader.readTransaction(budgetReference, transactionReference, context)` returns that one transaction in
+  the form below, or `NotFound`. It neither takes nor returns a cursor and stores nothing; the Upload uses it only to
+  find the counterpart of a linked Transfer it has just created (ADR-007 §6 step 8, B-01).
 - `BudgetAppReader.readChanges(budgetReference, since: ChangeCursor?, from: LocalDate, context)` returns the changed
   Budget App Transactions and the next `ChangeCursor`. `ChangeCursor` is an opaque string the core stores together
   with the changes (ADR-002 §3 O-4); only the plug-in knows what it means. Each transaction is:
@@ -358,14 +370,21 @@ data class BudgetAppTransactionRead(
 )
 ```
 
+- **Every field is stored (S-12, B-03).** O-4 stores each read transaction as one `BUDGET_APP_TRANSACTION` record:
+  `transferLink` as `transfer_link_reference`, `Merged(intoReference)` as `state` Merged with
+  `merged_into_reference`, `cleared` and `approved` as themselves, together with the next cursor in one transaction
+  (UC-003 BR-020). Every later step works from that stored copy, never from a read that was not stored.
 - What the plug-in decides, because it depends on the Budget App's behaviour: `entry`, `transferLink`, `state` (a
   deletion or a merge), `cleared`, `approved`, and that a refusal of a held Import Identifier is `AlreadyPresent`.
-- What the core decides from that (UC-003 BR-008, `BUDGET_APP_TRANSACTION.entered_by`): an `Imported` transaction
-  whose Import Identifier carries Slussen's marker (ADR-008 §1) is Slussen; another `Imported` one is Other Import
-  Path; a `TransferSide` linked to a Slussen transaction is Transfer Counterpart; everything else is Typed Entry.
-- **Transfer Counterparts are reconciled from links, never from write answers.** For each Sent Record sent as a linked
-  transfer, the core finds the read transaction with its Import Identifier in its Budget Account and takes the other
-  side from its `transferLink` (ADR-002 §3 O-5). This works also after `Unknown` or `AlreadyPresent`, and tells apart
+- What the core decides from that (UC-003 BR-001, BR-008, `BUDGET_APP_TRANSACTION.entered_by`, S-14): an `Imported`
+  transaction whose Import Identifier **begins with** Slussen's marker is Slussen when its format is one this build
+  supports and Slussen Unsupported Format otherwise (ADR-008 §1), never Other Import Path; a Bank Transaction that
+  resembles a Slussen Unsupported Format transaction is Needs Review. Another `Imported` one is Other Import Path; a
+  `TransferSide` linked to a Slussen transaction is Transfer Counterpart; everything else is Typed Entry.
+- **Transfer Counterparts are reconciled from stored links, never from write answers.** For each Sent Record sent as a
+  linked transfer, the core finds the stored transaction with its Import Identifier in its Budget Account and takes
+  the other side from its stored `transfer_link_reference`, and its Cleared state from the other side's stored
+  `cleared` (ADR-002 §3 O-5). This works also after `Unknown` or `AlreadyPresent`, and tells apart
   two Transfers with the same amount, dates and Budget Accounts. The Transfer Counterpart is Changed In Budget App
   when the link is gone, the other side is deleted, its amount is no longer the opposite of the leg's, or it is in
   another Budget Account (UC-005 BR-009). `Created` carries no counterpart reference; the core never relies on one.
@@ -378,7 +397,8 @@ data class BudgetAppTransactionRead(
   created transaction awaits approval (F-5); there is no parameter for it. It returns one F-2 result per item. The
   `reason` of a rejection is the Budget App's text, shown to the Operator (UC-006 A9) and never written to the
   Decision Journal or a log in the default mode.
-- `BudgetAppWriter.markCleared(budgetReference, counterpartReference, context)` is the only change to an existing
+- `BudgetAppWriter.markCleared(budgetReference, counterpartReference, context)` returns `Cleared`, `NotCleared` or
+  `Unknown` and is the only change to an existing
   Budget App Transaction the contract offers (FR-055, UC-006 BR-011).
 - At composition the core checks `importIdentifierMaxLength` against ADR-008 §6 and every number against its range;
   a failure blocks every Upload with the Blocked Reason "configuration error".
@@ -508,15 +528,18 @@ scope holds at least one file (lesson from the Predecessor App's vacuous UI rule
 
 #### 6.3 Bytecode rules (`:architecture-tests`, ASM)
 
-These read the compiled class files of every module's main source set (inputs of the test task, §6.4) and therefore
-see resolved references: fully qualified calls, inlined functions and calls through `kotlin.io` extensions alike.
+These read the compiled class files of the main source sets of the production modules, every module except the
+test-support modules `:testing` and `:architecture-tests` (inputs of the test task, §6.4), and therefore see resolved
+references: fully qualified calls, inlined functions and calls through `kotlin.io` extensions alike. `:testing` holds
+the fakes of the contracts, which must implement and reference them freely; it is never on a production classpath
+(§2), so excluding it weakens no production rule (B-11).
 
 | ID | Rule |
 |---|---|
 | B-01 | Classes of `:fileformat-*` reference nothing in `java/net/`, `java/nio/file/`, `java/nio/channels/`, `java/io/File*`, `java/io/RandomAccessFile`, `java/lang/Thread`, `java/lang/reflect/`, `kotlin/reflect/`, `okhttp3/`, `kotlinx/coroutines/`; call no `System.currentTimeMillis`, `System.nanoTime`, `Class.forName` or `now` method of `java/time/`; and have no non-final field |
 | B-02 | `android/util/Log` is referenced only by classes in `slussen/app/platform/log/`; no production class calls `PrintStream.print*` on `System.out` or `System.err`, or `Throwable.printStackTrace` (ADR-006 L-01, L-02) |
 | B-03 | Classes in `slussen/app/ui/` reference no class in `slussen/persistence/`, `slussen/provider/`, `slussen/budgetapp/` or `slussen/fileformat/` |
-| B-04 | `BudgetAppWriter.create` and `markCleared` are invoked only from `slussen/core/upload/AdmittedBudgetAppWriter`; the type `BudgetAppWriter` is referenced only in `slussen/core/upload/`, `slussen/app/di/` and plug-in modules |
+| B-04 | `BudgetAppWriter.create` and `markCleared` are invoked only from `slussen/core/upload/AdmittedBudgetAppWriter`; the type `BudgetAppWriter` is referenced only in `:plugin-api` (its declaration and the `BudgetApp.writer` contract), the `:budgetapp-*` modules (its implementation), `slussen/core/upload/` and `slussen/app/di/` |
 | B-05 | Classes in `slussen/app/schedule/` reference no class in `slussen/core/upload/` |
 | B-06 | `Secret.reveal` and `ConsentSession.reveal` are invoked only from classes of plug-in modules and `:persistence` (ADR-006 L-04) |
 | B-07 | Within `:core`, `java/security/MessageDigest` is referenced only from `slussen/core/identity/` (Import Identifier, `bank_account_fingerprint`, Consent Request `state` digest) |
@@ -580,12 +603,12 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
 |---|---|---|
 | UC-001 Fetch Transactions | `:app`, `:core`, `:plugin-api`, Data Provider modules, `:budgetapp-ynab`, `:persistence` | `:app`: the Fetch action, the Scheduled Fetch worker (A12), the New Transaction Notification (BR-014). `:core` `fetch`: Back-off, Fetch Cooldown, the request gate (Request Limit, Unattended Access), per-scope outcomes (A5, A8, A9), identification, booked and non-zero filter, Unreadable Transactions (A17, BR-016), Offered Bank Accounts, Fetch Results; `:core` `identity`: Import Identifiers. Data Provider modules: the requests. `:budgetapp-ynab`: through the included UC-003. `:persistence`: O-1, O-2 (Bank Transactions, Unreadable Transactions, Account Balances, Fetches, Provider Requests, Back-offs; Offered Bank Accounts in `device.db`). |
 | UC-002 Import a Transaction File | `:app`, `:core`, `:plugin-api`, `:fileformat-<export-format>`, `:budgetapp-ynab`, `:persistence` | `:app`: choosing the file. `:core` `fileimport`: all-or-nothing, references, occurrence numbers, the file upload window (FR-094). `:fileformat-<export-format>`: conversion into the Standard Import Format. `:persistence`: O-3. `:budgetapp-ynab`: through UC-003. |
-| UC-003 Compare With the Budget App | `:app`, `:core`, `:plugin-api`, `:budgetapp-ynab`, `:persistence` | `:app`: the re-read action and the statuses. `:core` `comparison` and `transfer`: the order of BR-001, recognising Slussen's marker (ADR-008), Transfer detection, Transfer Counterparts from links, Eligible Transactions, unknown outcomes (BR-017), the Recovery Check record (BR-019). `:budgetapp-ynab`: reading changes since the last `ChangeCursor`. `:persistence`: O-4, O-5. |
+| UC-003 Compare With the Budget App | `:app`, `:core`, `:plugin-api`, `:budgetapp-ynab`, `:persistence` | `:app`: the re-read action and the statuses. `:core` `comparison` and `transfer`: the order of BR-001, recognising Slussen's marker and Slussen Unsupported Format (BR-008, ADR-008 §1), Transfer detection, Transfer Counterparts from stored links (BR-020), Eligible Transactions, unknown outcomes (BR-017), the Recovery Check record (BR-019), the Comparison-pending marker (ADR-007 §3a). `:budgetapp-ynab`: reading changes since the last `ChangeCursor`. `:persistence`: O-4 (with the cursor and every read field), O-5. |
 | UC-004 Review Doubtful Transactions | `:app`, `:core`, `:persistence` | `:core` `review`: choices per Transaction Status, Unreadable Transactions (A9, BR-007), unknown outcomes (A10, BR-008), locking after Upload. No plug-in. |
 | UC-005 Review Transfers | `:app`, `:core`, `:persistence` | `:core` `transfer`: Transfer Decisions, Funded By and Transfer Partner. No plug-in. |
-| UC-006 Upload to the Budget App | `:app`, `:core`, `:plugin-api`, `:budgetapp-ynab`, `:persistence` | `:core` `operation` and `upload`: the coordinator, the Upload Plan and its write set, the pause, the check before writing, the Sent Record before sending, retries, the write permit, outcomes, the Recovery Check gate (A13) (ADR-007); `:core` `identity`: Re-upload identifiers. `:budgetapp-ynab`: the write and marking Cleared. `:persistence`: O-6 to O-9. |
+| UC-006 Upload to the Budget App | `:app`, `:core`, `:plugin-api`, `:budgetapp-ynab`, `:persistence` | `:core` `operation` and `upload`: the coordinator, the Upload Plan and its write set, the pause, the check before writing, the Sent Record before sending, retries, the write permit, outcomes, the Recovery Check gate (A13) (ADR-007); `:core` `identity`: Re-upload identifiers. `:budgetapp-ynab`: the write and marking Cleared. `:persistence`: O-6 to O-9, O-14 (clearing results). |
 | UC-007 Grant Bank Consent | `:app`, `:core`, `:plugin-api`, `:provider-enablebanking`, `:persistence` | `:app`: opening the Bank's Strong Customer Authentication and receiving the return. `:core` `consent`: the `state` value and its digest, one-time, most recent, lifetime, revocation, Offered Bank Accounts. `:provider-enablebanking`: the only Data Provider of this build that needs a Bank Consent. `:persistence`: O-10 in `device.db` (Bank Consents, Bank Sessions, Consent Requests and their correlation), excluded from backups. |
-| UC-008 Check Import Status | `:app`, `:core`, `:persistence` | `:core` `status`: counts, Source Health, Freshness, Blocked Reasons (with "Recovery Check open" and "removed from the Build Configuration"), outdated balances, the expiry warning, the backup size warning (A7, BR-010); `:core` `recovery`: the Recovery Check (A8, A9, BR-009). `:persistence`: `StartState`, `BackupSizeMonitor`, O-12. No plug-in and no network in its own flow (K-08); A9 starts UC-003, which reads the Budget App through `:budgetapp-ynab`. |
+| UC-008 Check Import Status | `:app`, `:core`, `:persistence` | `:core` `status`: counts, Source Health, Freshness, Blocked Reasons (with "Recovery Check open" and "removed from the Build Configuration"), outdated balances, the expiry warning, the backup size warning (A7, BR-010); `:core` `recovery`: the Recovery Check (A8, A9, BR-009), opened only for damage to Decision-Critical Data, a notice only for other parts (A1). `:persistence`: `StartState` with the start intent, `BackupSizeMonitor`, O-12. No plug-in and no network in its own flow (K-08); A9 starts UC-003, which reads the Budget App through `:budgetapp-ynab`. |
 | UC-009 Manage Account Mappings | `:app`, `:core`, `:persistence` | `:core` `mapping`: identification from stored Offered Bank Accounts (BR-009, A6, A10), locks, retire and restore, Configuration Keys and Bank Accounts out of the Build Configuration (BR-010, BR-011, A11, A12), Funded By and Transfer Partner. `:persistence`: O-11, Offered Bank Accounts in `device.db`. No plug-in. |
 | UC-010 Adjust Settings | `:app`, `:core`, `:persistence` | `:core` `settings`: ranges, defaults (file upload window, backup warning threshold included), Transfer Descriptions, re-status; `:core` `journal`: size limit and clearing. `:app`: Detailed Logging read by the log adapter (ADR-006), and the Scheduled Fetch worker rescheduled when the Fetch Schedule changes (A6). |
 | UC-011 Export the Decision Journal | `:app`, `:core`, `:plugin-api`, `:budgetapp-ynab`, `:persistence` | `:app`: choosing where to save. `:core` `journal`: the export with date, payee, memo, amount and Budget Account of each Budget App Transaction, codes for payee and memo. `:budgetapp-ynab`: reading current transactions (A2 falls back to the stored copy, which holds the memo). `:persistence`: the journal database. |
@@ -669,5 +692,14 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
 - A-21: §2 (Kotlin baseline, `:testing`, `:architecture-tests`, `:app`), §6.2 (scope per rule; K-07 allows tests,
   fakes and the wiring).
 - A-23 (with S-09): §4.2.3 `memo`, §7 UC-011.
+- B-01: §4.2.1 F-3 and §4.2.3 `readTransaction` (the defined read of a created leg), §4.2.4 `markCleared` results.
+- B-03 (with S-12): §4.2.3 (every read field stored by O-4 with the cursor; reconciliation from stored links and
+  Cleared values).
+- B-08: §4.1 (Stable References opaque, malformed Unicode unreadable).
+- B-09: §4 `BankAccountNumber` (letters kept, fingerprint scoped by Data Provider and Bank; ADR-008 §8).
+- B-10 (with S-14): §4.2.3 (ownership = begins with the marker; Slussen Unsupported Format; resembling transactions
+  Needs Review).
+- B-11: §6.3 (bytecode scope: production modules; B-04 allows the contract declaration in `:plugin-api` and the
+  `:budgetapp-*` implementations; the `:testing` fakes are outside the bytecode scope).
 - A-26 (with S-01): §4.3 (no Upload Window in `FileFormatProfile`).
 - O-P1-01: §1 (`:fileformat-<export-format>`, for example `:fileformat-hsa-csv`).

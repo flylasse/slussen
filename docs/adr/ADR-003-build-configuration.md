@@ -3,7 +3,8 @@
 ## Status
 
 Proposed (2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the Phase 2
-review and the specification changes S-01, S-03 and S-10). The Operator sets it to Accepted at the architecture gate.
+review and the specification changes S-01, S-03 and S-10; revised 2026-10-15 after the Phase 2b re-review). The
+Operator sets it to Accepted at the architecture gate.
 
 ## Context
 
@@ -130,11 +131,21 @@ template (S-01).
 ### 3. Checks that make a Build Configuration complete and consistent
 
 Task `verifyBuildConfiguration` in `build-logic/` (UC-012 step 5, A1). It reads only files that passed
-`verifyBuildConfigurationPlacement` (§5) and fails, naming the file and key of each problem and never its value, when:
+`verifyBuildConfigurationPlacement` (§5). Its result is one of three (B-12):
+
+- **Absent**: `build-config/local/` is missing or holds none of the Build Configuration files of §2 (`signing.properties`
+  and `live-test.properties` do not count). This is not a failure: compiling and `gradlew check` go on with the
+  `ABSENT` stub (§6), and only packaging refuses it (`requireBuildConfiguration`, §6).
+- **Valid**: at least one Build Configuration file is present and none of the rules below fails.
+- **Failed**: at least one Build Configuration file is present and a rule below fails. The task then fails, naming the
+  file and key of each problem and never its value.
+
+The rules, applied only when at least one Build Configuration file is present:
 
 - a key appears twice in one file, a required key is missing, a key is not in its file's template (catches
   misspellings), or a value is still a placeholder;
-- a file has no template, `slussen.properties` is missing, or a plug-in that a Bank Account names, or the Budget App,
+- a file has no template, `slussen.properties` is missing while another Build Configuration file is present, or a
+  plug-in that a Bank Account names, or the Budget App,
   has a template with at least one required key and no file; a plug-in without a template, or whose template has only
   optional keys, needs no file (A-22);
 - there is no `slussen.budget` block, no `slussen.bankAccount` block, or a Budget block that no Bank Account names
@@ -172,7 +183,7 @@ Templates in `build-config/`" together with the path and the rule that matched (
 | P-2 | `build-config/local/` that is not the canonical path of §1, or that is or contains a link; and, when the working tree is a Git repository and `git` is available, any file under `build-config/local/` that Git tracks (`git ls-files`) or that is not ignored (`git check-ignore`). Without Git (for example a downloaded archive) the Git part is skipped and the build says so in one line. |
 | P-3 | A line of a template whose value is not a placeholder: a real value pasted into a tracked file. |
 | P-4 | A Gradle property, an `ORG_GRADLE_PROJECT_` environment variable, a system property, or a key in `gradle.properties` or `local.properties`, whose name starts with the base name of any template followed by a dot (`slussen.`, `simplefin.`, `ynab.`, ...). |
-| P-5 | **Any text file** of the working tree outside `build-config/local/` and outside the templates, under any name, holding a line that, after leading spaces, is a key of the grammar (every template key with each `<key>` segment read as the Configuration Key grammar), followed by `=` or `:`, with a value that is not a placeholder. This finds a renamed or partial copy, for example a tracked `copied.properties` with `slussen.bankAccount.everyday.budgetAccount=…`. Documentation that shows keys uses placeholders and passes. |
+| P-5 | **Any text file** of the working tree outside `build-config/local/` and outside the templates, under any name, read line by line with **the same properties parser** that reads `build-config/local/` (B-13): logical lines joined across a trailing backslash, comment lines starting with `#` or `!` skipped, the key ending at the first unescaped `=`, `:` or white space, and escapes (`\uXXXX`, `\ `, `\=`, `\:` and the others of the properties format) decoded in key and value. A logical line whose decoded key is a key of the grammar (every template key with each `<key>` segment read as the Configuration Key grammar), with any value that is not a placeholder, the empty value included, is refused. This finds a renamed or partial copy whatever separator or escapes it uses, for example a tracked `copied.properties` with `slussen.bankAccount.example.budgetAccount example-reference` (white space as separator) or with the key written with an escape such as `slussen.bankAccount.example.budget\u0041ccount=…`. Documentation that shows keys uses placeholders and passes. |
 | P-6 | **The value of any `# secret` key** of the Build Configuration found as text in any file of the working tree outside `build-config/local/` that Git tracks or that is not ignored (every file, without Git), whatever surrounds it: a credential pasted into a source file under another name. |
 
 P-1, P-5 and P-6 skip `.git/`, `.gradle/`, every `build/` directory and binary files (a file with a NUL byte in its
@@ -185,7 +196,7 @@ way fails loudly instead of being silently ignored.
 **What "part of one" means here.** The build recognises a part of a Build Configuration by its key (P-1, P-4, P-5) or
 by a secret value (P-6). A non-secret value written without its key (for example a Budget's reference on its own) is
 not recognisable as configuration and is not refused; C-005 and the review of each pull request remain the safeguard
-for it. This reading of FR-093's "anywhere else" is reported to the Operator (Open item of the architecture gate).
+for it. This is the reading FR-093 states since S-11.
 
 ### 6. Inclusion in the app
 
@@ -200,16 +211,18 @@ for it. This reading of FR-093's "anywhere else" is reported to the Operator (Op
   normalised non-secret content, used by the check before writing, ADR-007 §6), and one `PluginSettings` per plug-in
   file whose `# secret` values are `Secret` (ADR-001 §4). `CompositionRoot` hands each plug-in its own
   `PluginSettings` and nothing else. `signing.properties` and `live-test.properties` never reach the generated file.
-- When `build-config/local/` holds no Build Configuration file, the task writes a stub whose configuration is
-  `BuildConfiguration.ABSENT`, so that every module compiles and every test runs without a Build Configuration.
-  Every packaging task of `:app` (`package*`, `bundle*`, and therefore `assemble*` and `install*`) depends on
-  `requireBuildConfiguration`, which fails when the Build Configuration is absent, and on `verifyBuildConfiguration`,
-  which fails when it is incomplete or inconsistent. So `gradlew check` passes without one, and no app is produced
-  without one (UC-012 A1).
+- When `verifyBuildConfiguration` reports Absent (§3), `generateBuildConfiguration` writes a stub whose configuration
+  is `BuildConfiguration.ABSENT`, so that every module compiles and every test runs without a Build Configuration; the
+  order of the tasks above is unchanged, and Absent passes through it. Every packaging task of `:app` (`package*`,
+  `bundle*`, and therefore `assemble*` and `install*`) depends on `requireBuildConfiguration`, which fails when the
+  result is Absent, and on `verifyBuildConfiguration`, which fails when the result is Failed (incomplete or
+  inconsistent). So `gradlew check` passes without a Build Configuration, a partial or inconsistent one fails every
+  build, and no app is produced without a valid one (UC-012 A1; B-12).
 - **The packaging-refusal test** (O-P1-06, A-28): a Gradle TestKit test in `build-logic/` runs `:app:assembleDebug` on
   a small fixture project that uses the same convention plugins and has no `build-config/local/`, and asserts that it
-  fails with the message of UC-012 A1. A second fixture with a misplaced file asserts the message of A6. Both run in
-  `check` (ADR-001 §6.4).
+  fails with the message of UC-012 A1, and that `check` on the same fixture passes. A second fixture with a misplaced
+  file asserts the message of A6; a third holds renamed fragments with a white-space separator and with an escaped key
+  and asserts that P-5 refuses each (B-13). All run in `check` (ADR-001 §6.4).
 - The tasks read the files during execution, not during Gradle's configuration phase, and declare them as file
   inputs, so their values are kept out of Gradle's configuration cache.
 - At run time the core takes the configured Budgets, Banks, Bank Accounts and Account Mappings from the generated
@@ -290,3 +303,7 @@ or install task, or the live tests, with the real Build Configuration (O-P1-06, 
 - A-26 (with S-01): §4.
 - A-28 (with O-P1-06): §6 packaging-refusal test, §8, Consequences.
 - A-25 and A-27 in part: §2 `signing.properties` (O-P1-08, O-P2-05) and `live-test.properties` (O-P1-07).
+- B-12: §3 (three results, Absent valid for compile and `check`), §6 (stub for Absent; packaging refuses Absent and
+  Failed; the packaging-refusal test also checks that `check` passes).
+- B-13: §5 P-5 (the reader's properties parser: white-space separators, continuations, comments and escapes; empty
+  value refused), §6 (renamed-fragment negative tests).

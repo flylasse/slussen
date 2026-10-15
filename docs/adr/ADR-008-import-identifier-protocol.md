@@ -2,8 +2,8 @@
 
 ## Status
 
-Proposed (2026-10-14, architecture gate, revision after the Phase 2 review). The Operator sets it to Accepted at the
-architecture gate.
+Proposed (2026-10-14, architecture gate, revision after the Phase 2 review; revised 2026-10-15 after the Phase 2b
+re-review and S-14). The Operator sets it to Accepted at the architecture gate.
 
 This ADR is new. The Import Identifier is the one value that ties a Bank Transaction to what the Budget App holds
 across a reinstall, a restore and every later version of Slussen; once a build has sent one, its derivation can never
@@ -39,6 +39,12 @@ change. Such a decision needs its own record, which ADR-001 (contracts) and ADR-
 - Phase 2 review A-06: the marker, canonical encoding, algorithm and version, collision handling, Re-upload allocation
   and the length rule were not decided, so two implementations could both claim to follow ADR-001 and still produce
   different identifiers.
+- UC-003 BR-001, BR-008 and the `BUDGET_APP_TRANSACTION` constraints (changed by S-14): every Import Identifier that
+  begins with Slussen's marker is Slussen's; `entered_by` is Slussen when the rest has a form Slussen supports and
+  Slussen Unsupported Format when it does not; such a transaction is never Other Import Path, and a Bank Transaction
+  that resembles one with Slussen Unsupported Format is Needs Review.
+- Phase 2b re-review: B-08 (Form C normalisation merged distinct Stable References before collision detection),
+  B-09 (the fingerprint kept digits only and had no scope), B-10 (ownership was recognised by the full format).
 
 ## Decision
 
@@ -50,13 +56,19 @@ An Import Identifier of protocol version 1 is exactly 31 characters:
 SLS1-<26 characters from the alphabet a-z and 2-7>
 ```
 
-- `SLS` is Slussen's marker, `1` the protocol version, `-` a separator.
+- `SLS` (three capital letters, compared exactly) is Slussen's marker, `1` the protocol version, `-` a separator.
 - The 26 characters are the first 130 bits of a SHA-256 digest of the canonical input (§2), taken from the most
   significant bit on, in 26 groups of 5 bits, each group written with the RFC 4648 base32 alphabet in lower case
   (`abcdefghijklmnopqrstuvwxyz234567`).
-- Recognition (UC-003 BR-008) is the regular expression `^SLS[1-9]-[a-z2-7]{26}$` applied by the core to the Import
-  Identifier a Budget App Transaction carries. The Budget App plug-in never decides whether an Import Identifier is
-  Slussen's (ADR-001 §4.2).
+- **Ownership and format are two separate tests (S-14, B-10).** The core applies both to the Import Identifier a Budget
+  App Transaction carries; the Budget App plug-in never decides either (ADR-001 §4.2.3).
+  - *Ownership:* an Import Identifier that **begins with** `SLS` is Slussen's (UC-003 BR-008). Nothing else is
+    checked for ownership.
+  - *Supported format:* an owned Import Identifier matching `^SLS[1-9]-[a-z2-7]{26}$` for a version this build
+    produces gets `entered_by` Slussen; any other owned one gets `entered_by` Slussen Unsupported Format. It is never
+    Other Import Path, and a Bank Transaction that resembles it is Needs Review (UC-003 BR-001, BR-008). Only an exact
+    equality with a Sent Record's or Bank Transaction's Import Identifier ever settles a send (UC-003 BR-003, BR-017);
+    an unsupported one settles nothing.
 
 The length is a storage size of the protocol, not a behavioural number: `BANK_TRANSACTION.import_identifier` and
 `SENT_RECORD.import_identifier` hold up to 36 characters.
@@ -72,14 +84,21 @@ field("slussen-import-identifier") field("1") field(kind) <fields of the kind>
 
 | Kind | Used for | Fields after the kind, in this order |
 |---|---|---|
-| `R` | a Bank Transaction with a Stable Reference | Source Key; Stable Reference |
+| `R` | a Bank Transaction with a Stable Reference | Source Key; Stable Reference, opaque (exactly as delivered) |
 | `F` | a Bank Transaction without a Stable Reference | Source Key; booked date; amount; payee; memo; `occurrence_number` |
 | `U` | a Re-upload (`SENT_RECORD.occurrence` 1 or more) | the Bank Transaction's own Import Identifier; the occurrence |
 
 Normalisation, complete list:
 
-- Text (Stable Reference, payee, memo) is put into Unicode Normalization Form C. Nothing else is changed: no trimming,
-  no change of case, no change of spaces.
+- **A Stable Reference is opaque (B-08).** It is encoded as the UTF-8 bytes of exactly the string the Source
+  delivered, with no normalisation of any kind: two references that differ in any code point are two references and
+  give two Import Identifiers. A Stable Reference that is not well-formed Unicode (an unpaired surrogate) cannot be
+  encoded losslessly; the core then keeps the delivered item as an Unreadable Transaction with the reason
+  `UnreadableStructure` (ADR-001 §4.1), never with a replacement character. Two Bank Transactions of a Bank Account
+  have the same Stable Reference only when the strings are equal code point for code point (`BANK_TRANSACTION`
+  uniqueness).
+- Payee and memo, which are human-readable text, are put into Unicode Normalization Form C. Nothing else is changed:
+  no trimming, no change of case, no change of spaces.
 - An absent payee or memo is encoded exactly like an empty one (`0:`), because a Source that delivers a missing text
   once as absent and once as empty must not change the transaction's identity.
 - The payee and memo are the full texts as delivered (`BANK_TRANSACTION.payee`, `memo`), never the texts shortened for
@@ -110,6 +129,8 @@ which this ADR forbids (§6). The first vectors, with invented inputs:
 | `F` | `example-format`; 2026-03-05; -12.500; payee `Café Exempel` written with a combining accent; memo absent; occurrence 1 | `SLS1-gpnx76lek6eymiesbmaxgkjqtg` |
 | `F` | the same payee written with the precomposed `é` (Form C makes them equal) | `SLS1-gpnx76lek6eymiesbmaxgkjqtg` |
 | `U` | base `SLS1-rscv2q3lvs7nemqz2yqdgvjykw`; occurrence 1 | `SLS1-ckfrf47p3mlu3wjsyazsip6k3y` |
+| `R` | `example-provider`; Stable Reference `TX-é` with the precomposed `é` (U+00E9) | `SLS1-2obifbyikdagkslwmfqes72y7x` |
+| `R` | `example-provider`; Stable Reference `TX-é` written as `e` plus a combining accent (U+0065 U+0301): opaque, so a different identifier | `SLS1-gzjltiw5oyt4laoscprrmdjaft` |
 
 The canonical input of the first vector, for an implementer to check the encoding:
 `25:slussen-import-identifier1:11:R16:example-provider7:TX-0001`.
@@ -169,8 +190,8 @@ collision that still occurs is detected, as NFR-020 and UC-003 BR-002 require:
 
 **The bar (NFR-020).** Every identifier Slussen generates has a collision probability at least as low as two random
 version 4 UUIDs (RFC 9562), which carry 122 random bits: it carries at least 122 bits of cryptographic randomness (a random identifier) or of a
-cryptographic digest (an identifier derived from its inputs), or it is unique by construction. This is the
-NFR-020 applied to construction. Collision detection (§5) stays in place on top of
+cryptographic digest (an identifier derived from its inputs), or it is unique by construction. This is NFR-020
+applied to construction. Collision detection (§5) stays in place on top of
 it where a collision could otherwise go unnoticed.
 
 **The Import Identifier meets it.** Version 1 keeps 130 bits of SHA-256, 8 more than UUID version 4, in 31 characters,
@@ -191,7 +212,7 @@ generated by Slussen and are not listed.
 | Consent Request correlation | `consent_request_correlation.state_digest` (ADR-002 §2) | SHA-256 of the `state`, hex | 256 (digest) | digest ≥ 122; unique index |
 | `installation.id` | file in `noBackupFilesDir` (ADR-002 §6) | 256 bits from `SecureRandom`, hex | 256 (random) | randomness ≥ 122 |
 | Unreadable copy suffix | `slussen.db.unreadable-<epochMillis>-<random>` and the same suffix for its journal (ADR-002 §8) | the time plus 128 bits from `SecureRandom`, hex | 128 (random) | randomness ≥ 122; the rename refuses to overwrite |
-| `bank_account_fingerprint` | `BANK_ACCOUNT`, `OFFERED_BANK_ACCOUNT` | SHA-256 of the Bank Account number as the Data Provider delivers it, digits only, hex (64 characters, the entity model's length) | 256 (digest) | digest ≥ 122 |
+| `bank_account_fingerprint` | `BANK_ACCOUNT`, `OFFERED_BANK_ACCOUNT` | SHA-256 of the scoped canonical number of §8, hex (64 characters, the entity model's length) | 256 (digest) | digest ≥ 122, over an input that keeps letters and is scoped by Data Provider and Bank (§8) |
 | Configuration fingerprint | generated Build Configuration (ADR-003 §6), captured by an Upload Plan (ADR-007 §6) | SHA-256 of the normalised non-secret content | 256 (digest) | digest ≥ 122 |
 | Payee and memo codes of a Journal Export | the exported file only (UC-011, FR-068) | numbered in order of first appearance within one export (`P1`, `P2`, … for payees, `M1`, `M2`, … for memos), the same text always getting the same code within that file; the table from text to code is kept in memory only and discarded | not random | unique by construction within the file; reveals nothing about the text |
 | Database row keys (`id` of every entity, `upload_plan.id`, `sent_record.id`, `consent_request.id`, `recovery_check.id`, `decision_journal_entry.id`, ...) and `upload_plan_item.position` | the three databases | SQLite autoincrement (`Primary Key, Sequence`) within one database | not random | unique by construction within their table; never sent anywhere or compared across installations |
@@ -202,18 +223,41 @@ A new kind of identifier is added to this table, meeting the bar, by amending th
 with fewer bits is the test-only digest of the planted-collision test (§5), which never reaches production code
 (K-15, B-07 in ADR-001).
 
+### 8. The Bank Account fingerprint (B-09)
+
+`bank_account_fingerprint` (UC-009 BR-004, `BANK_ACCOUNT`, `OFFERED_BANK_ACCOUNT`) is computed by
+`slussen.core.identity` from the `BankAccountNumber` of a delivery (ADR-001 §4), with the field encoding of §2:
+
+```text
+field("slussen-fingerprint") field("1") field(Source Key of the Data Provider)
+field(the Bank's reference as the Data Provider delivers it, empty when it names none) field(canonical number)
+```
+
+- The canonical number is the delivered number with spaces, hyphens, dots and slashes removed (formatting only) and
+  the ASCII letters `a` to `z` written as capitals. Every other character, letters and digits included, is kept as it
+  is; nothing is reduced to digits, so two numbers that differ in a letter give two fingerprints.
+- The scope (Data Provider and the Bank as that Data Provider names it) makes the same number at two Banks or through
+  two Data Providers two different fingerprints; the `BANK_ACCOUNT` constraint compares fingerprints within one Data
+  Provider only.
+- `last_four_digits` of an Offered Bank Account is taken separately: the last four digits of the canonical number
+  (the outside convention of UC-009 BR-009), letters skipped.
+- The contract tests of ADR-001 §4.4 cover a number with letters, one with formatting characters, and the same
+  number under two Banks.
+
 ## Consequences
 
 - Two independent implementations that follow §1 and §2 produce the same Import Identifier; the vectors of §3 prove it
   for this one.
 - An Import Identifier depends on nothing a build can change: not the Budget App's length limit, not a setting, not
   the Build Configuration. A new installation that recomputes the Import Identifiers of the same Bank Transactions
-  finds Slussen's earlier uploads in the Budget App (UC-003 BR-003), which the Recovery Check relies on (ADR-002 §6).
+  finds Slussen's earlier Uploads in the Budget App (UC-003 BR-003), which the Recovery Check relies on (ADR-002 §6).
 - Treating an absent and an empty payee or memo alike means two transactions that differ only in that respect are
   identical for identity and occurrence; they are told apart by `occurrence_number`, as UC-002 BR-003 intends.
 - A collision costs one transaction a review (or one file a rejection) instead of a silent merge or a duplicate.
-- The marker `SLS` is fixed for ever; an Other Import Path that happened to write identifiers of exactly this form
-  would be taken for Slussen. The live tests against a throwaway YNAB Budget (ADR-005 §7, E-10) check that YNAB's own
+- The marker `SLS` is fixed for ever. Because ownership is "begins with `SLS`" (S-14), an Other Import Path that
+  happened to write identifiers beginning with `SLS` would be taken for Slussen: its transactions would be Slussen
+  Unsupported Format and the Bank Transactions resembling them would go to review, never be uploaded without the
+  Operator's decision. That is the safe direction. The live tests against a throwaway YNAB Budget (ADR-005 §7, E-10) check that YNAB's own
   Bank import writes identifiers of another form.
 
 ## Alternatives
@@ -228,6 +272,12 @@ with fewer bits is the test-only digest of the planted-collision test (§5), whi
   or its limit changes.
 - **Distinguishing an absent from an empty payee or memo.** Rejected: Sources do not keep that distinction stable, and
   it would create a second identity for the same transaction.
+- **Normalising Stable References like payees.** Rejected (B-08): a Stable Reference is an outside identifier whose
+  equivalence under normalisation nobody promises; normalising it merged two references before collision detection
+  could see them.
+- **Recognising ownership by the full format.** Rejected (B-10, S-14): a malformed or future-format identifier of
+  Slussen's would become Other Import Path.
+- **A digits-only fingerprint.** Rejected (B-09): it merges numbers that differ in a letter.
 
 ## AIUP guidance
 
@@ -244,5 +294,10 @@ with fewer bits is the test-only digest of the planted-collision test (§5), whi
 - NFR-020 (the Operator's uniqueness instruction at the architecture gate, after the review): §7 (the bar of at least
   122 bits or uniqueness by construction, the Import Identifier's 130 bits shown against it, and every identifier
   Slussen generates with how it is generated and its bits); §5 collision detection unchanged.
+- B-08: §2 (Stable References opaque, no normalisation; malformed Unicode becomes an Unreadable Transaction), §3 (the
+  reviewer's pair as vectors with two identifiers).
+- B-09: §7 row and §8 (fingerprint keeps letters, scoped by Data Provider and Bank).
+- B-10 (with S-14): §1 (ownership = begins with `SLS`; supported format a separate test; Slussen Unsupported Format,
+  never Other Import Path), Consequences.
 - A-02 in part: §6 and the Consequences make the identifier independent of the Budget App, which the refusal of a
   reused Import Identifier (ADR-001 §4.2, ADR-007 §6) depends on.

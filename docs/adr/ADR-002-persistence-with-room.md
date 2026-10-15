@@ -3,7 +3,8 @@
 ## Status
 
 Proposed (2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the Phase 2
-review and the specification changes S-01 to S-10). The Operator sets it to Accepted at the architecture gate.
+review and the specification changes S-01 to S-10; revised 2026-10-15 after the Phase 2b re-review and S-12 to S-14).
+The Operator sets it to Accepted at the architecture gate.
 
 ## Context
 
@@ -32,8 +33,16 @@ What the specification requires of storage:
 - **The backup size warning.** NFR-019, C-015, UC-008 A7, BR-010: Android backs up at most 25 MB of an app's data and
   makes no backup at all above it (a limit Android sets); Slussen warns at the backup warning threshold (80% by
   default, an Operator Setting).
-- **Unreadable stored data.** NFR-005, UC-008 A1: keep the unreadable original unchanged, start from the last good
-  or default content, show a notice naming the part, open a Recovery Check, do not crash.
+- **Unreadable stored data.** NFR-005, NFR-006, UC-008 A1, UC-010 BR-004 (changed by S-13): keep the unreadable
+  original unchanged, start from the last good or default content, show a notice naming the part, do not crash; open a
+  Recovery Check only when the part holds Decision-Critical Data (glossary); damage to the Decision Journal or other
+  data no decision depends on opens none and changes no Upload Plan or Upload.
+- **The stored Budget App copy (S-12).** UC-003 BR-020, BR-017, `BUDGET_APP_TRANSACTION` (`transfer_link_reference`,
+  `merged_into_reference`, `cleared`, `approved`): each transaction is kept with the other side of its linked Transfer,
+  the transaction it was merged into, Cleared and approved, stored together with the read point, so that a linked
+  Upload whose answer was lost is settled from stored data after a restart.
+- **Marker ownership (S-14).** UC-003 BR-001, BR-008, `BUDGET_APP_TRANSACTION.entered_by` (with the value Slussen
+  Unsupported Format).
 - **All-or-nothing steps.** UC-002 BR-001 (a Transaction File is taken in as a whole or not at all); UC-003 BR-016
   (every later read takes all changes since the previous read); UC-007 BR-002 (a Consent Request is answered once).
 - **New entities of the architecture gate:** `BANK_SESSION` (S-02), `BANK_ACCOUNT.configuration_key` and
@@ -52,6 +61,11 @@ nine JSON files in `filesDir` written through `<name>.tmp` and rename, the journ
 backup rule files that disagreed: one copy excluded the files holding Review Decisions and Account Mapping locks
 (which NFR-010 requires in the backup), the other excluded the consent files instead, and a third list repeated the
 first.
+
+The Phase 2b re-review found that the read metadata had no durable storage (B-03), that an interrupted Comparison
+left old statuses usable (B-04), that process death during the start sequence could lose the Recovery Check (B-05),
+that journal damage blocked Uploads (B-06), and that clearing items went through the Sent Record protocol and
+confirmation did not recheck expiry at the commit (B-02, B-07).
 
 The Phase 2 review found that the Sent Record insert rejected the retries it must permit (A-01), that the guarantee
 was claimed to hold whatever the Budget App does (A-02), that recovery from the last good copy or a backup continued
@@ -82,8 +96,8 @@ rules lives in different database files.
 because the file now holds more than consent data.
 
 Besides the three databases, Slussen keeps exactly these files, all in `noBackupFilesDir`: `installation.id` (§6),
-`slussen.lastgood.db` and its temporary file (§8), the unreadable copies of §8, and the marker
-`slussen.recovery-pending` (§8). No SharedPreferences, no DataStore, no other file. Logs are not written to files
+`slussen.lastgood.db` and its temporary file (§8), the unreadable copies of §8, and the start intent
+`slussen.start-intent` with its temporary file (§6). No SharedPreferences, no DataStore, no other file. Logs are not written to files
 (ADR-006). Data that the WorkManager library keeps for the Scheduled Fetch carries no Slussen data beyond the worker's
 name.
 
@@ -104,6 +118,10 @@ name.
   index in `slussen.db`). A reference across databases (`bank_consent.bank_id`, `bank_consent.data_provider_id`,
   `consent_request.bank_id`, `consent_request.data_provider_id`, `offered_bank_account.data_provider_id`, `bank_id`
   and `proposed_bank_account_id`) is a plain column; the core checks it.
+- `BUDGET_APP_TRANSACTION` is stored with every attribute of the entity model, `transfer_link_reference`,
+  `merged_into_reference`, `cleared` and `approved` included (S-12), as the read model of ADR-001 §4.2.3 delivers them.
+  `entered_by` is decided by the core before O-4 stores the record: from the plug-in's entry kind and the marker
+  rules of ADR-008 §1 (Slussen, Slussen Unsupported Format, Other Import Path, Transfer Counterpart, Typed Entry).
 - `BANK_SESSION.session_reference` is stored as the revealed text of the `ConsentSession` (ADR-006 §2), written and
   read only inside `:persistence`.
 - Every other constraint of the entity model is a rule of the core (ADR-001), marked there per ADR-004, not a
@@ -114,8 +132,8 @@ Technical storage that is not in the entity model, complete list:
 | Table | Database | Columns | Why |
 |---|---|---|---|
 | `budget_read_state` | `slussen.db` | `budget_id` (key), `change_cursor` (TEXT) | The opaque `ChangeCursor` of ADR-001 §4.2.3 that lets every later read take "all changes since the previous read" (UC-003 BR-016); technical by the Operator's answer to O-P1-03. Written only by O-4. |
-| `coordinator_state` | `slussen.db` | one row: `mode` (Normal, Plan Open, Uploading), `upload_plan_id`, `state_version` (INTEGER), `scheduled_fetch_deferred` (BOOLEAN) | The operation coordinator's mode and the version of everything an Upload Plan depends on (ADR-007 §2, §6). |
-| `upload_plan_item` | `slussen.db` | `upload_plan_id`, `position`, `write_kind`, `bank_transaction_id`, `budget_account_id`, `import_identifier`, `occurrence`, `booked_date`, `amount`, `payee_sent`, `memo_sent`, `cleared`, `transfer_budget_account_id`, `counterpart_reference`, `reused_sent_record_id`, `reused_outcome`, plus the plan's captured `state_version`, `change_cursor` per Budget and configuration fingerprint in a header row | The immutable write set of an Upload Plan (ADR-007 §4). Inserted only by O-6; never updated. |
+| `coordinator_state` | `slussen.db` | one row: `mode` (Normal, Plan Open, Uploading), `upload_plan_id`, `state_version` (INTEGER), `scheduled_fetch_deferred` (BOOLEAN), `comparison_pending` (BOOLEAN) | The operation coordinator's mode, the version of everything an Upload Plan depends on, and the marker that a Comparison's read is stored but its conclusions are not (ADR-007 §2, §3a, §6). |
+| `upload_plan_item` | `slussen.db` | `upload_plan_id`, `position`, `write_kind` (`Create`, `LinkedTransfer`, `ClearCounterpart`), `bank_transaction_id`, `budget_account_id`, `import_identifier`, `occurrence`, `booked_date`, `amount`, `payee_sent`, `memo_sent`, `cleared`, `transfer_budget_account_id`, `clear_counterpart`, `transfer_counterpart_id` and `counterpart_reference` (clearing items only), `reused_sent_record_id`, `reused_outcome`, plus the plan's captured `state_version`, `change_cursor` per Budget and configuration fingerprint in a header row | The immutable write set of an Upload Plan (ADR-007 §4). Inserted only by O-6; never updated. |
 | `consent_request_correlation` | `device.db` | `consent_request_id` (key, foreign key), `state_digest` (TEXT, SHA-256 of the `state`, unique), `provider_handle` (TEXT, the plug-in's opaque handle) | Matches the answer from Strong Customer Authentication to its Consent Request (ADR-001 §4.1). The `state` itself is never stored. |
 
 **Bank Accounts and the Build Configuration (S-03, S-10, FR-096; A-05).** Each Bank Account entry of the Build
@@ -146,45 +164,54 @@ a step from two calls. Each operation that changes something an Upload Plan depe
 | O-1 | `FetchStore.storeBankAccountDelivery` | For one identified Bank Account: new Bank Transactions (with `occurrence_number` allocated and Import Identifiers computed and checked for collision, ADR-008 §4, §5), changed content of known ones, new Unreadable Transactions (counted against stored ones with the same readable fields and reason), the Account Balance, the `fetch_result` | UC-001 steps 7-8, A8, A17, BR-010, BR-016, NFR-020 |
 | O-2 | `FetchStore.replaceOfferedBankAccounts` (`device.db`) | Replaces the Offered Bank Accounts of a Data Provider, or of one Bank through it, with the latest delivery | UC-009 BR-009 |
 | O-3 | `FileImportStore.importWhole` | The `transaction_file` record Imported and every new Bank Transaction of the file with its occurrence number and Import Identifier; a collision or any failure stores none of them and the core records the file as Rejected in a separate step | UC-002 BR-001, BR-003, A6, NFR-020, ADR-008 §5 |
-| O-4 | `BudgetAppCopyStore.applyChangeSet` | The changed `budget_app_transaction` records (upserted by `budget_app_reference`), the Budget Account balances, `budget.last_read_at` and the next `change_cursor`, only if the stored cursor still equals the one the read started from | UC-003 step 1, BR-016 |
-| O-5 | `ComparisonStore.applyComparison` | Transaction Statuses, Sent Records settled as Written when their Import Identifier was found, Transfer Counterparts reconciled from the Budget App's links (ADR-001 §4.2.3), and `recovery_check.compared_at` when every Budget with a mapped Bank Account was read | UC-003 steps 3-7, BR-017, BR-019; UC-005 BR-009 |
+| O-4 | `BudgetAppCopyStore.applyChangeSet` | The changed `budget_app_transaction` records (upserted by `budget_app_reference`) with every attribute, Transfer link, merge target, Cleared and approved included, the Budget Account balances, `budget.last_read_at` and the next `change_cursor`, only if the stored cursor still equals the one the read started from; and `coordinator_state.comparison_pending` set (ADR-007 §3a) | UC-003 step 1, BR-016, BR-020 |
+| O-5 | `ComparisonStore.applyComparison` | Conclusions computed from stored data only (the stored copy of O-4, never a transient read): Transaction Statuses, Sent Records settled as Written when their Import Identifier was found, Transfer Counterparts reconciled from the stored `transfer_link_reference` with their stored `cleared` value (ADR-001 §4.2.3), `recovery_check.compared_at` when every Budget with a mapped Bank Account was read in the Comparison, and `comparison_pending` cleared | UC-003 steps 3-7, BR-017, BR-019, BR-020; UC-005 BR-009 |
 | O-6 | `UploadStore.preparePlan` | The `upload_plan`, its `eligible_transaction` and `upload_plan_item` records, and the mode Plan Open | ADR-007 §4 |
-| O-7 | `UploadStore.confirmPlan` | §4 below: the Sent Record before every send | UC-006 step 6, A7, BR-006 |
-| O-8 | `UploadStore.recordOutcomes` | The reported outcomes of one Budget Account's writes | UC-006 steps 8-9, A8, A9, BR-012 |
+| O-7 | `UploadStore.confirmPlan` | §4 below: the Sent Record before every transaction send, with the expiry checked inside the transaction | UC-006 step 6, A5, A7, BR-006 |
+| O-8 | `UploadStore.recordOutcomes` | The reported outcomes of one Budget Account's transaction sends | UC-006 steps 8-9, A8, A9, BR-012 |
 | O-9 | `UploadStore.finishUpload` | The end of the Upload and the mode Normal | UC-006 step 12 |
 | O-10 | `ConsentStore.startRequest`, `consumeAnswer`, `replaceConsent`, `revoke` (`device.db`) | Start: a new Consent Request with its correlation, making earlier ones of the Bank unanswerable. Consume: the most-recent, lifetime and not-answered checks and `answered` set, together. Replace: the Bank Consent and its Bank Session in place of the earlier ones, refused when a newer Consent Request exists. Revoke: delete the Bank Consent, its Bank Session and every Consent Request of the Bank | UC-007 BR-002, BR-003, BR-004, BR-007; NFR-013 |
 | O-11 | `ConfigurationStore.reconcile` | §2, Bank Accounts and the Build Configuration | UC-009 A8, A11, A12, BR-010, BR-011; FR-096 |
 | O-12 | `RecoveryStore.openCheck`, `confirmChecks` | Open a Recovery Check with its cause; confirm every open check whose `compared_at` is filled, together with its Decision Journal record request | UC-006 BR-017, UC-008 A9, BR-009 |
 | O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses | UC-004, UC-005, UC-009, UC-010 |
+| O-14 | `UploadStore.recordClearing` | The result of one clearing (ADR-007 §6 step 8): a new `transfer_counterpart` with the leg's `sent_record_id`, its `budget_app_reference` and `state` Cleared (with `cleared_at`) or Uncleared; or an existing one set to Cleared with `cleared_at`. It never inserts, resets or changes a `sent_record` | UC-006 steps 10, BR-009, BR-010, BR-011, A11 |
 
 A crash at any point leaves each operation either complete or absent. Each has an instrumented test that injects a
 failure before the commit and checks that nothing of it is visible (ADR-005 §7, E-05). Because O-4 stores the cursor
 with its changes and the Budget App plug-in returns at least the same changes when read again from the same cursor
-(ADR-001 §4.2.1 F-3), a crash between a read and its storage loses nothing (A-07).
+(ADR-001 §4.2.1 F-3), a crash between a read and its storage loses nothing (A-07). A crash between O-4 and O-5 leaves
+`comparison_pending` set, which blocks preparation until the Comparison is recomputed from the stored data and O-5 is
+committed (ADR-007 §3a, B-04).
 
 ### 4. The Sent Record is committed before anything is sent
 
 O-7, `slussen.core.port.UploadStore.confirmPlan`:
 
 ```kotlin
-/** Commits the Sent Record of every item of the plan, locks the Account Mappings, confirms the plan and sets the
- *  mode Uploading, all or nothing. Returns only after the commit is durable. Throws SentRecordNotStored when anything
- *  fails or a reused Sent Record no longer has the outcome captured at preparation. */
+/** Commits the Sent Record of every transaction-send item of the plan, locks the Account Mappings, confirms the plan
+ *  and sets the mode Uploading, all or nothing, only while now is before the plan's expires_at. Returns only after
+ *  the commit is durable. Throws PlanExpired, or SentRecordNotStored when anything fails or a reused Sent Record no
+ *  longer has the outcome captured at preparation. Clearing items are not touched. */
 suspend fun confirmPlan(plan: UploadPlanId, now: Instant)
 ```
 
 `:persistence` implements it as one transaction on `slussen.db` that:
 
-1. for each `upload_plan_item` that is a new send (no `reused_sent_record_id`), inserts one `sent_record` with
+0. checks that `now`, the one value the coordinator took after its network read (ADR-007 §6 step 5), is before
+   `upload_plan.expires_at`, and otherwise changes nothing and throws `PlanExpired` (B-07);
+1. for each transaction-send item (`write_kind` `Create` or `LinkedTransfer`) that is a new send (no
+   `reused_sent_record_id`), inserts one `sent_record` with
    `outcome` Not Yet Known, its `import_identifier`, `occurrence`, `budget_account_id`, `booked_date`, `amount`,
    `sent_as_transfer` and `sent_at`;
-2. for each item that reuses a Sent Record (a retry, ADR-007 §4), updates that `sent_record`: `outcome` Not Yet Known,
+2. for each transaction-send item that reuses a Sent Record (a retry, ADR-007 §4), updates that `sent_record`: `outcome` Not Yet Known,
    `upload_plan_id` of this plan, `sent_at`, and the `booked_date` and `amount` sent, **only where its `outcome` still
    equals `reused_outcome`**; its `import_identifier` and `budget_account_id` are never changed;
 3. sets `account_mapping.locked_at` to the same time for every Account Mapping of those transactions whose
    `locked_at` is empty (UC-009 BR-003);
 4. sets the `upload_plan.state` to Confirmed, only where it is still Awaiting Confirmation, and the coordinator mode to
    Uploading.
+
+`ClearCounterpart` items get no Sent Record and change none; their results are stored by O-14 (B-02).
 
 The unique index on (`budget_account_id`, `import_identifier`) of `sent_record` stays. A retry never inserts, so it
 never meets the index (A-01); a violation can only come from a new send whose Import Identifier is already held, which
@@ -247,9 +274,35 @@ sequence and reports its result through `StartState` (ADR-001 §3):
 | present | absent | data cleared while the marker survived | New Installation |
 | any | unreadable, started from the last good copy or empty (§8) | last good copy | Last Good Copy |
 
-Then the sequence writes `installation.id` (a random value) when it was absent, opens the Recovery Check through O-12,
-and, for every start that opens one, resets `coordinator_state` as ADR-007 §8 says. An unreadable `device.db` or
-`journal.db` also opens a Recovery Check, as UC-008 A1 and NFR-005 say for any part, with cause Last Good Copy.
+**Only Decision-Critical Data opens a Recovery Check (S-13, B-06).** `slussen.db` holds all Decision-Critical Data
+(the Bank Transactions with their statuses, the Sent Record, the Bank Account identifications, the Account Mappings
+with their locks, the Review and Transfer Decisions, the Operator Settings), so damage to it, wherever in the file,
+opens one. Damage to `device.db` (Bank Consents, Bank Sessions, Consent Requests, Offered Bank Accounts) or to
+`journal.db` (the Decision Journal) shows the notice of UC-008 A1 only, opens no Recovery Check and changes no Upload
+Plan or Upload (NFR-005, NFR-006, UC-010 BR-004).
+
+**The start intent survives process death (B-05).** A database transaction cannot cover file renames and a file
+outside the database, so the start sequence makes the obligation to open a Recovery Check durable before it changes
+anything:
+
+1. **Resume.** When `slussen.start-intent` exists, its cause is used and steps 2 and 3 are skipped; the sequence
+   continues at step 4.
+2. **Classify** by the table above.
+3. **Record the intent.** For every start that opens a Recovery Check, the sequence writes its cause to
+   `slussen.start-intent` (written to a temporary file, flushed, renamed, and the directory flushed) **before** it
+   writes `installation.id`, before it renames an unreadable `slussen.db` or copies the last good copy (§8), and before
+   Room opens the database. A normal start writes no intent.
+4. **Do the work of the cause.** For Last Good Copy: §8 step 3, which is safe to repeat (a `slussen.db` that still
+   fails the checks of §8 step 1 is the unreadable original and is set aside again; one that passes is the
+   replacement). Then `installation.id` is written when it is absent.
+5. **Open the check.** One transaction of O-12 opens the Recovery Check with the cause and resets `coordinator_state`
+   as ADR-007 §8 says.
+6. **Clear the intent.** `slussen.start-intent` is deleted and the directory flushed, only after step 5 committed.
+
+A process that dies between any two steps restarts at step 1 with the intent present and finishes the same work; it
+can never look like a normal start. Dying between steps 5 and 6 opens a second Recovery Check at the next start, which
+the entity model allows ("also when an earlier one is still open") and which the same Comparison and confirmation close.
+Each boundary is tested by an interruption (ADR-005 §7, E-12).
 
 While any Recovery Check is open, the coordinator prepares no Upload Plan (ADR-007 §3); UC-008 A8 shows why. A
 Comparison that read every Budget with a mapped Bank Account fills `compared_at` (O-5, UC-003 BR-019), and only then
@@ -289,11 +342,14 @@ is closed:
    every default, the default Transfer Descriptions of UC-010 BR-007) is created; the part is reported to the core,
    which shows the notice of UC-008 A1; a Recovery Check is opened (§6).
 4. **Unreadable while running.** A `TypeConverter` that meets an unknown text, or a failed foreign key, throws
-   `UnreadableStoredData`. The app does not continue on that data: it writes the marker `slussen.recovery-pending` in
-   `noBackupFilesDir` and restarts its process; the next start sequence treats `slussen.db` as unreadable (step 3).
+   `UnreadableStoredData`. The app does not continue on that data: for `slussen.db` it writes the start intent with
+   cause Last Good Copy (§6, step 3 of the start sequence) and restarts its process; the next start sequence resumes
+   from that intent and treats `slussen.db` as unreadable (step 3 here). For `device.db` or `journal.db` it marks that
+   file unreadable in the same way, without a start intent, and step 5 applies.
    Room's `onCorruption` callback does the same instead of SQLite's default, which deletes the file.
 5. `device.db` and `journal.db` get no last good copy: starting with no Bank Consent is safe (the Operator grants
-   again), and losing the journal changes nothing (NFR-006). Their unreadable originals are kept the same way.
+   again), and losing the journal changes nothing (NFR-006). Their unreadable originals are kept the same way, they
+   start empty, the notice of UC-008 A1 names the part, and no Recovery Check is opened (S-13).
 
 The parts are named for the Operator: `slussen.db` "stored transactions, decisions and settings", `device.db` "Bank
 Consents and Offered Bank Accounts", `journal.db` "Decision Journal". The copy, the replacement, the logical check,
@@ -344,6 +400,12 @@ run with JUnit 5 (ADR-004, ADR-005).
 - `TRUNCATE` journal mode writes more slowly than WAL, and the last good copy costs one file copy per start. The data
   is a household's transactions, so neither is noticeable; the backup size warning watches the file's growth.
 - An Offered Bank Account cannot be confirmed after a reinstall until the next Fetch or grant (UC-009 A10).
+- Damage to the Decision Journal or to `device.db` never blocks an Upload; damage to `slussen.db` always does until
+  the Recovery Check is confirmed (S-13).
+- The stored copy of the Budget App grows by four attributes per transaction (S-12); in exchange, a linked Upload
+  whose answer was lost is settled from stored data alone after any restart.
+- A crash during the start sequence or between the two halves of a Comparison costs at most a repeated step or a
+  second open Recovery Check, never a skipped one.
 
 ## Alternatives
 
@@ -367,6 +429,12 @@ run with JUnit 5 (ADR-004, ADR-005).
   Account.
 - **Warning the Operator after a restore and continuing to upload.** Rejected by S-06: a warning alone does not
   protect a Sent Record that may be incomplete.
+- **Opening a Recovery Check for damage to any database.** Rejected by S-13 (B-06): it let Decision Journal damage
+  block Uploads, against NFR-006.
+- **Making the Comparison's read and conclusions one transaction.** Not chosen (B-04): the `comparison_pending` marker
+  gives the same guarantee and keeps the network read outside a transaction (ADR-007 §3a).
+- **Writing `installation.id` first and opening the Recovery Check after.** Rejected (B-05): a crash between the two
+  would make the next start look normal; the start intent is written first instead.
 - **Detecting a restore from Android's backup agent callbacks.** Not chosen: Auto Backup restores files without a
   callback the app can rely on; the missing `installation.id` is a fact the start sequence can read.
 
@@ -389,7 +457,7 @@ run with JUnit 5 (ADR-004, ADR-005).
 - A-04 (with S-04, S-06, NFR-019): §5 (what a backup can give, the size warning), §6 (restore and new installation
   detected and gated).
 - A-05 (with S-03, S-10): §2 (reconciliation by Configuration Key, removal, return, new keys, locks).
-- A-07: §3 (named atomic operations O-1 to O-13; the cursor stored with its change set).
+- A-07: §3 (named atomic operations O-1 to O-14; the cursor stored with its change set).
 - A-09: §3 O-5 (Transfer Counterparts reconciled from links).
 - A-11 (with S-07): §1 and §2 (`unreadable_transaction`), §3 O-1.
 - A-14: §1 and §2 (`consent_request_correlation` in `device.db`), §3 O-10.
@@ -398,3 +466,12 @@ run with JUnit 5 (ADR-004, ADR-005).
 - A-24: §8 (no `VACUUM INTO`; closed-file copy, atomic replacement, logical check, restart path, originals with their
   journal); the device proof is ADR-005 §7.
 - A-27 in part: §3 and §8 name the evidence; ADR-005 §7 makes it a gate.
+- B-02: §3 O-7, O-8 (transaction sends only) and O-14 (clearing results, never a Sent Record), §4.
+- B-03 (with S-12): §2 (`budget_app_transaction` stored with Transfer link, merge target, Cleared and approved), §3 O-4
+  (stored atomically with the cursor) and O-5 (conclusions from stored data only).
+- B-04: §2 (`coordinator_state.comparison_pending`), §3 O-4 sets it and O-5 clears it; ADR-007 §3a.
+- B-05: §1 (`slussen.start-intent`), §6 (the start intent written before any change, cleared after the Recovery Check
+  and coordinator reset are committed; resume rule), §8 step 4; ADR-005 §7 E-12.
+- B-06 (with S-13): §6 (only Decision-Critical Data, held by `slussen.db`, opens a Recovery Check), §8 steps 4-5.
+- B-07: §3 O-7 and §4 step 0 (expiry checked inside the confirming transaction with the coordinator's one `now`).
+- S-14: §2 (`entered_by` decided by the core with the marker rules, Slussen Unsupported Format included).
