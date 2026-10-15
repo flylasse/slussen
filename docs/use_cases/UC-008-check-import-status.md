@@ -35,7 +35,7 @@
 
 1. Slussen keeps the unreadable original unchanged and starts that part from its last good content, or from its default content when there is none.
 2. Slussen shows a notice naming the part that could not be read.
-3. Slussen opens a Recovery Check, so that no Upload Plan is prepared until the Operator has confirmed it (BR-009).
+3. When the part holds Decision-Critical Data, Slussen opens a Recovery Check, so that no Upload Plan is prepared until the Operator has confirmed it (BR-009); damage to any other part, such as the Decision Journal, opens none and changes no Upload Plan or Upload.
 4. Use case continues at step 2.
 
 ### A2: Account Balance Outdated
@@ -153,7 +153,7 @@ Slussen keeps the most recent Fetches with Source, time, who started them and ou
 
 ### BR-009: Recovery Check
 
-After Slussen starts from data that may lack what it last recorded (UC-006 BR-017), every opening shows that Uploads are blocked and why, until the Operator confirms the Recovery Check. The Operator can confirm it only after a Comparison that read every Budget has run since the check opened (UC-003 BR-019). The confirmation is recorded in the Decision Journal.
+After Slussen starts from Decision-Critical Data that may lack what it last recorded (UC-006 BR-017), every opening shows that Uploads are blocked and why, until the Operator confirms the Recovery Check. The Operator can confirm it only after a Comparison that read every Budget has run since the check opened (UC-003 BR-019). The confirmation is recorded in the Decision Journal.
 
 ### BR-010: Backup Size Warning
 

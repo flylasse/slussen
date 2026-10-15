@@ -15,7 +15,7 @@
 
 This section lets a fresh orchestrator session (local or cloud) pick up the plan on branch `construction-kickoff`. Read `AGENTS.md`, then this section, then §1, §3 and §6. Update this section in every commit that moves the plan forward.
 
-**Where the plan stands:** inside the **architecture gate**. The external re-review (2b) is in (`2cc8bff`) and recorded in §6. Its 14 findings B-01..B-14 await the operator's dispositions.
+**Where the plan stands:** inside the **architecture gate**. The external re-review (2b) is in (`2cc8bff`) and recorded in §6. The operator dispositioned B-01..B-14 (2026-10-15): S-12..S-15 and the ADR fixes are committed; next is the external final check (§4, row 2c), then acceptance. One last short external check was chosen, limited to B-01..B-14 and any new High contradiction; upload-protocol issues found after that go to the review of the first slice that uploads.
 
 **Done so far:**
 - Phases 0, 1 and 2 are complete; A-01..A-28 are dispositioned in §6.
@@ -79,6 +79,7 @@ The rules of the bootstrap plan's §1 apply unchanged: one sub-agent per phase w
 | 1 | Architecture decisions (proposed) | `docs/adr/ADR-001..` | `inherit` | every ADR has Context, Decision, Consequences and Status Proposed; ADR-001 names every module and every allowed dependency; every use case maps to the modules it touches; `lint_specs.py --strict` exits 0 | `docs: phase 1 - architecture decisions proposed` |
 | 2 | Adversarial architecture review (report only), **external reviewer** | `docs/reviews/phase2_architecture_review.md` (reviewer's commit); findings copied into §6 (orchestrator's commit) | external: Codex CLI (OpenAI), run by the operator | the reviewer's commit changes only its review file; every finding has an ID, a location and evidence; the orchestrator's follow-up commit changes only this plan | reviewer: `docs: phase 2 - architecture review findings (external)`; orchestrator: `docs: phase 2 - record external review in plan` |
 | 2b | External re-review (report only), inside the architecture gate, after the specification changes and the ADR revision | `docs/reviews/phase2b_architecture_rereview.md` (reviewer's commit); result copied into §6 (orchestrator's commit) | external: Codex CLI (OpenAI), run by the operator (O-P2-04) | the reviewer's commit changes only its review file; every A-nn has a verdict; every B-nn has an ID, a location, evidence and a severity; the orchestrator's follow-up commit changes only this plan | reviewer: `docs: architecture gate - external re-review`; orchestrator: `docs: architecture gate - record re-review in plan` |
+| 2c | External final check (report only): B-01..B-14 resolved? any new High contradiction? | `docs/reviews/phase2c_architecture_final_check.md` (reviewer's commit); result into §6 (orchestrator's commit) | external: Codex CLI, run by the operator | the reviewer's commit changes only its review file; every B-nn has a verdict; every C-nn has a location and evidence | reviewer: `docs: architecture gate - external final check`; orchestrator: `docs: architecture gate - record final check in plan` |
 | — | **Architecture gate — orchestrator stops here** | operator discusses the ADRs and the findings, the ADRs are revised, each ADR is set to Accepted | operator | operator says "resume" | operator's own commit |
 | 3 | Project-rule check | `tools/check_project_rules.py` (+ self-test) | `inherit` | `--self-test` passes; the check runs clean on current `docs/`; it fails on planted bare "account", on an unmarked Slussen number and on a lowercase glossary term | `tools: phase 3 - project rule check` |
 | 4 | HTML mockups and icon proposals | `docs/mockups/*.html`, `docs/mockups/index.html`, `docs/mockups/icon-*.svg` | `inherit` | every operator-facing step of UC-001..UC-011 is reachable on a mockup screen (traceability table in `index.html`); only invented names and amounts; `check_project_rules.py` exits 0 | `docs: phase 4 - screen mockups and icon proposals` |
@@ -207,6 +208,41 @@ version) and the commit you reviewed (git rev-parse HEAD). Then commit only that
 
 The orchestrator then runs the gate in §0 step 2 and records the result as in §0 step 3.
 
+### Architecture gate — external final check (Codex CLI)
+
+Decided by the operator on 2026-10-15 after the 2b re-review. The operator starts Codex CLI as in Phase 2, on `construction-kickoff` after the commit that fixes B-01..B-14, and gives it this prompt verbatim:
+
+```text
+You are an external reviewer of architecture decisions for Slussen (AIUP project; the specification in docs/
+is Approved and is the source of truth; the ADRs in docs/adr/ are Proposed). You re-reviewed them in
+docs/reviews/phase2b_architecture_rereview.md (findings B-01..B-14, reviewed commit e0d35c3). The Operator
+dispositioned every finding (docs/construction_kickoff_plan.md §6, "Architecture re-review findings (2b)"),
+the specification was changed (S-12..S-15 in that plan's specification-change table) and the ADRs were fixed.
+
+This is a final, deliberately narrow check. Read AGENTS.md, then review only the change since commit 8c18a54
+(git diff 8c18a54..HEAD -- docs/), reading surrounding sections as needed.
+
+Answer exactly two questions:
+1. For each B-01..B-14 (and the nine A-nn you graded Partly, which depend on them): Resolved / Partly /
+   Not resolved, with evidence (file and section).
+2. Did the fixes introduce any new contradiction of severity High: between ADRs, between an ADR and the
+   specification, or inside the changed specification? Report only High findings, as C-01, C-02, ...,
+   each with a location, the evidence and, in one line, what would fix it. Mark one "uncertain" if unsure.
+   Do not report Medium or Low findings; the Operator has decided that further upload-protocol refinements
+   go to the review of the first slice that uploads.
+
+Rules:
+- Do not modify any file except the review file below. Do not access anything outside this repository, and
+  do not read scratch/.
+- End with a one-line verdict: can the Operator set the ADRs to Accepted, yes or no, and which C-nn block it.
+
+Write the review to docs/reviews/phase2c_architecture_final_check.md with a header naming yourself (model and
+version) and the commit you reviewed (git rev-parse HEAD). Then commit only that file with the message
+"docs: architecture gate - external final check" and push the branch. Do nothing else.
+```
+
+Gate (orchestrator): the reviewer's commit changes only its review file; every B-nn has a verdict; every C-nn has a location and evidence. Record the result in §6 with the commit `docs: architecture gate - record final check in plan`.
+
 ### Phase 3 — Project-rule check (`inherit`)
 
 Write `tools/check_project_rules.py`, with `--self-test`, which checks `docs/` for the three `AGENTS.md` §2 rules:
@@ -316,20 +352,20 @@ Reviewer: OpenAI Codex CLI, GPT-6 (Astra Max variant not attestable by the revie
 
 | ID | Severity | Location | Finding | Disposition |
 |---|---|---|---|---|
-| B-01 | High | ADR-007 §4, §6; ADR-001 §4.2.3; UC-006 BR-009 | A newly created Transfer Counterpart cannot be cleared in the same Upload: a `ClearCounterpart` item needs a reference that a new linked Transfer does not have yet; `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
-| B-02 | High | ADR-007 §4, §6, §7; ADR-002 §3 O-7/O-8, §4 | Clearing items go through the Sent Record insertion protocol; they need their own preparation, permit and outcome rules; `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
-| B-03 | High | ADR-001 §4.2.3; ADR-002 §2, §3 O-4/O-5; `BUDGET_APP_TRANSACTION` | The normalized read metadata (Transfer links, merge target, Cleared, approved) has no durable storage, so O-4 can advance the cursor and lose what O-5 needs; `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
-| B-04 | High | ADR-002 §3 O-4/O-5; ADR-007 §4, §6, §8 | An interrupted Comparison (O-4 committed, O-5 not) leaves old statuses usable with a new cursor; `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
-| B-05 | High | ADR-002 §6, §8; ADR-007 §3, §8; FR-095 | Process death between writing `installation.id` and opening the Recovery Check makes the next start look normal; `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
-| B-06 | High | ADR-002 §6, §8; NFR-005, NFR-006; UC-008 A1; UC-010 BR-004 | Journal corruption opens a Recovery Check and blocks Uploads, contradicting the journal-independence requirement (also a contradiction inside the specification); `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
-| B-07 | High | ADR-007 §5, §6; ADR-002 §4; UC-006 A5; UC-003 BR-011/BR-014 | Confirmation does not recheck expiry after the network read, nor the Upload Window when the date changes; `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
-| B-08 | Medium | ADR-008 §2, §5; ADR-001 §4.1 | Unicode normalization merges distinct opaque Stable References before collision detection (reproduced); `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
-| B-09 | Medium (uncertain) | ADR-008 §7; ADR-001 §4; UC-009 BR-004 | The Bank Account fingerprint keeps digits only and may merge distinct alphanumeric numbers; `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
-| B-10 | Medium | ADR-008 §1, §6; ADR-001 §4.2.3; UC-003 BR-008 | Ownership is recognised by the full format, while the specification says any Import Identifier beginning with the marker is Slussen's; `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
-| B-11 | Medium | ADR-001 §1, §2, §4.2, §6.3 B-04 | Bytecode rule B-04 rejects `:plugin-api`'s writer contract and the `:testing` fake; `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
-| B-12 | Medium | ADR-003 §3, §6; ADR-005 §3; plan Phases 6-7 | The validator rejects an absent Build Configuration before the `ABSENT` stub can be generated, so `gradlew check` cannot pass without one; `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
-| B-13 | Medium | ADR-003 §2, §5 P-5 | Placement matching misses the properties whitespace separator and escapes; `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
-| B-14 | Low | vision Goals, Exactly once; `AGENTS.md` §2 | Revised prose writes 'the operator' and 'upload' in lowercase where the defined terms are meant; `docs/reviews/phase2b_architecture_rereview.md` | Pending architecture gate |
+| B-01 | High | ADR-007 §4, §6; ADR-001 §4.2.3; UC-006 BR-009 | A newly created Transfer Counterpart cannot be cleared in the same Upload: a `ClearCounterpart` item needs a reference that a new linked Transfer does not have yet; `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): ADR fix. Clearing intent for a new linked Transfer is part of the confirmed plan; its counterpart is resolved by a defined read before clearing in the same Upload. |
+| B-02 | High | ADR-007 §4, §6, §7; ADR-002 §3 O-7/O-8, §4 | Clearing items go through the Sent Record insertion protocol; they need their own preparation, permit and outcome rules; `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): ADR fix. Clearing items get their own preparation, permit and outcome rules; they never insert or reset a Sent Record. |
+| B-03 | High | ADR-001 §4.2.3; ADR-002 §2, §3 O-4/O-5; `BUDGET_APP_TRANSACTION` | The normalized read metadata (Transfer links, merge target, Cleared, approved) has no durable storage, so O-4 can advance the cursor and lose what O-5 needs; `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): S-12, then ADR fix (durable storage, written atomically with the cursor). |
+| B-04 | High | ADR-002 §3 O-4/O-5; ADR-007 §4, §6, §8 | An interrupted Comparison (O-4 committed, O-5 not) leaves old statuses usable with a new cursor; `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): ADR fix. An incomplete-Comparison marker blocks preparation until the Comparison is recomputed and committed. |
+| B-05 | High | ADR-002 §6, §8; ADR-007 §3, §8; FR-095 | Process death between writing `installation.id` and opening the Recovery Check makes the next start look normal; `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): ADR fix. Startup intent persisted before the restored or replacement data is used; cleared only once the Recovery Check is durable; interruption tested at every boundary. |
+| B-06 | High | ADR-002 §6, §8; NFR-005, NFR-006; UC-008 A1; UC-010 BR-004 | Journal corruption opens a Recovery Check and blocks Uploads, contradicting the journal-independence requirement (also a contradiction inside the specification); `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): S-13, then ADR fix. Only decision-critical data opens a Recovery Check; journal-only damage shows a notice. |
+| B-07 | High | ADR-007 §5, §6; ADR-002 §4; UC-006 A5; UC-003 BR-011/BR-014 | Confirmation does not recheck expiry after the network read, nor the Upload Window when the date changes; `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): ADR fix. Expiry and date-dependent eligibility rechecked at the transition to writing, after the network read. |
+| B-08 | Medium | ADR-008 §2, §5; ADR-001 §4.1 | Unicode normalization merges distinct opaque Stable References before collision detection (reproduced); `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): ADR fix. Stable References are opaque, never normalized. |
+| B-09 | Medium (uncertain) | ADR-008 §7; ADR-001 §4; UC-009 BR-004 | The Bank Account fingerprint keeps digits only and may merge distinct alphanumeric numbers; `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): ADR fix. The fingerprint keeps letters and is scoped by Data Provider and Bank. |
+| B-10 | Medium | ADR-008 §1, §6; ADR-001 §4.2.3; UC-003 BR-008 | Ownership is recognised by the full format, while the specification says any Import Identifier beginning with the marker is Slussen's; `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): S-14 (clarifies the existing rule), then ADR fix. Ownership = begins with the marker; a malformed marked identifier goes to review, never to Other Import Path. |
+| B-11 | Medium | ADR-001 §1, §2, §4.2, §6.3 B-04 | Bytecode rule B-04 rejects `:plugin-api`'s writer contract and the `:testing` fake; `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): ADR fix. Bytecode scopes allow the contract declaration and the `:testing` fake. |
+| B-12 | Medium | ADR-003 §3, §6; ADR-005 §3; plan Phases 6-7 | The validator rejects an absent Build Configuration before the `ABSENT` stub can be generated, so `gradlew check` cannot pass without one; `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): ADR fix. An absent Build Configuration is valid for `check`; packaging refuses it. |
+| B-13 | Medium | ADR-003 §2, §5 P-5 | Placement matching misses the properties whitespace separator and escapes; `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): ADR fix. Placement recognition uses the reader's properties grammar, including whitespace separators and escapes. |
+| B-14 | Low | vision Goals, Exactly once; `AGENTS.md` §2 | Revised prose writes 'the operator' and 'upload' in lowercase where the defined terms are meant; `docs/reviews/phase2b_architecture_rereview.md` | Accepted (2026-10-15): S-15 (editorial). |
 
 **Mockup review findings (Phase 5) and dispositions:**
 
@@ -351,6 +387,10 @@ Reviewer: OpenAI Codex CLI, GPT-6 (Astra Max variant not attestable by the revie
 | S-09 | Architecture gate (A-23) | `BUDGET_APP_TRANSACTION`, UC-011 | Add a memo to the stored Budget App transaction so the Journal Export can include it. | Approved by the Operator (2026-10-14), including the executor's assumptions (Recovery Check also after a new installation; backup warning threshold 80% by default, range 50–95%; an Unreadable Transaction can only be deferred). |
 | S-10 | Architecture gate (O-P2-06, O-P2-07, O-P2-08) | new FR-096, NFR-009, `BANK_ACCOUNT.configured`, `OFFERED_BANK_ACCOUNT`, UC-008, UC-009, UC-012 | A Bank Account removed from the Build Configuration, or given a new Configuration Key, is kept out of use with its history and lock; a new key is a new Bank Account, refused if it points at a locked Budget Account. Offered Bank Accounts are never backed up. The last four digits name their outside source. | Approved by the Operator (2026-10-14). |
 | S-11 | Architecture gate (O-P2-10, O-P2-11) | FR-093, UC-012 A6/BR-009; new NFR-020 Identifier Uniqueness; FR-074, UC-001 A17/BR-016, UC-002 A6, UC-003 BR-002, glossary | FR-093 names what can be recognised (recognisable keys, values marked secret). Every identifier Slussen generates has a collision made extraordinarily unlikely, at least as unlikely as a random UUID (Operator: "like uuid or similar uniqueness"); an Import Identifier collision is still detected (Unreadable Transaction, or the whole file rejected). | Approved by the Operator (2026-10-14). |
+| S-12 | Architecture gate (B-03) | `BUDGET_APP_TRANSACTION`, UC-003 | Store the Transfer link (the other side's reference), the merge target, Cleared and approved for each Budget App transaction read, so a lost linked Upload can be reconciled after a restart. | Approved by the Operator (2026-10-15). |
+| S-13 | Architecture gate (B-06) | NFR-005, NFR-006, FR-095, UC-008 A1, UC-010 BR-004 | Only damage to decision-critical stored data opens a Recovery Check; damage to the Decision Journal or other data excluded from decisions shows a notice and changes no Upload. | Approved by the Operator (2026-10-15). |
+| S-14 | Architecture gate (B-10) | UC-003 BR-008, `BUDGET_APP_TRANSACTION` constraints | An Import Identifier that begins with Slussen's marker is Slussen's even when its format is not one Slussen supports; such a transaction goes to review and is never Other Import Path. | Approved by the Operator (2026-10-15). |
+| S-15 | Architecture gate (B-14) | vision Goals, Exactly once | Defined terms in Title Case in the revised prose (Operator, Upload). | Approved by the Operator (2026-10-15). |
 
 **Open questions for the operator:**
 
@@ -375,13 +415,14 @@ Reviewer: OpenAI Codex CLI, GPT-6 (Astra Max variant not attestable by the revie
 | O-P2-09 | gate | ADR revision O-1: a new installation opens a Recovery Check, whose confirmation needs a Comparison (UC-003), which the first slice does not build. | The first slice shows UC-008 A8 with the A9 confirmation unavailable; harmless, since it cannot upload. | Agreed (2026-10-14). |
 | O-P2-10 | gate | ADR revision O-2: FR-093 says 'anywhere'; a plain value pasted without its key cannot be recognised. | Accept ADR-003 §5's reading and say so in FR-093. | Agreed (2026-10-14). S-11. |
 | O-P2-11 | gate | ADR revision O-3: a digest makes Import Identifier collisions unlikely, not impossible. | Say so in UC-003 BR-002, with detection and routing. | Agreed (2026-10-14), plus: every identifier Slussen generates must make a collision extraordinarily unlikely, like a UUID. S-11. |
-| O-P2-12 | gate | ADR revision O-4: Phase 9 variant; the gate of the first slice that uploads. | Phase 9 installs `release`; the first Upload slice's plan lists evidence E-01..E-11 (ADR-005 §7) as its gate. | Agreed (2026-10-14). Phase 9 row changed; carried to §7 'Owed to the next plan'. |
+| O-P2-12 | gate | ADR revision O-4: Phase 9 variant; the gate of the first slice that uploads. | Phase 9 installs `release`; the first Upload slice's plan lists evidence E-01..E-12 (ADR-005 §7) as its gate. | Agreed (2026-10-14). Phase 9 row changed; carried to §7 'Owed to the next plan'. |
 | O-P2-13 | gate | ADR revision Assumed 1–10 (coordinator: one operation at a time, decisions wait during a Fetch, open plan expires at restart, Not Yet Known becomes Unknown at restart, any Budget change re-asks confirmation; consent refused during Back-off or at a Request Limit; renamed Bank needs a new Bank Consent; debug installs beside release; and the rest as reported). | Accept. | Agreed (2026-10-14). |
+| O-P2-14 | gate | ADR fix assumptions for B-01..B-14: a crash between opening a Recovery Check and clearing the start intent can open a second one (one Comparison and confirmation closes all); a plan failing the final date check becomes Changed Before Writing; counterpart read `readTransaction` joins the Budget App floor; `markCleared` may return Unknown (counterpart stays uncleared until a Comparison); the fingerprint keeps letters and strips only spaces, hyphens, dots and slashes; the ownership marker is exactly `SLS` (another importer's `SLS…` identifiers go to review); P-5 refuses an empty value. New evidence item E-12 (startup interruption). | Accept. | |
 
 ## 7. Plan closed
 
 - **Date closed:**
 - **What shipped:**
 - **Specification changes:**
-- **Owed to the next plan:** the first slice that uploads is gated on evidence E-01..E-11 (ADR-005 §7, O-P2-12).
+- **Owed to the next plan:** the first slice that uploads is gated on evidence E-01..E-12 (ADR-005 §7, O-P2-12).
 - **Verdict on AIUP construction for an Android stack (operator):**

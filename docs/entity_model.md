@@ -100,12 +100,19 @@ Slussen's stored copy of one transaction in a Budget Account as it last read it 
 | payee                | Payee as shown in the Budget App                                                                  | String    | 200              | Optional                                  |
 | memo                 | Memo as shown in the Budget App, included in a Journal Export                                     | String    | 500              | Optional                                  |
 | import_identifier    | Import Identifier the transaction carries, empty for a Typed Entry                                 | String    | 36               | Optional                                  |
-| entered_by           | How the transaction came into the Budget App                                                      | String    | 30               | Not Null, Values: Typed Entry, Slussen, Other Import Path, Transfer Counterpart |
+| entered_by           | How the transaction came into the Budget App                                                      | String    | 30               | Not Null, Values: Typed Entry, Slussen, Slussen Unsupported Format, Other Import Path, Transfer Counterpart |
+| transfer_link_reference | Identifier the Budget App gives the other side of the linked Transfer this transaction belongs to, empty when it is not part of a linked Transfer | String    | 100              | Optional                                  |
+| merged_into_reference | Identifier the Budget App gives the Typed Entry this transaction was merged into, empty unless it was merged | String    | 100              | Optional                                  |
+| cleared              | True when the Budget App marks the transaction Cleared; false when the Budget App does not support the Cleared marker | Boolean   | 1                | Not Null                                  |
+| approved             | True when the transaction is approved in the Budget App                                           | Boolean   | 1                | Not Null                                  |
 | state                | Whether the transaction is still present, or was deleted or merged into a Typed Entry since       | String    | 20               | Not Null, Values: Present, Deleted, Merged |
 
 #### Constraints
 
-- `entered_by` is Slussen exactly when `import_identifier` carries the marker of Slussen's own Import Identifiers (FR-074); an Import of the Predecessor App or any other importer is Other Import Path.
+- Every `import_identifier` that begins with the marker of Slussen's own Import Identifiers (FR-074) is Slussen's: `entered_by` is Slussen when the rest of it has a form Slussen supports, and Slussen Unsupported Format when it does not. Such a transaction is never Other Import Path; a Bank Transaction that resembles one with Slussen Unsupported Format goes to the Operator for review (UC-003 BR-008).
+- An Import of the Predecessor App or of any other importer, whose `import_identifier` does not begin with Slussen's marker, is Other Import Path.
+- `merged_into_reference` is filled exactly when `state` is Merged.
+- `transfer_link_reference`, `merged_into_reference`, `cleared` and `approved` are stored as the Budget App reported them at the last read, so that a linked Upload whose answer was lost can be settled from stored data after a restart (UC-003 BR-017).
 - A transaction that the Budget App reports as deleted or merged is kept with `state` Deleted or Merged, never removed, so that the Comparison can recognise it.
 - The copy is replaced by what the Budget App reports at every successful read of the Budget; it is never written back to the Budget App.
 
@@ -603,7 +610,8 @@ The check Slussen requires before any Upload after it started from data that may
 
 - While a Recovery Check has no `confirmed_at`, no Upload Plan is prepared (FR-095).
 - `confirmed_at` is filled only after `compared_at` is filled.
-- A Recovery Check is opened at every start from the last good copy after the stored data could not be read, from data restored from a device backup, or from the empty data of a new installation, also when an earlier one is still open.
+- Damage to stored data that is not Decision-Critical Data, such as the Decision Journal, opens no Recovery Check.
+- A Recovery Check is opened at every start from the last good copy after Decision-Critical Data could not be read, from data restored from a device backup, or from the empty data of a new installation, also when an earlier one is still open.
 
 ### DECISION_JOURNAL_ENTRY
 

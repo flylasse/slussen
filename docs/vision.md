@@ -47,17 +47,19 @@ continue its history, identities or Import Identifiers.
 - **Exactly once.** Slussen creates zero duplicate transactions in the Budget App on its own, even after a retry,
   timeout, crash, reinstall, or re-mapping of a Bank Account. It silently drops zero transactions it is responsible
   for: a transaction it cannot reliably identify or cannot read, or one whose counterpart was changed in the Budget
-  App, goes to the operator for review instead of being merged or lost. A collision with a transaction created by
-  another import path is shown to the operator for a decision and is never resolved silently. Slussen keeps its own
-  durable record of what it has sent, records each transaction there before sending it, and never sends again what
-  the Budget App confirmed. One case it cannot settle alone: when the answer to an upload is lost, a request that
-  never arrived and one that arrived look the same. Slussen then sends the transaction again on its own only to a
-  Budget App that refuses a second transaction with the same Import Identifier, as YNAB does; with any other Budget
-  App, the operator decides. After Slussen starts from an older copy of its data, such as its last good copy or a
-  restored device backup, it uploads nothing until it has compared with the Budget App and the operator has
-  confirmed, because what it sent after that copy was made is then protected only by the Budget App's refusal of a
-  reused Import Identifier and by that Comparison. The guarantee covers what Slussen sends: another importer
-  feeding the same Budget Account can still create duplicates, which is why each Bank Account has one import path.
+  App, goes to the Operator for review instead of being merged or lost. A collision with a transaction created by
+  an Other Import Path is shown to the Operator for a decision and is never resolved silently. Slussen keeps its
+  own durable Sent Record of what it has sent, records each transaction there before sending it, and never sends
+  again what the Budget App confirmed. One case it cannot settle alone: when the answer to an Upload is lost, a
+  request that never arrived and one that arrived look the same. Slussen then sends the transaction again on its
+  own only to a Budget App that refuses a second transaction with the same Import Identifier, as YNAB does; with
+  any other Budget App, the Operator decides. After Slussen starts from an older copy of its Decision-Critical
+  Data, such as its last good copy or a restored device backup, it makes no Upload until a Comparison has run and
+  the Operator has confirmed the Recovery Check, because what it sent after that copy was made is then protected
+  only by the Budget App's refusal of a reused Import Identifier and by that Comparison. Damage to data no decision
+  depends on, such as the Decision Journal, blocks no Upload. The guarantee covers what Slussen sends: another
+  importer feeding the same Budget Account can still create duplicates, which is why each Bank Account has one
+  import path.
 - **Nothing is written without confirmation.** Every write to the Budget App follows an explicit confirmation of
   a plan that states the budget, the Budget Accounts, the number of transactions, and the total inflow and outflow.
   What is written is exactly what was confirmed: if the Budget App has changed since the plan was shown, or the
@@ -131,9 +133,9 @@ continue its history, identities or Import Identifiers.
   data, for review outside the app.
 - Keeping the operator's transaction history, decisions and the record of what was sent across a reinstall, a
   restore from a device backup and an upgrade of the same build. Bank authorizations do not survive a reinstall:
-  the operator authorizes each bank again. Slussen warns the operator when its backed-up data nears the size
-  Android backs up, and after a restore it uploads nothing until the Comparison and confirmation described under
-  Exactly once.
+  the operator authorizes each bank again. Slussen warns the Operator when its backed-up data nears the size
+  Android backs up, and after a restore it makes no Upload until the Comparison and the Recovery Check described
+  under Exactly once.
 
 ### Out of scope
 

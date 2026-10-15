@@ -139,7 +139,7 @@
 
 ### A13: Recovery Check Open
 
-**Trigger:** A Recovery Check is open, because Slussen started from its last good copy of its data, from data restored from a device backup or from the empty data of a new installation, and the Operator has not confirmed it yet (step 2)  
+**Trigger:** A Recovery Check is open, because Slussen started from its last good copy of its Decision-Critical Data, from data restored from a device backup or from the empty data of a new installation, and the Operator has not confirmed it yet (step 2)  
 **Flow:**
 
 1. Slussen prepares no Upload Plan.
@@ -234,4 +234,4 @@ An Upload Plan follows Upload as Cleared as it stands when the plan is prepared,
 
 ### BR-017: Uploads Wait for the Recovery Check
 
-While a Recovery Check is open, Slussen prepares no Upload Plan. A Recovery Check opens whenever Slussen starts from data that may lack what it last recorded: its last good copy after its stored data could not be read, data restored from a device backup, or the empty data of a new installation. It closes only when a Comparison has run after it opened (UC-003 BR-019) and the Operator has confirmed it (UC-008 BR-009). A warning alone is not enough: Sent Records written after that data was saved are missing, and the transactions they covered are then protected against a duplicate only by the Budget App's refusal of a reused Import Identifier and by the Comparison.
+While a Recovery Check is open, Slussen prepares no Upload Plan. A Recovery Check opens whenever Slussen starts from data that may lack what it last recorded: its last good copy after its Decision-Critical Data could not be read, data restored from a device backup, or the empty data of a new installation. It closes only when a Comparison has run after it opened (UC-003 BR-019) and the Operator has confirmed it (UC-008 BR-009). A warning alone is not enough: Sent Records written after that data was saved are missing, and the transactions they covered are then protected against a duplicate only by the Budget App's refusal of a reused Import Identifier and by the Comparison. Damage to data that is not Decision-Critical Data, such as the Decision Journal, opens no Recovery Check (UC-010 BR-004).
