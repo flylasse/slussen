@@ -1,24 +1,38 @@
-# ADR-005: Toolchain, Android SDK, Test Runner and Version Name
+# ADR-005: Toolchain, Android SDK, Test Runner, Version Name, Signing and the Evidence Before Uploads
 
 ## Status
 
-Proposed (2026-10-14, construction kickoff Phase 1). The Operator sets it to Accepted at the architecture gate.
+Proposed (2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the Phase 2
+review and the Operator's answers O-P1-06, O-P1-07, O-P1-08 and O-P2-05). The Operator sets it to Accepted at the
+architecture gate.
 
 ## Context
 
 - C-001: Slussen runs natively on the Operator's Android phone. C-003: it is installed directly on the phone.
 - NFR-017, FR-042: upgrading to a newer version of the same build keeps every stored item. Android installs an
   upgrade over an installed app only when the new `versionCode` is higher and the signing key is the same.
+- C-011: every guarantee that depends on YNAB's behaviour is shown by a test against a real, throwaway YNAB Budget
+  before Uploads that rely on it are trusted. S-05: automatic resending of an unknown outcome depends on the Budget
+  App refusing a reused Import Identifier.
 - `AGENTS.md` §5: `VERSION` (repository root, plain `major.minor.revision`) is the single source of the app's version
-  name; the build reads it directly; every PR bumps it.
-- ADR-001 to ADR-004 need a build in which every module, including the Android ones, is always compiled and checked,
-  and tests run on JUnit 5.
+  name; the build reads it directly; every PR bumps it. `AGENTS.md` §3: a phase is complete only when its gate exits 0.
+- ADR-001 to ADR-004, ADR-007 and ADR-008 need a build in which every module, including the Android ones, is always
+  compiled and checked, and tests run on JUnit 5.
+- The Operator's answers: O-P1-06 (agents gate on `gradlew check` plus a test that packaging fails without a Build
+  Configuration; only the Operator runs `gradlew build`), O-P1-07 (live-test credentials in the Operator's ignored
+  location, tagged, never run by agents), O-P1-08 and O-P2-05 (the `release` variant, signed with a keystore outside
+  the repository whose path is in `build-config/local/signing.properties`, backed up by the Operator; `debug` only
+  until then).
 - Evidence from the Predecessor App (`scratch/construction_inventory.md` §1-2), used as evidence and not as a
   template: Gradle 8.14.1, Kotlin 2.3.21, Android Gradle Plugin 8.12.0, Compose BOM 2025.06.00, JUnit Jupiter 5.11.4,
-  JVM 17, `compileSdk` and `targetSdk` 35, `minSdk` 26, an `arm64-v8a` split; `:platform` and `:app` were left out of
+  JVM 17, `compileSdk` and `targetSdk` 35, `minSdk` 26, an `arm64-v8a` split; the Android modules were left out of
   the build, through no-op plugin stubs, when no Android SDK was installed.
 - Construction kickoff plan §2: JDK 17 and an Android SDK for `targetSdk` 35 are prerequisites on the Operator's
   machine.
+- The Phase 2 review found that the gates did not run the task graph for targeted builds (A-20), left the upgrade
+  guarantee depending on one machine's debug key (A-25), never proved the persistence, restore, migration and Budget
+  App guarantees before Uploads (A-27), and could not pass without private data (A-28); and that the last good copy
+  relied on an SQLite feature `minSdk` may lack (A-24).
 
 ## Decision
 
@@ -28,32 +42,41 @@ Proposed (2026-10-14, construction kickoff Phase 1). The Operator sets it to Acc
   `build.gradle.kts`.
 - Phase 6 starts from the Predecessor App's versions above (JDK 17, Kotlin 2.3.21, AGP 8.12.0, Gradle 8.14.1, Compose
   BOM 2025.06.00, JUnit 5.11.4, `compileSdk` and `targetSdk` 35, `minSdk` 26) and adds, each pinned to one exact
-  version compatible with them: Room and KSP (ADR-002), Konsist (ADR-001), WorkManager, `androidx.browser`, OkHttp and
-  `kotlinx-serialization-json` (plug-ins), and the `de.mannodermaus.android-junit5` Gradle plugin (§3). A newer
-  version is taken only where the pinned Kotlin or AGP requires it; Phase 6 records each such choice.
+  version compatible with them: Room and KSP (ADR-002), Konsist and ASM (ADR-001), WorkManager, `androidx.browser`,
+  OkHttp with `mockwebserver` for tests, and `kotlinx-serialization-json` (plug-ins), and the
+  `de.mannodermaus.android-junit5` Gradle plugin (§3). A newer version is taken only where the pinned Kotlin or AGP
+  requires it; Phase 6 records each such choice.
 - All modules compile for JVM 17. Kotlin's `explicitApi()` is on for `:plugin-api` so the contract surface is
   deliberate.
 - Gradle convention plugins in `build-logic/` (ADR-001) set these once: `slussen.kotlin-library`,
   `slussen.android-library`, `slussen.android-application`.
+- SQLite is the platform's, through Room's framework open helper; no bundled SQLite driver. Android 8.0 (API 26)
+  ships an SQLite without `VACUUM INTO`, so ADR-002 §8 uses no SQLite feature newer than the `minSdk` platform's;
+  evidence E-01 to E-04 (§7) proves the mechanism on API 26.
 
 ### 2. The Android SDK is required; nothing is left out of the build
 
 Every module of ADR-001 is in `settings.gradle.kts` unconditionally. There are no plugin stubs. A machine without an
 Android SDK fails at configuration with the message that `ANDROID_HOME` or `sdk.dir` in `local.properties` must point
-to an Android SDK. Reason: the module-graph check, the Konsist rules and the compile of `:persistence` and `:app` must
-never pass by not running.
+to an Android SDK. Reason: the module-graph check, the Konsist and bytecode rules and the compile of `:persistence`
+and `:app` must never pass by not running.
 
-### 3. Test runner
+### 3. Test runner and gates
 
 - JUnit 5 (Jupiter) everywhere, through `useJUnitPlatform()` for JVM modules and the `de.mannodermaus.android-junit5`
   plugin for the local and instrumented tests of `:persistence` and `:app`, including Compose UI tests through that
   plugin's Compose extension.
-- `gradlew check` runs: the compile of every module, every JVM test (local unit tests of the Android modules
-  included), the Konsist and traceability checks of `:architecture-tests`, `verifyModuleGraph` (ADR-001 §6.1) and
-  `verifyBuildConfigurationPlacement` (ADR-003 §5). Tests tagged `live` are excluded unless `-PincludeLive`
-  (ADR-004).
+- `gradlew check` runs: the compile of every module (each after `verifyModuleGraph`), every JVM test (local unit tests
+  of the Android modules included), the Konsist, bytecode and traceability rules of `:architecture-tests`,
+  `verifyBuildConfigurationPlacement` (ADR-003 §5), and `check` of `build-logic/` with the packaging-refusal test
+  (ADR-003 §6). The task graph that also runs these checks for targeted builds and packaging is ADR-001 §6.4. Tests
+  tagged `live` are excluded unless `-PincludeLive` (ADR-004).
+- **The agent gate** of every construction phase that builds code is `gradlew check`, run without a Build
+  Configuration. It includes the test that packaging fails without one. Only the Operator runs `gradlew build`, a
+  packaging or install task with the real Build Configuration, `connectedCheck` on the Operator's phone, and the live
+  tests (O-P1-06, O-P1-07).
 - Instrumented tests (`src/androidTest`) run with `gradlew connectedCheck` on a connected device or emulator; they
-  are not part of `check`, because no device is guaranteed where `check` runs.
+  are not part of `check`, because no device is guaranteed where `check` runs. They are part of the evidence of §7.
 - If Phase 6 finds that JUnit 5 cannot run the instrumented or Compose tests with the pinned AGP, it stops and
   reports, instead of switching those tests to JUnit 4 (the markers of ADR-004 assume JUnit 5).
 
@@ -72,27 +95,64 @@ never pass by not running.
 
 - `applicationId` and the namespace of `:app` are `slussen.app`; each other Android module's namespace is its
   package root (ADR-001 §1).
+- The `debug` variant has `applicationIdSuffix ".debug"`, so a debug build installs beside the release installation
+  and can never replace it or its data.
 - The app ships for `arm64-v8a` only when it has native code; Slussen's own code has none, so no ABI split is
   configured unless a library adds native code.
 
-### 6. Variant and signing (open)
+### 6. Variant and signing (O-P1-08, O-P2-05; A-25)
 
-Which variant the Operator installs, and with which signing key, decides whether a build from another machine can
-upgrade the installed app in place (NFR-017). This is reported as an open question (O-P1-08), with the recommended
-answer: the `release` variant, signed with the Operator's own key, whose keystore path and passwords are kept in
-`build-config/local/signing.properties` under the same rules as the Build Configuration (ADR-003). Until the Operator
-answers, Phase 6 configures only the `debug` variant, signed with the machine's default debug key.
+- The Operator installs and keeps data in the **`release`** variant only. It is signed with the Operator's own
+  keystore, which lives **outside the repository**. `build-config/local/signing.properties` (template
+  `build-config/signing.template.properties`, every value `# secret` except the path) holds the keystore path, the
+  key alias and the passwords, under every rule of ADR-003 (placement, never printed, never read by an agent).
+- `build-logic/` refuses to sign when the keystore path resolves inside the repository working tree, and refuses to
+  package `release` when `signing.properties` is absent or names no readable keystore; the message names the file,
+  never a value.
+- The Operator keeps a backup of the keystore and its passwords outside the device and outside the repository. A lost
+  keystore means a new installation (and with it a Recovery Check, ADR-002 §6), never an in-place upgrade.
+- Until the Operator has created the keystore and `signing.properties`, Phase 6 and later phases build `debug` only,
+  signed with the machine's default debug key; a debug build is for trying out, and the Operator does not keep data in
+  it.
+
+### 7. Evidence that gates the first slice that uploads (A-24, A-25, A-27)
+
+The first slice that implements UC-006 (Upload to the Budget App) is not complete, and no build that can upload is
+installed for real use, until every item below has passed and its result is recorded in that slice's plan. The
+UC-012 + UC-008 slice of the construction kickoff plan uploads nothing and does not need them. Device items run with
+`gradlew connectedCheck` on an emulator with API 26 (the `minSdk`) and on the Operator's phone; the Operator runs the
+phone and live items.
+
+| ID | Evidence | Where | Proves |
+|---|---|---|---|
+| E-01 | The last good copy is made at start, replaced atomically on each later start, and survives repeated starts | instrumented, API 26 and phone | ADR-002 §8 steps 1-2 |
+| E-02 | A failed copy (planted write failure) leaves the previous last good copy in place, and a leftover temporary file is removed | instrumented, API 26 | ADR-002 §8 step 2 |
+| E-03 | A database with planted garbage bytes, and one with a planted unknown `Values:` text, are kept unchanged with their journal, the last good copy is used, the notice is shown and a Recovery Check opens; the running-app path restarts and recovers | instrumented, API 26 and phone | ADR-002 §8 steps 3-4, NFR-005 |
+| E-04 | With no last good copy, an unreadable database starts empty with the default content | instrumented, API 26 | ADR-002 §8 step 3 |
+| E-05 | Each atomic operation O-1 to O-13 leaves nothing visible after a failure injected before its commit; `confirmPlan` survives a killed process right after it returns | instrumented, API 26 | ADR-002 §3, §4 |
+| E-06 | Migration from every released schema version keeps every row | instrumented (`MigrationTestHelper`), API 26 | ADR-002 §7, NFR-017 |
+| E-07 | Backup and restore with `adb shell bmgr` (backup now, uninstall, reinstall, restore): `slussen.db` comes back, `device.db` and `journal.db` do not, the start is detected as Restored Backup, a Recovery Check blocks Uploads until a Comparison and confirmation | phone | ADR-002 §5, §6; NFR-009, NFR-010, FR-095 |
+| E-08 | A new installation opens a Recovery Check with cause New Installation | instrumented, API 26 | ADR-002 §6 |
+| E-09 | An in-place upgrade of the `release` variant built on a second checkout with the same keystore keeps every Sent Record, Account Mapping lock and decision | phone | §6, NFR-017 |
+| E-10 | The live tests against a throwaway YNAB Budget (C-011): a reused Import Identifier is refused and answered `AlreadyPresent`; matching to a Typed Entry within the Matching Date Window; a deletion and a merge are reported; a linked transfer carries both sides' links and the counterpart can be marked Cleared; created transactions await approval; YNAB's own Bank import writes Import Identifiers that do not match Slussen's marker | Operator's machine, `-PincludeLive` | ADR-001 §4.2.1, §4.2.2; ADR-008 §1; S-05 |
+| E-11 | The contract tests' timeout and cancellation cases pass against each plug-in (part of `check`) | JVM | ADR-001 §4.0 |
+
+Each item's test or procedure is written in the slice that needs it, carries the markers of ADR-004, and its result
+(pass, device, date, commit) is recorded in that slice's plan. A failing item stops the slice; a mechanism that
+fails on the device is changed by amending ADR-002, not worked around.
 
 ## Consequences
 
 - Every machine and every agent that builds Slussen needs JDK 17 and an Android SDK (plan §2 prerequisite).
-- A green `gradlew check` means every module compiled and every architecture rule ran; nothing is skipped silently.
-- Instrumented tests need a device. Phases that require them (for example the persistence test of ADR-002 §3) state
-  it in their gate.
+- A green `gradlew check` means every module compiled, every architecture rule ran and packaging without a Build
+  Configuration was refused; nothing is skipped silently. It does not mean the device or live evidence passed; that is
+  §7, and it gates Uploads, not the first slice.
+- Instrumented tests need a device; phone and live items need the Operator.
 - `VERSION` parts above 999 fail the build; at the pace of `AGENTS.md` §5 that limit is far away, and raising it is an
   amendment of this ADR.
-- Until O-P1-08 is answered, installing a build from a different machine requires uninstalling first, which removes
-  the stored data unless a device backup is restored.
+- The release keystore is the identity of the Operator's installation: its backup is the Operator's job, and losing it
+  costs a reinstall with restore (and a Recovery Check), never silent data loss.
+- Debug and release builds can be installed side by side, so trying a debug build never touches the Operator's data.
 
 ## Alternatives
 
@@ -102,11 +162,29 @@ answers, Phase 6 configures only the `debug` variant, signed with the machine's 
   source, and a commit count differs between a clone and a fork.
 - **JUnit 4 for Android tests (the Android default).** Rejected: two test frameworks would need two marker forms;
   ADR-004 has one.
-- **Robolectric for persistence and UI tests on the JVM.** Not chosen: it runs on JUnit 4 only. Revisit together
-  with the Room Kotlin Multiplatform alternative of ADR-002.
+- **Robolectric for persistence and UI tests on the JVM.** Not chosen: it runs on JUnit 4 only, and it cannot prove
+  the platform SQLite of `minSdk`. Revisit together with the Room Kotlin Multiplatform alternative of ADR-002.
+- **The debug key for the Operator's installation.** Rejected (A-25): it ties upgrades to one machine.
+- **A keystore inside the repository, ignored by Git.** Rejected: one wrong ignore line publishes it; outside the
+  repository it cannot be committed at all.
+- **Making `connectedCheck` part of every agent gate.** Not chosen: no device is guaranteed where agents run, and the
+  phone items need the Operator; the evidence is required where it matters, before Uploads.
 
 ## AIUP guidance
 
 - AIUP prescribes no toolchain; its stack plugins each assume their own (Maven or Gradle with Spring Boot, .NET,
   Node). Nothing in AIUP covers an Android SDK, device-run tests, signing, or how a version name reaches an app.
 - `AGENTS.md` §5 (project rule, not AIUP) is the source of the `VERSION` decision.
+- AIUP has no gate for evidence that only a device or a real external service can give; §7 is project-made, following
+  C-011.
+
+## Review findings addressed
+
+- A-20: §3 (what `check` runs; the task graph for targeted builds is ADR-001 §6.4).
+- A-24: §1 (platform SQLite, no `VACUUM INTO`), §7 E-01 to E-04 on API 26.
+- A-25 (with O-P1-08, O-P2-05): §5 (debug beside release), §6 (release keystore outside the repository, path in
+  `signing.properties`, backed up by the Operator, debug only until then), §7 E-09.
+- A-27: §7 (device, crash, restore, migration and live Budget App evidence as an explicit prerequisite of the first
+  slice that uploads), with ADR-004 §2 for the live-test credentials.
+- A-28 (with O-P1-06): §3 (the agent gate is `gradlew check` with the packaging-refusal test; only the Operator runs
+  `build`).

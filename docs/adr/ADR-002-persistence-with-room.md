@@ -1,38 +1,62 @@
-# ADR-002: Persistence With Room, the Sent Record Before Every Upload, and Backups
+# ADR-002: Persistence With Room, Atomic Storage Operations, the Sent Record, Backups and the Recovery Check
 
 ## Status
 
-Proposed (2026-10-14, construction kickoff Phase 1). The Operator sets it to Accepted at the architecture gate.
+Proposed (2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the Phase 2
+review and the specification changes S-01 to S-10). The Operator sets it to Accepted at the architecture gate.
 
 ## Context
 
 What the specification requires of storage:
 
-- **Exactly once.** FR-041, NFR-001, UC-006 BR-006: "A transaction is recorded in the Sent Record before it is
-  sent." UC-006 step 6 records every Eligible Transaction of the plan and locks the Account Mappings; A7: when the
-  Sent Record "cannot be stored completely", Slussen sends nothing. UC-009 BR-003: the lock happens at the first
-  send, whatever the Budget App answers. `SENT_RECORD` constraints: unique `import_identifier` per
-  `budget_account_id`; Not Yet Known and Unknown outcomes are resolved by a later read (UC-003 BR-017).
-- **What survives a reinstall with restore, and an upgrade.** FR-042, NFR-010, NFR-017, UC-006 BR-014,
-  UC-009 BR-006, BR-008, UC-010 BR-006: the stored Bank Transactions, the Sent Record, how Slussen recognises each
-  Bank Account, the Account Mappings with their locks, Funded By and Transfer Partner, the Review Decisions and
-  Transfer Decisions, the Operator Settings.
-- **What never leaves the device in a backup or device-to-device transfer.** NFR-009, UC-007 BR-005: no log, no
-  Bank Consent data, no Consent Request in progress. NFR-011, UC-011 BR-004: no Decision Journal. Vision,
-  *Sensitive data*: "Neither logs nor bank sessions are ever included in device backups."
+- **Exactly once, as S-05 states it.** FR-041, NFR-001, UC-006 BR-006: Slussen records each transaction in the Sent
+  Record before it is sent and never sends again a Bank Transaction whose Sent Record shows that the Budget App created
+  it or already held it. UC-006 BR-007, FR-038: a send with an unknown outcome is sent again automatically, under the
+  same Import Identifier and to the same Budget Account, only when the Budget App refuses a reused Import Identifier;
+  otherwise it waits for the Operator's Review Decision. UC-006 step 6 records every Eligible Transaction of the plan
+  and locks the Account Mappings; A7: when the Sent Record "cannot be stored completely", Slussen sends nothing.
+  `SENT_RECORD` constraints: unique `import_identifier` per `budget_account_id`; Not Yet Known and Unknown outcomes are
+  resolved by a later read (UC-003 BR-017).
+- **What survives a reinstall with restore, and an upgrade.** FR-042 (changed), NFR-010 (changed), NFR-017,
+  UC-006 BR-014, UC-009 BR-006, BR-008, UC-010 BR-006: the stored Bank Transactions, the Sent Record, how Slussen
+  recognises each Bank Account with its Configuration Key, the Account Mappings with their locks, Funded By and
+  Transfer Partner, the Review Decisions and Transfer Decisions, the Operator Settings, **as of the time the device
+  backup was made**, and in full on an upgrade.
+- **What never leaves the device in a backup or device-to-device transfer.** NFR-009 (changed), UC-007 BR-005,
+  `BANK_SESSION`, `OFFERED_BANK_ACCOUNT`: no log, no Bank Consent data, no Bank Session, no Consent Request in
+  progress, no Offered Bank Account. NFR-011, UC-011 BR-004: no Decision Journal.
+- **The Recovery Check (S-06).** FR-095, NFR-005 (changed), UC-006 BR-017, A13, UC-008 A1, A8, A9, BR-009,
+  `RECOVERY_CHECK`: after Slussen starts from its last good copy, from data restored from a device backup or from the
+  empty data of a new installation, no Upload Plan is prepared until a Comparison has run and the Operator has
+  confirmed.
+- **The backup size warning.** NFR-019, C-015, UC-008 A7, BR-010: Android backs up at most 25 MB of an app's data and
+  makes no backup at all above it (a limit Android sets); Slussen warns at the backup warning threshold (80% by
+  default, an Operator Setting).
 - **Unreadable stored data.** NFR-005, UC-008 A1: keep the unreadable original unchanged, start from the last good
-  or default content, show a notice naming the part, do not crash.
+  or default content, show a notice naming the part, open a Recovery Check, do not crash.
+- **All-or-nothing steps.** UC-002 BR-001 (a Transaction File is taken in as a whole or not at all); UC-003 BR-016
+  (every later read takes all changes since the previous read); UC-007 BR-002 (a Consent Request is answered once).
+- **New entities of the architecture gate:** `BANK_SESSION` (S-02), `BANK_ACCOUNT.configuration_key` and
+  `configured` (S-03, S-10, FR-096), `RECOVERY_CHECK` (S-06), `UNREADABLE_TRANSACTION` (S-07),
+  `OFFERED_BANK_ACCOUNT` (S-08), `BUDGET_APP_TRANSACTION.memo` (S-09), `OPERATOR_SETTINGS.file_upload_window_days`
+  (S-01) and `backup_warning_percent` (NFR-019).
 - **The Decision Journal never affects decisions.** NFR-006, UC-010 BR-004, UC-011 BR-002; size limit by dropping
   the oldest entries (`DECISION_JOURNAL_ENTRY` constraints, UC-010 BR-003).
 - **Counters that survive a restart.** `PROVIDER_REQUEST` is kept for at least 24 hours and survives a restart of
   the app (UC-001 BR-007, BR-012).
-- The Operator decided (bootstrap plan O-09) that storage is Room.
+- The Operator decided (bootstrap plan O-09) that storage is Room, and (O-P1-03) that the Budget App read cursor stays
+  technical, outside the entity model.
 
 Evidence from the Predecessor App (`scratch/construction_inventory.md` §4), used as evidence and not as a template:
 nine JSON files in `filesDir` written through `<name>.tmp` and rename, the journal in `noBackupFilesDir`, and two
-backup rule files that disagreed: the `:platform` copy excluded `resolutions.json` and `binding_registry.json`
-(Review Decisions and Account Mapping locks, which NFR-010 requires in the backup), the `:app` copy excluded the
-consent files instead, and a third list (`PlatformSecurePolicy.BACKUP_EXCLUDED_FILES`) repeated the first.
+backup rule files that disagreed: one copy excluded the files holding Review Decisions and Account Mapping locks
+(which NFR-010 requires in the backup), the other excluded the consent files instead, and a third list repeated the
+first.
+
+The Phase 2 review found that the Sent Record insert rejected the retries it must permit (A-01), that the guarantee
+was claimed to hold whatever the Budget App does (A-02), that recovery from the last good copy or a backup continued
+uploading on possibly incomplete history (A-03, A-04), that only one atomic storage operation was defined (A-07), and
+that the last good copy rested on unproven platform features (A-24).
 
 ## Decision
 
@@ -43,19 +67,25 @@ rules lives in different database files.
 
 | Database | File | Backed up and transferred | Tables |
 |---|---|---|---|
-| Main | `slussen.db` in the app's database directory (`Context.getDatabasePath`) | **Yes**, and nothing else is | every entity of `docs/entity_model.md` except the four below, plus `budget_read_state` (§2) |
-| Consent | `consent.db` in `Context.noBackupFilesDir` | No | `bank_consent`, `consent_request`, `bank_session` (§2) |
+| Main | `slussen.db` in the app's database directory (`Context.getDatabasePath`) | **Yes**, and nothing else is | every entity of `docs/entity_model.md` except the five below, plus the technical tables of §2 marked `slussen.db` |
+| Device | `device.db` in `Context.noBackupFilesDir` | No | `bank_consent`, `bank_session`, `consent_request`, `offered_bank_account`, and the technical table `consent_request_correlation` |
 | Journal | `journal.db` in `Context.noBackupFilesDir` | No | `decision_journal_entry` |
 
 `slussen.db` therefore holds: `budget`, `budget_account`, `budget_app_transaction`, `data_provider`, `file_format`,
 `bank`, `bank_account`, `account_mapping`, `fetch`, `fetch_result`, `back_off`, `provider_request`,
-`account_balance`, `transaction_file`, `bank_transaction`, `review_decision`, `transfer`, `upload_plan`,
-`eligible_transaction`, `sent_record`, `transfer_counterpart`, `operator_settings`, `transfer_description`,
-`budget_read_state`.
+`account_balance`, `transaction_file`, `bank_transaction`, `unreadable_transaction`, `review_decision`, `transfer`,
+`upload_plan`, `eligible_transaction`, `sent_record`, `transfer_counterpart`, `recovery_check`, `operator_settings`,
+`transfer_description`, and the technical tables `budget_read_state`, `coordinator_state` and `upload_plan_item`.
 
-Slussen keeps no other persistent state: no SharedPreferences, no DataStore, no file of its own outside these three
-databases, the last good copy and the unreadable copies of §6. Logs are not written to files (ADR-006). Data that
-the WorkManager library keeps for the Scheduled Fetch carries no Slussen data beyond the worker's name.
+`device.db` holds what stays on this installation: Bank Consents with their Bank Sessions and Consent Requests
+(UC-007 BR-005) and the Offered Bank Accounts (UC-009 BR-009, O-P2-07). The Phase 1 name `consent.db` is replaced
+because the file now holds more than consent data.
+
+Besides the three databases, Slussen keeps exactly these files, all in `noBackupFilesDir`: `installation.id` (§6),
+`slussen.lastgood.db` and its temporary file (§8), the unreadable copies of §8, and the marker
+`slussen.recovery-pending` (§8). No SharedPreferences, no DataStore, no other file. Logs are not written to files
+(ADR-006). Data that the WorkManager library keeps for the Scheduled Fetch carries no Slussen data beyond the worker's
+name.
 
 ### 2. Mapping the entity model to tables
 
@@ -68,10 +98,14 @@ the WorkManager library keeps for the Scheduled Fetch carries no Slussen data be
   Conversion to the device's local time happens only for display (NFR-018).
 - A `String` with `Values:` is stored as `TEXT` holding exactly the value of the entity model (for example
   `Match For Typed Entry`), through one Room `TypeConverter` per value set. An unknown text read back is unreadable
-  data (§6).
-- `Unique` and `Foreign Key` become Room indices and foreign keys when both tables are in the same database. A
-  reference across databases (`bank_consent.bank_id`, `bank_consent.data_provider_id`, `consent_request.bank_id`,
-  `consent_request.data_provider_id`) is a plain column; the core checks it.
+  data (§8).
+- `Unique` and `Foreign Key` become Room indices and foreign keys when both tables are in the same database
+  (`bank_session.bank_consent_id` is a real foreign key in `device.db`; `bank_account.configuration_key` a unique
+  index in `slussen.db`). A reference across databases (`bank_consent.bank_id`, `bank_consent.data_provider_id`,
+  `consent_request.bank_id`, `consent_request.data_provider_id`, `offered_bank_account.data_provider_id`, `bank_id`
+  and `proposed_bank_account_id`) is a plain column; the core checks it.
+- `BANK_SESSION.session_reference` is stored as the revealed text of the `ConsentSession` (ADR-006 §2), written and
+  read only inside `:persistence`.
 - Every other constraint of the entity model is a rule of the core (ADR-001), marked there per ADR-004, not a
   database trigger.
 
@@ -79,51 +113,99 @@ Technical storage that is not in the entity model, complete list:
 
 | Table | Database | Columns | Why |
 |---|---|---|---|
-| `budget_read_state` | `slussen.db` | `budget_id` (key), `change_cursor` (TEXT) | The opaque `ChangeCursor` of ADR-001 §4.2 that lets every later read take "all changes since the previous read" (UC-003 BR-016). |
-| `bank_session` | `consent.db` | `bank_id`, `data_provider_id` (key together), `session` (BLOB) | The Data Provider's session for a Bank Consent ("the stored consent and its session", UC-007 BR-007, FR-082). Opaque to the core. |
+| `budget_read_state` | `slussen.db` | `budget_id` (key), `change_cursor` (TEXT) | The opaque `ChangeCursor` of ADR-001 §4.2.3 that lets every later read take "all changes since the previous read" (UC-003 BR-016); technical by the Operator's answer to O-P1-03. Written only by O-4. |
+| `coordinator_state` | `slussen.db` | one row: `mode` (Normal, Plan Open, Uploading), `upload_plan_id`, `state_version` (INTEGER), `scheduled_fetch_deferred` (BOOLEAN) | The operation coordinator's mode and the version of everything an Upload Plan depends on (ADR-007 §2, §6). |
+| `upload_plan_item` | `slussen.db` | `upload_plan_id`, `position`, `write_kind`, `bank_transaction_id`, `budget_account_id`, `import_identifier`, `occurrence`, `booked_date`, `amount`, `payee_sent`, `memo_sent`, `cleared`, `transfer_budget_account_id`, `counterpart_reference`, `reused_sent_record_id`, `reused_outcome`, plus the plan's captured `state_version`, `change_cursor` per Budget and configuration fingerprint in a header row | The immutable write set of an Upload Plan (ADR-007 §4). Inserted only by O-6; never updated. |
+| `consent_request_correlation` | `device.db` | `consent_request_id` (key, foreign key), `state_digest` (TEXT, SHA-256 of the `state`, unique), `provider_handle` (TEXT, the plug-in's opaque handle) | Matches the answer from Strong Customer Authentication to its Consent Request (ADR-001 §4.1). The `state` itself is never stored. |
 
-Whether these two belong in the entity model, and how a stored `bank_account` record is matched to its entry in the
-Build Configuration across rebuilds (the entity model has no configuration key for a Bank Account), are open
-questions for the Operator (O-P1-03, O-P1-04 in the report to the orchestrator). Until they are answered, Phase 6
-creates no table for them beyond this list.
+**Bank Accounts and the Build Configuration (S-03, S-10, FR-096; A-05).** Each Bank Account entry of the Build
+Configuration carries its Configuration Key (ADR-003 §2). At every start, before any operation is admitted, O-11
+reconciles the stored configuration with the generated one in one transaction:
 
-### 3. The Sent Record is committed before anything is sent
+- a stored `bank_account` is matched by `configuration_key` only, never by name or position; its `name`, `currency`,
+  kind, Source, Start Date and Bank follow the entry;
+- a stored Bank Account whose key no entry has gets `configured` false and keeps its identification, history,
+  Account Mapping and lock (UC-009 A11); one whose key returns gets `configured` true;
+- an entry with a key no stored Bank Account has becomes a new `bank_account`; its Account Mapping is not stored when
+  its Budget Account already receives through a locked Account Mapping, also one of a Bank Account whose `configured`
+  is false (UC-009 A12), and the Bank Account shows the Blocked Reason "configuration error";
+- an entry that maps a Bank Account with a locked Account Mapping to another Budget Account changes nothing in
+  `account_mapping` (UC-009 A8);
+- Budgets are matched by `budget_app_reference`, Data Providers and File Formats by `source_key`, Banks by `name`;
+- nothing is ever deleted by reconciliation.
 
-The core's port `slussen.core.port.SentRecordStore` has this method for UC-006 step 6:
+### 3. Atomic storage operations
+
+Every step the specification wants all or nothing is one named method of a core storage port (ADR-001 §3),
+implemented by `:persistence` as one `RoomDatabase.withTransaction` block on one database. The core never builds such
+a step from two calls. Each operation that changes something an Upload Plan depends on raises
+`coordinator_state.state_version` in the same transaction (ADR-007 §6).
+
+| ID | Port method | What it does, all or nothing | Specification |
+|---|---|---|---|
+| O-1 | `FetchStore.storeBankAccountDelivery` | For one identified Bank Account: new Bank Transactions (with `occurrence_number` allocated and Import Identifiers computed and checked for collision, ADR-008 §4, §5), changed content of known ones, new Unreadable Transactions (counted against stored ones with the same readable fields and reason), the Account Balance, the `fetch_result` | UC-001 steps 7-8, A8, A17, BR-010, BR-016, NFR-020 |
+| O-2 | `FetchStore.replaceOfferedBankAccounts` (`device.db`) | Replaces the Offered Bank Accounts of a Data Provider, or of one Bank through it, with the latest delivery | UC-009 BR-009 |
+| O-3 | `FileImportStore.importWhole` | The `transaction_file` record Imported and every new Bank Transaction of the file with its occurrence number and Import Identifier; a collision or any failure stores none of them and the core records the file as Rejected in a separate step | UC-002 BR-001, BR-003, A6, NFR-020, ADR-008 §5 |
+| O-4 | `BudgetAppCopyStore.applyChangeSet` | The changed `budget_app_transaction` records (upserted by `budget_app_reference`), the Budget Account balances, `budget.last_read_at` and the next `change_cursor`, only if the stored cursor still equals the one the read started from | UC-003 step 1, BR-016 |
+| O-5 | `ComparisonStore.applyComparison` | Transaction Statuses, Sent Records settled as Written when their Import Identifier was found, Transfer Counterparts reconciled from the Budget App's links (ADR-001 §4.2.3), and `recovery_check.compared_at` when every Budget with a mapped Bank Account was read | UC-003 steps 3-7, BR-017, BR-019; UC-005 BR-009 |
+| O-6 | `UploadStore.preparePlan` | The `upload_plan`, its `eligible_transaction` and `upload_plan_item` records, and the mode Plan Open | ADR-007 §4 |
+| O-7 | `UploadStore.confirmPlan` | §4 below: the Sent Record before every send | UC-006 step 6, A7, BR-006 |
+| O-8 | `UploadStore.recordOutcomes` | The reported outcomes of one Budget Account's writes | UC-006 steps 8-9, A8, A9, BR-012 |
+| O-9 | `UploadStore.finishUpload` | The end of the Upload and the mode Normal | UC-006 step 12 |
+| O-10 | `ConsentStore.startRequest`, `consumeAnswer`, `replaceConsent`, `revoke` (`device.db`) | Start: a new Consent Request with its correlation, making earlier ones of the Bank unanswerable. Consume: the most-recent, lifetime and not-answered checks and `answered` set, together. Replace: the Bank Consent and its Bank Session in place of the earlier ones, refused when a newer Consent Request exists. Revoke: delete the Bank Consent, its Bank Session and every Consent Request of the Bank | UC-007 BR-002, BR-003, BR-004, BR-007; NFR-013 |
+| O-11 | `ConfigurationStore.reconcile` | §2, Bank Accounts and the Build Configuration | UC-009 A8, A11, A12, BR-010, BR-011; FR-096 |
+| O-12 | `RecoveryStore.openCheck`, `confirmChecks` | Open a Recovery Check with its cause; confirm every open check whose `compared_at` is filled, together with its Decision Journal record request | UC-006 BR-017, UC-008 A9, BR-009 |
+| O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses | UC-004, UC-005, UC-009, UC-010 |
+
+A crash at any point leaves each operation either complete or absent. Each has an instrumented test that injects a
+failure before the commit and checks that nothing of it is visible (ADR-005 §7, E-05). Because O-4 stores the cursor
+with its changes and the Budget App plug-in returns at least the same changes when read again from the same cursor
+(ADR-001 §4.2.1 F-3), a crash between a read and its storage loses nothing (A-07).
+
+### 4. The Sent Record is committed before anything is sent
+
+O-7, `slussen.core.port.UploadStore.confirmPlan`:
 
 ```kotlin
-/** Commits every Sent Record of the plan, locks the Account Mappings and confirms the plan, all or nothing.
- *  Returns only after the commit is durable. Throws SentRecordNotStored when anything fails. */
-suspend fun recordBeforeSend(plan: UploadPlanId, sends: List<PlannedSend>)
+/** Commits the Sent Record of every item of the plan, locks the Account Mappings, confirms the plan and sets the
+ *  mode Uploading, all or nothing. Returns only after the commit is durable. Throws SentRecordNotStored when anything
+ *  fails or a reused Sent Record no longer has the outcome captured at preparation. */
+suspend fun confirmPlan(plan: UploadPlanId, now: Instant)
 ```
 
-`:persistence` implements it as one `RoomDatabase.withTransaction` block on `slussen.db` that:
+`:persistence` implements it as one transaction on `slussen.db` that:
 
-1. inserts one `sent_record` per Eligible Transaction with `outcome` Not Yet Known, its `import_identifier`,
-   `occurrence`, `budget_account_id`, `booked_date`, `amount`, `sent_as_transfer` and `sent_at`;
-2. sets `account_mapping.locked_at` to the same time for every Account Mapping of those transactions whose
+1. for each `upload_plan_item` that is a new send (no `reused_sent_record_id`), inserts one `sent_record` with
+   `outcome` Not Yet Known, its `import_identifier`, `occurrence`, `budget_account_id`, `booked_date`, `amount`,
+   `sent_as_transfer` and `sent_at`;
+2. for each item that reuses a Sent Record (a retry, ADR-007 §4), updates that `sent_record`: `outcome` Not Yet Known,
+   `upload_plan_id` of this plan, `sent_at`, and the `booked_date` and `amount` sent, **only where its `outcome` still
+   equals `reused_outcome`**; its `import_identifier` and `budget_account_id` are never changed;
+3. sets `account_mapping.locked_at` to the same time for every Account Mapping of those transactions whose
    `locked_at` is empty (UC-009 BR-003);
-3. sets the `upload_plan.state` to Confirmed.
+4. sets the `upload_plan.state` to Confirmed, only where it is still Awaiting Confirmation, and the coordinator mode to
+   Uploading.
 
-A unique index on (`budget_account_id`, `import_identifier`) of `sent_record` makes a second record of the same send
-fail the whole transaction. When the transaction fails, nothing of it is stored and the core follows UC-006 A7
-(sends nothing, discards the plan, ends the pause).
+The unique index on (`budget_account_id`, `import_identifier`) of `sent_record` stays. A retry never inserts, so it
+never meets the index (A-01); a violation can only come from a new send whose Import Identifier is already held, which
+ADR-008 §5 prevents, and is then UC-006 A7 (nothing sent, plan discarded, mode Normal).
 
-`slussen.core.upload.UploadExecutor` calls `BudgetAppWriter.create` only after `recordBeforeSend` has returned, and
-only for the sends it committed. It records each reported outcome in a second transaction per Budget Account
-(UC-006 step 9, BR-012). After a crash between the two, the records stay Not Yet Known and the next Comparison
-resolves them (UC-003 BR-017); a resend uses the recorded `import_identifier` and `budget_account_id`
-(UC-006 BR-007).
+`UploadExecutor` sends only after `confirmPlan` has returned, and only the items of the plan, through the write
+permit (ADR-007 §6, §7). After a crash before the outcomes are stored, the records stay Not Yet Known, become Unknown
+at the next start (ADR-007 §8), and the next Comparison settles every one the Budget App holds (UC-003 BR-017).
 
-Durability settings for `slussen.db` and `consent.db`: `JournalMode.TRUNCATE` (not WAL) and
+Durability settings for `slussen.db` and `device.db`: `JournalMode.TRUNCATE` (not WAL) and
 `PRAGMA synchronous = FULL`, so that a committed transaction is complete in the one database file that a backup
-copies, and `recordBeforeSend` returning means the records survive a power loss.
+copies, and `confirmPlan` returning means the records survive a power loss.
 
-Tests that prove it: in `:core`, a fake `BudgetAppWriter` that fails the test when it is called before the fake
-store committed; in `:persistence`, an instrumented test that plants a duplicate `import_identifier` and checks that
-no `sent_record`, no `locked_at` and no plan state change remain.
+**What this guarantees, and what it does not (S-05, A-02).** A transaction whose Sent Record is Written or Already
+Present is never sent again, whatever happens later on this installation. A send whose answer was lost leaves the
+same Sent Record as a request that never arrived; Slussen cannot tell them apart and does not claim to. Such a send is
+resent automatically only to a Budget App that declares it refuses a reused Import Identifier, which the live tests
+prove for YNAB before Uploads rely on it (ADR-005 §7, E-10); with any other Budget App it waits for the Operator's
+Review Decision. Exactly once is not claimed for a Budget App that does neither.
 
-### 4. Backup and device-to-device transfer rules
+### 5. Backup and device-to-device transfer rules
 
 One copy of the rules, in `:persistence` (`src/main/res/xml/`), referenced from the `:app` manifest with
 `android:allowBackup="true"`:
@@ -134,40 +216,91 @@ One copy of the rules, in `:persistence` (`src/main/res/xml/`), referenced from 
   `<include domain="database" path="slussen.db" />`.
 
 The rules **include** what must survive instead of excluding what must not, so anything added later is left out
-until this ADR says otherwise. Left out by this: `consent.db` and `journal.db` (also in `noBackupFilesDir`, which
-Android never backs up), the rollback journal `slussen.db-journal`, the last good copy and unreadable copies of §6,
-WorkManager's database, and any cache.
+until this ADR says otherwise. Left out by this: `device.db` (Bank Consents, Bank Sessions, Consent Requests,
+Offered Bank Accounts) and `journal.db` (also in `noBackupFilesDir`, which Android never backs up), the rollback
+journal `slussen.db-journal`, every file of §1 in `noBackupFilesDir`, WorkManager's database, and any cache.
+
+**Backup size warning (NFR-019, C-015).** `BackupSizeMonitor` reports the size of `slussen.db`, the only file that is
+backed up, and the limit Android sets for Auto Backup (25 MB, C-015; a constant in `:persistence` whose KDoc names the
+Android documentation as its source). At every opening, when the size reaches `backup_warning_percent` of that limit
+(80% by default, an Operator Setting), the core shows UC-008 A7. Data that is never backed up does not count.
+
+**What a backup can and cannot give (A-04).** Android decides when it makes a backup; Slussen cannot force a fresh
+one, cannot see whether the last one succeeded, and gets none at all above the limit. NFR-010 (changed) promises the
+data "that existed when Android made the backup", not the data of the last moment. Everything after that point is
+covered by the Recovery Check (§6), not by the backup.
 
 Tests that prove it: a JVM test in `:persistence` parses both XML files and checks that the include list is exactly
-`slussen.db` in every section and that no rule names `consent.db` or `journal.db`; a test checks that the
-`consent.db` and `journal.db` paths are under `noBackupFilesDir`. A reinstall-and-restore check on a real device
-(`adb shell bmgr`) is a manual step of an acceptance phase, not of `gradlew check`.
+`slussen.db` in every section and that no rule names `device.db` or `journal.db`; a test checks that the `device.db`
+and `journal.db` paths are under `noBackupFilesDir`; the restore evidence of ADR-005 §7 (E-07) checks it on a device.
 
-### 5. Upgrades keep the data
+### 6. The start sequence and the Recovery Check (S-06; A-03, A-04)
+
+At every start, before Room opens `slussen.db` and before any operation is admitted, `:persistence` runs the start
+sequence and reports its result through `StartState` (ADR-001 §3):
+
+| `installation.id` in `noBackupFilesDir` | `slussen.db` | Start | Recovery Check opened with cause |
+|---|---|---|---|
+| present | present and readable | normal | none |
+| absent | absent or empty | new installation | New Installation |
+| absent | present | data restored from a device backup or transferred from another device (Android restores `slussen.db` but never `noBackupFilesDir`) | Restored Backup |
+| present | absent | data cleared while the marker survived | New Installation |
+| any | unreadable, started from the last good copy or empty (§8) | last good copy | Last Good Copy |
+
+Then the sequence writes `installation.id` (a random value) when it was absent, opens the Recovery Check through O-12,
+and, for every start that opens one, resets `coordinator_state` as ADR-007 §8 says. An unreadable `device.db` or
+`journal.db` also opens a Recovery Check, as UC-008 A1 and NFR-005 say for any part, with cause Last Good Copy.
+
+While any Recovery Check is open, the coordinator prepares no Upload Plan (ADR-007 §3); UC-008 A8 shows why. A
+Comparison that read every Budget with a mapped Bank Account fills `compared_at` (O-5, UC-003 BR-019), and only then
+can the Operator confirm (O-12, UC-008 A9). This is how the data a backup or a last good copy lacks (Sent Records,
+locks, decisions written after it was made) is dealt with: the Comparison finds every transaction Slussen sent by its
+Import Identifier (ADR-008), which no build can change, and the Operator checks the Budget App before any Upload.
+Uploads never go ahead on a Sent Record that may be incomplete; a warning alone is not used.
+
+### 7. Upgrades keep the data
 
 - `exportSchema = true`; every schema version of each database is committed under `persistence/schemas/`.
 - Every schema change has a hand-written Room `Migration` and a `MigrationTestHelper` test from every schema version
   that was released (released = present in a merged `VERSION` bump, ADR-005).
+- A migration never rewrites `import_identifier`, `configuration_key` or `occurrence` values (ADR-008 §4).
 - Destructive fallback is never used (Konsist K-09 in ADR-001).
 - Installing an older build over a newer one is refused by Android (lower `versionCode`, ADR-005), so no downgrade
-  migration exists.
+  migration exists. An in-place upgrade needs the same signing key (ADR-005 §6).
 
-### 6. Unreadable stored data
+### 8. Unreadable stored data and the last good copy (A-24)
 
-- Each database is opened through a `SupportSQLiteOpenHelper.Callback` whose `onCorruption` does **not** delete the
-  file (SQLite's default does). It renames the file unchanged to `<name>.unreadable-<epochMillis>` in the same
-  directory, then starts the database from its last good copy when there is one, otherwise empty with the default
-  content (one `operator_settings` record with every default, the default Transfer Descriptions of UC-010 BR-007), and
-  reports the part to the core, which shows the notice of UC-008 A1. The parts are named for the Operator:
-  `slussen.db` "stored transactions, decisions and settings", `consent.db` "Bank Consents", `journal.db` "Decision
-  Journal".
-- Last good copy: once per app start, after `PRAGMA quick_check` on `slussen.db` returns `ok`, Slussen writes
-  `VACUUM INTO` a file `slussen.lastgood.db` in `noBackupFilesDir`. `consent.db` has no copy (starting with no Bank
-  Consent is safe: the Operator grants again) and `journal.db` has none (NFR-006: losing it changes nothing).
-- A value that cannot be read back (an unknown `Values:` text, a failed foreign key) is treated as an unreadable
-  database, not skipped record by record.
+Room on the platform's SQLite is kept; no bundled SQLite driver is added. Android 8.0 (API 26, the `minSdk`) ships an
+SQLite older than 3.27, which has no `VACUUM INTO`, so the last good copy is a plain file copy made while the database
+is closed:
 
-### 7. The Decision Journal
+1. **Check.** Before Room opens it, the start sequence opens `slussen.db` with the platform's `SQLiteDatabase` (which
+   rolls back a leftover `slussen.db-journal`), runs `PRAGMA quick_check` and `PRAGMA foreign_key_check`, and a
+   logical check: every `Values:` column holds only its allowed texts (queries generated from the entity model's value
+   sets). It then closes the database.
+2. **Copy.** When all three pass, it copies `slussen.db` to `slussen.lastgood.db.tmp` in `noBackupFilesDir`, flushes
+   it to the device, and renames it over `slussen.lastgood.db` (atomic within one file system). A failed copy leaves the
+   previous last good copy in place; a leftover temporary file is deleted at the next start.
+3. **Unreadable.** When a check fails, or SQLite reports corruption, the original `slussen.db` and its
+   `slussen.db-journal`, if present, are renamed together, unchanged, to `slussen.db.unreadable-<epochMillis>-<random>`
+   and `slussen.db-journal.unreadable-<epochMillis>-<random>` in the database directory, with 128 random bits as
+   ADR-008 §7 says, and the rename never overwrites an existing file; `slussen.lastgood.db` is copied to
+   `slussen.db`, or, without one, an empty database with the default content (one `operator_settings` record with
+   every default, the default Transfer Descriptions of UC-010 BR-007) is created; the part is reported to the core,
+   which shows the notice of UC-008 A1; a Recovery Check is opened (§6).
+4. **Unreadable while running.** A `TypeConverter` that meets an unknown text, or a failed foreign key, throws
+   `UnreadableStoredData`. The app does not continue on that data: it writes the marker `slussen.recovery-pending` in
+   `noBackupFilesDir` and restarts its process; the next start sequence treats `slussen.db` as unreadable (step 3).
+   Room's `onCorruption` callback does the same instead of SQLite's default, which deletes the file.
+5. `device.db` and `journal.db` get no last good copy: starting with no Bank Consent is safe (the Operator grants
+   again), and losing the journal changes nothing (NFR-006). Their unreadable originals are kept the same way.
+
+The parts are named for the Operator: `slussen.db` "stored transactions, decisions and settings", `device.db` "Bank
+Consents and Offered Bank Accounts", `journal.db` "Decision Journal". The copy, the replacement, the logical check,
+the restart path and the preservation of originals are proven on a device with `minSdk` (ADR-005 §7, E-01 to E-04)
+before the first slice that uploads.
+
+### 9. The Decision Journal
 
 - Written only through `DecisionJournalRecorder` (ADR-001 §3), on its own single-threaded coroutine dispatcher,
   never inside a transaction of `slussen.db`. Any failure is caught, counted and dropped; it never reaches the
@@ -177,39 +310,40 @@ Tests that prove it: a JVM test in `:persistence` parses both XML files and chec
   entries are deleted and `PRAGMA incremental_vacuum` returns the space (UC-010 BR-003). The warning uses
   `journal_warning_percent` (80% by default, an Operator Setting).
 - Nothing in the core reads entries except the export (Konsist K-07 in ADR-001).
+- Offered Bank Accounts, Bank Sessions and `state` values never reach it (`OFFERED_BANK_ACCOUNT`, `BANK_SESSION`
+  constraints; NFR-012).
 
-### 8. Housekeeping
+### 10. Housekeeping
 
 - At the start of each Fetch, `provider_request` records whose `sent_at` is more than 24 hours old are deleted: the
   window of the Data Providers' own limits and of C-006, not a Slussen choice.
 - `fetch` records beyond `OPERATOR_SETTINGS.fetch_history_size` (60 by default, an Operator Setting) are deleted,
   oldest first, with their `fetch_result` records.
+- `consent_request` records of a Bank are deleted with its Bank Consent on revocation (O-10); an expired, unanswered
+  Consent Request is kept until the next one of the Bank replaces it.
+- Unreadable Transactions are never deleted by housekeeping (`UNREADABLE_TRANSACTION` constraints).
 
-### 9. Access
+### 11. Access
 
 DAOs, Room entities and `TypeConverter` classes live only in `:persistence` (Konsist K-09). The core sees its ports and
-domain types only (ADR-001 §3). Persistence tests (DAO, transaction, migration) are instrumented tests run with
-JUnit 5 (ADR-004, ADR-005).
+domain types only (ADR-001 §3). Persistence tests (DAO, transaction, migration, start sequence) are instrumented tests
+run with JUnit 5 (ADR-004, ADR-005).
 
 ## Consequences
 
-- Exactly once rests on a single SQLite transaction committed before any write to the Budget App, plus the Import
-  Identifier the Budget App can refuse. A crash at any point leaves either no Sent Record and nothing sent, or a
-  Not Yet Known record that the next Comparison resolves.
-- A restore after reinstall brings back exactly `slussen.db`. Bank Consents and the Decision Journal start empty;
-  the Bank Accounts of Banks that need a Bank Consent show "missing consent" until the Operator grants again
-  (FR-042).
-- Starting from the last good copy after corruption can lose Sent Records written after that copy. The next
-  Comparison still finds every transaction the Budget App created by its Import Identifier (UC-003 BR-003,
-  BR-017), and a resend uses the same Import Identifier, which YNAB refuses as a second copy (C-009). In that one
-  case exactly once leans on the Budget App's duplicate protection; the vision allows using it but not depending
-  on it, so the Operator should know this case exists.
-- Android limits an app's Auto Backup to 25 MB (a limit set by Android). If `slussen.db` ever grows past it, Android
-  skips the backup. No requirement covers this; it is reported as an open question (O-P1-05).
+- Exactly once rests on one SQLite transaction committed before any write to the Budget App, on retries that reuse
+  the Sent Record and its Import Identifier, and, for a lost answer, on the Budget App's declared refusal of a reused
+  Import Identifier or the Operator's decision (S-05). A crash at any point leaves either no Sent Record and nothing
+  sent, or a Not Yet Known or Unknown record that the next Comparison settles when the Budget App holds it.
+- A restore after reinstall brings back exactly `slussen.db` as of Android's last backup. Bank Consents, Bank
+  Sessions, Offered Bank Accounts and the Decision Journal start empty; the Bank Accounts of Banks that need a Bank
+  Consent show "missing consent" until the Operator grants again (FR-042), and UC-009 A10 applies until the next Fetch.
+- After a restore, a new installation or a last good copy, Uploads wait for the Recovery Check. The Operator can see
+  the Transaction Statuses at once; only Uploads wait.
 - Cross-database references are checked by the core, not by SQLite.
-- `TRUNCATE` journal mode writes more slowly than WAL. The data is a household's transactions, so the cost is not
-  noticeable.
-- Two technical tables exist outside the entity model until the Operator decides (§2).
+- `TRUNCATE` journal mode writes more slowly than WAL, and the last good copy costs one file copy per start. The data
+  is a household's transactions, so neither is noticeable; the backup size warning watches the file's growth.
+- An Offered Bank Account cannot be confirmed after a reinstall until the next Fetch or grant (UC-009 A10).
 
 ## Alternatives
 
@@ -224,15 +358,43 @@ JUnit 5 (ADR-004, ADR-005).
 - **Encrypting the databases (SQLCipher).** Not chosen: no requirement asks for it, and Android's file-based
   encryption already protects the app's files at rest. Revisit if a requirement is added.
 - **Room's Kotlin Multiplatform setup in a JVM module, so that persistence tests run without a device.** Deferred:
-  attractive for fast tests, but not needed for the kickoff slice; Phase 6 may propose it as an amendment.
+  attractive for fast tests, but not needed for the kickoff slice; a later phase may propose it as an amendment.
+- **A bundled SQLite driver (`androidx.sqlite:sqlite-bundled`) for `VACUUM INTO` on every API level.** Not chosen: it
+  adds native code to the app (ADR-005 §5) and replaces the open-helper callbacks this ADR relies on; the closed-file
+  copy of §8 needs no newer SQLite. Revisit if the device evidence (ADR-005 §7) shows the copy unreliable.
 - **Default SQLite corruption handling.** Rejected: it deletes the file, which breaks NFR-005.
+- **Inserting a new Sent Record for each retry.** Rejected (A-01): it breaks the unique Import Identifier per Budget
+  Account.
+- **Warning the Operator after a restore and continuing to upload.** Rejected by S-06: a warning alone does not
+  protect a Sent Record that may be incomplete.
+- **Detecting a restore from Android's backup agent callbacks.** Not chosen: Auto Backup restores files without a
+  callback the app can rely on; the missing `installation.id` is a fact the start sequence can read.
 
 ## AIUP guidance
 
 - AIUP's stack plugins turn the entity model into Flyway, EF Core or Drizzle migrations for a server database. There
   is no skill for an on-device database, for Room, for mapping the entity model's data types to SQLite, or for
-  backup and restore. The mapping rules of §2 and the migration rules of §5 are project-made.
+  backup and restore. The mapping rules of §2, the operations of §3 and the migration rules of §7 are project-made.
 - The entity model skill allows only `Long, String, Integer, Decimal, Boolean, Date, DateTime`; the storage form of
   each in SQLite is decided here, not by AIUP.
-- AIUP has no place for technical storage outside the entity model (§2); this ADR lists it and hands the question to
-  the Operator rather than adding attributes to `docs/entity_model.md`.
+- AIUP has no place for technical storage outside the entity model (§2); this ADR lists it, as the Operator decided
+  for the read cursor (O-P1-03).
+
+## Review findings addressed
+
+- A-01: §4 (retries update the reused Sent Record under a compare of the captured outcome; only new sends insert);
+  ADR-007 §4.
+- A-02 (with S-05): §4 "What this guarantees", Consequences.
+- A-03 (with S-06): §6 (the Recovery Check after a last good copy blocks Uploads), §8.
+- A-04 (with S-04, S-06, NFR-019): §5 (what a backup can give, the size warning), §6 (restore and new installation
+  detected and gated).
+- A-05 (with S-03, S-10): §2 (reconciliation by Configuration Key, removal, return, new keys, locks).
+- A-07: §3 (named atomic operations O-1 to O-13; the cursor stored with its change set).
+- A-09: §3 O-5 (Transfer Counterparts reconciled from links).
+- A-11 (with S-07): §1 and §2 (`unreadable_transaction`), §3 O-1.
+- A-14: §1 and §2 (`consent_request_correlation` in `device.db`), §3 O-10.
+- A-15 (with S-08, O-P2-07): §1 (`offered_bank_account` in `device.db`, never backed up), §3 O-2.
+- A-23 (with S-09): §2 (`budget_app_transaction.memo` mapped like every attribute), §3 O-4.
+- A-24: §8 (no `VACUUM INTO`; closed-file copy, atomic replacement, logical check, restart path, originals with their
+  journal); the device proof is ADR-005 §7.
+- A-27 in part: §3 and §8 name the evidence; ADR-005 §7 makes it a gate.

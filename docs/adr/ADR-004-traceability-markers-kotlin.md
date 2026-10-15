@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed (2026-10-14, construction kickoff Phase 1). The Operator sets it to Accepted at the architecture gate.
+Proposed (2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the Phase 2
+review: live tests and their credentials, device evidence). The Operator sets it to Accepted at the architecture gate.
 
 ## Context
 
@@ -46,7 +47,8 @@ suspend fun upload(plan: ConfirmedUploadPlan) { … }
   case's id (`UC-003 BR-017` inside `slussen.core.upload`).
 - Markers are written in `:core` and in the plug-in modules where a rule lives there (for example the merge
   recognition of `:budgetapp-ynab`, UC-003 BR-005). `:persistence` carries a marker only where the storage itself
-  enforces a rule (the transaction of ADR-002 §3 carries `// UC-006 BR-006:`).
+  enforces a rule (the confirmation transaction of ADR-002 §4 carries `// UC-006 BR-006:`; the start sequence of
+  ADR-002 §6 carries `// UC-006 BR-017:`).
 - Code is named after the domain of the use case, in packages such as `slussen.core.upload`, not after the use case
   id (ADR-001 §1).
 
@@ -83,9 +85,10 @@ class UC001FetchTransactionsTest {
 |---|---|---|---|
 | Use case rules and flows, against fakes of the ports and plug-ins | `UC001<Name>Test` | `:core` `src/test` | JVM |
 | ViewModel of a use case's screen | `UC001<Name>ViewModelTest` | `:app` `src/test` | JVM |
-| Persistence a use case relies on (for example ADR-002 §3) | `UC006<Name>PersistenceIT` | `:persistence` `src/androidTest` | device or emulator |
+| Persistence a use case relies on (for example ADR-002 §3, §4, §6, §8) | `UC006<Name>PersistenceIT` | `:persistence` `src/androidTest` | device or emulator |
 | Screen of a use case | `UC008<Name>ScreenIT` | `:app` `src/androidTest` | device or emulator |
 | Plug-in against its contract | `<Name>DataProviderTest`, `<Name>BudgetAppTest`, `<Name>FilePreprocessorTest`, extending the contract tests of ADR-001 §4.4 | the plug-in module's `src/test` | JVM |
+| Plug-in against the real Budget App (C-011) | `<Name>BudgetAppLiveTest`, tagged `live` | the plug-in module's `src/test` | JVM, run by the Operator only |
 
 Rules:
 
@@ -102,8 +105,16 @@ Rules:
   added, it is `TC001<Name>IT` with `@DisplayName("TC-001: …")` on the class and `// Step <n>: <name>` above each
   Flow row's code, exactly as the `aiup-vaadin-jooq` entry of `workflow.md`.
 - Tests against a real throwaway YNAB Budget (C-011) carry `@Tag("live")` and run only with `-PincludeLive`;
-  `gradlew check` excludes them. Where their credentials come from is decided when the first one is written
-  (O-P1-07).
+  `gradlew check` excludes them. Their credentials and the reference of the throwaway Budget come from
+  `build-config/local/live-test.properties`, a file of the Operator's ignored Build Configuration location with its
+  template `build-config/live-test.template.properties` and every rule of ADR-003 (placement, `# secret`, never
+  printed) (O-P1-07). A live test that finds no such file fails with the message where the file belongs, instead of
+  passing silently. **Agents never run live tests**, never with `-PincludeLive`, and never read that file; only the
+  Operator runs them, and the results are recorded as evidence E-10 of ADR-005 §7, which gates the first slice that
+  uploads (A-27).
+- Each live test carries `@UseCase` with the use case and rule it proves (for example
+  `@UseCase(id = "UC-006", scenario = "A8: Outcome Unknown", businessRules = ["BR-007"])` for the refusal of a reused
+  Import Identifier), so a live result traces to the specification like any other test.
 
 ### 3. Checks (Konsist and plain JUnit 5, in `:architecture-tests`)
 
@@ -159,3 +170,13 @@ given the `aiup-vaadin-jooq` agent definition (`agents/uc-coverage.md`) together
 - AIUP has no marker for a rule of the entity model (its constraints), as opposed to a use case's business rule;
   such code gets no marker unless a business rule states the same constraint.
 - There is no coverage agent for this stack; §4 follows `workflow.md`'s instruction for stacks without one.
+- AIUP has no notion of a test that only the Operator may run (live tests against a real Budget App with private
+  credentials); §2 defines it.
+
+## Review findings addressed
+
+- A-27 in part: §2 (live tests with their credential route, run only by the Operator, recorded as evidence that
+  gates the first slice that uploads; ADR-005 §7 holds the full evidence list); the instrumented test classes of §2
+  cover the persistence evidence of ADR-002.
+- O-P1-07: §2 (live-test credentials in `build-config/local/live-test.properties`, tagged, never run by agents).
+- A-21 in part: the T-rules run as Konsist rule K-14 with scope Test (ADR-001 §6.2).
