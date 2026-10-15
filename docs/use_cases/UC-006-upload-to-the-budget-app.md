@@ -20,10 +20,10 @@
 ## Main Success Scenario
 
 1. Operator asks to upload one Budget, or one Bank Account of a Budget.
-2. Slussen prepares an Upload Plan from the Eligible Transactions in that scope and, while Upload as Cleared is on, from the Transfer Counterparts to be marked Cleared (BR-016), records it in the Decision Journal (UC-011 BR-001), and pauses other work while the plan awaits confirmation (BR-005).
+2. Slussen prepares an Upload Plan from the Eligible Transactions in that scope on the current date (BR-018) and, while Upload as Cleared is on, from the Transfer Counterparts to be marked Cleared (BR-016), records it in the Decision Journal (UC-011 BR-001), and pauses other work while the plan awaits confirmation (BR-005).
 3. Slussen shows the Upload Plan: the Budget, the Budget Accounts, the number of transactions to create and to send as a match for a Typed Entry, the total inflow, the total outflow, whether the transactions arrive Cleared, every Transfer Counterpart that will be marked Cleared, and when the plan expires.
 4. Operator confirms the Upload Plan.
-5. Slussen checks that the Upload Plan has not expired, that every transaction of the plan is still eligible on the current date (BR-004), and reads the Budget App again to check that the Budget App, the Bank Transactions and the configuration are unchanged since the plan was prepared.
+5. Slussen checks that the Upload Plan has not expired and reads the Budget App again to check that the Budget App, the Bank Transactions and the configuration are unchanged since the plan was prepared.
 6. Slussen records each Eligible Transaction of the plan in the Sent Record with its Import Identifier, its Budget Account and the outcome not yet known, and locks the Account Mapping of every Bank Account concerned (UC-009 BR-003).
 7. Slussen sends the Eligible Transactions to the Budget App, each with its Import Identifier, marked Cleared while Upload as Cleared is on and always waiting for the Operator's approval (BR-008), with payee and memo shortened where the Budget App requires it (BR-015), and each Transfer as one linked transfer through one Transfer Leg.
 8. Budget App reports for each transaction that it was created or that it already held it.
@@ -69,7 +69,7 @@
 
 ### A5: Plan Expired or Something Changed
 
-**Trigger:** The Upload Plan has expired, a transaction of the plan is no longer eligible on the current date, or the Budget App, the Bank Transactions or the configuration changed since it was prepared (step 5)  
+**Trigger:** The Upload Plan has expired, or the Budget App, the Bank Transactions or the configuration changed since it was prepared (step 5)  
 **Flow:**
 
 1. Slussen writes nothing, discards the Upload Plan and ends the pause.
@@ -159,7 +159,7 @@
 
 ### Failure Postconditions
 
-- Nothing is written without a confirmed Upload Plan that has not expired, still matches the Budget App, the Bank Transactions and the configuration, and holds only transactions still eligible on the current date.
+- Nothing is written without a confirmed Upload Plan that has not expired and still matches the Budget App, the Bank Transactions and the configuration.
 - Nothing is sent that is not first recorded in the Sent Record.
 - No transaction is shown as written unless the Budget App confirmed it.
 - No Bank Transaction whose Sent Record shows it written or already present is sent again, except by a Re-upload decision.
@@ -182,7 +182,7 @@ An Upload Plan expires when the Upload Plan lifetime has passed after it was pre
 
 ### BR-004: Write Exactly What Was Confirmed
 
-Immediately before writing, Slussen checks the Budget App, the Bank Transactions and the configuration again, and checks that every transaction of the plan is still eligible on the current date under the Upload Window, the file upload window, the Start Date of its Bank Account and, for a Lonely Transfer, the Lonely Transfer grace period. When any of them changed since the plan was prepared, or a transaction is no longer eligible, nothing is written, the plan is discarded and the Operator returns to review (A5).
+Immediately before writing, Slussen checks the Budget App, the Bank Transactions and the configuration again. When any of them changed since the plan was prepared, nothing is written, and Slussen shows why (A5). A change of date is not such a change (BR-018).
 
 ### BR-005: Other Work Pauses While a Plan Awaits Confirmation
 
@@ -235,3 +235,7 @@ An Upload Plan follows Upload as Cleared as it stands when the plan is prepared,
 ### BR-017: Uploads Wait for the Recovery Check
 
 While a Recovery Check is open, Slussen prepares no Upload Plan. A Recovery Check opens whenever Slussen starts from data that may lack what it last recorded: its last good copy after its Decision-Critical Data could not be read, data restored from a device backup, or the empty data of a new installation. It closes only when a Comparison has run after it opened (UC-003 BR-019) and the Operator has confirmed it (UC-008 BR-009). A warning alone is not enough: Sent Records written after that data was saved are missing, and the transactions they covered are then protected against a duplicate only by the Budget App's refusal of a reused Import Identifier and by the Comparison. Damage to data that is not Decision-Critical Data, such as the Decision Journal, opens no Recovery Check (UC-010 BR-004).
+
+### BR-018: Eligibility Is Fixed When the Plan Is Prepared
+
+Which transactions an Upload Plan holds is decided once, when the plan is prepared, from the current date at that moment: the Upload Window and the file upload window (UC-003 BR-011, UC-002 BR-004), the Start Date of each Bank Account (UC-003 BR-018) and the Lonely Transfer grace period (UC-005 BR-005). While the plan awaits confirmation, a change of date changes nothing in it, and confirming writes exactly the transactions the plan showed. The plan is protected by its visible expiry (BR-003) and by the check that the Budget App, the Bank Transactions and the configuration are unchanged (BR-004). The next Comparison after the plan is written, cancelled, discarded or expired gives the Transaction Statuses from the date of that Comparison (UC-003).

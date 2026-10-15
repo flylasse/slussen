@@ -526,7 +526,8 @@ The reviewed statement of exactly what Slussen will write to one Budget, or to o
 - At most one Upload Plan is Awaiting Confirmation at a time.
 - A plan Awaiting Confirmation whose `expires_at` has passed becomes Expired.
 - `new_count`, `match_count`, `total_inflow` and `total_outflow` equal what the plan's Eligible Transactions add up to.
-- A plan is Changed Before Writing, and writes nothing, when the Budget App, the Bank Transactions or the configuration changed after it was prepared, or when one of its transactions is no longer eligible on the current date.
+- A plan is Changed Before Writing, and writes nothing, when the Budget App, the Bank Transactions or the configuration changed after it was prepared.
+- Which transactions the plan holds is decided once, from the date on which the plan is prepared; a change of date while the plan is Awaiting Confirmation changes nothing in it.
 
 ### ELIGIBLE_TRANSACTION
 
