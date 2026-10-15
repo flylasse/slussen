@@ -5,7 +5,7 @@
 **Use Case ID:** UC-004  
 **Use Case Name:** Review Doubtful Transactions  
 **Primary Actor:** Operator  
-**Goal:** Give every doubtful Bank Transaction the Operator's Review Decision, so that it is uploaded, held back or recognised as already present exactly as the Operator intends and never silently  
+**Goal:** Give every doubtful Bank Transaction the Operator's Review Decision, so that it is proposed for the next Upload Plan, held back or recognised as already present exactly as the Operator intends and never silently  
 **Trigger:** Operator selects a doubtful Bank Transaction to decide on it  
 **Status:** Approved  
 
@@ -114,6 +114,14 @@
 1. Slussen shows the Bank Transaction with its Budget Account, states that the Budget App never confirmed whether it arrived and that the Operator checks the Budget App before deciding, and offers the choices Import Anyway and Defer (BR-008).
 2. Use case continues at step 3, where the Operator chooses one of these two.
 
+### A11: Doubtful Transfer Leg
+
+**Trigger:** The selected Bank Transaction is a Transfer Leg (step 2)  
+**Flow:**
+
+1. Slussen also shows its Transfer with the other Transfer Leg or the expected other side, and states that the decision applies to the whole Transfer: Import Anyway lets the Transfer Leg rejoin its Transfer, Defer holds the whole Transfer back, and Already Present counts the whole Transfer as already in the Budget App (BR-009).
+2. Use case continues at step 3.
+
 ## Postconditions
 
 ### Success Postconditions
@@ -152,7 +160,7 @@ Every Review Decision, change and clearing is recorded in the Decision Journal t
 
 ### BR-006: Status After a Decision
 
-Already Present gives the status Already In Budget App while the decision holds (UC-003 BR-009). Import Anyway and Re-upload give the status New, so that the Bank Transaction is eligible as a new transaction, except that Import Anyway on a Transfer Leg that was Needs Review because it resembles an Import with Slussen's marker in a form Slussen does not support lets it follow its Transfer (UC-003 BR-008, UC-005 BR-010), and Defer on it holds the whole Transfer back; for a transaction without a Stable Reference, its Import Identifier comes from UC-003 BR-002. Defer gives the status Deferred. Clearing a decision gives the status the Comparison gives without a decision (UC-003 BR-001).
+Already Present gives the status Already In Budget App while the decision holds (UC-003 BR-009). Import Anyway and Re-upload give the status New, so that the Bank Transaction is eligible for the next Upload Plan as a new transaction, except that on a Transfer Leg the decision applies to its whole Transfer (BR-009); for a transaction without a Stable Reference, its Import Identifier comes from UC-003 BR-002. Defer gives the status Deferred. Clearing a decision gives the status the Comparison gives without a decision (UC-003 BR-001).
 
 ### BR-007: Unreadable Transactions Are Never Uploaded
 
@@ -161,3 +169,7 @@ An Unreadable Transaction cannot be uploaded, because Slussen could not read wha
 ### BR-008: Deciding on an Unknown Outcome
 
 When the Budget App does not refuse a reused Import Identifier, Slussen never sends a transaction with an unknown outcome again on its own (UC-006 BR-007). The Operator checks the Budget App and decides: Import Anyway sends it again in the next Upload Plan, under the same Import Identifier and to the same Budget Account recorded in its Sent Record, and it keeps the status Outcome Unknown until the Budget App confirms it; Defer holds it back, also with the status Outcome Unknown, until the Operator changes the decision. BR-006 does not apply to these two decisions. A Comparison that finds its Import Identifier in its Budget Account settles it without a decision (UC-003 BR-017).
+
+### BR-009: A Decision on a Transfer Leg Decides Its Transfer
+
+On a Transfer Leg that is Needs Review or Possible Import By Other Path, the Review Decision decides its whole Transfer (UC-005 BR-013): Import Anyway lets the Transfer Leg rejoin its Transfer, so that the Transfer goes into the next Upload Plan as one linked transfer; Defer holds the whole Transfer back; Already Present counts the whole Transfer as already in the Budget App, so that neither Transfer Leg is proposed for an Upload Plan. Split (UC-005 A1) is the only way to separate the two Transfer Legs.

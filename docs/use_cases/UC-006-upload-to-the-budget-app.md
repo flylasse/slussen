@@ -10,7 +10,7 @@
 **Trigger:** Operator asks to upload one Budget or one Bank Account  
 **Status:** Approved  
 
-**Requirements:** [FR-030, FR-033, FR-034, FR-035, FR-036, FR-037, FR-038, FR-039, FR-041, FR-042, FR-044, FR-047, FR-052, FR-053, FR-055, FR-057, FR-064, FR-066, FR-074, FR-077, FR-090, FR-095, NFR-001, NFR-002, NFR-003, NFR-004, NFR-010, NFR-015, NFR-016, NFR-017, C-009, C-011, C-012](../requirements.md)
+**Requirements:** [FR-030, FR-031, FR-033, FR-034, FR-035, FR-036, FR-037, FR-038, FR-039, FR-041, FR-042, FR-044, FR-047, FR-051, FR-052, FR-053, FR-055, FR-057, FR-064, FR-066, FR-074, FR-075, FR-077, FR-090, FR-094, FR-095, NFR-001, NFR-002, NFR-003, NFR-004, NFR-010, NFR-015, NFR-016, NFR-017, C-009, C-011, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -23,7 +23,7 @@
 2. Slussen prepares an Upload Plan from the Eligible Transactions in that scope and, while Upload as Cleared is on, from the Transfer Counterparts to be marked Cleared (BR-016), records it in the Decision Journal (UC-011 BR-001), and pauses other work while the plan awaits confirmation (BR-005).
 3. Slussen shows the Upload Plan: the Budget, the Budget Accounts, the number of transactions to create and to send as a match for a Typed Entry, the total inflow, the total outflow, whether the transactions arrive Cleared, every Transfer Counterpart that will be marked Cleared, and when the plan expires.
 4. Operator confirms the Upload Plan.
-5. Slussen checks that the Upload Plan has not expired and reads the Budget App again to check that the Budget App, the Bank Transactions and the configuration are unchanged since the plan was prepared.
+5. Slussen checks that the Upload Plan has not expired, that every transaction of the plan is still eligible on the current date (BR-004), and reads the Budget App again to check that the Budget App, the Bank Transactions and the configuration are unchanged since the plan was prepared.
 6. Slussen records each Eligible Transaction of the plan in the Sent Record with its Import Identifier, its Budget Account and the outcome not yet known, and locks the Account Mapping of every Bank Account concerned (UC-009 BR-003).
 7. Slussen sends the Eligible Transactions to the Budget App, each with its Import Identifier, marked Cleared while Upload as Cleared is on and always waiting for the Operator's approval (BR-008), with payee and memo shortened where the Budget App requires it (BR-015), and each Transfer as one linked transfer through one Transfer Leg.
 8. Budget App reports for each transaction that it was created or that it already held it.
@@ -69,7 +69,7 @@
 
 ### A5: Plan Expired or Something Changed
 
-**Trigger:** The Upload Plan has expired, or the Budget App, the Bank Transactions or the configuration changed since it was prepared (step 5)  
+**Trigger:** The Upload Plan has expired, a transaction of the plan is no longer eligible on the current date, or the Budget App, the Bank Transactions or the configuration changed since it was prepared (step 5)  
 **Flow:**
 
 1. Slussen writes nothing, discards the Upload Plan and ends the pause.
@@ -159,7 +159,7 @@
 
 ### Failure Postconditions
 
-- Nothing is written without a confirmed Upload Plan that has not expired and still matches the Budget App, the Bank Transactions and the configuration.
+- Nothing is written without a confirmed Upload Plan that has not expired, still matches the Budget App, the Bank Transactions and the configuration, and holds only transactions still eligible on the current date.
 - Nothing is sent that is not first recorded in the Sent Record.
 - No transaction is shown as written unless the Budget App confirmed it.
 - No Bank Transaction whose Sent Record shows it written or already present is sent again, except by a Re-upload decision.
@@ -182,7 +182,7 @@ An Upload Plan expires when the Upload Plan lifetime has passed after it was pre
 
 ### BR-004: Write Exactly What Was Confirmed
 
-Immediately before writing, Slussen checks the Budget App, the Bank Transactions and the configuration again. When any of them changed since the plan was prepared, nothing is written.
+Immediately before writing, Slussen checks the Budget App, the Bank Transactions and the configuration again, and checks that every transaction of the plan is still eligible on the current date under the Upload Window, the file upload window, the Start Date of its Bank Account and, for a Lonely Transfer, the Lonely Transfer grace period. When any of them changed since the plan was prepared, or a transaction is no longer eligible, nothing is written, the plan is discarded and the Operator returns to review (A5).
 
 ### BR-005: Other Work Pauses While a Plan Awaits Confirmation
 

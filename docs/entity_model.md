@@ -109,7 +109,7 @@ Slussen's stored copy of one transaction in a Budget Account as it last read it 
 
 #### Constraints
 
-- Every `import_identifier` that begins with the marker of Slussen's own Import Identifiers (FR-074) is Slussen's: `entered_by` is Slussen when the rest of it has a form Slussen supports, and Slussen Unsupported Format when it does not. Such a transaction is never Other Import Path; a Bank Transaction that resembles one with Slussen Unsupported Format goes to the Operator for review (UC-003 BR-008), also when it is a Transfer Leg, and its Transfer is not eligible until the Operator's Review Decision on that Transfer Leg.
+- Every `import_identifier` that begins with the marker of Slussen's own Import Identifiers (FR-074) is Slussen's: `entered_by` is Slussen when the rest of it has a form Slussen supports, and Slussen Unsupported Format when it does not. Such a transaction is never Other Import Path; a Bank Transaction that resembles one with Slussen Unsupported Format goes to the Operator for review (UC-003 BR-008), also when it is a Transfer Leg, and its Transfer is then in no Upload Plan until the Operator's Review Decision on that Transfer Leg (UC-005 BR-013).
 - An Import of the Predecessor App or of any other importer, whose `import_identifier` does not begin with Slussen's marker, is Other Import Path.
 - `merged_into_reference` is filled exactly when `state` is Merged.
 - `transfer_link_reference`, `merged_into_reference`, `cleared` and `approved` are stored as the Budget App reported them at the last read, so that a linked Upload whose answer was lost can be settled from stored data after a restart (UC-003 BR-017).
@@ -499,6 +499,7 @@ A movement of money between two of the Operator's Bank Accounts in the same Budg
 - A Lonely Transfer whose other Transfer Leg has not arrived within `OPERATOR_SETTINGS.lonely_transfer_grace_days` becomes an ordinary transaction.
 - A Confirmed or Budget Account Chosen decision clears `guessed`.
 - A Transfer whose `guessed` is true is never uploaded while its `decision` is Proposed.
+- A Transfer with a Transfer Leg whose `status` is Needs Review or Possible Import By Other Path and that has no Review Decision is in no Upload Plan, from either side, until each such Transfer Leg has a Review Decision (UC-005 BR-013).
 - The decision cannot be changed once a Transfer Leg has a Sent Record with `outcome` Written.
 
 ### UPLOAD_PLAN
@@ -525,7 +526,7 @@ The reviewed statement of exactly what Slussen will write to one Budget, or to o
 - At most one Upload Plan is Awaiting Confirmation at a time.
 - A plan Awaiting Confirmation whose `expires_at` has passed becomes Expired.
 - `new_count`, `match_count`, `total_inflow` and `total_outflow` equal what the plan's Eligible Transactions add up to.
-- A plan is Changed Before Writing, and writes nothing, when the Budget App, the Bank Transactions or the configuration changed after it was prepared.
+- A plan is Changed Before Writing, and writes nothing, when the Budget App, the Bank Transactions or the configuration changed after it was prepared, or when one of its transactions is no longer eligible on the current date.
 
 ### ELIGIBLE_TRANSACTION
 

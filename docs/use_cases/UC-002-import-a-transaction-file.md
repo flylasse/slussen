@@ -115,7 +115,7 @@ A Bank Transaction stored from an earlier Transaction File that a later file no 
 
 ### BR-004: File Upload Window
 
-A Bank Transaction from a Transaction File is uploaded only inside the file upload window (the last 60 days by default, a number the Operator can change, UC-010). The window is the same for every File Format and is usually wider than the Upload Window, because Transaction Files are imported less often than Data Providers are fetched. A transaction outside it is shown as Too Old or In The Future and never disappears (UC-003 BR-011).
+A Bank Transaction from a Transaction File can be in an Upload Plan only inside the file upload window (the last 60 days by default, a number the Operator can change, UC-010). The window is the same for every File Format and is usually wider than the Upload Window, because Transaction Files are imported less often than Data Providers are fetched. A transaction outside it is shown as Too Old or In The Future and never disappears (UC-003 BR-011).
 
 ### BR-005: Balance From a Data Provider
 
