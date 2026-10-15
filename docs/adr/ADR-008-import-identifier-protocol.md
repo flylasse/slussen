@@ -42,8 +42,8 @@ change. Such a decision needs its own record, which ADR-001 (contracts) and ADR-
 - UC-003 BR-001, BR-008 and the `BUDGET_APP_TRANSACTION` constraints (changed by S-14): every Import Identifier that
   begins with Slussen's marker is Slussen's; `entered_by` is Slussen when the rest has a form Slussen supports and
   Slussen Unsupported Format when it does not; such a transaction is never Other Import Path, and a Bank Transaction
-  that resembles one with Slussen Unsupported Format is Needs Review, also when it is a Transfer Leg, and its whole
-  Transfer is not eligible until the Operator's Review Decision on that Transfer Leg (S-16).
+  that resembles one with Slussen Unsupported Format is Needs Review, also when it is a Transfer Leg, and its Transfer
+  is then in no Upload Plan until the Operator's Review Decision on that Transfer Leg (UC-005 BR-013, S-16, S-17).
 - Phase 2b re-review: B-08 (Form C normalisation merged distinct Stable References before collision detection),
   B-09 (the fingerprint kept digits only and had no scope), B-10 (ownership was recognised by the full format).
 
@@ -67,7 +67,9 @@ SLS1-<26 characters from the alphabet a-z and 2-7>
     checked for ownership.
   - *Supported format:* an owned Import Identifier matching `^SLS[1-9]-[a-z2-7]{26}$` for a version this build
     produces gets `entered_by` Slussen; any other owned one gets `entered_by` Slussen Unsupported Format. It is never
-    Other Import Path, and a Bank Transaction that resembles it is Needs Review (UC-003 BR-001, BR-008); this check comes before Transfer detection: when that Bank Transaction is a Transfer Leg, its whole Transfer is not eligible, whichever Transfer Leg would write it, until the Operator's Review Decision on that Transfer Leg; Import Anyway lets the Transfer Leg follow its Transfer, Defer holds the whole Transfer back (UC-003 BR-001, BR-008, BR-014; UC-004 BR-006; UC-005 BR-010; S-16). Only an exact
+    Other Import Path, and a Bank Transaction that resembles it is Needs Review (UC-003 BR-001, BR-008), also when it is a Transfer Leg,
+    whose whole Transfer then waits for the Review Decision on it as every doubtful Transfer Leg does (UC-005 BR-013,
+    ADR-001 §4.2.3). Only an exact
     equality with a Sent Record's or Bank Transaction's Import Identifier ever settles a send (UC-003 BR-003, BR-017);
     an unsupported one settles nothing.
 
@@ -258,7 +260,7 @@ field(the Bank's reference as the Data Provider delivers it, empty when it names
 - The marker `SLS` is fixed for ever. Because ownership is "begins with `SLS`" (S-14), an Other Import Path that
   happened to write identifiers beginning with `SLS` would be taken for Slussen: its transactions would be Slussen
   Unsupported Format and the Bank Transactions resembling them would go to review, also as Transfer Legs, whose whole
-  Transfer then waits, never be uploaded without the Operator's decision. That is the safe direction. The live tests against a throwaway YNAB Budget (ADR-005 §7, E-10) check that YNAB's own
+  Transfer then waits, never be in an Upload Plan without the Operator's decision. That is the safe direction. The live tests against a throwaway YNAB Budget (ADR-005 §7, E-10) check that YNAB's own
   Bank import writes identifiers of another form.
 
 ## Alternatives
@@ -302,5 +304,7 @@ field(the Bank's reference as the Data Provider delivers it, empty when it names
   never Other Import Path), Consequences.
 - C-01 (final check, with S-16): §1 and the Consequences (the review precedes Transfer eligibility; the whole Transfer
   waits for the Review Decision on that Transfer Leg).
+- S-17: Context and §1 (the Slussen Unsupported Format case refers to the general doubtful-Transfer-Leg rule of UC-005
+  BR-013, stated in ADR-001 §4.2.3), Consequences ("in an Upload Plan" instead of "uploaded").
 - A-02 in part: §6 and the Consequences make the identifier independent of the Budget App, which the refusal of a
   reused Import Identifier (ADR-001 §4.2, ADR-007 §6) depends on.

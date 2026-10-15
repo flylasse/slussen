@@ -151,10 +151,11 @@ Budget App capabilities are resolved here, never while writing (A-10):
 
 A plan is prepared from the stored statuses of the latest completed Comparison (§3a); the read and the final checks at
 confirmation (§6) are what make sure they are still current. Eligibility is UC-003 BR-014 as those statuses give it: in
-particular, a Transfer one of whose Transfer Legs is Needs Review because it resembles a Slussen Unsupported Format
-Import (UC-003 BR-008) yields no item at all, neither through that Transfer Leg nor through the other, until the
-Operator's Review Decision on that Transfer Leg; after Import Anyway the Transfer is planned by the rules above, after
-Defer the whole Transfer stays out (UC-004 BR-006, UC-005 BR-010; S-16).
+particular, a Transfer one of whose Transfer Legs is Needs Review (for any reason) or Possible Import By Other Path and
+has no Review Decision yields no item at all, neither through that Transfer Leg nor through another, until each such
+Transfer Leg has a Review Decision (UC-005 BR-013, UC-004 BR-009). When one is Already Present, the whole Transfer
+counts as already in the Budget App and yields no item; otherwise, when one is Defer, the whole Transfer stays out;
+when every one is Import Anyway, the Transfer is planned by the rules above (S-17).
 
 ### 5. While the plan is open
 
@@ -181,7 +182,7 @@ Confirmation runs as one operation in this order; any failure before step 6 writ
    captured `ChangeCursor`. Any change in that Budget makes the plan Changed Before Writing; the change set is then
    stored (O-4, which marks the Comparison pending) and the Comparison is recomputed and committed (O-5, §3a) before
    the Operator returns to review, so the statuses shown are current (A5). A failed read is A6.
-5. **Final checks at the transition to writing (B-07).** After the read of step 4, the coordinator takes the current
+5. **Final checks at the transition to writing (UC-006 step 5, BR-004, A5; FR-035; B-07).** After the read of step 4, the coordinator takes the current
    time once from `Clock` as `now` and checks, with that one value:
    - `now` is before `expires_at`; otherwise the plan becomes Expired and nothing is written (UC-006 A5, NFR-003);
    - every transaction-send item is still eligible at `now` by every rule that depends on the date: inside the Upload
@@ -261,7 +262,9 @@ reached during the read of step 4 (B-07); a plan prepared before local midnight 
 Window, and a Lonely Transfer whose grace period ends, before confirmation (B-07); each check of §6 failing; the retry
 table of §4 for both values of the reuse-refusal capability; a plan with a retry and a new send together; a plan whose
 Transfer has both Transfer Legs present and is cleared in the same Upload, and the same with the leg's answer lost
-(B-01); a plan with only `ClearCounterpart` items, which inserts and resets no Sent Record (B-02); a Comparison
+(B-01); a Transfer with a Transfer Leg that is Needs Review or Possible Import By Other Path, yielding no item from
+either side until every such Transfer Leg is decided, and each outcome with the precedence Already Present, Defer,
+Import Anyway (S-17); a plan with only `ClearCounterpart` items, which inserts and resets no Sent Record (B-02); a Comparison
 interrupted between O-4 and O-5, after which preparation is refused until O-5 is committed (B-04); a Scheduled Fetch
 calling upload code and the wrapper refusing it; a restart in each mode. In `:persistence`, the instrumented crash
 tests of O-4 to O-9 and O-14 (ADR-002 §3). Device and live evidence that must pass before the first slice that uploads
@@ -337,3 +340,5 @@ is listed in ADR-005 §7.
 - S-12: §3a and §6 step 8 (reconciliation and clearing use the stored links and Cleared values).
 - C-01 (final check, with S-16): §4 (a Transfer with a Transfer Leg under review for a Slussen Unsupported Format
   resemblance yields no item until the Review Decision on that Transfer Leg).
+- S-17: §4 (any doubtful Transfer Leg holds its whole Transfer; outcomes and precedence of UC-005 BR-013), §6 step 5
+  (the date recheck is now required by UC-006 step 5, BR-004 and A5, and FR-035), §9.

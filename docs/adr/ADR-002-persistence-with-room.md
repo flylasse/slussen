@@ -173,7 +173,7 @@ a step from two calls. Each operation that changes something an Upload Plan depe
 | O-10 | `ConsentStore.startRequest`, `consumeAnswer`, `replaceConsent`, `revoke` (`device.db`) | Start: a new Consent Request with its correlation, making earlier ones of the Bank unanswerable. Consume: the most-recent, lifetime and not-answered checks and `answered` set, together. Replace: the Bank Consent and its Bank Session in place of the earlier ones, refused when a newer Consent Request exists. Revoke: delete the Bank Consent, its Bank Session and every Consent Request of the Bank | UC-007 BR-002, BR-003, BR-004, BR-007; NFR-013 |
 | O-11 | `ConfigurationStore.reconcile` | §2, Bank Accounts and the Build Configuration | UC-009 A8, A11, A12, BR-010, BR-011; FR-096 |
 | O-12 | `RecoveryStore.openCheck`, `confirmChecks` | Open a Recovery Check with its cause; confirm every open check whose `compared_at` is filled, together with its Decision Journal record request | UC-006 BR-017, UC-008 A9, BR-009 |
-| O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses | UC-004, UC-005, UC-009, UC-010 |
+| O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses; a Review Decision on a Transfer Leg also sets the statuses of the other Transfer Legs of its Transfer (Deferred, or Already In Budget App while an Already Present decision holds) in the same transaction | UC-004 BR-006, BR-009; UC-005 BR-013; UC-009, UC-010 |
 | O-14 | `UploadStore.recordClearing` | The result of one clearing (ADR-007 §6 step 8): a new `transfer_counterpart` with the leg's `sent_record_id`, its `budget_app_reference` and `state` Cleared (with `cleared_at`) or Uncleared; or an existing one set to Cleared with `cleared_at`. It never inserts, resets or changes a `sent_record` | UC-006 steps 10, BR-009, BR-010, BR-011, A11 |
 
 A crash at any point leaves each operation either complete or absent. Each has an instrumented test that injects a
@@ -230,7 +230,9 @@ Present is never sent again, whatever happens later on this installation. A send
 same Sent Record as a request that never arrived; Slussen cannot tell them apart and does not claim to. Such a send is
 resent automatically only to a Budget App that declares it refuses a reused Import Identifier, which the live tests
 prove for YNAB before Uploads rely on it (ADR-005 §7, E-10); with any other Budget App it waits for the Operator's
-Review Decision. Exactly once is not claimed for a Budget App that does neither.
+Review Decision. Exactly once is not claimed for a Budget App that does neither. And it covers only what Slussen sent
+itself: a resemblance to an Import by an Other Import Path or to a Typed Entry is a reason for review, not a
+guarantee (UC-003 BR-007, FR-021).
 
 ### 5. Backup and device-to-device transfer rules
 
@@ -475,3 +477,5 @@ run with JUnit 5 (ADR-004, ADR-005).
 - B-06 (with S-13): §6 (only Decision-Critical Data, held by `slussen.db`, opens a Recovery Check), §8 steps 4-5.
 - B-07: §3 O-7 and §4 step 0 (expiry checked inside the confirming transaction with the coordinator's one `now`).
 - S-14: §2 (`entered_by` decided by the core with the marker rules, Slussen Unsupported Format included).
+- S-17: §3 O-13 (a decision on a Transfer Leg sets the other Transfer Legs' statuses atomically), §4 (the guarantee
+  covers only what Slussen sent itself).
