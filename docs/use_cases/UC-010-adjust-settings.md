@@ -9,7 +9,7 @@
 **Trigger:** Operator asks to change an Operator Setting  
 **Status:** Approved  
 
-**Requirements:** [FR-001, FR-012, FR-014, FR-016, FR-017, FR-030, FR-046, FR-051, FR-062, FR-065, FR-066, FR-067, FR-069, FR-076, FR-081, FR-087, FR-088, FR-089, FR-090, NFR-003, NFR-006, NFR-007, NFR-008, NFR-010, NFR-013, NFR-016, NFR-017](../requirements.md)
+**Requirements:** [FR-001, FR-012, FR-014, FR-016, FR-017, FR-030, FR-046, FR-051, FR-062, FR-065, FR-066, FR-067, FR-069, FR-076, FR-081, FR-087, FR-088, FR-089, FR-090, FR-094, NFR-003, NFR-006, NFR-007, NFR-008, NFR-010, NFR-013, NFR-016, NFR-017, NFR-019](../requirements.md)
 
 ## Preconditions
 
@@ -17,7 +17,7 @@
 
 ## Main Success Scenario
 
-1. Slussen shows the current value of each Operator Setting: Upload Window, fetch period, Fetch Cooldown, Fetch Schedule, default wait, Request Limit warning pause, request timeout, Upload Plan lifetime, Consent Request lifetime, number of recent Fetches kept, Upload as Cleared (only when the Budget App supports the Cleared marker), Card Payment Descriptions, Bank Transfer Descriptions, transfer pairing days, Lonely Transfer grace period, outdated-balance limit, consent warning lead time, Decision Journal on or off with its size limit, warning threshold and current size, and Detailed Logging.
+1. Slussen shows the current value of each Operator Setting: Upload Window, file upload window, fetch period, Fetch Cooldown, Fetch Schedule, default wait, Request Limit warning pause, request timeout, Upload Plan lifetime, Consent Request lifetime, number of recent Fetches kept, Upload as Cleared (only when the Budget App supports the Cleared marker), Card Payment Descriptions, Bank Transfer Descriptions, transfer pairing days, Lonely Transfer grace period, outdated-balance limit, consent warning lead time, Decision Journal on or off with its size limit, warning threshold and current size, backup warning threshold, and Detailed Logging.
 2. Operator changes the value of an Operator Setting.
 3. Slussen checks that the value lies within the allowed range of the Operator Setting (BR-002).
 4. Slussen stores the value and applies it from the next Fetch, Scheduled Fetch, Comparison, Upload or opening of the app on.
@@ -122,11 +122,11 @@
 
 ### BR-001: Operator Settings and Defaults
 
-By default the Upload Window is 7 days, the fetch period 60 days, the Fetch Cooldown 60 minutes, the Fetch Schedule 2 Scheduled Fetches in any 24 hours, the default wait 8 hours, the Request Limit warning pause 24 hours, the request timeout 30 seconds, the Upload Plan lifetime 10 minutes, the Consent Request lifetime 15 minutes, the number of recent Fetches kept 60, Upload as Cleared on, the transfer pairing days 5, the Lonely Transfer grace period 6 days, the outdated-balance limit 36 hours, the consent warning lead time 7 days, the Decision Journal on with a size limit of 50 MB and a warning threshold of 80%, and Detailed Logging off. Transfer detection is always on and is not an Operator Setting (UC-005 BR-001). The default Card Payment and Bank Transfer Descriptions are listed in BR-007. The Request Limit of each Data Provider, the Upload Window of each File Format and the Start Dates are set in the Build Configuration and are not Operator Settings. Numbers fixed by an outside party are not Operator Settings either: the PSD2 access limit (C-006), the consent length the Bank or Data Provider reports (C-007) and the Budget App's own rules (C-009).
+By default the Upload Window is 7 days, the file upload window 60 days, the fetch period 60 days, the Fetch Cooldown 60 minutes, the Fetch Schedule 2 Scheduled Fetches in any 24 hours, the default wait 8 hours, the Request Limit warning pause 24 hours, the request timeout 30 seconds, the Upload Plan lifetime 10 minutes, the Consent Request lifetime 15 minutes, the number of recent Fetches kept 60, Upload as Cleared on, the transfer pairing days 5, the Lonely Transfer grace period 6 days, the outdated-balance limit 36 hours, the consent warning lead time 7 days, the Decision Journal on with a size limit of 50 MB and a warning threshold of 80%, the backup warning threshold 80% of the backup size limit Android sets (C-015), and Detailed Logging off. Transfer detection is always on and is not an Operator Setting (UC-005 BR-001). The default Card Payment and Bank Transfer Descriptions are listed in BR-007. The Request Limit of each Data Provider, the Configuration Keys and the Start Dates are set in the Build Configuration and are not Operator Settings. Numbers fixed by an outside party are not Operator Settings either: the PSD2 access limit (C-006), the consent length the Bank or Data Provider reports (C-007), the Budget App's own rules (C-009) and the backup size limit Android sets (C-015).
 
 ### BR-002: Allowed Ranges
 
-The Upload Window lies between 1 and 60 days, the fetch period between 7 and 180 days, the Fetch Cooldown between 0 and 1440 minutes (0 switches it off), the default wait between 1 and 48 hours, the Request Limit warning pause between 1 and 72 hours, the request timeout between 10 and 120 seconds, the Upload Plan lifetime between 1 and 60 minutes, the Consent Request lifetime between 5 and 30 minutes, the number of recent Fetches kept between 10 and 500, the Fetch Schedule between 0 and 2 Scheduled Fetches in any 24 hours (0 switches them off), the transfer pairing days and the Lonely Transfer grace period between 0 and 30 days, the outdated-balance limit between 1 and 720 hours, the consent warning lead time between 1 and 60 days, the Decision Journal size limit between 10 and 500 MB, and its warning threshold between 50% and 95% of the size limit. Every value is a whole number.
+The Upload Window lies between 1 and 60 days, the file upload window between 7 and 365 days, the fetch period between 7 and 180 days, the Fetch Cooldown between 0 and 1440 minutes (0 switches it off), the default wait between 1 and 48 hours, the Request Limit warning pause between 1 and 72 hours, the request timeout between 10 and 120 seconds, the Upload Plan lifetime between 1 and 60 minutes, the Consent Request lifetime between 5 and 30 minutes, the number of recent Fetches kept between 10 and 500, the Fetch Schedule between 0 and 2 Scheduled Fetches in any 24 hours (0 switches them off), the transfer pairing days and the Lonely Transfer grace period between 0 and 30 days, the outdated-balance limit between 1 and 720 hours, the consent warning lead time between 1 and 60 days, the Decision Journal size limit between 10 and 500 MB, its warning threshold between 50% and 95% of the size limit, and the backup warning threshold between 50% and 95% of the backup size limit. Every value is a whole number.
 
 ### BR-003: Journal Size Limit
 
@@ -138,7 +138,7 @@ Switching off, clearing, filling or losing the Decision Journal changes no Trans
 
 ### BR-005: Detailed Logging Boundaries
 
-With Detailed Logging off, device logs contain no transaction amounts, payees, memos or Bank Account numbers. In every mode, device logs contain no credentials, Bank Consent data, authentication codes or one-time values.
+With Detailed Logging off, device logs contain no transaction amounts, payees, memos or Bank Account numbers. In every mode, device logs contain no credentials, Bank Consent data, Bank Sessions, authentication codes or one-time values.
 
 ### BR-006: Settings Are Kept
 

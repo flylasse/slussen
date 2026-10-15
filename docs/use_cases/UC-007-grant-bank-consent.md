@@ -26,8 +26,8 @@
 5. Operator completes the Strong Customer Authentication with the Bank.
 6. Bank confirms the consent to the Data Provider, and the Operator returns to Slussen with the result.
 7. Slussen checks that the result answers the most recent Consent Request for this Bank, arrives within the Consent Request lifetime and has not been used before (BR-002).
-8. Slussen stores the Bank Consent with the expiry date the Bank or Data Provider reports, replacing any earlier Bank Consent of this Bank (BR-004).
-9. Slussen identifies each Bank Account the Bank Consent covers as a Bank Account of the Build Configuration (UC-009 BR-004).
+8. Slussen stores the Bank Consent with the expiry date the Bank or Data Provider reports and the Bank Session it opens, replacing any earlier Bank Consent and Bank Session of this Bank (BR-004).
+9. Slussen keeps the Bank Accounts the Bank Consent covers as Offered Bank Accounts (UC-009 BR-009) and identifies each as a Bank Account of the Build Configuration (UC-009 BR-004).
 10. Slussen shows the Bank Consent as valid, with its expiry date and the Bank Accounts it covers.
 
 ## Alternative Flows
@@ -92,7 +92,7 @@
 1. Slussen asks the Operator to confirm, stating that the Bank Accounts of this Bank will not be fetched until a new Bank Consent is granted.
 2. Operator confirms, or cancels and the use case ends.
 3. Slussen asks the Data Provider to end the Bank Consent.
-4. Slussen deletes the stored Bank Consent with its session and every Consent Request of this Bank, also when the Data Provider does not confirm the end (BR-007).
+4. Slussen deletes the stored Bank Consent with its Bank Session and every Consent Request of this Bank, also when the Data Provider does not confirm the end (BR-007).
 5. Slussen shows the Bank Consent as revoked, the Blocked Reason "missing consent" for the Bank's Bank Accounts, and, when the Data Provider did not confirm the end, that the Operator can also end the consent at the Bank.
 6. Use case ends.
 
@@ -102,7 +102,7 @@
 
 - The Bank has a valid Bank Consent for the Data Provider with its expiry date.
 - Every Bank Account the Bank Consent covers is identified with certainty, waits for the Operator's confirmation, or shows why it is not identified.
-- After a revocation, Slussen holds no Bank Consent, session or Consent Request of the Bank and reads none of its Bank Accounts until a new Bank Consent is granted.
+- After a revocation, Slussen holds no Bank Consent, Bank Session or Consent Request of the Bank and reads none of its Bank Accounts until a new Bank Consent is granted.
 
 ### Failure Postconditions
 
@@ -130,12 +130,12 @@ The expiry date is the one the Bank or Data Provider reports when the Bank Conse
 
 ### BR-005: Bank Consents Stay on This Installation
 
-Bank Consents and Consent Requests in progress are never included in device backups or transfers and are not restored after a reinstall; the Operator grants each Bank Consent again.
+Bank Consents, their Bank Sessions and Consent Requests in progress are never included in device backups or transfers and are not restored after a reinstall; the Operator grants each Bank Consent again.
 
 ### BR-006: Consent Data Is Never Logged
 
-Bank Consent data, authentication codes and one-time values never appear in device logs, in any logging mode.
+Bank Consent data, Bank Sessions, authentication codes and one-time values never appear in device logs, in any logging mode.
 
 ### BR-007: Revocation Removes Everything Stored
 
-Revoking a Bank Consent deletes the stored Bank Consent, its session and every Consent Request of the Bank, whether or not the Data Provider confirms that it ended the consent. Slussen then contacts neither the Bank nor the Data Provider for that Bank until a new Bank Consent is granted. The Operator's Bank Accounts, Account Mappings, Bank Transactions and Sent Record are kept.
+Revoking a Bank Consent deletes the stored Bank Consent, its Bank Session and every Consent Request of the Bank, whether or not the Data Provider confirms that it ended the consent. Slussen then contacts neither the Bank nor the Data Provider for that Bank until a new Bank Consent is granted. The Operator's Bank Accounts, Account Mappings, Bank Transactions and Sent Record are kept.

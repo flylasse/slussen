@@ -9,7 +9,7 @@
 **Trigger:** Adopting Developer decides to build Slussen from the public repository for their own household  
 **Status:** Approved  
 
-**Requirements:** [FR-056, FR-070, FR-071, FR-072, FR-073, FR-075, FR-083, FR-084, FR-085, FR-093, NFR-014, NFR-015, C-001, C-002, C-003, C-004, C-005, C-008, C-010, C-013](../requirements.md)
+**Requirements:** [FR-056, FR-070, FR-071, FR-072, FR-073, FR-075, FR-083, FR-084, FR-085, FR-093, FR-096, NFR-014, NFR-015, C-001, C-002, C-003, C-004, C-005, C-008, C-010, C-013](../requirements.md)
 
 ## Preconditions
 
@@ -20,7 +20,7 @@
 
 1. Adopting Developer opens the Configuration Templates.
 2. Slussen's repository shows for each Data Provider and for the Budget App of this build a Configuration Template that states what to fill in and where to get it.
-3. Adopting Developer fills in a Build Configuration in the location the repository ignores, next to the Configuration Templates (BR-002), with their Budgets, Bank Accounts with their Start Dates, Account Mappings, Request Limits and service credentials; the default Card Payment and Bank Transfer Descriptions ship with the repository and the Operator edits them in the app (BR-007, UC-010 BR-007).
+3. Adopting Developer fills in a Build Configuration in the location the repository ignores, next to the Configuration Templates (BR-002), with their Budgets, Bank Accounts with their Configuration Keys (BR-011) and Start Dates, Account Mappings, Request Limits and service credentials; the default Card Payment and Bank Transfer Descriptions ship with the repository and the Operator edits them in the app (BR-007, UC-010 BR-007).
 4. Adopting Developer builds Slussen.
 5. Slussen's build reads the Build Configuration from that location only (BR-009), checks that it is complete and consistent, and includes it in the built app.
 6. Adopting Developer installs the built app directly on their own phone.
@@ -30,7 +30,7 @@
 
 ### A1: Build Configuration Incomplete or Inconsistent
 
-**Trigger:** The Build Configuration lacks a required entry or maps two Bank Accounts to one Budget Account (step 5)  
+**Trigger:** The Build Configuration lacks a required entry, maps two Bank Accounts to one Budget Account or gives two Bank Accounts the same Configuration Key (step 5)  
 **Flow:**
 
 1. Slussen's build names each missing or inconsistent entry and produces no app.
@@ -50,7 +50,7 @@
 **Trigger:** A Bank of the household offers a Transaction File in an export format that no File Pre-processor of this build converts (step 3)  
 **Flow:**
 
-1. Adopting Developer adds one File Pre-processor that converts the Bank's export format into the Standard Import Format, gives every transaction a reference and declares whether the Bank supplied it or the pre-processor derived it, and declares the Upload Window of the File Format.
+1. Adopting Developer adds one File Pre-processor that converts the Bank's export format into the Standard Import Format, gives every transaction a reference and declares whether the Bank supplied it or the pre-processor derived it.
 2. Slussen applies its existing rules for importing, comparing, reviewing and deciding to the converted transactions (UC-002 BR-007).
 3. Use case continues at step 3.
 
@@ -72,7 +72,7 @@
 
 ### A6: Build Configuration Found Elsewhere
 
-**Trigger:** Slussen's build finds a Build Configuration, or part of one, outside the location the repository ignores, for example in a tracked file (step 5)  
+**Trigger:** Slussen's build finds a Build Configuration, or part of one recognised by its keys or by a value marked secret (BR-009), outside the location the repository ignores, for example in a tracked file (step 5)  
 **Flow:**
 
 1. Slussen's build does not use it, produces no app and states that the Build Configuration belongs in the location the repository ignores, next to the Configuration Templates.
@@ -127,8 +127,12 @@ The Adopting Developer gets their own copy of the repository by cloning or forki
 
 ### BR-009: Build Configuration Read Only From Its Location
 
-Slussen's build reads the Build Configuration only from the location the repository ignores. A Build Configuration, or part of one, found anywhere else, such as in a tracked file, is never used: the build fails and states where the Build Configuration belongs.
+Slussen's build reads the Build Configuration only from the location the repository ignores. A Build Configuration, or part of one, found anywhere else, such as in a tracked file, is never used: the build fails and states where the Build Configuration belongs. Slussen recognises a part of a Build Configuration by its recognisable keys or by a value marked secret; a plain value pasted somewhere without its key cannot be recognised as configuration and stays protected only by the rule that the repository holds no personal data (C-005) and by review.
 
 ### BR-010: The First Operator Builds the Same Way
 
 The first Operator of Slussen is an Adopting Developer too: their own build follows this use case, with their Build Configuration in the same ignored location, and has no other path.
+
+### BR-011: Configuration Keys Never Change
+
+Each Bank Account of the Build Configuration has a Configuration Key that the Adopting Developer sets when first adding the Bank Account and never changes afterwards; its name, its position and its other entries can change freely. The key is how Slussen finds the Bank Account's stored identification, Account Mapping and history again after a rebuild (UC-009 BR-010). Removing an entry or giving it a new Configuration Key does not delete the stored Bank Account: it is kept, out of use, with its history and lock, and the new key is a new Bank Account (UC-009 BR-011).

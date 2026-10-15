@@ -9,7 +9,7 @@
 **Trigger:** Operator asks to import a Transaction File for a Bank Account  
 **Status:** Approved  
 
-**Requirements:** [FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-063, FR-066, FR-083, FR-085, FR-086, NFR-002, NFR-005, NFR-014, C-010, C-012](../requirements.md)
+**Requirements:** [FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-063, FR-066, FR-083, FR-085, FR-094, NFR-002, NFR-005, NFR-014, NFR-020, C-010, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -75,6 +75,15 @@
 1. Slussen refuses the import and shows that the Bank Account must be restored first (UC-009).
 2. Use case ends.
 
+### A6: Import Identifier Collision
+
+**Trigger:** The Import Identifier of a transaction of the file collides with the Import Identifier of a different stored Bank Transaction of the same Bank Account (UC-003 BR-002) (step 7)  
+**Flow:**
+
+1. Slussen rejects the whole file with the reason "Import Identifier collision" and takes in none of its transactions (BR-001).
+2. Slussen records the Transaction File as rejected with its reason and keeps the Bank Transactions of the previous import unchanged.
+3. Use case ends.
+
 ## Postconditions
 
 ### Success Postconditions
@@ -104,9 +113,9 @@ The File Pre-processor gives every transaction of the file a reference and decla
 
 A Bank Transaction stored from an earlier Transaction File that a later file no longer contains stays stored with its Transaction Status. A Bank Transaction that appears in both files is stored once. Transactions that cannot be told apart are recognised in a later file by their date, amount, payee, memo and number: when the later file holds as many identical transactions as are stored, it brings none of them in again; when it holds more, only the additional ones are new, each with the status Needs Review.
 
-### BR-004: Upload Window of a File Format
+### BR-004: File Upload Window
 
-A Bank Transaction from a Transaction File is uploaded only inside the Upload Window its File Format declares, which may be wider than the common Upload Window. A transaction outside it is shown as Too Old or In The Future and never disappears (UC-003 BR-011).
+A Bank Transaction from a Transaction File is uploaded only inside the file upload window (the last 60 days by default, a number the Operator can change, UC-010). The window is the same for every File Format and is usually wider than the Upload Window, because Transaction Files are imported less often than Data Providers are fetched. A transaction outside it is shown as Too Old or In The Future and never disappears (UC-003 BR-011).
 
 ### BR-005: Balance From a Data Provider
 

@@ -44,15 +44,20 @@ continue its history, identities or Import Identifiers.
 
 ## Goals
 
-- **Exactly once.** Slussen creates zero duplicate transactions in the Budget App, even after a retry, timeout,
-  crash, reinstall, or re-mapping of a Bank Account. It silently drops zero transactions it is responsible for: a transaction it cannot reliably
-  identify, or one whose counterpart was changed in the Budget App, goes to the operator for review instead of
-  being merged or lost. A
-  collision with a transaction created by another import path is shown to the operator for a decision and is
-  never resolved silently. Slussen owns this guarantee itself: it keeps its own durable record of what it has
-  sent, which survives a reinstall, and uses the Budget App's own duplicate protection where that exists, but
-  does not depend on it. The guarantee covers what Slussen sends: another importer feeding the same Budget Account can
-  still create duplicates, which is why each Bank Account has one import path.
+- **Exactly once.** Slussen creates zero duplicate transactions in the Budget App on its own, even after a retry,
+  timeout, crash, reinstall, or re-mapping of a Bank Account. It silently drops zero transactions it is responsible
+  for: a transaction it cannot reliably identify or cannot read, or one whose counterpart was changed in the Budget
+  App, goes to the operator for review instead of being merged or lost. A collision with a transaction created by
+  another import path is shown to the operator for a decision and is never resolved silently. Slussen keeps its own
+  durable record of what it has sent, records each transaction there before sending it, and never sends again what
+  the Budget App confirmed. One case it cannot settle alone: when the answer to an upload is lost, a request that
+  never arrived and one that arrived look the same. Slussen then sends the transaction again on its own only to a
+  Budget App that refuses a second transaction with the same Import Identifier, as YNAB does; with any other Budget
+  App, the operator decides. After Slussen starts from an older copy of its data, such as its last good copy or a
+  restored device backup, it uploads nothing until it has compared with the Budget App and the operator has
+  confirmed, because what it sent after that copy was made is then protected only by the Budget App's refusal of a
+  reused Import Identifier and by that Comparison. The guarantee covers what Slussen sends: another importer
+  feeding the same Budget Account can still create duplicates, which is why each Bank Account has one import path.
 - **Nothing is written without confirmation.** Every write to the Budget App follows an explicit confirmation of
   a plan that states the budget, the Budget Accounts, the number of transactions, and the total inflow and outflow.
   What is written is exactly what was confirmed: if the Budget App has changed since the plan was shown, or the
@@ -105,9 +110,10 @@ continue its history, identities or Import Identifiers.
   defer it, or deliberately re-upload one that was deleted in the Budget App. Each decision can be changed until
   upload.
 - Uploading only on explicit confirmation of a reviewed plan, per budget or per Budget Account.
-- Uploading only transactions inside a bounded date window. A transaction that is too old or dated in the future
-  is shown to the operator as such and never disappears silently, including one that ages out while it waits for
-  the operator's review.
+- Uploading only transactions inside a bounded date window. Transactions from Transaction Files, which are imported
+  less often than Data Providers are fetched, have one wider window of their own. A transaction that is too old or
+  dated in the future is shown to the operator as such and never disappears silently, including one that ages out
+  while it waits for the operator's review.
 - Detecting transfers between the operator's own Bank Accounts in the same budget and currency, and posting them as
   one linked transfer. This includes a transfer whose other side has not arrived yet. Transfer detection is
   always on, and the operator reviews guessed pairings.
@@ -125,7 +131,9 @@ continue its history, identities or Import Identifiers.
   data, for review outside the app.
 - Keeping the operator's transaction history, decisions and the record of what was sent across a reinstall, a
   restore from a device backup and an upgrade of the same build. Bank authorizations do not survive a reinstall:
-  the operator authorizes each bank again.
+  the operator authorizes each bank again. Slussen warns the operator when its backed-up data nears the size
+  Android backs up, and after a restore it uploads nothing until the Comparison and confirmation described under
+  Exactly once.
 
 ### Out of scope
 
@@ -186,7 +194,7 @@ continue its history, identities or Import Identifiers.
   or the Budget App) are fixed, and Slussen says where they come from.
 - **Sensitive data.** By default, logs contain no transaction data or Bank Account numbers. The operator can switch
   on Detailed Logging that includes them, for troubleshooting; those logs stay on the device. Credentials and
-  bank sessions are never written to logs, even then. Neither logs nor bank sessions are ever included in device
+  Bank Sessions are never written to logs, even then. Neither logs nor Bank Sessions are ever included in device
   backups. The repository, including its specifications, tests
   and fixtures, contains no real Bank Account names, Bank Account numbers, transactions or credentials.
 - **Specification first.** Slussen is developed with the AI Unified Process: the specification in `docs/` is the

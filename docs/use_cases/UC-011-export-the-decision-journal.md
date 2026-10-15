@@ -21,7 +21,7 @@
 1. Slussen asks whether payee and memo text are to be replaced by codes, and where to save the file.
 2. Operator chooses whether to replace payee and memo text and chooses the place for the file.
 3. Slussen reads the current transactions of the Operator's Budgets from the Budget App.
-4. Slussen writes the Journal Export with the entries of the Decision Journal, each transaction named by its Bank Account and its Import Identifier, and the Budget App's current transactions, replacing payee and memo text by codes when the Operator chose that.
+4. Slussen writes the Journal Export with the entries of the Decision Journal, each transaction named by its Bank Account and its Import Identifier, and the Budget App's current transactions with their date, payee, memo, amount and Budget Account, replacing payee and memo text by codes when the Operator chose that.
 5. Slussen shows that the export is complete, with the number of entries it holds.
 
 ## Alternative Flows
@@ -39,7 +39,7 @@
 **Trigger:** The Budget App does not answer or cannot be reached (step 3)  
 **Flow:**
 
-1. Slussen uses its stored copy of the Budget App Transactions instead (UC-003).
+1. Slussen uses its stored copy of the Budget App Transactions instead, which holds their memo too (UC-003).
 2. Slussen states in the Journal Export that the Budget App's transactions come from the stored copy, with the time of the last successful read of each Budget.
 3. Use case continues at step 4.
 

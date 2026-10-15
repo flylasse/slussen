@@ -9,7 +9,7 @@
 **Trigger:** Operator opens Slussen  
 **Status:** Approved  
 
-**Requirements:** [FR-003, FR-011, FR-012, FR-032, FR-060, FR-061, FR-062, FR-063, FR-064, FR-065, FR-066, NFR-005, NFR-018](../requirements.md)
+**Requirements:** [FR-003, FR-011, FR-012, FR-032, FR-060, FR-061, FR-062, FR-063, FR-064, FR-065, FR-066, FR-095, NFR-005, NFR-018, NFR-019, C-015](../requirements.md)
 
 ## Preconditions
 
@@ -35,7 +35,8 @@
 
 1. Slussen keeps the unreadable original unchanged and starts that part from its last good content, or from its default content when there is none.
 2. Slussen shows a notice naming the part that could not be read.
-3. Use case continues at step 2.
+3. Slussen opens a Recovery Check, so that no Upload Plan is prepared until the Operator has confirmed it (BR-009).
+4. Use case continues at step 2.
 
 ### A2: Account Balance Outdated
 
@@ -77,6 +78,33 @@
 1. Slussen starts the use case that removes the reason: Grant Bank Consent (UC-007) for a missing or expiring Bank Consent, Manage Account Mappings (UC-009) for an unrecognised Bank Account, Fetch Transactions (UC-001) for a failed Fetch.
 2. Use case ends.
 
+### A7: Backed-Up Data Nears the Backup Limit
+
+**Trigger:** The data Slussen includes in device backups has reached the backup warning threshold of the backup size limit Android sets (step 1)  
+**Flow:**
+
+1. Slussen shows a warning with the current size of the backed-up data and Android's limit, and that Android makes no backup at all once the limit is passed (BR-010).
+2. Use case continues at step 2.
+
+### A8: Recovery Check Open
+
+**Trigger:** A Recovery Check is open (step 1)  
+**Flow:**
+
+1. Slussen shows that Uploads are blocked until the Operator confirms the Recovery Check, and why: transactions sent after the data Slussen started from was saved are protected against a duplicate only by the Budget App's refusal of a reused Import Identifier and by the Comparison (BR-009).
+2. Use case continues at step 2.
+
+### A9: Operator Confirms the Recovery Check
+
+**Trigger:** Operator chooses the action of the Blocked Reason "Recovery Check open" (step 8)  
+**Flow:**
+
+1. Slussen starts Compare With the Budget App (UC-003) when no Comparison that read every Budget has run since the Recovery Check opened; when the Budget App cannot be read, the Recovery Check stays open and the use case ends.
+2. Slussen shows the Transaction Statuses of every Budget and asks the Operator to confirm that they have checked the Budget App for transactions Slussen sent after the data it started from was saved.
+3. Operator confirms, or cancels and the use case ends.
+4. Slussen closes the Recovery Check, so that Uploads are available again, and records the confirmation in the Decision Journal.
+5. Use case ends.
+
 ## Postconditions
 
 ### Success Postconditions
@@ -87,6 +115,7 @@
 
 - No Source and no Bank is contacted, and nothing is written to the Budget App.
 - Unreadable stored data is kept unchanged and is never shown as valid.
+- A Recovery Check is never closed without a Comparison that read every Budget and the Operator's confirmation.
 
 ## Business Rules
 
@@ -112,7 +141,7 @@ The difference is the Account Balance minus the balance of the Budget Account as
 
 ### BR-006: Blocked Reasons and Their Remedies
 
-Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; a failed Fetch, the time of the failure and the action that fetches again (UC-001); Request Limit reached or access limit reached, the time the limit frees up; configuration error or currency mismatch, correct the Build Configuration (UC-012).
+Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; a failed Fetch, the time of the failure and the action that fetches again (UC-001); Request Limit reached or access limit reached, the time the limit frees up; configuration error or currency mismatch, correct the Build Configuration (UC-012); Recovery Check open, compare with the Budget App and confirm (BR-009); removed from the Build Configuration, restore the entry with its Configuration Key in the Build Configuration (UC-009 BR-011).
 
 ### BR-007: One Budget at a Time
 
@@ -121,3 +150,11 @@ Each Budget, with its own currency, is shown as its own workspace with only its 
 ### BR-008: Recent Fetches
 
 Slussen keeps the most recent Fetches with Source, time, who started them and outcome: 60 by default, a number the Operator can change (UC-010). Every time Slussen shows is in the device's local time.
+
+### BR-009: Recovery Check
+
+After Slussen starts from data that may lack what it last recorded (UC-006 BR-017), every opening shows that Uploads are blocked and why, until the Operator confirms the Recovery Check. The Operator can confirm it only after a Comparison that read every Budget has run since the check opened (UC-003 BR-019). The confirmation is recorded in the Decision Journal.
+
+### BR-010: Backup Size Warning
+
+Android backs up at most 25 MB of an app's data and makes no backup at all when the data is larger, a limit Android sets (C-015). When the data Slussen includes in device backups reaches the backup warning threshold of that limit (80% by default, a number the Operator can change, UC-010), every opening of Slussen shows a warning with the current size and the limit. The Decision Journal, logs, Bank Consents, Bank Sessions and other data that are never backed up do not count.

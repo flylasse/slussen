@@ -10,7 +10,7 @@
 **Trigger:** Operator starts a Fetch of a Data Provider or of all Data Providers at once, or the time of a Scheduled Fetch arrives  
 **Status:** Approved  
 
-**Requirements:** [FR-001, FR-004, FR-005, FR-008, FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-058, FR-064, FR-066, FR-076, FR-077, FR-078, FR-079, FR-080, NFR-002, NFR-004, NFR-007, NFR-008, NFR-016, NFR-018, C-006, C-007, C-012](../requirements.md)
+**Requirements:** [FR-001, FR-004, FR-005, FR-008, FR-009, FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-058, FR-064, FR-066, FR-076, FR-077, FR-078, FR-079, FR-080, NFR-002, NFR-004, NFR-007, NFR-008, NFR-016, NFR-018, NFR-020, C-006, C-007, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -24,7 +24,7 @@
 3. Slussen selects the Bank Accounts to read: every Bank Account of the Data Provider that is not a Retired Account and whose Bank has a valid Bank Consent when the Data Provider needs one.
 4. Slussen asks the Data Provider, with the Operator present, for the transactions and the balance of each selected Bank Account for the fetch period, and keeps each request as a Provider Request (BR-007).
 5. Data Provider delivers the transactions and the Account Balance of each selected Bank Account.
-6. Slussen identifies each delivered Bank Account with certainty as one Bank Account of the Build Configuration.
+6. Slussen keeps the delivered Bank Accounts as Offered Bank Accounts (UC-009 BR-009) and identifies each with certainty as one Bank Account of the Build Configuration.
 7. Slussen keeps the booked Bank Transactions with an amount other than zero and leaves out the others.
 8. Slussen stores the Bank Transactions and Account Balances of each identified Bank Account, including the balance the Data Provider reports for a Bank Account whose transactions come from Transaction Files.
 9. Slussen records in the Decision Journal each Bank Transaction it received for the first time or with changed content (UC-011 BR-001).
@@ -188,11 +188,20 @@
 2. Operator confirms, or cancels and the use case ends.
 3. Use case continues at step 3.
 
+### A17: Transaction Cannot Be Interpreted
+
+**Trigger:** The Data Provider delivers a transaction for an identified Bank Account that Slussen cannot interpret, for example because its date or amount is missing or unreadable, or whose Import Identifier collides with the Import Identifier of a different stored Bank Transaction of the same Bank Account (UC-003 BR-002) (step 7)  
+**Flow:**
+
+1. Slussen keeps it as an Unreadable Transaction of that Bank Account, with whatever fields could be read, the reason and the status Needs Review (BR-016).
+2. Use case continues at step 7 for the other transactions.
+
 ## Postconditions
 
 ### Success Postconditions
 
 - Every Bank Transaction delivered for an identified Bank Account is stored and has a Transaction Status from the Comparison.
+- Every delivered transaction that Slussen could not interpret is kept as an Unreadable Transaction with its reason.
 - The Account Balance of every identified Bank Account is stored with the time the Data Provider reported it.
 - The Fetch is recorded with who started it and its outcome for each Bank Account, and a Fetch Cooldown starts for the Data Provider.
 - Every request sent is kept as a Provider Request with its time.
@@ -263,8 +272,12 @@ Scheduled Fetches follow the Fetch Schedule (UC-010): 2 in any 24 hours by defau
 
 ### BR-014: New Transaction Notification
 
-Slussen shows one silent, low-priority New Transaction Notification, also shown as a badge on the app icon, with the number of unprocessed Bank Transactions: the Eligible Transactions plus the Bank Transactions with the status Possible Import By Other Path, Needs Review, Decision No Longer Holds, Guessed Transfer or Transfer Counterpart Changed, of every Bank Account that is not a Retired Account. Whether the Operator has looked at them does not matter. The notification is updated after each Scheduled Fetch and whenever the number changes, for example after a Review Decision or an Upload, and disappears when the number is 0. A later update replaces it instead of adding another one. Slussen shows no other notification. When the device does not allow notifications, the number is not shown and nothing else changes.
+Slussen shows one silent, low-priority New Transaction Notification, also shown as a badge on the app icon, with the number of unprocessed Bank Transactions: the Eligible Transactions plus the Bank Transactions with the status Possible Import By Other Path, Needs Review, Decision No Longer Holds, Guessed Transfer or Transfer Counterpart Changed, the Bank Transactions with the status Outcome Unknown that wait for the Operator's Review Decision (UC-004 BR-008), and the Unreadable Transactions with the status Needs Review, of every Bank Account that is not a Retired Account. Whether the Operator has looked at them does not matter. The notification is updated after each Scheduled Fetch and whenever the number changes, for example after a Review Decision or an Upload, and disappears when the number is 0. A later update replaces it instead of adding another one. Slussen shows no other notification. When the device does not allow notifications, the number is not shown and nothing else changes.
 
 ### BR-015: Request Limit Warning
 
 When a Data Provider warns that Slussen is near or over its Request Limit, Slussen starts a Back-off with cause Request Limit Warning that lasts the Request Limit warning pause from the first warning (24 hours by default, a number the Operator can change, UC-010). During it, no Scheduled Fetch contacts that Data Provider. A Fetch the Operator starts is still allowed: Slussen first shows the warning, the time it ends and the risk that further requests can get Slussen's access to the Data Provider disabled, and goes ahead when the Operator confirms. A Data Provider's request to wait (BR-004) is never overridden this way.
+
+### BR-016: Unreadable Transactions Are Kept
+
+A delivered transaction that Slussen cannot interpret, or whose Import Identifier collides with the Import Identifier of a different stored Bank Transaction of the same Bank Account (UC-003 BR-002), is never dropped and never completed by guessing. Slussen keeps it as an Unreadable Transaction with whatever fields could be read and the reason, shows it as Needs Review for the Operator's review (UC-004) and never uploads it (UC-003 BR-012). A later Fetch that delivers as many Unreadable Transactions with the same readable fields and reason as are stored adds none; when it delivers more, only the additional ones are added.

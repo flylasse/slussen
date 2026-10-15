@@ -10,7 +10,7 @@
 **Trigger:** Operator asks to upload one Budget or one Bank Account  
 **Status:** Approved  
 
-**Requirements:** [FR-030, FR-033, FR-034, FR-035, FR-036, FR-037, FR-038, FR-039, FR-041, FR-042, FR-044, FR-047, FR-052, FR-053, FR-055, FR-057, FR-064, FR-066, FR-074, FR-077, FR-090, NFR-001, NFR-002, NFR-003, NFR-004, NFR-010, NFR-015, NFR-016, NFR-017, C-009, C-011, C-012](../requirements.md)
+**Requirements:** [FR-030, FR-033, FR-034, FR-035, FR-036, FR-037, FR-038, FR-039, FR-041, FR-042, FR-044, FR-047, FR-052, FR-053, FR-055, FR-057, FR-064, FR-066, FR-074, FR-077, FR-090, FR-095, NFR-001, NFR-002, NFR-003, NFR-004, NFR-010, NFR-015, NFR-016, NFR-017, C-009, C-011, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -100,7 +100,7 @@
 **Flow:**
 
 1. Slussen records the outcome Unknown in the Sent Record for the transactions concerned and shows them as not confirmed, never as written.
-2. Slussen keeps these transactions available for Upload under the same Import Identifiers and for the same Budget Accounts (BR-007).
+2. Slussen keeps these transactions available for Upload under the same Import Identifiers and for the same Budget Accounts when the Budget App refuses a reused Import Identifier, and otherwise holds them for the Operator's Review Decision (BR-007).
 3. Use case continues at step 11.
 
 ### A9: Budget App Rejects Transactions
@@ -136,6 +136,15 @@
 
 1. Slussen keeps the reported outcomes of the Upload and shows that the Transaction Statuses will be updated at the next Comparison.
 2. Use case continues at step 12.
+
+### A13: Recovery Check Open
+
+**Trigger:** A Recovery Check is open, because Slussen started from its last good copy of its data, from data restored from a device backup or from the empty data of a new installation, and the Operator has not confirmed it yet (step 2)  
+**Flow:**
+
+1. Slussen prepares no Upload Plan.
+2. Slussen shows why: transactions sent after that data was saved are protected against a duplicate only by the Budget App's refusal of a reused Import Identifier and by the Comparison; and it offers the Recovery Check (UC-008).
+3. Use case ends.
 
 ## Postconditions
 
@@ -181,11 +190,11 @@ At most one Upload Plan awaits confirmation at a time. From the moment it is pre
 
 ### BR-006: Exactly Once Through the Sent Record
 
-Slussen sends each Bank Transaction to the Budget App at most once, based on its own Sent Record, even after a retry, timeout, crash, reinstall or re-mapping of a Bank Account. A transaction is recorded in the Sent Record before it is sent. The Import Identifier sent with each transaction lets the Budget App refuse a second copy where it supports that, but Slussen does not depend on it.
+Slussen records each transaction in the Sent Record before it is sent, and never sends again a Bank Transaction whose Sent Record shows that the Budget App created it or already held it, even after a retry, timeout, crash, reinstall or re-mapping of a Bank Account. This is the guarantee Slussen gives on its own. The one case it cannot settle alone is a send whose outcome is unknown, because a request that never arrived and one whose answer was lost leave the same Sent Record; such a send follows BR-007, and sending it again is safe only because the Budget App refuses a reused Import Identifier.
 
-### BR-007: Unknown Outcomes Are Resent Safely
+### BR-007: Unknown Outcomes Are Resent Only to a Budget App That Refuses Duplicates
 
-A transaction with an unknown outcome stays available for Upload and is sent again under the same Import Identifier and to the same Budget Account recorded in its Sent Record, so that a later Upload creates nothing that already arrived. A later Comparison resolves the outcome when the Budget App holds the transaction (UC-003 BR-017).
+A transaction with an unknown outcome is sent again automatically, as an Eligible Transaction of a later Upload Plan, only when the part of Slussen for the Budget App declares that the Budget App refuses a transaction whose Import Identifier it already holds in the Budget Account, as YNAB does (C-009, NFR-015). It is then sent under the same Import Identifier and to the same Budget Account recorded in its Sent Record, so that the Budget App refuses it if it already arrived. With a Budget App that does not refuse a reused Import Identifier, Slussen never sends it again on its own; it waits for the Operator's Review Decision (UC-004 BR-008). In both cases a later Comparison settles the outcome when the Budget App holds the transaction (UC-003 BR-017).
 
 ### BR-008: Created Waiting for Approval, Cleared by Setting
 
@@ -213,7 +222,7 @@ Right after an Upload, Slussen compares the uploaded Budget with the Budget App 
 
 ### BR-014: Sent Record Kept Across a Reinstall, Restore or Upgrade
 
-The Sent Record is included in device backups, restored after a reinstall and kept on an upgrade of the same build, together with the stored Bank Transactions, the Bank Account identifications and Account Mappings (UC-009 BR-006) and the Review Decisions and Transfer Decisions. Bank Consents are not restored (UC-007 BR-005).
+The Sent Record is included in device backups, restored after a reinstall and kept on an upgrade of the same build, together with the stored Bank Transactions, the Bank Account identifications and Account Mappings (UC-009 BR-006) and the Review Decisions and Transfer Decisions. Bank Consents and their Bank Sessions are not restored (UC-007 BR-005). After a restore, Uploads wait for the Recovery Check (BR-017).
 
 ### BR-015: Long Payee and Memo
 
@@ -222,3 +231,7 @@ When a payee or memo is longer than the Budget App accepts (C-009), Slussen send
 ### BR-016: Upload as Cleared Applies at Preparation
 
 An Upload Plan follows Upload as Cleared as it stands when the plan is prepared, and states whether its transactions arrive Cleared. While the setting is off, the plan lists no Transfer Counterpart to mark Cleared. Switching the setting changes only what later Upload Plans write and nothing already in the Budget App.
+
+### BR-017: Uploads Wait for the Recovery Check
+
+While a Recovery Check is open, Slussen prepares no Upload Plan. A Recovery Check opens whenever Slussen starts from data that may lack what it last recorded: its last good copy after its stored data could not be read, data restored from a device backup, or the empty data of a new installation. It closes only when a Comparison has run after it opened (UC-003 BR-019) and the Operator has confirmed it (UC-008 BR-009). A warning alone is not enough: Sent Records written after that data was saved are missing, and the transactions they covered are then protected against a duplicate only by the Budget App's refusal of a reused Import Identifier and by the Comparison.
