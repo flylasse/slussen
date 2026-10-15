@@ -33,7 +33,12 @@ Plan captures and what happens after the process dies (A-01, A-08). Spread over 
 - Phase 2 review A-01, A-08, A-10 (fallbacks), A-19 (runtime write admission), A-02 and A-03 (gating).
 - Phase 2b re-review: B-01 (a new Transfer Counterpart could not be cleared in the same Upload), B-02 (clearing items
   went through the Sent Record protocol), B-04 (an interrupted Comparison left old statuses usable), B-07 (expiry and
-  date-dependent eligibility were not rechecked at the transition to writing).
+  date-dependent eligibility were not rechecked at the transition to writing; the date part was later reversed by
+  S-18).
+- UC-006 BR-018 (S-18, O-P2-16): which transactions a plan holds is decided once, when it is prepared, from the date at
+  that moment; a change of date while the plan awaits confirmation changes nothing, and confirming writes exactly what
+  the plan showed. Before writing, only the visible expiry (BR-003) and the unchanged Budget App, Bank Transactions and
+  configuration (BR-004) are checked.
 - UC-003 BR-020 (S-12): the stored copy keeps each transaction's Transfer link, merge target, Cleared and approved
   together with the read point.
 
@@ -149,8 +154,12 @@ Budget App capabilities are resolved here, never while writing (A-10):
   item of this plan will create has no reference yet; its clearing is the item's `clear_counterpart` intent, resolved
   by the defined read of §6 step 8 (B-01).
 
-A plan is prepared from the stored statuses of the latest completed Comparison (§3a); the read and the final checks at
-confirmation (§6) are what make sure they are still current. Eligibility is UC-003 BR-014 as those statuses give it: in
+A plan is prepared from the stored statuses of the latest completed Comparison (§3a); the read and the checks at
+confirmation (§6) are what make sure they are still current. **Date-dependent eligibility is decided here, once
+(UC-006 BR-018):** the coordinator takes the date from `Clock` at preparation (the date of `prepared_at`) and applies
+the Upload Window, the file upload window, the Start Date of each Bank Account and the Lonely Transfer grace period
+with that date. The items it stores are the plan; a change of date while the plan awaits confirmation changes none of
+them, and nothing rechecks them before writing. Eligibility is UC-003 BR-014 as those statuses give it: in
 particular, a Transfer one of whose Transfer Legs is Needs Review (for any reason) or Possible Import By Other Path and
 has no Review Decision yields no item at all, neither through that Transfer Leg nor through another, until each such
 Transfer Leg has a Review Decision (UC-005 BR-013, UC-004 BR-009). When one is Already Present, the whole Transfer
@@ -182,16 +191,12 @@ Confirmation runs as one operation in this order; any failure before step 6 writ
    captured `ChangeCursor`. Any change in that Budget makes the plan Changed Before Writing; the change set is then
    stored (O-4, which marks the Comparison pending) and the Comparison is recomputed and committed (O-5, §3a) before
    the Operator returns to review, so the statuses shown are current (A5). A failed read is A6.
-5. **Final checks at the transition to writing (UC-006 step 5, BR-004, A5; FR-035; B-07).** After the read of step 4, the coordinator takes the current
-   time once from `Clock` as `now` and checks, with that one value:
-   - `now` is before `expires_at`; otherwise the plan becomes Expired and nothing is written (UC-006 A5, NFR-003);
-   - every transaction-send item is still eligible at `now` by every rule that depends on the date: inside the Upload
-     Window, or the file upload window for a transaction from a Transaction File, and not after today (UC-003
-     BR-011); not before the Start Date (BR-018); a Lonely Transfer still within the Lonely Transfer grace period
-     (UC-005 BR-005). Otherwise the plan becomes Changed Before Writing and the Comparison is recomputed and committed
-     (O-5), so the transaction shows its new status, for example Too Old.
-   The same `now` is passed to O-7, which repeats the expiry check inside its transaction; the plan is therefore
-   confirmed only at a moment before its expiry, and writing starts right after that commit.
+5. **Expiry at the transition to writing (UC-006 step 5, BR-003, A5; NFR-003; B-07).** After the read of step 4, the
+   coordinator takes the current time once from `Clock` as `now` and checks that it is before `expires_at`; otherwise
+   the plan becomes Expired and nothing is written. The same `now` is passed to O-7, which repeats the expiry check
+   inside its transaction; the plan is therefore confirmed only at a moment before its expiry, and writing starts
+   right after that commit. No date-dependent eligibility is rechecked: it was decided at preparation (§4, UC-006
+   BR-018), and steps 2 to 4 are the only other checks before writing (BR-004).
 6. **Sent Record before send.** One storage operation (O-7, ADR-002 §4), for the transaction-send items only: inserts
    a Sent Record with outcome Not Yet Known for every new send; for every retry, updates the reused Sent Record
    (outcome Not Yet Known, `upload_plan_id` of this plan, `sent_at`, date and amount sent) only if its outcome is
@@ -258,8 +263,9 @@ coordinator reads `coordinator_state`:
 
 In `:core`, against fakes: every row of the admission table; a Fetch running when preparation is asked; a decision
 during Plan Open replacing the plan; a second confirmation refused; expiry at confirmation without the timer; expiry
-reached during the read of step 4 (B-07); a plan prepared before local midnight whose transaction leaves the Upload
-Window, and a Lonely Transfer whose grace period ends, before confirmation (B-07); each check of §6 failing; the retry
+reached during the read of step 4 (B-07); a plan prepared before a change of date and confirmed after it, holding a
+transaction that would be outside the Upload Window and a Lonely Transfer whose grace period would have ended on the
+new date, writes exactly its items, while its expiry still applies (UC-006 BR-018); each check of §6 failing; the retry
 table of §4 for both values of the reuse-refusal capability; a plan with a retry and a new send together; a plan whose
 Transfer has both Transfer Legs present and is cleared in the same Upload, and the same with the leg's answer lost
 (B-01); a Transfer with a Transfer Leg that is Needs Review or Possible Import By Other Path, yielding no item from
@@ -283,8 +289,9 @@ is listed in ADR-005 §7.
   strictly needed; it never writes against a changed Budget.
 - An Upload Plan never survives a restart. A crash while writing leaves Unknown outcomes that the Comparison settles.
 - The Sent Record's `upload_plan_id` names the latest plan that sent it; earlier attempts are in the Decision Journal.
-- A plan confirmed a moment before its expiry, or before local midnight, can still be refused at the last step when
-  time has made it invalid; the Operator then sees the new statuses and prepares again.
+- A plan confirmed a moment before its expiry can still be refused at the last step when its expiry passes during the
+  read; the Operator then prepares again. A change of date never refuses it (UC-006 BR-018): a transaction that left
+  its window after preparation is written as the plan showed, and the next Comparison gives statuses from its own date.
 - Clearing a new Transfer Counterpart in the same Upload costs one extra read of the created leg per such Transfer.
   When that cannot be done safely, the clearing waits for the next plan instead of guessing (UC-006 A11).
 
@@ -335,10 +342,12 @@ is listed in ADR-005 §7.
   permit covers writing and clearing, steps 7-8), §8.
 - B-04: §3a (Comparison-pending marker set by O-4, cleared by O-5, blocking preparation; local recompute), §3, §6 step 4,
   §8.
-- B-07: §6 step 5 (expiry and date-dependent eligibility rechecked with one `now` after the network read, expiry
-  repeated inside O-7), §9.
+- B-07: §6 step 5 (expiry rechecked with one `now` after the network read and repeated inside O-7), §9. Its
+  date-dependent part is reversed by S-18 (see below).
 - S-12: §3a and §6 step 8 (reconciliation and clearing use the stored links and Cleared values).
 - C-01 (final check, with S-16): §4 (a Transfer with a Transfer Leg under review for a Slussen Unsupported Format
   resemblance yields no item until the Review Decision on that Transfer Leg).
-- S-17: §4 (any doubtful Transfer Leg holds its whole Transfer; outcomes and precedence of UC-005 BR-013), §6 step 5
-  (the date recheck is now required by UC-006 step 5, BR-004 and A5, and FR-035), §9.
+- S-17: §4 (any doubtful Transfer Leg holds its whole Transfer; outcomes and precedence of UC-005 BR-013), §9.
+- S-18 (O-P2-16, UC-006 BR-018): §4 (date-dependent eligibility decided once at preparation from the coordinator's
+  date), §6 step 5 (only the expiry is checked there; the date recheck is removed), §9 (a plan prepared before a change
+  of date and confirmed after it writes exactly its items), Consequences.
