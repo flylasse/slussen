@@ -1008,6 +1008,44 @@
 </div>
 </div>
 </div>
+</section><section>
+<h2>Many Budgets</h2>
+<p class="lede">Material 3's bottom navigation holds three to five destinations, so with Overview and Settings fixed up to three Budgets keep their own tabs. With four or more, a single Budgets tab opens the last Budget viewed, carries the combined badge and the header becomes a switcher; long names are shortened with … in tabs and shown in full in the header.</p>
+<div class="flow">
+<div class="state" id="many-tab">
+<div class="step-label"><span class="n">UC-008 4–5</span><p><b>A Budget with four or more Budgets</b>: the bar is Overview · Budgets · Settings, and the header is the Budget switcher.</p></div>
+<div class="phone">
+<div class="screen-title">Household</div>
+<p class="screen-sub">Budget · USD · from stored data</p>
+<div class="body">
+<div class="card"><div class="bh"><a class="nm" href="#many-switcher">Household ▾</a> <span class="chip grey">USD</span> <span class="meta r">YNAB · read 13:21 <a href="budget.html#budget-app-read" style="color:var(--app-blue)">⟳</a></span></div><div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div><a class="cta-btn big" href="upload-plan.html#awaiting">Review Upload Plan · Eligible 9</a></div><div class="card"><div class="src-h">Sources</div><div class="src-row"><span class="dot"></span> <span class="nm">SimpleFIN</span> <span class="ok">Fetched</span></div><div class="src-note">Source Health: Fetched 2026-10-15 13:20 · started by you</div><span class="btn">Fetch</span></div><div class="card"><div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></div><div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">Waiting 6</span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="#many-tab"><span class="ic">▤</span> Budgets<span class="bdg">14</span></a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="many-switcher">
+<div class="step-label"><span class="n">UC-008 4 · BR-007</span><p><b>The switcher</b> lists every Budget with its currency, counts and badge.</p></div>
+<div class="phone">
+<div class="screen-title">Household</div>
+<p class="screen-sub">Budget · USD</p>
+<div class="body">
+<div class="ghost"><div class="card"><div class="bh"><span class="nm">Household ▾</span></div></div></div><div class="sheet blue"><div class="grab"></div><h4>Budgets</h4><a class="pick sel" href="#many-tab"><span class="radio"></span> <span><span class="nm">Household</span> <span class="meta">USD · Eligible 9 · waiting 9</span></span> <span class="chip green" style="margin-left:auto">9</span></a> <a class="pick" href="#many-tab"><span class="radio"></span> <span><span class="nm">Summer House</span> <span class="meta">EUR · Eligible 2 · waiting 2</span></span> <span class="chip amber" style="margin-left:auto">!</span></a> <a class="pick" href="#many-tab"><span class="radio"></span> <span><span class="nm">Care Fund</span> <span class="meta">USD · Eligible 0 · waiting 1</span></span></a> <a class="pick" href="#many-tab"><span class="radio"></span> <span><span class="nm">Rental Flat</span> <span class="meta">EUR · Eligible 3 · waiting 0</span></span> <span class="chip green" style="margin-left:auto">3</span></a> <a class="pick" href="#many-tab"><span class="radio"></span> <span><span class="nm">Student Allowance</span> <span class="meta">USD · Eligible 0 · waiting 1</span></span></a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="#many-tab"><span class="ic">▤</span> Budgets<span class="bdg">14</span></a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="many-overview">
+<div class="step-label"><span class="n">UC-008 1</span><p><b>The Overview with five Budgets</b> and the three-item bar.</p></div>
+<div class="phone">
+<div class="screen-title">Slussen</div>
+<p class="screen-sub">Overview</p>
+<div class="body">
+<div class="bh" style="margin:0 4px 8px"><span class="meta">YNAB · read 13:21 <a href="budget.html#budget-app-read" style="color:var(--app-blue)">⟳</a></span></div><a class="card" href="#many-tab" style="display:block"><div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="chip green r">9</span></div><div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div></a> <a class="card amber" href="#many-tab" style="display:block"><div class="bh"><span class="nm">Summer House</span> <span class="chip grey">EUR</span> <span class="chip amber r">!</span></div><div class="bh"><span class="meta">Eligible 2 · waiting for a decision 2</span></div></a> <a class="card" href="#many-tab" style="display:block"><div class="bh"><span class="nm">Care Fund</span> <span class="chip grey">USD</span></div><div class="bh"><span class="meta">Eligible 0 · waiting for a decision 1</span></div></a> <a class="card" href="#many-tab" style="display:block"><div class="bh"><span class="nm">Rental Flat</span> <span class="chip grey">EUR</span> <span class="chip green r">3</span></div><div class="bh"><span class="meta">Eligible 3 · waiting for a decision 0</span></div></a> <a class="card" href="#many-tab" style="display:block"><div class="bh"><span class="nm">Student Allowance</span> <span class="chip grey">USD</span></div><div class="bh"><span class="meta">Eligible 0 · waiting for a decision 1</span></div></a> <a class="btn primary" href="#fetch-states">Fetch all Data Providers</a>
+</div>
+<div class="nav"><a class="tab on" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="#many-tab"><span class="ic">▤</span> Budgets<span class="bdg">14</span></a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
 </section>
 <p class="footnote">Mockup for the mockup gate of the construction kickoff plan. Every Budget, Bank, Bank Account,
 payee and amount is invented. The Approved use cases are normative; where this page and a use case disagree, the use
