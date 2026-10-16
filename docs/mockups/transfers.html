@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slussen Transfers</title>
+<style>
+  :root {
+    --page-bg: #f4f5f7; --page-ink: #1d2430; --page-ink-2: #5a6472; --page-line: #d9dde3;
+    --page-card: #ffffff; --accent: #2f8f83; --amber: #b07f1e; --danger: #b04a3a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page-bg: #0e1117; --page-ink: #e6eaf0; --page-ink-2: #98a2b0; --page-line: #2a303a;
+      --page-card: #161a22; --accent: #5fd4c4; --amber: #d4a94f; --danger: #e07b6a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page-bg: #0e1117; --page-ink: #e6eaf0; --page-ink-2: #98a2b0; --page-line: #2a303a;
+    --page-card: #161a22; --accent: #5fd4c4; --amber: #d4a94f; --danger: #e07b6a;
+  }
+  /* App-mirror tokens: the phone frames show Slussen's own dark theme in both page themes. */
+  :root {
+    --app-bg: #0b0e13; --app-surface: #151a22; --app-surface2: #1d232e;
+    --app-line: #262c38; --app-line-soft: #202634;
+    --app-text: #e8ecf2; --app-text2: #9aa4b2; --app-text3: #6b7585;
+    --app-teal: #5fd4c4; --app-teal-bg: #12312e; --app-teal-line: #1f4a45;
+    --app-amber: #d4a94f; --app-amber-bg: #33270e; --app-amber-line: #57431a;
+    --app-green: #6fce8a; --app-green-bg: #12301c; --app-green-line: #1e4a2c;
+    --app-blue: #7aa7e8; --app-blue-bg: #16202f; --app-blue-line: #2b4468;
+    --app-red: #e8806e; --app-red-bg: #331713; --app-red-line: #5a2a22;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page-bg); color: var(--page-ink);
+    font: 15px/1.55 system-ui, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 72px; }
+  a { color: var(--accent); }
+  nav.site { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; padding: 8px 0 18px;
+    border-bottom: 1px solid var(--page-line); margin-bottom: 22px; }
+  nav.site a { text-decoration: none; }
+  nav.site a.here { font-weight: 700; color: var(--page-ink); }
+  h1 { font-size: 26px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+  .sub, .lede { color: var(--page-ink-2); margin: 6px 0 0; max-width: 78ch; }
+  .sub b, .lede b { color: var(--page-ink); }
+  section { margin-top: 40px; }
+  code { font-family: ui-monospace, "Cascadia Code", "Roboto Mono", Menlo, monospace; font-size: 0.92em; }
+  .footnote { font-size: 12.5px; color: var(--page-ink-2); margin-top: 14px; max-width: 80ch; }
+
+  .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr)); gap: 26px; margin-top: 20px; align-items: start; }
+  .state { scroll-margin-top: 16px; }
+  .state:target .phone { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .step-label { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .step-label .n { font-family: ui-monospace, monospace; font-size: 11.5px; font-weight: 700; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px; flex: none; white-space: nowrap; }
+  .step-label p { margin: 0; font-size: 13.5px; color: var(--page-ink-2); }
+  .step-label b { color: var(--page-ink); }
+
+  /* Phone frame: mirrors the app */
+  .phone { position: relative; background: var(--app-bg); border: 1px solid var(--page-line); border-radius: 18px;
+    padding: 14px 12px 8px; color: var(--app-text); font-size: 13px; line-height: 1.45; overflow: hidden;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.18); display: flex; flex-direction: column; max-width: 420px; }
+  .phone a { color: inherit; text-decoration: none; }
+  .phone .screen-title { font-size: 15px; font-weight: 700; margin: 2px 4px 1px; display: flex; align-items: center; gap: 8px; }
+  .phone .screen-title .back { color: var(--app-text2); font-weight: 400; }
+  .phone .screen-sub { font-size: 11px; color: var(--app-text2); margin: 0 4px 10px; }
+  .phone .body { flex: 1; }
+  .card { background: var(--app-surface); border: 1px solid var(--app-line); border-radius: 10px; padding: 11px 12px; margin: 0 0 9px; }
+  .card.amber { border-color: var(--app-amber-line); }
+  .card.red { border-color: var(--app-red-line); }
+  .card.blue { border-color: var(--app-blue-line); }
+  .card.teal { border-color: var(--app-teal-line); }
+  .hair { border-top: 1px solid var(--app-line-soft); margin: 9px -12px 9px; }
+  .muted { color: var(--app-text2); }
+  .dim { color: var(--app-text3); }
+  .small { font-size: 11px; }
+  .blk { display: block; }
+
+  .chip { display: inline-block; font-size: 10px; font-weight: 600; border-radius: 5px; padding: 2px 7px; vertical-align: 1px; white-space: nowrap; }
+  .chip.amber { background: var(--app-amber-bg); color: var(--app-amber); }
+  .chip.teal { background: var(--app-teal-bg); color: var(--app-teal); }
+  .chip.green { background: var(--app-green-bg); color: var(--app-green); }
+  .chip.blue { background: var(--app-blue-bg); color: var(--app-blue); }
+  .chip.red { background: var(--app-red-bg); color: var(--app-red); }
+  .chip.grey { background: var(--app-surface2); color: var(--app-text3); }
+  .amt { font-family: ui-monospace, "Roboto Mono", monospace; font-variant-numeric: tabular-nums; font-size: 12.5px; white-space: nowrap; }
+  .amt.in { color: var(--app-green); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--app-green); margin-right: 6px; vertical-align: 1px; flex: none; }
+  .dot.amber { background: var(--app-amber); } .dot.red { background: var(--app-red); } .dot.grey { background: var(--app-text3); }
+  .dot.blue { background: var(--app-blue); }
+
+  /* Budget header */
+  .bh { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .bh .nm { font-weight: 700; font-size: 14.5px; }
+  .bh .meta { font-size: 11px; color: var(--app-text2); }
+  .bh .r { margin-left: auto; }
+  .cta-btn { display: inline-block; background: var(--app-blue-bg); border: 1px solid var(--app-blue-line);
+    color: var(--app-blue) !important; border-radius: 9px; padding: 6px 12px; font-size: 12px; font-weight: 600; }
+  .cta-btn.big { display: block; text-align: center; margin-top: 9px; padding: 8px; }
+  .cta-btn.dim { opacity: 0.45; }
+  .cta-btn.danger { background: var(--app-red-bg); border-color: var(--app-red-line); color: var(--app-red) !important; }
+  .cta-btn.ghost { background: none; border-color: var(--app-line); color: var(--app-text2) !important; }
+
+  /* Source block */
+  .src-h { font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--app-text3); margin: 2px 2px 7px; display: flex; gap: 8px; }
+  .src-h .r { margin-left: auto; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--app-blue); }
+  .src-row { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+  .src-row .nm { font-weight: 600; font-size: 13px; }
+  .src-row .ok { color: var(--app-green); font-size: 11px; font-weight: 600; }
+  .src-row .warn { color: var(--app-amber); font-size: 11px; font-weight: 600; }
+  .src-row .bad { color: var(--app-red); font-size: 11px; font-weight: 600; }
+  .src-row .gran { margin-left: auto; font-size: 10.5px; color: var(--app-text3); }
+  .src-note { font-size: 10.5px; color: var(--app-text2); margin-top: 2px; }
+  .src-note b { color: var(--app-text); font-weight: 600; }
+  .acct-line { display: flex; gap: 6px; font-size: 11.5px; padding: 3px 0 0; color: var(--app-text2); }
+  .acct-line .amt { margin-left: auto; color: var(--app-text); }
+
+  /* Buttons (app) */
+  .btn { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600;
+    border: 1px solid var(--app-line); color: var(--app-text2) !important; background: var(--app-surface2);
+    border-radius: 8px; padding: 5px 11px; margin-top: 8px; }
+  .btn.busy { border-color: var(--app-blue-line); color: var(--app-blue) !important; background: var(--app-blue-bg); }
+  .btn.done { border-color: var(--app-teal-line); color: var(--app-teal) !important; background: var(--app-teal-bg); }
+  .btn.cool { border-color: var(--app-green-line); color: var(--app-green) !important; background: var(--app-green-bg); }
+  .btn.blocked { opacity: 0.4; }
+  .btn.warn { border-color: var(--app-amber-line); color: var(--app-amber) !important; background: var(--app-amber-bg); }
+  .btn.primary { border-color: var(--app-blue-line); color: var(--app-blue) !important; background: var(--app-blue-bg); }
+  .btn.danger { border-color: var(--app-red-line); color: var(--app-red) !important; background: var(--app-red-bg); }
+  .spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--app-blue); border-top-color: transparent; animation: sp 0.9s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+  /* Bank Account card and transaction rows */
+  .acct-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .acct-h .nm { font-weight: 700; font-size: 13.5px; }
+  .acct-h .r { margin-left: auto; }
+  .tagrow { margin-top: 5px; display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+  .balrow { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--app-text2); margin-top: 6px; }
+  .balrow b { color: var(--app-text); font-weight: 600; font-family: ui-monospace, monospace; }
+  .txrow { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-top: 1px solid var(--app-line-soft); font-size: 12px; }
+  .txrow .d { color: var(--app-text3); font-family: ui-monospace, monospace; font-size: 11px; flex: none; }
+  .txrow .p { flex: 1 1 auto; min-width: 0; }
+  .txrow .p .why { display: block; font-size: 10.5px; color: var(--app-text3); }
+  .txrow .amt { color: var(--app-text); }
+  .txrow .stc { flex: none; }
+  .grp { font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--app-text3); margin: 10px 0 2px; }
+  .grp.amber { color: var(--app-amber); } .grp.green { color: var(--app-green); }
+
+  /* Bottom navigation */
+  .nav { display: flex; border-top: 1px solid var(--app-line); margin: 10px -12px 0; padding: 7px 4px 4px; }
+  .nav .tab { flex: 1; text-align: center; font-size: 10px; color: var(--app-text3); position: relative; min-width: 0; }
+  .nav .tab .ic { display: block; font-size: 15px; line-height: 1.25; }
+  .nav .tab .cur { display: block; margin: 1px auto 2px; font-size: 8.5px; font-weight: 700; letter-spacing: .04em;
+    border: 1px solid var(--app-line); border-radius: 3px; width: 30px; color: var(--app-text2); }
+  .nav .tab.on { color: var(--app-blue); font-weight: 700; }
+  .nav .tab.on .cur { border-color: var(--app-blue-line); color: var(--app-blue); }
+  .nav .tab .bdg { position: absolute; top: -4px; left: 58%; background: var(--app-green-bg); color: var(--app-green);
+    border: 1px solid var(--app-green-line); font-size: 9px; font-weight: 700; border-radius: 999px; padding: 0 5px; }
+  .nav .tab .bdg.warn { background: var(--app-amber-bg); color: var(--app-amber); border-color: var(--app-amber-line); }
+
+  /* Banner and strip */
+  .banner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: var(--app-amber-bg);
+    border: 1px solid var(--app-amber-line); border-radius: 10px; padding: 10px 12px; margin: 0 0 9px; }
+  .banner.blue { background: var(--app-blue-bg); border-color: var(--app-blue-line); }
+  .banner.red { background: var(--app-red-bg); border-color: var(--app-red-line); }
+  .banner.grey { background: var(--app-surface); border-color: var(--app-line); }
+  .banner .txt { flex: 1 1 190px; font-size: 12.5px; }
+  .banner .txt b { color: var(--app-amber); }
+  .banner.blue .txt b { color: var(--app-blue); } .banner.red .txt b { color: var(--app-red); } .banner.grey .txt b { color: var(--app-text); }
+  .banner .txt .d { color: var(--app-text2); font-size: 11.5px; display: block; }
+
+  /* Pinned footer (plan) */
+  .foot { border-top: 1px solid var(--app-blue-line); margin: 8px -12px 0; padding: 10px 12px 4px; background: var(--app-surface); }
+  .foot .sum { font-size: 11px; color: var(--app-text2); margin-bottom: 7px; }
+  .foot .sum b { color: var(--app-text); }
+  .pair { display: flex; gap: 8px; }
+  .pair .cta-btn { flex: 1; text-align: center; margin: 0; }
+  .pair .cta-btn.ghost { flex: 0 0 auto; }
+  .kv { display: flex; gap: 8px; font-size: 11.5px; padding: 3px 0; border-top: 1px solid var(--app-line-soft); }
+  .kv:first-child { border-top: none; }
+  .kv .k { color: var(--app-text2); flex: 0 0 44%; }
+  .kv .v { color: var(--app-text); flex: 1; }
+  .sticky { position: sticky; top: 0; z-index: 2; background: var(--app-surface2); border: 1px solid var(--app-line);
+    border-radius: 8px; padding: 6px 10px; margin: 9px 0 0; }
+
+  /* Settings rows */
+  .cfg-row { display: flex; align-items: baseline; gap: 8px; padding: 7px 2px; border-top: 1px solid var(--app-line-soft); font-size: 12.5px; flex-wrap: wrap; }
+  .cfg-row:first-child { border-top: none; }
+  .cfg-row .nm { flex: 1 1 55%; }
+  .cfg-row .nm .hint { display: block; font-size: 10.5px; color: var(--app-text3); }
+  .cfg-row .val { font-family: ui-monospace, monospace; font-size: 12px; color: var(--app-teal); border: 1px solid var(--app-line); border-radius: 6px; padding: 1px 8px; margin-left: auto; }
+  .cfg-row .val.bad { color: var(--app-red); border-color: var(--app-red-line); }
+  .cfg-row .go { color: var(--app-text3); }
+  .sec-t { font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--app-text3); margin: 12px 4px 6px; }
+  .toggle { display: inline-block; width: 30px; height: 16px; border-radius: 999px; background: var(--app-teal-line); position: relative; margin-left: auto; }
+  .toggle::after { content: ""; position: absolute; right: 2px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--app-teal); }
+  .toggle.off { background: var(--app-line); } .toggle.off::after { right: auto; left: 2px; background: var(--app-text3); }
+
+  /* Sheet, dialog, scrim */
+  .scrim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+  .ghost { opacity: .35; pointer-events: none; }
+  .sheet { position: relative; background: var(--app-surface); border: 1px solid var(--app-line); border-radius: 14px 14px 10px 10px; padding: 12px 12px 10px; margin-top: 10px; }
+  .sheet.blue { border-color: var(--app-blue-line); } .sheet.teal { border-color: var(--app-teal-line); } .sheet.amber { border-color: var(--app-amber-line); }
+  .sheet.red { border-color: var(--app-red-line); }
+  .grab { width: 34px; height: 4px; border-radius: 2px; background: var(--app-line); margin: 0 auto 10px; }
+  .sheet h4, .dialog h4 { margin: 0; font-size: 14px; }
+  .sheet .ctx { font-size: 11px; color: var(--app-text2); margin: 1px 0 8px; }
+  .item { display: flex; gap: 11px; padding: 10px 4px; border-top: 1px solid var(--app-line-soft); }
+  .item .ic { width: 18px; text-align: center; color: var(--app-text2); flex: none; }
+  .item .t { font-size: 12.5px; font-weight: 600; display: block; }
+  .item .d { font-size: 10.5px; color: var(--app-text2); display: block; }
+  .item.off .t, .item.off .ic { color: var(--app-text3); }
+  .item.danger .t, .item.danger .ic { color: var(--app-red); }
+  .item.sep { border-top: 1px solid var(--app-line); margin-top: 4px; }
+  .dialog { position: relative; margin: 26px 8px; background: var(--app-surface2); border: 1px solid var(--app-line); border-radius: 18px; padding: 18px 18px 12px; }
+  .dialog h4 { font-size: 16px; margin-bottom: 8px; }
+  .dialog p { margin: 0 0 8px; font-size: 12.5px; color: var(--app-text2); }
+  .dialog b { color: var(--app-text); }
+  .actions { display: flex; justify-content: flex-end; gap: 18px; margin-top: 6px; font-size: 12.5px; font-weight: 600; }
+  .actions .c { color: var(--app-blue); } .actions .x { color: var(--app-red); } .actions .ok { color: var(--app-teal); }
+  .snack { display: flex; justify-content: space-between; gap: 10px; margin: 10px 4px 0; background: #e8ecf2; color: #151a22; border-radius: 6px; padding: 9px 12px; font-size: 12px; }
+  .snack b { color: #1f6fd1; }
+  .pick { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-top: 1px solid var(--app-line-soft); }
+  .pick .radio { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--app-text3); flex: none; }
+  .pick.sel .radio { border-color: var(--app-teal); box-shadow: inset 0 0 0 3px var(--app-surface), inset 0 0 0 8px var(--app-teal); }
+  .pick .nm { font-weight: 600; font-size: 12.5px; display: block; }
+  .pick .meta { font-size: 10.5px; color: var(--app-text3); display: block; }
+  .pick .badge { margin-left: auto; font-size: 9.5px; color: var(--app-text2); background: var(--app-surface2); border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+  .pick.off { opacity: .45; }
+  .cta { display: block; margin-top: 10px; text-align: center; background: var(--app-blue-bg); border: 1px solid var(--app-blue-line); color: var(--app-blue) !important; border-radius: 9px; padding: 8px; font-size: 12.5px; font-weight: 600; }
+  .cta.dim { opacity: .45; }
+  .choices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .choice { font-size: 11px; border: 1px solid var(--app-line); border-radius: 999px; padding: 3px 10px; color: var(--app-text2); }
+  .choice.on { border-color: var(--app-teal-line); color: var(--app-teal); background: var(--app-teal-bg); }
+  .choice.off { opacity: .4; }
+  .stepn { display: flex; gap: 9px; align-items: flex-start; padding: 8px 2px; border-top: 1px solid var(--app-line-soft); }
+  .stepn .i { font-family: ui-monospace, monospace; font-size: 10.5px; font-weight: 700; color: var(--app-blue);
+    border: 1px solid var(--app-blue-line); border-radius: 999px; padding: 0 6px; flex: none; margin-top: 2px; }
+  .stepn .t { font-size: 12px; font-weight: 600; display: block; }
+  .stepn .d { font-size: 11px; color: var(--app-text2); display: block; }
+  .note { color: var(--app-text2); font-size: 11.5px; margin: 8px 0 0; }
+  .note b { color: var(--app-text); font-weight: 600; }
+
+  /* Account Mapping map */
+  .group-h { display: flex; justify-content: space-between; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--app-text3); padding: 0 4px 4px; margin-top: 10px; }
+  .map { background: var(--app-surface); border: 1px solid var(--app-line); border-radius: 10px; }
+  .mrow { display: grid; grid-template-columns: minmax(0,1fr) 42px minmax(0,1fr) 22px; align-items: center; gap: 4px; padding: 9px 4px 9px 10px; border-top: 1px solid var(--app-line-soft); }
+  .map > .mrow:first-child { border-top: none; }
+  .mrow.hl { background: var(--app-surface2); }
+  .mrow .nm { font-weight: 600; font-size: 12px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mrow .meta { font-size: 10px; color: var(--app-text3); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mrow .meta.teal { color: var(--app-teal); } .mrow .meta.amber { color: var(--app-amber); } .mrow .meta.red { color: var(--app-red); }
+  .mrow .more { color: var(--app-text2); text-align: center; }
+  .mrel { padding: 0 10px 8px; margin-top: -4px; font-size: 10px; }
+  .relchip { display: inline-block; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--app-blue-line); color: var(--app-blue); background: var(--app-blue-bg); }
+  .relchip.unset { border-style: dashed; color: var(--app-text2); background: transparent; border-color: var(--app-line); }
+  .kind { display: inline-block; font-size: 8.5px; font-weight: 700; border-radius: 3px; padding: 0 4px; margin-right: 4px; background: var(--app-surface2); color: var(--app-text2); border: 1px solid var(--app-line); }
+  .conn svg { display: block; width: 42px; height: 14px; }
+  .retired .nm, .retired .meta { color: var(--app-text3) !important; }
+
+  /* Page-level legend, gallery and tables */
+  .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)); gap: 12px; margin-top: 16px; }
+  .gallery .st { background: var(--page-card); border: 1px solid var(--page-line); border-radius: 10px; padding: 12px 14px; }
+  .gallery .st h4 { margin: 0 0 2px; font-size: 13px; }
+  .gallery .st p { margin: 0 0 4px; font-size: 12px; color: var(--page-ink-2); }
+  .gallery .stage { background: var(--app-bg); color: var(--app-text); border-radius: 8px; padding: 4px 10px 10px; margin-top: 6px; font-size: 12px; }
+  .table-wrap { overflow-x: auto; margin-top: 16px; }
+  table { border-collapse: collapse; width: 100%; background: var(--page-card); border: 1px solid var(--page-line); font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-top: 1px solid var(--page-line); vertical-align: top; }
+  thead th { border-top: none; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--page-ink-2); }
+  td.mono { font-family: ui-monospace, monospace; font-size: 12px; white-space: nowrap; }
+  .legend-chips { display: flex; flex-wrap: wrap; gap: 6px; background: var(--app-bg); border-radius: 10px; padding: 10px; margin-top: 12px; }
+  .icons { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 16px; margin-top: 16px; }
+  .icons figure { margin: 0; background: var(--page-card); border: 1px solid var(--page-line); border-radius: 12px; padding: 16px; }
+  .icons img { width: 120px; height: 120px; display: block; }
+  .icons .row { display: flex; gap: 12px; align-items: end; }
+  .icons .row img.s { width: 48px; height: 48px; }
+  .icons figcaption { font-size: 13px; color: var(--page-ink-2); margin-top: 10px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html" class="here">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a></nav>
+<p class="eyebrow">Slussen · screen mockup · UC-005</p>
+<h1>Review Transfers</h1>
+<p class="sub">Confirm or correct each Transfer of one Budget so that it arrives in the Budget App as one linked transfer between the intended Budget Accounts.</p>
+<section>
+<h2>Review Transfers</h2>
+<p class="lede">Adopted from the predecessor: a Transfer Review screen that never writes, one card per Transfer with its choices, and the Guessed Transfer banner that leads to it. Changed: Hold back is a choice for every Transfer that is not uploaded (UC-005 A2), a Guessed Transfer is not in any Upload Plan until confirmed instead of being written as the guess (UC-005 BR-010), and the other side is chosen as a Budget Account, which may be one Slussen does not fetch (UC-005 A3).</p>
+<div class="flow">
+<div class="state" id="list">
+<div class="step-label"><span class="n">UC-005 1 · A5, A6</span><p><b>Review Transfers.</b> Each Transfer of the Budget with its two Budget Accounts, amount, dates and whether both Transfer Legs arrived; Guessed Transfers flagged and counted. Reached from the Budget's banner.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Transfers</div>
+<p class="screen-sub">Household · Review Transfers</p>
+<div class="body">
+<div class="banner"><span class="txt"><b>Guessed Transfers in Household: 1</b> <span class="d">Nothing is written here; confirmed Transfers go into the next Upload Plan.</span></span></div><a class="card amber" href="#first-card-payment" style="display:block"><span class="acct-h"><span class="chip amber">Guessed Transfer</span> <span class="chip teal">Card Payment</span> <span class="nm">? → Home Card</span> <span class="amt r">410.00</span></span><div class="note">Pinecrest Home Card 10-13 +410.00 · other side not proposed: Home Card has no Funded By · waiting for your Transfer Decision</div></a> <a class="card " href="#selected" style="display:block"><span class="acct-h"><span class="chip teal">Bank Transfer</span> <span class="nm">Checking → Reserve Savings</span> <span class="amt r">500.00</span></span><div class="note">10-11 · 10-11 · both Transfer Legs arrived · eligible for the next Upload Plan as one linked transfer</div></a> <a class="card " href="#lonely" style="display:block"><span class="acct-h"><span class="chip teal">Card Payment</span> <span class="chip grey">Lonely Transfer</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">180.00</span></span><div class="note">Rewards Card 10-14 · other side expected in Checking by 2026-10-20 · eligible as a linked transfer</div></a> <a class="card " href="#held" style="display:block"><span class="acct-h"><span class="chip grey">Held Transfer</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">300.00</span></span><div class="note">10-08 · held back by you · neither Transfer Leg is in any Upload Plan</div></a> <a class="card amber" href="review-decision.html#counterpart-changed" style="display:block"><span class="acct-h"><span class="chip amber">Transfer Counterpart Changed</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">250.00</span></span><div class="note">uploaded 10-06 from Checking; the counterpart was changed in the Budget App · the arrived Bank Transaction waits for Import Anyway or Defer</div></a><div class="card "><span class="acct-h"><span class="chip green">New</span> <span class="nm">Reserve Savings · ordinary</span> <span class="amt r">75.00</span></span><div class="note">Internet Transfer from Checking, 10-08: its other side did not arrive within the Lonely Transfer grace period (6 days by default, an Operator Setting), so it is now an ordinary Bank Transaction</div></div><a class="card " href="#locked" style="display:block"><span class="acct-h"><span class="chip grey">Already In Budget App</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">600.00</span></span><div class="note">uploaded 2026-10-09 · Transfer Decision locked</div></a>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="selected">
+<div class="step-label"><span class="n">UC-005 2–4</span><p><b>A selected Transfer</b>: the proposed other Budget Account, the others of the same Budget and currency it could belong to, and the four Transfer Decisions.</p></div>
+<div class="phone">
+<div class="screen-title">Transfers</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="ghost"><div class="card "><span class="acct-h"><span class="chip teal">Bank Transfer</span> <span class="nm">Checking → Reserve Savings</span> <span class="amt r">500.00</span></span><div class="note">both Transfer Legs arrived</div></div></div><div class="sheet blue"><div class="grab"></div><h4>Bank Transfer · 500.00 USD</h4><p class="ctx">Checking → Reserve Savings · Kestrel Checking 10-11 −500.00 · Kestrel Reserve 10-11 +500.00</p><div class="kv"><span class="k">Proposed other side</span> <span class="v">Reserve Savings</span></div><div class="kv"><span class="k">Could also be</span> <span class="v">Rewards Card, Home Card, Cash Envelope, Car Loan (Budget Accounts of Household in USD)</span></div><div class="item "><span class="ic">✓</span> <span><span class="t">Confirm</span> <span class="d">Proposed for the next Upload Plan as one linked transfer.</span></span></div><div class="item "><span class="ic">⇹</span> <span><span class="t">Split into ordinary transactions</span> <span class="d">Each Transfer Leg is compared as an ordinary Bank Transaction.</span></span></div><div class="item "><span class="ic">⏸</span> <span><span class="t">Hold back</span> <span class="d">Neither Transfer Leg is in any Upload Plan until you change it.</span></span></div><a class="item" href="transfer-budget-account.html#partner"><span class="ic">⇆</span> <span><span class="t">Choose another Budget Account…</span> <span class="d">The other side is a different Budget Account.</span></span></a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="confirmed">
+<div class="step-label"><span class="n">UC-005 5–6</span><p><b>After a Transfer Decision</b>: the Guessed Transfer flag goes and the count drops.</p></div>
+<div class="phone">
+<div class="screen-title">Transfers</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="banner grey"><span class="txt"><b>Guessed Transfers in Household: 0</b></span></div><div class="card teal"><span class="acct-h"><span class="chip teal">Card Payment</span> <span class="nm">Checking → Home Card</span> <span class="amt r">410.00</span></span><div class="note">Transfer Decision: Budget Account Chosen · eligible for the next Upload Plan as one linked transfer</div></div><div class="snack"><span>Transfer Decision stored and recorded in the Decision Journal. You can change it until a Transfer Leg is uploaded.</span> <b>UNDO</b></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="lonely">
+<div class="step-label"><span class="n">UC-005 A4</span><p><b>A Lonely Transfer</b> with its expected other side and the date by which it must arrive.</p></div>
+<div class="phone">
+<div class="screen-title">Transfers</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="sheet blue"><div class="grab"></div><h4>Lonely Transfer · 180.00 USD</h4><p class="ctx">Card Payment · Checking → Rewards Card</p><div class="kv"><span class="k">Arrived</span> <span class="v">Pinecrest Rewards Card · 2026-10-14 · +180.00 · Autopay Received</span></div><div class="kv"><span class="k">Expected other side</span> <span class="v">Kestrel Checking, −180.00, in Budget Account Checking (its Funded By)</span></div><div class="kv"><span class="k">Must arrive by</span> <span class="v">2026-10-20 (Lonely Transfer grace period, 6 days by default, an Operator Setting)</span></div><div class="item "><span class="ic">✓</span> <span><span class="t">Confirm</span> <span class="d">Proposed for the next Upload Plan as a linked transfer. Its Transfer Counterpart in Checking stays uncleared until the other side arrives, and is then marked Cleared while Upload as Cleared is on.</span></span></div><div class="item "><span class="ic">⇹</span> <span><span class="t">Split</span> <span class="d">An ordinary Bank Transaction.</span></span></div><div class="item "><span class="ic">⏸</span> <span><span class="t">Hold back</span> <span class="d"></span></span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
+</section><section>
+<h2>Other Transfer Decisions and states</h2>
+<p class="lede"></p>
+<div class="flow">
+<div class="state" id="split">
+<div class="step-label"><span class="n">UC-005 A1</span><p><b>Split</b>: each Transfer Leg becomes an ordinary Bank Transaction.</p></div>
+<div class="phone">
+<div class="screen-title">Transfers</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="card "><span class="acct-h"><span class="chip green">New</span> <span class="nm">Kestrel Checking · ordinary</span> <span class="amt r">−500.00</span></span><div class="note">after Split: compared as an ordinary Bank Transaction</div></div><div class="card "><span class="acct-h"><span class="chip green">New</span> <span class="nm">Kestrel Reserve · ordinary</span> <span class="amt r">+500.00</span></span><div class="note">after Split: compared as an ordinary Bank Transaction</div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="held">
+<div class="step-label"><span class="n">UC-005 A2</span><p><b>Held Transfer</b>: both sides held (UC-005 BR-007).</p></div>
+<div class="phone">
+<div class="screen-title">Transfers</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="card "><span class="acct-h"><span class="chip grey">Held Transfer</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">300.00</span></span><div class="note">Held back. Both Transfer Legs have the status Held Transfer and are in no Upload Plan, as a Transfer or as ordinary transactions, until you change the decision.</div><span class="choices"><span class="choice">Confirm</span> <span class="choice">Split</span> <span class="choice on">Hold back</span></span></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="first-card-payment">
+<div class="step-label"><span class="n">UC-005 A8</span><p><b>The first Card Payment of a credit card without Funded By</b> is a Guessed Transfer. It starts only from the card's own Bank Transaction.</p></div>
+<div class="phone">
+<div class="screen-title">Transfers</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="sheet amber"><div class="grab"></div><h4>Card Payment to Home Card · 410.00 USD</h4><p class="ctx">Pinecrest Home Card · 2026-10-13 · +410.00 · Autopay Received · Guessed Transfer</p><p class="note">Home Card has no Funded By yet. No Budget Account is proposed, because Household has more than one Bank Account that is not a credit card. Choose the paying Budget Account; Slussen asks whether to keep it as the card's Funded By.</p><a class="item" href="transfer-budget-account.html#choose"><span class="ic">⇆</span> <span><span class="t">Choose the paying Budget Account…</span> <span class="d">Required before this Transfer can be in an Upload Plan.</span></span></a><div class="item "><span class="ic">⇹</span> <span><span class="t">Split into ordinary transactions</span> <span class="d"></span></span></div><div class="item "><span class="ic">⏸</span> <span><span class="t">Hold back</span> <span class="d"></span></span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="doubtful-leg">
+<div class="step-label"><span class="n">UC-005 A9</span><p><b>A Transfer with a doubtful Transfer Leg</b> waits for the Review Decision first (UC-005 BR-013).</p></div>
+<div class="phone">
+<div class="screen-title">Transfers</div>
+<p class="screen-sub">Summer House · Review Transfers</p>
+<div class="body">
+<div class="card amber"><span class="acct-h"><span class="chip teal">Bank Transfer</span> <span class="chip amber">waiting for your Review Decision</span> <span class="nm">Aurora Current → Aurora Savings</span> <span class="amt r">200.00</span></span><div class="note">10-13 · 10-13 · the Transfer Leg in Aurora Savings is Possible Import By Other Path. The whole Transfer is in no Upload Plan, from either side, until you decide on it.</div><span class="choices"><a class="choice on" href="review-decision.html#transfer-leg">Decide on the Transfer Leg</a> <span class="choice">Split</span></span></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab on" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="locked">
+<div class="step-label"><span class="n">UC-005 A7</span><p><b>Already uploaded</b>: the Transfer Decision is locked.</p></div>
+<div class="phone">
+<div class="screen-title">Transfers</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="sheet "><div class="grab"></div><h4>Card Payment · 600.00 USD</h4><p class="ctx">Checking → Rewards Card</p><p class="note">Transfer Decision locked: its Transfer Leg in Rewards Card was uploaded on 2026-10-09 as a linked transfer. Its other side, Kestrel Checking −600.00 of 2026-10-13, arrived as the Transfer Counterpart and is not uploaded again; the next Upload Plan marks the counterpart Cleared while Upload as Cleared is on.</p></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
+</section>
+<p class="footnote">Mockup for the mockup gate of the construction kickoff plan. Every Budget, Bank, Bank Account,
+payee and amount is invented. The Approved use cases are normative; where this page and a use case disagree, the use
+case wins.</p>
+</main>
+</body>
+</html>

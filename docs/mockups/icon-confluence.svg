@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
+  <title>Slussen icon proposal C: Many Sources, one Budget</title>
+  <rect width="108" height="108" rx="24" fill="#16202f"/>
+  <path d="M14 28 C38 28 42 54 62 54" stroke="#7aa7e8" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M14 54 H62" stroke="#7aa7e8" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M14 80 C38 80 42 54 62 54" stroke="#7aa7e8" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <rect x="58" y="34" width="9" height="40" rx="3" fill="#5fd4c4"/>
+  <path d="M67 54 H94" stroke="#5fd4c4" stroke-width="14" stroke-linecap="round"/>
+</svg>

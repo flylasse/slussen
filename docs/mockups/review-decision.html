@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slussen Review Decision</title>
+<style>
+  :root {
+    --page-bg: #f4f5f7; --page-ink: #1d2430; --page-ink-2: #5a6472; --page-line: #d9dde3;
+    --page-card: #ffffff; --accent: #2f8f83; --amber: #b07f1e; --danger: #b04a3a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page-bg: #0e1117; --page-ink: #e6eaf0; --page-ink-2: #98a2b0; --page-line: #2a303a;
+      --page-card: #161a22; --accent: #5fd4c4; --amber: #d4a94f; --danger: #e07b6a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page-bg: #0e1117; --page-ink: #e6eaf0; --page-ink-2: #98a2b0; --page-line: #2a303a;
+    --page-card: #161a22; --accent: #5fd4c4; --amber: #d4a94f; --danger: #e07b6a;
+  }
+  /* App-mirror tokens: the phone frames show Slussen's own dark theme in both page themes. */
+  :root {
+    --app-bg: #0b0e13; --app-surface: #151a22; --app-surface2: #1d232e;
+    --app-line: #262c38; --app-line-soft: #202634;
+    --app-text: #e8ecf2; --app-text2: #9aa4b2; --app-text3: #6b7585;
+    --app-teal: #5fd4c4; --app-teal-bg: #12312e; --app-teal-line: #1f4a45;
+    --app-amber: #d4a94f; --app-amber-bg: #33270e; --app-amber-line: #57431a;
+    --app-green: #6fce8a; --app-green-bg: #12301c; --app-green-line: #1e4a2c;
+    --app-blue: #7aa7e8; --app-blue-bg: #16202f; --app-blue-line: #2b4468;
+    --app-red: #e8806e; --app-red-bg: #331713; --app-red-line: #5a2a22;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page-bg); color: var(--page-ink);
+    font: 15px/1.55 system-ui, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 72px; }
+  a { color: var(--accent); }
+  nav.site { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; padding: 8px 0 18px;
+    border-bottom: 1px solid var(--page-line); margin-bottom: 22px; }
+  nav.site a { text-decoration: none; }
+  nav.site a.here { font-weight: 700; color: var(--page-ink); }
+  h1 { font-size: 26px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+  .sub, .lede { color: var(--page-ink-2); margin: 6px 0 0; max-width: 78ch; }
+  .sub b, .lede b { color: var(--page-ink); }
+  section { margin-top: 40px; }
+  code { font-family: ui-monospace, "Cascadia Code", "Roboto Mono", Menlo, monospace; font-size: 0.92em; }
+  .footnote { font-size: 12.5px; color: var(--page-ink-2); margin-top: 14px; max-width: 80ch; }
+
+  .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr)); gap: 26px; margin-top: 20px; align-items: start; }
+  .state { scroll-margin-top: 16px; }
+  .state:target .phone { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .step-label { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .step-label .n { font-family: ui-monospace, monospace; font-size: 11.5px; font-weight: 700; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px; flex: none; white-space: nowrap; }
+  .step-label p { margin: 0; font-size: 13.5px; color: var(--page-ink-2); }
+  .step-label b { color: var(--page-ink); }
+
+  /* Phone frame: mirrors the app */
+  .phone { position: relative; background: var(--app-bg); border: 1px solid var(--page-line); border-radius: 18px;
+    padding: 14px 12px 8px; color: var(--app-text); font-size: 13px; line-height: 1.45; overflow: hidden;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.18); display: flex; flex-direction: column; max-width: 420px; }
+  .phone a { color: inherit; text-decoration: none; }
+  .phone .screen-title { font-size: 15px; font-weight: 700; margin: 2px 4px 1px; display: flex; align-items: center; gap: 8px; }
+  .phone .screen-title .back { color: var(--app-text2); font-weight: 400; }
+  .phone .screen-sub { font-size: 11px; color: var(--app-text2); margin: 0 4px 10px; }
+  .phone .body { flex: 1; }
+  .card { background: var(--app-surface); border: 1px solid var(--app-line); border-radius: 10px; padding: 11px 12px; margin: 0 0 9px; }
+  .card.amber { border-color: var(--app-amber-line); }
+  .card.red { border-color: var(--app-red-line); }
+  .card.blue { border-color: var(--app-blue-line); }
+  .card.teal { border-color: var(--app-teal-line); }
+  .hair { border-top: 1px solid var(--app-line-soft); margin: 9px -12px 9px; }
+  .muted { color: var(--app-text2); }
+  .dim { color: var(--app-text3); }
+  .small { font-size: 11px; }
+  .blk { display: block; }
+
+  .chip { display: inline-block; font-size: 10px; font-weight: 600; border-radius: 5px; padding: 2px 7px; vertical-align: 1px; white-space: nowrap; }
+  .chip.amber { background: var(--app-amber-bg); color: var(--app-amber); }
+  .chip.teal { background: var(--app-teal-bg); color: var(--app-teal); }
+  .chip.green { background: var(--app-green-bg); color: var(--app-green); }
+  .chip.blue { background: var(--app-blue-bg); color: var(--app-blue); }
+  .chip.red { background: var(--app-red-bg); color: var(--app-red); }
+  .chip.grey { background: var(--app-surface2); color: var(--app-text3); }
+  .amt { font-family: ui-monospace, "Roboto Mono", monospace; font-variant-numeric: tabular-nums; font-size: 12.5px; white-space: nowrap; }
+  .amt.in { color: var(--app-green); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--app-green); margin-right: 6px; vertical-align: 1px; flex: none; }
+  .dot.amber { background: var(--app-amber); } .dot.red { background: var(--app-red); } .dot.grey { background: var(--app-text3); }
+  .dot.blue { background: var(--app-blue); }
+
+  /* Budget header */
+  .bh { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .bh .nm { font-weight: 700; font-size: 14.5px; }
+  .bh .meta { font-size: 11px; color: var(--app-text2); }
+  .bh .r { margin-left: auto; }
+  .cta-btn { display: inline-block; background: var(--app-blue-bg); border: 1px solid var(--app-blue-line);
+    color: var(--app-blue) !important; border-radius: 9px; padding: 6px 12px; font-size: 12px; font-weight: 600; }
+  .cta-btn.big { display: block; text-align: center; margin-top: 9px; padding: 8px; }
+  .cta-btn.dim { opacity: 0.45; }
+  .cta-btn.danger { background: var(--app-red-bg); border-color: var(--app-red-line); color: var(--app-red) !important; }
+  .cta-btn.ghost { background: none; border-color: var(--app-line); color: var(--app-text2) !important; }
+
+  /* Source block */
+  .src-h { font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--app-text3); margin: 2px 2px 7px; display: flex; gap: 8px; }
+  .src-h .r { margin-left: auto; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--app-blue); }
+  .src-row { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+  .src-row .nm { font-weight: 600; font-size: 13px; }
+  .src-row .ok { color: var(--app-green); font-size: 11px; font-weight: 600; }
+  .src-row .warn { color: var(--app-amber); font-size: 11px; font-weight: 600; }
+  .src-row .bad { color: var(--app-red); font-size: 11px; font-weight: 600; }
+  .src-row .gran { margin-left: auto; font-size: 10.5px; color: var(--app-text3); }
+  .src-note { font-size: 10.5px; color: var(--app-text2); margin-top: 2px; }
+  .src-note b { color: var(--app-text); font-weight: 600; }
+  .acct-line { display: flex; gap: 6px; font-size: 11.5px; padding: 3px 0 0; color: var(--app-text2); }
+  .acct-line .amt { margin-left: auto; color: var(--app-text); }
+
+  /* Buttons (app) */
+  .btn { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600;
+    border: 1px solid var(--app-line); color: var(--app-text2) !important; background: var(--app-surface2);
+    border-radius: 8px; padding: 5px 11px; margin-top: 8px; }
+  .btn.busy { border-color: var(--app-blue-line); color: var(--app-blue) !important; background: var(--app-blue-bg); }
+  .btn.done { border-color: var(--app-teal-line); color: var(--app-teal) !important; background: var(--app-teal-bg); }
+  .btn.cool { border-color: var(--app-green-line); color: var(--app-green) !important; background: var(--app-green-bg); }
+  .btn.blocked { opacity: 0.4; }
+  .btn.warn { border-color: var(--app-amber-line); color: var(--app-amber) !important; background: var(--app-amber-bg); }
+  .btn.primary { border-color: var(--app-blue-line); color: var(--app-blue) !important; background: var(--app-blue-bg); }
+  .btn.danger { border-color: var(--app-red-line); color: var(--app-red) !important; background: var(--app-red-bg); }
+  .spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--app-blue); border-top-color: transparent; animation: sp 0.9s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+  /* Bank Account card and transaction rows */
+  .acct-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .acct-h .nm { font-weight: 700; font-size: 13.5px; }
+  .acct-h .r { margin-left: auto; }
+  .tagrow { margin-top: 5px; display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+  .balrow { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--app-text2); margin-top: 6px; }
+  .balrow b { color: var(--app-text); font-weight: 600; font-family: ui-monospace, monospace; }
+  .txrow { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-top: 1px solid var(--app-line-soft); font-size: 12px; }
+  .txrow .d { color: var(--app-text3); font-family: ui-monospace, monospace; font-size: 11px; flex: none; }
+  .txrow .p { flex: 1 1 auto; min-width: 0; }
+  .txrow .p .why { display: block; font-size: 10.5px; color: var(--app-text3); }
+  .txrow .amt { color: var(--app-text); }
+  .txrow .stc { flex: none; }
+  .grp { font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--app-text3); margin: 10px 0 2px; }
+  .grp.amber { color: var(--app-amber); } .grp.green { color: var(--app-green); }
+
+  /* Bottom navigation */
+  .nav { display: flex; border-top: 1px solid var(--app-line); margin: 10px -12px 0; padding: 7px 4px 4px; }
+  .nav .tab { flex: 1; text-align: center; font-size: 10px; color: var(--app-text3); position: relative; min-width: 0; }
+  .nav .tab .ic { display: block; font-size: 15px; line-height: 1.25; }
+  .nav .tab .cur { display: block; margin: 1px auto 2px; font-size: 8.5px; font-weight: 700; letter-spacing: .04em;
+    border: 1px solid var(--app-line); border-radius: 3px; width: 30px; color: var(--app-text2); }
+  .nav .tab.on { color: var(--app-blue); font-weight: 700; }
+  .nav .tab.on .cur { border-color: var(--app-blue-line); color: var(--app-blue); }
+  .nav .tab .bdg { position: absolute; top: -4px; left: 58%; background: var(--app-green-bg); color: var(--app-green);
+    border: 1px solid var(--app-green-line); font-size: 9px; font-weight: 700; border-radius: 999px; padding: 0 5px; }
+  .nav .tab .bdg.warn { background: var(--app-amber-bg); color: var(--app-amber); border-color: var(--app-amber-line); }
+
+  /* Banner and strip */
+  .banner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: var(--app-amber-bg);
+    border: 1px solid var(--app-amber-line); border-radius: 10px; padding: 10px 12px; margin: 0 0 9px; }
+  .banner.blue { background: var(--app-blue-bg); border-color: var(--app-blue-line); }
+  .banner.red { background: var(--app-red-bg); border-color: var(--app-red-line); }
+  .banner.grey { background: var(--app-surface); border-color: var(--app-line); }
+  .banner .txt { flex: 1 1 190px; font-size: 12.5px; }
+  .banner .txt b { color: var(--app-amber); }
+  .banner.blue .txt b { color: var(--app-blue); } .banner.red .txt b { color: var(--app-red); } .banner.grey .txt b { color: var(--app-text); }
+  .banner .txt .d { color: var(--app-text2); font-size: 11.5px; display: block; }
+
+  /* Pinned footer (plan) */
+  .foot { border-top: 1px solid var(--app-blue-line); margin: 8px -12px 0; padding: 10px 12px 4px; background: var(--app-surface); }
+  .foot .sum { font-size: 11px; color: var(--app-text2); margin-bottom: 7px; }
+  .foot .sum b { color: var(--app-text); }
+  .pair { display: flex; gap: 8px; }
+  .pair .cta-btn { flex: 1; text-align: center; margin: 0; }
+  .pair .cta-btn.ghost { flex: 0 0 auto; }
+  .kv { display: flex; gap: 8px; font-size: 11.5px; padding: 3px 0; border-top: 1px solid var(--app-line-soft); }
+  .kv:first-child { border-top: none; }
+  .kv .k { color: var(--app-text2); flex: 0 0 44%; }
+  .kv .v { color: var(--app-text); flex: 1; }
+  .sticky { position: sticky; top: 0; z-index: 2; background: var(--app-surface2); border: 1px solid var(--app-line);
+    border-radius: 8px; padding: 6px 10px; margin: 9px 0 0; }
+
+  /* Settings rows */
+  .cfg-row { display: flex; align-items: baseline; gap: 8px; padding: 7px 2px; border-top: 1px solid var(--app-line-soft); font-size: 12.5px; flex-wrap: wrap; }
+  .cfg-row:first-child { border-top: none; }
+  .cfg-row .nm { flex: 1 1 55%; }
+  .cfg-row .nm .hint { display: block; font-size: 10.5px; color: var(--app-text3); }
+  .cfg-row .val { font-family: ui-monospace, monospace; font-size: 12px; color: var(--app-teal); border: 1px solid var(--app-line); border-radius: 6px; padding: 1px 8px; margin-left: auto; }
+  .cfg-row .val.bad { color: var(--app-red); border-color: var(--app-red-line); }
+  .cfg-row .go { color: var(--app-text3); }
+  .sec-t { font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--app-text3); margin: 12px 4px 6px; }
+  .toggle { display: inline-block; width: 30px; height: 16px; border-radius: 999px; background: var(--app-teal-line); position: relative; margin-left: auto; }
+  .toggle::after { content: ""; position: absolute; right: 2px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--app-teal); }
+  .toggle.off { background: var(--app-line); } .toggle.off::after { right: auto; left: 2px; background: var(--app-text3); }
+
+  /* Sheet, dialog, scrim */
+  .scrim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+  .ghost { opacity: .35; pointer-events: none; }
+  .sheet { position: relative; background: var(--app-surface); border: 1px solid var(--app-line); border-radius: 14px 14px 10px 10px; padding: 12px 12px 10px; margin-top: 10px; }
+  .sheet.blue { border-color: var(--app-blue-line); } .sheet.teal { border-color: var(--app-teal-line); } .sheet.amber { border-color: var(--app-amber-line); }
+  .sheet.red { border-color: var(--app-red-line); }
+  .grab { width: 34px; height: 4px; border-radius: 2px; background: var(--app-line); margin: 0 auto 10px; }
+  .sheet h4, .dialog h4 { margin: 0; font-size: 14px; }
+  .sheet .ctx { font-size: 11px; color: var(--app-text2); margin: 1px 0 8px; }
+  .item { display: flex; gap: 11px; padding: 10px 4px; border-top: 1px solid var(--app-line-soft); }
+  .item .ic { width: 18px; text-align: center; color: var(--app-text2); flex: none; }
+  .item .t { font-size: 12.5px; font-weight: 600; display: block; }
+  .item .d { font-size: 10.5px; color: var(--app-text2); display: block; }
+  .item.off .t, .item.off .ic { color: var(--app-text3); }
+  .item.danger .t, .item.danger .ic { color: var(--app-red); }
+  .item.sep { border-top: 1px solid var(--app-line); margin-top: 4px; }
+  .dialog { position: relative; margin: 26px 8px; background: var(--app-surface2); border: 1px solid var(--app-line); border-radius: 18px; padding: 18px 18px 12px; }
+  .dialog h4 { font-size: 16px; margin-bottom: 8px; }
+  .dialog p { margin: 0 0 8px; font-size: 12.5px; color: var(--app-text2); }
+  .dialog b { color: var(--app-text); }
+  .actions { display: flex; justify-content: flex-end; gap: 18px; margin-top: 6px; font-size: 12.5px; font-weight: 600; }
+  .actions .c { color: var(--app-blue); } .actions .x { color: var(--app-red); } .actions .ok { color: var(--app-teal); }
+  .snack { display: flex; justify-content: space-between; gap: 10px; margin: 10px 4px 0; background: #e8ecf2; color: #151a22; border-radius: 6px; padding: 9px 12px; font-size: 12px; }
+  .snack b { color: #1f6fd1; }
+  .pick { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-top: 1px solid var(--app-line-soft); }
+  .pick .radio { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--app-text3); flex: none; }
+  .pick.sel .radio { border-color: var(--app-teal); box-shadow: inset 0 0 0 3px var(--app-surface), inset 0 0 0 8px var(--app-teal); }
+  .pick .nm { font-weight: 600; font-size: 12.5px; display: block; }
+  .pick .meta { font-size: 10.5px; color: var(--app-text3); display: block; }
+  .pick .badge { margin-left: auto; font-size: 9.5px; color: var(--app-text2); background: var(--app-surface2); border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+  .pick.off { opacity: .45; }
+  .cta { display: block; margin-top: 10px; text-align: center; background: var(--app-blue-bg); border: 1px solid var(--app-blue-line); color: var(--app-blue) !important; border-radius: 9px; padding: 8px; font-size: 12.5px; font-weight: 600; }
+  .cta.dim { opacity: .45; }
+  .choices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .choice { font-size: 11px; border: 1px solid var(--app-line); border-radius: 999px; padding: 3px 10px; color: var(--app-text2); }
+  .choice.on { border-color: var(--app-teal-line); color: var(--app-teal); background: var(--app-teal-bg); }
+  .choice.off { opacity: .4; }
+  .stepn { display: flex; gap: 9px; align-items: flex-start; padding: 8px 2px; border-top: 1px solid var(--app-line-soft); }
+  .stepn .i { font-family: ui-monospace, monospace; font-size: 10.5px; font-weight: 700; color: var(--app-blue);
+    border: 1px solid var(--app-blue-line); border-radius: 999px; padding: 0 6px; flex: none; margin-top: 2px; }
+  .stepn .t { font-size: 12px; font-weight: 600; display: block; }
+  .stepn .d { font-size: 11px; color: var(--app-text2); display: block; }
+  .note { color: var(--app-text2); font-size: 11.5px; margin: 8px 0 0; }
+  .note b { color: var(--app-text); font-weight: 600; }
+
+  /* Account Mapping map */
+  .group-h { display: flex; justify-content: space-between; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--app-text3); padding: 0 4px 4px; margin-top: 10px; }
+  .map { background: var(--app-surface); border: 1px solid var(--app-line); border-radius: 10px; }
+  .mrow { display: grid; grid-template-columns: minmax(0,1fr) 42px minmax(0,1fr) 22px; align-items: center; gap: 4px; padding: 9px 4px 9px 10px; border-top: 1px solid var(--app-line-soft); }
+  .map > .mrow:first-child { border-top: none; }
+  .mrow.hl { background: var(--app-surface2); }
+  .mrow .nm { font-weight: 600; font-size: 12px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mrow .meta { font-size: 10px; color: var(--app-text3); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mrow .meta.teal { color: var(--app-teal); } .mrow .meta.amber { color: var(--app-amber); } .mrow .meta.red { color: var(--app-red); }
+  .mrow .more { color: var(--app-text2); text-align: center; }
+  .mrel { padding: 0 10px 8px; margin-top: -4px; font-size: 10px; }
+  .relchip { display: inline-block; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--app-blue-line); color: var(--app-blue); background: var(--app-blue-bg); }
+  .relchip.unset { border-style: dashed; color: var(--app-text2); background: transparent; border-color: var(--app-line); }
+  .kind { display: inline-block; font-size: 8.5px; font-weight: 700; border-radius: 3px; padding: 0 4px; margin-right: 4px; background: var(--app-surface2); color: var(--app-text2); border: 1px solid var(--app-line); }
+  .conn svg { display: block; width: 42px; height: 14px; }
+  .retired .nm, .retired .meta { color: var(--app-text3) !important; }
+
+  /* Page-level legend, gallery and tables */
+  .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)); gap: 12px; margin-top: 16px; }
+  .gallery .st { background: var(--page-card); border: 1px solid var(--page-line); border-radius: 10px; padding: 12px 14px; }
+  .gallery .st h4 { margin: 0 0 2px; font-size: 13px; }
+  .gallery .st p { margin: 0 0 4px; font-size: 12px; color: var(--page-ink-2); }
+  .gallery .stage { background: var(--app-bg); color: var(--app-text); border-radius: 8px; padding: 4px 10px 10px; margin-top: 6px; font-size: 12px; }
+  .table-wrap { overflow-x: auto; margin-top: 16px; }
+  table { border-collapse: collapse; width: 100%; background: var(--page-card); border: 1px solid var(--page-line); font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-top: 1px solid var(--page-line); vertical-align: top; }
+  thead th { border-top: none; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--page-ink-2); }
+  td.mono { font-family: ui-monospace, monospace; font-size: 12px; white-space: nowrap; }
+  .legend-chips { display: flex; flex-wrap: wrap; gap: 6px; background: var(--app-bg); border-radius: 10px; padding: 10px; margin-top: 12px; }
+  .icons { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 16px; margin-top: 16px; }
+  .icons figure { margin: 0; background: var(--page-card); border: 1px solid var(--page-line); border-radius: 12px; padding: 16px; }
+  .icons img { width: 120px; height: 120px; display: block; }
+  .icons .row { display: flex; gap: 12px; align-items: end; }
+  .icons .row img.s { width: 48px; height: 48px; }
+  .icons figcaption { font-size: 13px; color: var(--page-ink-2); margin-top: 10px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html" class="here">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a></nav>
+<p class="eyebrow">Slussen · screen mockup · UC-004</p>
+<h1>Review Decision sheet</h1>
+<p class="sub">One sheet for every doubtful Bank Transaction. Every decision can be changed until Upload and is recorded in the Decision Journal with the status Slussen had proposed.</p>
+<section>
+<h2>Review Decisions</h2>
+<p class="lede">Adopted from the predecessor: the decision chips Already Present, Import Anyway and Defer next to the doubtful row. Changed: the decision opens in a sheet that states why the transaction is doubtful, offers exactly the choices of UC-004 BR-001 for its Transaction Status, and says what each choice does to the next Upload Plan.</p>
+<div class="flow">
+<div class="state" id="possible-import">
+<div class="step-label"><span class="n">UC-004 1–3, A1, A2</span><p><b>Deciding on a Possible Import By Other Path.</b> The reason it is doubtful is stated; the three choices of UC-004 BR-001.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="bank-account.html#checking">‹</a> Kestrel Checking</div>
+<p class="screen-sub">Household · Review Decision</p>
+<div class="body">
+<div class="ghost"><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary</span> <span class="amt">−18.60</span><div class="stc"><span class="chip amber">Possible Import By Other Path</span></div></div><div class="txrow"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div></div><div class="sheet amber"><div class="grab"></div><h4>Riverside Apothecary · −18.60 USD</h4><p class="ctx">2026-10-14 · Kestrel Checking · Possible Import By Other Path</p><p class="note">An Import by an Other Import Path in Budget Account Checking has the same amount and a date within the Matching Date Window (10 days, a rule of YNAB, C-009). Slussen guarantees no duplicate only of what it sent itself; keeping the Budget App consistent with Other Import Paths is yours to decide.</p><div class="item "><span class="ic">≡</span> <span><span class="t">Already Present…</span> <span class="d">Choose the Budget App Transaction that is the same. Nothing is sent.</span></span></div><div class="item "><span class="ic">↑</span> <span><span class="t">Import Anyway</span> <span class="d">Proposed for the next Upload Plan as a new transaction.</span></span></div><div class="item "><span class="ic">⏸</span> <span><span class="t">Defer</span> <span class="d">Held back, also when the resembling Import disappears, until you change it.</span></span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="choose-resembling">
+<div class="step-label"><span class="n">UC-004 4–5</span><p><b>Already Present names one transaction.</b> When several Imports resemble it, the Operator picks it from a list with date, payee, amount and Budget Account (UC-004 BR-002).</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="bank-account.html#checking">‹</a> Kestrel Checking</div>
+<p class="screen-sub">Household · Review Decision</p>
+<div class="body">
+<div class="ghost"><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary</span> <span class="amt">−18.60</span><div class="stc"><span class="chip amber">Possible Import By Other Path</span></div></div><div class="txrow"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div></div><div class="sheet blue"><div class="grab"></div><h4>Which Budget App Transaction is the same?</h4><p class="ctx">Riverside Apothecary · −18.60 · 2026-10-14 · Kestrel Checking</p><div class="pick sel"><span class="radio"></span> <span><span class="nm">Riverside Apothecary · −18.60</span> <span class="meta">2026-10-13 · Budget Account Checking · Other Import Path</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">RIVERSIDE APOTH · −18.60</span> <span class="meta">2026-10-18 · Budget Account Checking · Other Import Path</span></span></div><a class="cta" href="#decided">This one is the same</a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="one-resembling">
+<div class="step-label"><span class="n">UC-004 A3</span><p><b>Exactly one resembling transaction</b> is taken as the chosen one.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="bank-account.html#checking">‹</a> Kestrel Checking</div>
+<p class="screen-sub">Household · Review Decision</p>
+<div class="body">
+<div class="ghost"><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary</span> <span class="amt">−18.60</span><div class="stc"><span class="chip amber">Possible Import By Other Path</span></div></div><div class="txrow"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div></div><div class="sheet blue"><div class="grab"></div><h4>Already Present</h4><p class="ctx">Riverside Apothecary · −18.60 · 2026-10-14</p><p class="note">Exactly one Import by an Other Import Path resembles it, so it is the chosen one:</p><div class="pick sel"><span class="radio"></span> <span><span class="nm">Riverside Apothecary · −18.60</span> <span class="meta">2026-10-13 · Budget Account Checking · Other Import Path</span></span></div><a class="cta" href="#decided">Store Already Present</a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="decided">
+<div class="step-label"><span class="n">UC-004 6–8</span><p><b>After the decision</b>: the status follows it (UC-004 BR-006), the Budget's counts update, and the decision goes into the Decision Journal with the status Slussen had proposed.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="bank-account.html#checking">‹</a> Kestrel Checking</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="ghost"></div><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary <span class="why">Already Present: Riverside Apothecary, 2026-10-13, Checking</span></span> <span class="amt">−18.60</span><div class="stc"><span class="chip grey">Already In Budget App</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div><div class="snack"><span>Review Decision stored. Household: Eligible 8 · waiting for a decision 5. You can change it until Upload.</span> <b>UNDO</b></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
+</section><section>
+<h2>Other doubtful statuses</h2>
+<p class="lede"></p>
+<div class="flow">
+<div class="state" id="needs-review">
+<div class="step-label"><span class="n">UC-004 A4</span><p><b>Needs Review</b>: Import Anyway or Defer.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="bank-account.html#checking">‹</a> Kestrel Checking</div>
+<p class="screen-sub">Household · Review Decision</p>
+<div class="body">
+<div class="ghost"><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary</span> <span class="amt">−18.60</span><div class="stc"><span class="chip amber">Possible Import By Other Path</span></div></div><div class="txrow"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div></div><div class="sheet amber"><div class="grab"></div><h4>Card purchase · −12.00 USD</h4><p class="ctx">2026-10-13 · Kestrel Checking · Needs Review · 2 of 2</p><p class="note">No Stable Reference: two Bank Transactions of this Bank Account are identical in date, amount, payee and memo. Slussen never merges or guesses them; you decide on each.</p><div class="item "><span class="ic">↑</span> <span><span class="t">Import Anyway</span> <span class="d">Proposed for the next Upload Plan as a new transaction with its own Import Identifier.</span></span></div><div class="item "><span class="ic">⏸</span> <span><span class="t">Defer</span> <span class="d">Held back until you change it.</span></span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="counterpart-changed">
+<div class="step-label"><span class="n">UC-004 A4 · UC-005 A6</span><p><b>Transfer Counterpart Changed</b>: shown for review instead of being held back (UC-005 BR-009).</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="bank-account.html#rewards">‹</a> Pinecrest Rewards Card</div>
+<p class="screen-sub">Household · Review Decision</p>
+<div class="body">
+<div class="ghost"><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary</span> <span class="amt">−18.60</span><div class="stc"><span class="chip amber">Possible Import By Other Path</span></div></div><div class="txrow"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div></div><div class="sheet amber"><div class="grab"></div><h4>Autopay Received · +250.00 USD</h4><p class="ctx">2026-10-12 · Pinecrest Rewards Card · Transfer Counterpart Changed</p><p class="note">This is the other side of a Bank Transfer that Slussen uploaded from Checking on 2026-10-06. Its Transfer Counterpart in Rewards Card was changed or unlinked in the Budget App, so Slussen does not suppress this Bank Transaction.</p><div class="item "><span class="ic">↑</span> <span><span class="t">Import Anyway</span> <span class="d">Proposed for the next Upload Plan as a new transaction.</span></span></div><div class="item "><span class="ic">⏸</span> <span><span class="t">Defer</span> <span class="d">Held back until you change it.</span></span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="reupload">
+<div class="step-label"><span class="n">UC-004 A5</span><p><b>Re-upload</b>, off by default, per Bank Transaction (UC-004 BR-003).</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="bank-account.html#checking">‹</a> Kestrel Checking</div>
+<p class="screen-sub">Household · Review Decision</p>
+<div class="body">
+<div class="ghost"><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary</span> <span class="amt">−18.60</span><div class="stc"><span class="chip amber">Possible Import By Other Path</span></div></div><div class="txrow"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div></div><div class="sheet "><div class="grab"></div><h4>Greenleaf Market · −52.30 USD</h4><p class="ctx">2026-10-06 · Kestrel Checking · Deleted In Budget App</p><p class="note">Slussen sent it on 2026-10-07; it was later deleted in the Budget App. It is not sent again unless you switch Re-upload on.</p><div class="cfg-row"><span class="nm">Re-upload <span class="hint">As a new transaction under a new Import Identifier, only while it lies inside the Upload Window (7 days by default, an Operator Setting).</span></span> <span class="toggle off"></span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="no-longer-holds">
+<div class="step-label"><span class="n">UC-003 A4 · UC-004 BR-001</span><p><b>Decision No Longer Holds</b> returns to the Operator with four choices.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="bank-account.html#checking">‹</a> Kestrel Checking</div>
+<p class="screen-sub">Household · Review Decision</p>
+<div class="body">
+<div class="ghost"><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary</span> <span class="amt">−18.60</span><div class="stc"><span class="chip amber">Possible Import By Other Path</span></div></div><div class="txrow"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div></div><div class="sheet amber"><div class="grab"></div><h4>Riverside Apothecary · −22.15 USD</h4><p class="ctx">2026-10-10 · Kestrel Checking · Decision No Longer Holds</p><p class="note">Your Already Present decision named a Budget App Transaction that was deleted in the Budget App since.</p><div class="item "><span class="ic">≡</span> <span><span class="t">Already Present…</span> <span class="d">Choose another Budget App Transaction.</span></span></div><div class="item "><span class="ic">↑</span> <span><span class="t">Import Anyway</span> <span class="d">Proposed for the next Upload Plan.</span></span></div><div class="item "><span class="ic">⏸</span> <span><span class="t">Defer</span> <span class="d">Held back until you change it.</span></span></div><div class="item "><span class="ic">↻</span> <span><span class="t">Re-upload</span> <span class="d">Off; switch on to send it as a new transaction.</span></span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="unreadable">
+<div class="step-label"><span class="n">UC-004 A9 · UC-001 A17</span><p><b>An Unreadable Transaction</b>: whatever fields could be read and the reason; Defer only.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="bank-account.html#checking">‹</a> Kestrel Checking</div>
+<p class="screen-sub">Household · Review Decision</p>
+<div class="body">
+<div class="ghost"><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary</span> <span class="amt">−18.60</span><div class="stc"><span class="chip amber">Possible Import By Other Path</span></div></div><div class="txrow"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div></div><div class="sheet amber"><div class="grab"></div><h4>Unreadable Transaction</h4><p class="ctx">Kestrel Checking · received 2026-10-15 06:01 · Needs Review</p><div class="kv"><span class="k">Date</span> <span class="v">could not be read</span></div><div class="kv"><span class="k">Amount</span> <span class="v">−7.25 USD</span></div><div class="kv"><span class="k">Payee</span> <span class="v">Kiosk Nord</span></div><div class="kv"><span class="k">Memo</span> <span class="v">none delivered</span></div><p class="note">Slussen could not read what to send, so this is never uploaded. If you want it in the Budget App, enter it there by hand as a Typed Entry.</p><div class="item "><span class="ic">⏸</span> <span><span class="t">Defer</span> <span class="d">Takes it out of the transactions waiting for a decision; you can clear that again.</span></span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="outcome-unknown-auto">
+<div class="step-label"><span class="n">UC-003 A6</span><p><b>Outcome Unknown with this build's Budget App</b>: eligible again automatically (UC-003 BR-017).</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="bank-account.html#checking">‹</a> Kestrel Checking</div>
+<p class="screen-sub">Household · Review Decision</p>
+<div class="body">
+<div class="ghost"><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary</span> <span class="amt">−18.60</span><div class="stc"><span class="chip amber">Possible Import By Other Path</span></div></div><div class="txrow"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div></div><div class="sheet "><div class="grab"></div><h4>Payroll Acme Tools · +2,450.00 USD</h4><p class="ctx">2026-10-10 · Kestrel Checking · Outcome Unknown</p><p class="note">Sent 2026-10-14 15:02 to Budget Account Checking; the Budget App never confirmed it. The Budget App refuses a reused Import Identifier (YNAB does, C-009), so the next Upload Plan sends it again under the same Import Identifier to the same Budget Account: it cannot arrive twice. No decision is needed; a later Comparison that finds it settles it.</p></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="outcome-unknown">
+<div class="step-label"><span class="n">UC-004 A10</span><p><b>Outcome Unknown waiting for a decision.</b> Only with a Budget App that does not refuse a reused Import Identifier; YNAB refuses one, so this build shows the automatic variant. Drawn for the replaceable Budget App (NFR-015).</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="bank-account.html#checking">‹</a> Kestrel Checking</div>
+<p class="screen-sub">Household · Review Decision</p>
+<div class="body">
+<div class="ghost"><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary</span> <span class="amt">−18.60</span><div class="stc"><span class="chip amber">Possible Import By Other Path</span></div></div><div class="txrow"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div></div><div class="sheet red"><div class="grab"></div><h4>Payroll Acme Tools · +2,450.00 USD</h4><p class="ctx">2026-10-10 · Kestrel Checking · Outcome Unknown · waiting for your decision</p><p class="note">The Budget App never confirmed whether this arrived in Budget Account Checking, and it does not refuse a reused Import Identifier. Check Budget Account Checking in the Budget App before you decide.</p><div class="item "><span class="ic">↑</span> <span><span class="t">Import Anyway</span> <span class="d">Sent again in the next Upload Plan, under the same Import Identifier, to Checking. It stays Outcome Unknown until the Budget App confirms it.</span></span></div><div class="item "><span class="ic">⏸</span> <span><span class="t">Defer</span> <span class="d">Held back, still Outcome Unknown, until you change it.</span></span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="transfer-leg">
+<div class="step-label"><span class="n">UC-004 A11</span><p><b>A doubtful Transfer Leg holds its whole Transfer</b> until a Review Decision (UC-004 BR-009, UC-005 BR-013).</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="budget.html#summer-house">‹</a> Aurora Savings</div>
+<p class="screen-sub">Summer House · Review Decision</p>
+<div class="body">
+<div class="ghost"><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary</span> <span class="amt">−18.60</span><div class="stc"><span class="chip amber">Possible Import By Other Path</span></div></div><div class="txrow"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div></div><div class="sheet amber"><div class="grab"></div><h4>Savings transfer · +200.00 EUR</h4><p class="ctx">2026-10-13 · Aurora Savings · Possible Import By Other Path · Transfer Leg</p><div class="card" style="margin:0 0 6px"><span class="small muted">Its Transfer: Bank Transfer Aurora Current → Aurora Savings, 200.00 EUR. Other Transfer Leg: Aurora Current, 2026-10-13, −200.00.</span></div><p class="note"><b>Your decision applies to the whole Transfer.</b> Until then the Transfer is in no Upload Plan, from either side.</p><div class="item "><span class="ic">≡</span> <span><span class="t">Already Present…</span> <span class="d">The whole Transfer counts as already in the Budget App; neither Transfer Leg is proposed.</span></span></div><div class="item "><span class="ic">↑</span> <span><span class="t">Import Anyway</span> <span class="d">This Transfer Leg rejoins its Transfer, which goes into the next Upload Plan as one linked transfer.</span></span></div><div class="item "><span class="ic">⏸</span> <span><span class="t">Defer</span> <span class="d">The whole Transfer is held back.</span></span></div><p class="note">Splitting the Transfer in Review Transfers is the only way to separate its two Transfer Legs.</p></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab on" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
+</section><section>
+<h2>Changing, locked, and deciding during an open Upload Plan</h2>
+<p class="lede"></p>
+<div class="flow">
+<div class="state" id="change">
+<div class="step-label"><span class="n">UC-004 A6</span><p><b>Change or clear an earlier decision</b>, any number of times until Upload.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="bank-account.html#checking">‹</a> Kestrel Checking</div>
+<p class="screen-sub">Household · Review Decision</p>
+<div class="body">
+<div class="ghost"><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary</span> <span class="amt">−18.60</span><div class="stc"><span class="chip amber">Possible Import By Other Path</span></div></div><div class="txrow"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div></div><div class="sheet "><div class="grab"></div><h4>Gift to Mia · −40.00 USD</h4><p class="ctx">2026-10-08 · Kestrel Checking · Deferred</p><p class="note">Current Review Decision: <b>Defer</b>, made 2026-10-12 19:20.</p><div class="item "><span class="ic">↑</span> <span><span class="t">Import Anyway</span> <span class="d">Replace the decision.</span></span></div><div class="item "><span class="ic">✕</span> <span><span class="t">Clear the decision</span> <span class="d">It gets the Transaction Status the Comparison gives without a decision.</span></span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="locked">
+<div class="step-label"><span class="n">UC-004 A7</span><p><b>Already uploaded</b>: the decision is locked; no choice.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="bank-account.html#checking">‹</a> Kestrel Checking</div>
+<p class="screen-sub">Household · Review Decision</p>
+<div class="body">
+<div class="ghost"><div class="txrow"><span class="d">10-14</span> <span class="p">Riverside Apothecary</span> <span class="amt">−18.60</span><div class="stc"><span class="chip amber">Possible Import By Other Path</span></div></div><div class="txrow"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div></div><div class="sheet "><div class="grab"></div><h4>Harbor Clinic · −120.00 USD</h4><p class="ctx">2026-10-07 · Kestrel Checking · Already In Budget App</p><p class="note">Review Decision <b>Import Anyway</b> is locked: this Bank Transaction was uploaded on 2026-10-09.</p></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="plan-open">
+<div class="step-label"><span class="n">UC-004 A8 · UC-006 A3</span><p><b>Deciding while an Upload Plan awaits confirmation</b> replaces the plan, with a new expiry.</p></div>
+<div class="phone">
+<div class="screen-title">Kestrel Checking</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="ghost"><div class="card blue"><div class="kv"><span class="k">Upload Plan</span> <span class="v">Household</span></div></div></div><a class="banner blue" href="upload-plan.html#replaced"><span class="txt"><b>Upload Plan replaced</b> <span class="d">Your Review Decision changed what the plan holds. The new plan was prepared at 14:36 and expires at 14:46.</span></span> <span class="cta-btn">Review</span></a>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
+</section>
+<p class="footnote">Mockup for the mockup gate of the construction kickoff plan. Every Budget, Bank, Bank Account,
+payee and amount is invented. The Approved use cases are normative; where this page and a use case disagree, the use
+case wins.</p>
+</main>
+</body>
+</html>

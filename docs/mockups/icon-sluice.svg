@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
+  <title>Slussen icon proposal A: Sluice</title>
+  <rect width="108" height="108" rx="24" fill="#0e2b2a"/>
+  <rect x="14" y="64" width="36" height="26" rx="3" fill="#1f6f68"/>
+  <rect x="58" y="46" width="36" height="44" rx="3" fill="#2f8f83"/>
+  <rect x="49" y="28" width="10" height="64" rx="3" fill="#5fd4c4"/>
+  <path d="M18 30 H74" stroke="#e8ecf2" stroke-width="6" stroke-linecap="round"/>
+  <path d="M66 21 L76 30 L66 39" stroke="#e8ecf2" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
