@@ -45,7 +45,7 @@
 
 ### A2: Operator Cancels or Leaves the Upload Plan
 
-**Trigger:** Operator cancels instead of confirming, or leaves the Upload Plan's screen (step 4)  
+**Trigger:** Operator cancels instead of confirming, or leaves the Upload Plan's screen before confirming (step 4)  
 **Flow:**
 
 1. Slussen writes nothing, discards the Upload Plan and ends the pause (BR-005, BR-019).
@@ -242,4 +242,4 @@ Which transactions an Upload Plan holds is decided once, when the plan is prepar
 
 ### BR-019: An Upload Plan Exists Only While It Is Shown
 
-An Upload Plan exists only while the Operator is shown it. When the Operator leaves it without confirming, Slussen discards it as on cancelling (A2): nothing is written and the pause ends. A discarded, cancelled or expired Upload Plan is never shown or confirmed again. Every request for an Upload Plan prepares a new one from the current data.
+An Upload Plan exists only while the Operator is shown it. When the Operator leaves it without confirming, Slussen discards it as on cancelling (A2): nothing is written and the pause ends. A discarded, cancelled or expired Upload Plan is never shown or confirmed again. Every request for an Upload Plan prepares a new one from the current data. Once the Operator has confirmed the Upload Plan, leaving its screen is not cancelling and changes nothing: Slussen finishes the Upload (steps 5 to 12, including the alternative flows that write nothing) and shows its outcome (step 13) when the Operator next opens the Budget or the outcome.
