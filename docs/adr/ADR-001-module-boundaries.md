@@ -14,7 +14,7 @@ The Approved specification asks for a structure in which the rules that fetch, c
 depend on one Data Provider, one File Format or one Budget App:
 
 - vision, Constraints: *Extensible Data Providers and File Formats*, *Replaceable Budget App*, *Private build for
-  one operator* ("the design keeps its concerns separated");
+  one Operator* ("the design keeps its concerns separated");
 - NFR-014: adding a Data Provider or a File Pre-processor changes 0 files of the rules that compare, review and
   decide; NFR-015 (changed by S-05): every rule that depends on one Budget App's behaviour lives in that Budget App's
   own part, which also declares whether the Budget App supports the Cleared marker and whether it refuses a
@@ -430,8 +430,8 @@ data class BudgetAppTransactionRead(
 - **A doubtful Transfer Leg holds its whole Transfer (S-17; UC-003 BR-001, BR-014; UC-004 BR-006, BR-009; UC-005 BR-013).** In the order of UC-003 BR-001, Needs Review (for any reason: no Stable Reference, or resembling a Slussen Unsupported Format Import) and Possible Import By Other Path are given before "Transfer Leg follows its Transfer", also to a Transfer Leg. A Transfer with such a Transfer Leg that has no Review Decision is in no Upload Plan, from either side, until each such Transfer Leg has a Review Decision. Then: when one is Already Present, the whole Transfer counts as already in the Budget App and every other Transfer Leg of it has the status Already In Budget App while that decision holds; otherwise, when one is Defer, the whole Transfer is held back and every other Transfer Leg of it has the status Deferred; when every one is Import Anyway, each rejoins the Transfer, which follows UC-005 BR-010 again. So Already Present prevails over Defer, and Defer over Import Anyway. Split (UC-005 A1) is the only way to separate the Transfer Legs; a Guessed Transfer also needs its Transfer Decision.
 - **Responsibility boundary (UC-003 BR-007, FR-021).** Slussen guarantees no duplicate only for what it sent itself,
   through its Sent Record and its own Import Identifiers. A resemblance to an Import by an Other Import Path or to a
-  Typed Entry (F-7) is a reason for review, not a guarantee; keeping the Budget App consistent with other import
-  paths and Typed Entries is the Operator's responsibility.
+  Typed Entry (F-7) is a reason for review, not a guarantee; keeping the Budget App consistent with Other Import
+  Paths and Typed Entries is the Operator's responsibility.
 - **Transfer Counterparts are reconciled from stored links, never from write answers.** For each Sent Record sent as a
   linked transfer, the core finds the stored transaction with its Import Identifier in its Budget Account and takes
   the other side from its stored `transfer_link_reference`, and its Cleared state from the other side's stored
@@ -477,7 +477,7 @@ A File Pre-processor declares no Upload Window: the file upload window is one Op
 (S-01, FR-094, UC-002 BR-004, `OPERATOR_SETTINGS.file_upload_window_days`; A-26).
 
 The **Standard Import Format** (FR-083, UC-002 BR-007) is the Kotlin type `StandardImportFile`: a list of
-`StandardImportTransaction(reference: String, referenceOrigin: Supplied | Derived, bookedDate: LocalDate,
+`StandardImportTransaction(reference: String, referenceKind: Supplied | Derived, bookedDate: LocalDate,
 amount: Amount, currency: CurrencyCode?, payee: String?, memo: String?, booked: Boolean)`. It is a type, not a
 file layout: nothing is written to disk in it. Every transaction has a non-empty `reference` (UC-002 BR-002,
 FR-085). `convert` returns `Rejected` when any part of the file cannot be converted (UC-002 BR-001). Deciding that

@@ -127,7 +127,7 @@ Rules:
 | T-02 | Every `@UseCase.id` names an existing `docs/use_cases/UC-XXX-*.md`; every `businessRules` entry exists as a `### BR-YYY:` heading in that file; every `scenario` other than `Main Success Scenario` matches a `### A<n>: <title>` heading in that file. |
 | T-03 | Every comment in production code that starts with `// UC-` has the form `// UC-\d{3} BR-\d{3}: .+` and names a rule heading that exists in the named use case file. A comment `// BR-\d{3}` without its use case fails. |
 | T-04 | The next non-blank line after an implementation marker is code or a KDoc block, never another comment or a blank file end. |
-| T-05 | No class, function, property or parameter name declared in `slussen..` uses a word from the Avoid column of `docs/glossary.md` as one of its camel-case words (for example `Sync`, `Binding`, `Resolution`, `Destination`). The test reads the glossary at run time. Every exception is listed in the test with its reason; the first one is `origin` in `referenceOrigin`, which is the entity model's own attribute `reference_origin`. |
+| T-05 | No class, function, property or parameter name declared in `slussen..` uses a word from the Avoid column of `docs/glossary.md` as one of its camel-case words (for example `Sync`, `Binding`, `Resolution`, `Destination`). The test reads the glossary at run time. Every exception is listed in the test with its reason. |
 
 These checks read `docs/` from the repository root, so a renamed rule or flow in the specification fails the build
 until the tests and markers follow, which is AIUP's "change the specification first, then synchronize the code".

@@ -30,7 +30,7 @@
 
 ### A1: Operator Chooses Another Offered Bank Account
 
-**Trigger:** Operator chooses another of the offered Bank Accounts instead of the proposed one (step 4)  
+**Trigger:** Operator chooses another of the Offered Bank Accounts instead of the proposed one (step 4)  
 **Flow:**
 
 1. Use case continues at step 5 with the chosen Bank Account.

@@ -131,7 +131,7 @@ An external online service from which Slussen fetches transactions and balances 
 
 #### Constraints
 
-- The number of Provider Requests of the Data Provider sent in the preceding 24 hours never exceeds `request_limit`; the count does not depend on calendar day or time zone.
+- The number of Provider Requests of the Data Provider sent in the preceding 24 hours, the window of the Data Provider's own limit, never exceeds `request_limit`, the Request Limit set in the Build Configuration; the count does not depend on calendar day or time zone.
 
 ### FILE_FORMAT
 
@@ -145,7 +145,7 @@ The export layout of one Bank's Transaction File that Slussen imports through it
 
 #### Constraints
 
-- The File Pre-processor of the File Format gives every transaction of a file a reference and declares whether the Bank supplied it or the pre-processor derived it (`BANK_TRANSACTION.reference_origin`).
+- The File Pre-processor of the File Format gives every transaction of a file a reference and declares whether the Bank supplied it or the pre-processor derived it (`BANK_TRANSACTION.reference_kind`).
 
 ### BANK
 
@@ -347,7 +347,7 @@ A period during which Slussen does not contact a Data Provider, or one Bank thro
 
 ### PROVIDER_REQUEST
 
-One request Slussen sent to a Data Provider, kept so that the Request Limit and the Unattended Access limit can be counted over the preceding 24 hours.
+One request Slussen sent to a Data Provider, kept so that the Request Limit and the Unattended Access limit can be counted over the preceding 24 hours, the window the Data Providers' own limits and PSD2 (C-006) use.
 
 | Attribute        | Description                                                                                 | Data Type | Length/Precision | Validation Rules                         |
 |------------------|---------------------------------------------------------------------------------------------|-----------|------------------|------------------------------------------|
@@ -408,7 +408,7 @@ One booked, non-zero transaction of a Bank Account as delivered by a Data Provid
 | id                | Unique identifier                                                                                   | Long      | 19               | Primary Key, Sequence                   |
 | bank_account_id   | Bank Account that booked the transaction                                                            | Long      | 19               | Not Null, Foreign Key (BANK_ACCOUNT.id) |
 | stable_reference  | Stable Reference of the transaction, empty when it has none                                         | String    | 200              | Optional                                |
-| reference_origin  | Whether the Stable Reference was supplied by the Source or derived by a File Pre-processor, or None when the transaction has no Stable Reference | String    | 20               | Not Null, Values: Supplied, Derived, None |
+| reference_kind    | Whether the Stable Reference was supplied by the Source or derived by a File Pre-processor, or None when the transaction has no Stable Reference | String    | 20               | Not Null, Values: Supplied, Derived, None |
 | occurrence_number | Position of the transaction among the transactions of its Bank Account that are identical in date, amount, payee and memo and have no Stable Reference; 1 for the first | Integer   | 10               | Not Null                                |
 | import_identifier | Import Identifier derived from the Source Key and the Stable Reference, or, without a Stable Reference, from the date, amount, payee, memo and `occurrence_number` (FR-074) | String    | 36               | Not Null                                |
 | booked_date       | Date the Bank booked the transaction                                                                | Date      | -                | Not Null                                |
@@ -425,7 +425,7 @@ One booked, non-zero transaction of a Bank Account as delivered by a Data Provid
 - `amount` is never 0.
 - Within one Bank Account, two Bank Transactions never have the same `stable_reference` or the same `import_identifier`.
 - `occurrence_number` is 1 for every transaction that has a `stable_reference`.
-- `reference_origin` is None exactly when `stable_reference` is empty; it is Derived only for a transaction from a Transaction File.
+- `reference_kind` is None exactly when `stable_reference` is empty; it is Derived only for a transaction from a Transaction File.
 - A transaction dated before the `start_date` of its Bank Account that has not been sent has `status` Before Start Date, stays visible with that reason and is never an Eligible Transaction.
 - A transaction without a `stable_reference` has `status` Needs Review until the Operator decides; it is never merged with another transaction. A delivered transaction that Slussen cannot interpret is not a Bank Transaction but an `UNREADABLE_TRANSACTION`.
 - A transaction dated outside the Upload Window, or for a transaction from a Transaction File outside the file upload window (`OPERATOR_SETTINGS.file_upload_window_days`), that has not been sent has `status` Too Old or In The Future and stays visible, also when it leaves the window while waiting for a Review Decision.
@@ -586,13 +586,13 @@ The other side of a Transfer that the Budget App created itself when Slussen sen
 | budget_app_reference     | Identifier the Budget App gave the counterpart                                      | String    | 100              | Not Null, Unique                          |
 | state                    | Where the counterpart stands                                                        | String    | 30               | Not Null, Values: Uncleared, Cleared, Changed In Budget App |
 | cleared_at               | Time Slussen marked the Transfer Counterpart Cleared                                         | DateTime  | -                | Optional                                  |
-| settled_by_transaction_id | Bank Transaction of the other side whose arrival settled the counterpart          | Long      | 19               | Optional                                  |
+| settled_by_bank_transaction_id | Bank Transaction of the other side whose arrival settled the counterpart          | Long      | 19               | Optional                                  |
 
 #### Constraints
 
 - A Sent Record creates at most one Transfer Counterpart, and only when `sent_as_transfer` is true.
 - Marking a Transfer Counterpart Cleared is the only change Slussen makes to an existing transaction in the Budget App, and it happens only while `OPERATOR_SETTINGS.upload_as_cleared` is true.
-- While `upload_as_cleared` is false; `state` never becomes Cleared; the arriving Bank Transaction of the other side still settles the counterpart (`settled_by_transaction_id`) and is not uploaded, and clearing is left to the Operator.
+- While `upload_as_cleared` is false; `state` never becomes Cleared; the arriving Bank Transaction of the other side still settles the counterpart (`settled_by_bank_transaction_id`) and is not uploaded, and clearing is left to the Operator.
 - `cleared_at` is filled exactly when `state` is Cleared.
 - When the counterpart is Changed In Budget App, the arriving Bank Transaction of that side gets `status` Transfer Counterpart Changed and is shown for review instead of being held back.
 

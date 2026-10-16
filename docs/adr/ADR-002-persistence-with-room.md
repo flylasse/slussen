@@ -53,8 +53,9 @@ What the specification requires of storage:
   (S-01) and `backup_warning_percent` (NFR-019).
 - **The Decision Journal never affects decisions.** NFR-006, UC-010 BR-004, UC-011 BR-002; size limit by dropping
   the oldest entries (`DECISION_JOURNAL_ENTRY` constraints, UC-010 BR-003).
-- **Counters that survive a restart.** `PROVIDER_REQUEST` is kept for at least 24 hours and survives a restart of
-  the app (UC-001 BR-007, BR-012).
+- **Counters that survive a restart.** `PROVIDER_REQUEST` is kept for at least 24 hours, the window set by the Data
+  Provider's own limit, over which the Request Limit is counted (glossary: Request Limit), and survives a restart of the app
+  (UC-001 BR-007, BR-012).
 - The Operator decided (bootstrap plan O-09) that storage is Room, and (O-P1-03) that the Budget App read cursor stays
   technical, outside the entity model.
 
