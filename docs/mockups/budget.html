@@ -291,6 +291,29 @@
 <h2>Budget workspaces</h2>
 <p class="lede">Adopted from the predecessor: one Budget per bottom tab, a Sources card and one card per Bank Account, a single button that leads to the Upload Plan. Changed: the counts are Eligible Transactions and Bank Transactions waiting for a decision (UC-008 step 1), Source Health and Freshness are separate lines (UC-008 BR-003), every blocked Bank Account is listed with its Blocked Reason, and the button prepares an Upload Plan to review instead of uploading.</p>
 <div class="flow">
+<div class="state" id="in-sync">
+<div class="step-label"><span class="n">UC-008</span><p><b>The normal day</b> (another day): everything fetched and compared, balances match, nothing to upload.</p></div>
+<div class="phone">
+<div class="screen-title">Household</div>
+<p class="screen-sub">Budget · USD · from stored data</p>
+<div class="body">
+
+<div class="card">
+  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-20 08:03</span></div>
+  <div class="bh"><span class="meta">Eligible 0 · waiting for a decision 0</span></div>
+  <span class="cta-btn big dim">Nothing to upload</span>
+</div>
+<div class="card">
+  <div class="src-h">Sources <a class="r" href="#budget-app-read">Read the Budget App again</a></div>
+  <div class="src-row"><span class="dot"></span> <span class="nm">SimpleFIN</span> <span class="ok">Fetched</span> <span class="gran">Data Provider</span></div>
+  <div class="src-note">Source Health: Fetched 2026-10-20 08:02 · started by you</div>
+  <div class="src-note">Freshness: data as of 2026-10-20 08:02</div>
+  <a class="btn" href="#fetch-states">Fetch</a>
+</div><div class="card"><div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></div><div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Balances match</span></div><div class="balrow">Bank <b>4,312.40</b> Budget App <b>4,312.40</b> Difference <b>0.00</b> <span>Read 08:02 / 08:03</span></div></div><div class="card"><div class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></div><div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Balances match</span></div><div class="balrow">Bank <b>−822.15</b> Budget App <b>−822.15</b> Difference <b>0.00</b> <span>Read 08:02 / 08:03</span></div></div><div class="card"><div class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></div><div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Balances match</span></div><div class="balrow">Bank <b>−310.00</b> Budget App <b>−310.00</b> Difference <b>0.00</b> <span>Read 08:02 / 08:03</span></div></div><div class="card"><div class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></div><div class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Balances match</span></div><div class="balrow">Bank <b>12,575.00</b> Budget App <b>12,575.00</b> Difference <b>0.00</b> <span>Read 08:02 / 08:03</span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
 <div class="state" id="household">
 <div class="step-label"><span class="n">UC-008 4–8</span><p><b>A Budget tab.</b> Only this Budget's Sources, Bank Accounts and counts.</p></div>
 <div class="phone">
