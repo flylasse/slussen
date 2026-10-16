@@ -2,9 +2,11 @@
 
 ## Status
 
-Proposed (2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the Phase 2
-review and the Operator's answers O-P1-06, O-P1-07, O-P1-08 and O-P2-05; revised 2026-10-15 after the Phase 2b
-re-review). The Operator sets it to Accepted at the architecture gate.
+Accepted (2026-10-15, by the Operator at the architecture gate).
+
+History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
+Phase 2 review and the Operator's answers O-P1-06, O-P1-07, O-P1-08 and O-P2-05; revised 2026-10-15 after the Phase 2b
+re-review; later revisions at the gate are listed under "Review findings addressed".
 
 ## Context
 

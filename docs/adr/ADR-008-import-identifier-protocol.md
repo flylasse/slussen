@@ -2,8 +2,10 @@
 
 ## Status
 
-Proposed (2026-10-14, architecture gate, revision after the Phase 2 review; revised 2026-10-15 after the Phase 2b
-re-review and S-14). The Operator sets it to Accepted at the architecture gate.
+Accepted (2026-10-15, by the Operator at the architecture gate).
+
+History: proposed 2026-10-14, architecture gate, revision after the Phase 2 review; revised 2026-10-15 after the Phase
+2b re-review and S-14; later revisions at the gate are listed under "Review findings addressed".
 
 This ADR is new. The Import Identifier is the one value that ties a Bank Transaction to what the Budget App holds
 across a reinstall, a restore and every later version of Slussen; once a build has sent one, its derivation can never

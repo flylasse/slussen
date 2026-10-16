@@ -2,8 +2,10 @@
 
 ## Status
 
-Proposed (2026-10-14, architecture gate, revision after the Phase 2 review; revised 2026-10-15 after the Phase 2b
-re-review and S-12). The Operator sets it to Accepted at the architecture gate.
+Accepted (2026-10-15, by the Operator at the architecture gate).
+
+History: proposed 2026-10-14, architecture gate, revision after the Phase 2 review; revised 2026-10-15 after the Phase
+2b re-review and S-12; later revisions at the gate are listed under "Review findings addressed".
 
 This ADR is new. The Phase 2 review showed that the Upload pause, the check before writing, retries of unknown
 outcomes and the Recovery Check all need one shared protocol that decides which operation may run when, what an Upload

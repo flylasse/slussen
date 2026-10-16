@@ -2,8 +2,11 @@
 
 ## Status
 
-Proposed (2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the Phase 2
-review: live tests and their credentials, device evidence). The Operator sets it to Accepted at the architecture gate.
+Accepted (2026-10-15, by the Operator at the architecture gate).
+
+History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
+Phase 2 review: live tests and their credentials, device evidence; later revisions at the gate are listed under
+"Review findings addressed".
 
 ## Context
 
