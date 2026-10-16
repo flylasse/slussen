@@ -291,7 +291,7 @@
 <p class="lede">Adopted from the predecessor: one Budget per bottom tab, a Sources card and one card per Bank Account, a single button that leads to the Upload Plan. Changed: the counts are Eligible Transactions and Bank Transactions waiting for a decision (UC-008 step 1), Source Health and Freshness are separate lines (UC-008 BR-003), every blocked Bank Account is listed with its Blocked Reason, and the button prepares an Upload Plan to review instead of uploading.</p>
 <div class="flow">
 <div class="state" id="household">
-<div class="step-label"><span class="n">UC-008 4–8</span><p><b>A Budget tab.</b> Only this Budget's Sources, Bank Accounts and counts. Each Source shows its Source Health with its time, separately its Freshness, and the number not yet uploaded. Each Bank Account shows its Account Balance next to its Budget Account's balance, the difference and both read times, or its Blocked Reason. <b>Review Upload Plan</b> prepares a new Upload Plan from the current data (UC-006); <b>Fetch</b> starts UC-001; <b>Read the Budget App again</b> starts UC-003.</p></div>
+<div class="step-label"><span class="n">UC-008 4–8</span><p><b>A Budget tab.</b> Only this Budget's Sources, Bank Accounts and counts.</p></div>
 <div class="phone">
 <div class="screen-title">Household</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
@@ -334,14 +334,14 @@
 <a class="card amber" href="bank-account.html#removed" style="display:block">
   <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
   <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
-  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+  <div class="src-note">Restore its Configuration Key in the Build Configuration.</div>
 </a>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="summer-house">
-<div class="step-label"><span class="n">UC-008 8</span><p><b>Blocked Reasons with their remedies</b> (UC-008 BR-006, UC-001 A4, A10). Expired Bank Consent: renew it. Unrecognised Bank Account: confirm or identify it. Currency mismatch: correct the Build Configuration. Expiring Bank Consent: renew it.</p></div>
+<div class="step-label"><span class="n">UC-008 8</span><p><b>Blocked Reasons with their remedies</b> (UC-008 BR-006, UC-001 A4, A10). Expired Bank Consent: renew it.</p></div>
 <div class="phone">
 <div class="screen-title">Summer House</div>
 <p class="screen-sub">Budget · EUR · from stored data</p>
@@ -370,13 +370,13 @@
   <div class="balrow">Bank <b>8,260.00</b> Budget App <b>8,000.00</b> Difference <b>+260.00</b> <span>read 07:12 / 13:21</span></div></div>
 <div class="card amber"><div class="acct-h"><span class="nm">▸ Vesta Card</span> <span class="r dot amber"></span></div>
   <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Blocked: Bank Consent expired</span></div>
-  <div class="src-note">Not fetched since the Bank Consent of Vesta Sparbank expired on 2026-10-11; stored data as of 2026-10-02 08:30 is kept.</div><a class="btn primary" href="consent.html#grant">Renew Bank Consent</a></div>
+  <div class="src-note">Data as of 2026-10-02 08:30</div><a class="btn primary" href="consent.html#grant">Renew Bank Consent</a></div>
 <div class="card amber"><div class="acct-h"><span class="nm">▸ Aurora Joint</span> <span class="r dot amber"></span></div>
   <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: unrecognised Bank Account</span></div>
-  <div class="src-note">Enable Banking delivered a Bank Account Slussen can only propose as a likely match. Its transactions are not used until you confirm it.</div><a class="btn primary" href="account-mappings.html#confirm">Confirm or identify</a></div>
+  <div class="src-note">Likely match · confirm to use it</div><a class="btn primary" href="account-mappings.html#confirm">Confirm or identify</a></div>
 <a class="card red" href="bank-account.html#currency-mismatch" style="display:block"><div class="acct-h"><span class="nm">▸ Aurora Dollar</span> <span class="r dot red"></span></div>
   <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip red">Blocked: currency mismatch</span></div>
-  <div class="src-note">Bank Account in USD, Budget in EUR: blocked from Upload, balance difference hidden. Correct the Build Configuration.</div></a>
+  <div class="src-note">USD Bank Account, EUR Budget · correct the Build Configuration</div></a>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab on" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
@@ -402,13 +402,13 @@
   <a class="btn primary" href="import-file.html#choose">Import Transaction File</a>
   <div class="hair"></div>
   <div class="src-row"><span class="dot"></span> <span class="nm">SimpleFIN</span> <span class="ok">Fetched</span> <span class="gran">Account Balance only</span></div>
-  <div class="src-note">Source Health: Fetched 2026-10-15 13:20 · Account Balance of Harbor Health Savings</div>
+  <div class="src-note">Source Health: Fetched 2026-10-15 13:20</div>
   <a class="btn" href="#fetch-states">Fetch</a>
 </div>
 <div class="card"><div class="acct-h"><span class="nm">▸ Harbor Health Savings</span> <span class="r dot"></span></div>
   <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip grey">Transaction File</span> <span class="chip amber">waiting 1</span></div>
   <div class="balrow">Bank <b>6,310.20</b> Budget App <b>6,324.20</b> Difference <b>−14.00</b> <span>read 13:20 / 13:21</span></div>
-  <div class="src-note">Uploads use the file upload window (60 days by default, an Operator Setting).</div></div>
+  </div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab on" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
@@ -453,7 +453,7 @@
 <div class="card red">
   <div class="src-h">Sources <a class="r" href="#budget-app-read">Read the Budget App again</a></div>
   <div class="src-row"><span class="dot red"></span> <span class="nm">SimpleFIN</span> <span class="bad">Failed</span> <span class="gran">Data Provider</span></div>
-  <div class="src-note">Source Health: Failed 2026-10-15 14:05 · no answer within the request timeout (30 seconds by default, an Operator Setting) · started by you</div>
+  <div class="src-note">Source Health: Failed 2026-10-15 14:05 · no answer · started by you</div>
   <div class="src-note">Freshness: data as of 2026-10-15 13:20 (kept unchanged)</div>
   <div class="src-note">Not yet uploaded: Eligible 9 · waiting for a decision 9</div>
   <span class="btn">Fetch again</span>
@@ -481,7 +481,7 @@
 <a class="card amber" href="bank-account.html#removed" style="display:block">
   <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
   <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
-  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+  <div class="src-note">Restore its Configuration Key in the Build Configuration.</div>
 </a>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
@@ -504,7 +504,7 @@
   <div class="src-row"><span class="dot red"></span> <span class="nm">SimpleFIN</span> <span class="bad">Failed</span> <span class="gran">Data Provider</span></div>
   <div class="src-note">Source Health: Failed 2026-10-14 18:00 · unavailable · started by the Fetch Schedule</div>
   <div class="src-note">Freshness: data as of 2026-10-14 06:01 (kept unchanged)</div>
-  <div class="src-note">The Scheduled Fetch is not repeated. SimpleFIN is next contacted by the next Scheduled Fetch, 2026-10-15 06:00, or when you fetch.</div>
+  <div class="src-note">Next Scheduled Fetch 2026-10-15 06:00</div>
   <span class="btn">Fetch</span>
 </div>
 <a class="card" href="bank-account.html#checking" style="display:block">
@@ -530,7 +530,7 @@
 <a class="card amber" href="bank-account.html#removed" style="display:block">
   <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
   <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
-  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+  <div class="src-note">Restore its Configuration Key in the Build Configuration.</div>
 </a>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
@@ -553,7 +553,7 @@
 <div class="src-note">Source Health: Fetched 2026-10-15 13:20 · started by you</div><span class="btn done">✓ Fetched 13:20</span></div>
 <div class="card red"><div class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot red"></span></div>
   <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip red">Blocked: Fetch failed</span></div>
-  <div class="src-note">Failed 2026-10-15 13:20: SimpleFIN reported a failure for this Bank Account. Its stored data as of 06:01 is kept.</div><span class="btn">Fetch again</span></div>
+  <div class="src-note">Failed 2026-10-15 13:20 · data as of 06:01</div><span class="btn">Fetch again</span></div>
 <div class="card"><div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></div>
   <div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 6</span></div></div>
 </div>
@@ -569,8 +569,8 @@
 
 <div class="card amber">
   <div class="src-row"><span class="dot amber"></span> <span class="nm">Enable Banking</span> <span class="warn">Waiting for the provider</span></div>
-  <div class="src-note">Aurora Bank asked Slussen to wait. Blocked: waiting for the provider until 2026-10-15 22:10. Its Bank Accounts keep their stored data.</div>
-  <div class="src-note">Vesta Sparbank no longer accepts its Bank Consent (refused before its expiry). Blocked: missing Bank Consent · <a href="consent.html#grant" style="color:var(--app-blue)">Grant Bank Consent</a></div>
+  <div class="src-note">Aurora Bank: <b>waiting for the provider until 22:10</b></div>
+  <div class="src-note">Vesta Sparbank: <b>Bank Consent refused</b> · <a href="consent.html#grant" style="color:var(--app-blue)">Grant Bank Consent</a></div>
   <span class="btn warn">Waiting for the provider until 22:10</span>
 </div>
 </div>
@@ -591,7 +591,7 @@
 </div>
 <a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">waiting for a decision: 9</span></a>
 <div class="card red"><div class="src-row"><span class="dot red"></span> <span class="nm">SimpleFIN</span> <span class="bad">configuration error</span></div>
-<div class="src-note">SimpleFIN refused Slussen's service credentials at 14:05. Blocked: configuration error. Remedy: correct the Build Configuration and build again (UC-012).</div></div>
+<div class="src-note">Credentials refused 14:05 · correct the Build Configuration</div></div>
 <a class="card" href="bank-account.html#checking" style="display:block">
   <div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></div>
   <div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 6</span></div>
@@ -615,7 +615,7 @@
 <a class="card amber" href="bank-account.html#removed" style="display:block">
   <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
   <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
-  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+  <div class="src-note">Restore its Configuration Key in the Build Configuration.</div>
 </a>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
@@ -627,7 +627,7 @@
 <div class="screen-title">Household</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
 <div class="body">
-<div class="banner blue"><span class="txt"><b>Reading the Budget App…</b> <span class="d">Slussen reads every Budget with a mapped Bank Account from the Budget App and gives every Bank Transaction its Transaction Status again. No Bank is contacted.</span></span></div>
+<div class="banner blue"><span class="txt"><b>Reading the Budget App…</b> </span></div>
 <div class="card">
   <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
   <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
@@ -665,7 +665,7 @@
 <a class="card amber" href="bank-account.html#removed" style="display:block">
   <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
   <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
-  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+  <div class="src-note">Restore its Configuration Key in the Build Configuration.</div>
 </a>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
@@ -677,7 +677,7 @@
 <div class="screen-title">Household</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
 <div class="body">
-<div class="banner"><span class="txt"><b>The Budget App could not be read at 14:30</b> <span class="d">The Transaction Statuses below come from the last successful read, 2026-10-15 13:21.</span></span></div>
+<div class="banner"><span class="txt"><b>The Budget App could not be read at 14:30</b> <span class="d">Statuses from 13:21</span></span></div>
 <div class="card">
   <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
   <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
@@ -715,7 +715,7 @@
 <a class="card amber" href="bank-account.html#removed" style="display:block">
   <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
   <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
-  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+  <div class="src-note">Restore its Configuration Key in the Build Configuration.</div>
 </a>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
@@ -727,7 +727,7 @@
 <div class="screen-title">Household</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
 <div class="body">
-<div class="banner red"><span class="txt"><b>configuration error: the Budget App refused Slussen's credentials</b> <span class="d">Remedy: correct the Build Configuration (UC-012). Statuses from the last successful read, 2026-10-15 13:21.</span></span></div>
+<div class="banner red"><span class="txt"><b>configuration error: the Budget App refused Slussen's credentials</b> <span class="d">Correct the Build Configuration · statuses from 13:21</span></span></div>
 <div class="card">
   <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
   <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
@@ -765,7 +765,7 @@
 <a class="card amber" href="bank-account.html#removed" style="display:block">
   <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
   <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
-  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+  <div class="src-note">Restore its Configuration Key in the Build Configuration.</div>
 </a>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
@@ -807,7 +807,7 @@
 <div class="body">
 <div class="card"><div class="bh"><span class="nm">Care Fund</span> <span class="chip grey">USD</span></div>
 <div class="bh"><span class="meta">Eligible 0 · waiting for a decision 1</span></div></div>
-<div class="banner grey"><span class="txt"><b>Nothing to upload</b> <span class="d">Care Fund has no Eligible Transaction and no Transfer Counterpart to mark Cleared. No Upload Plan was prepared. The Bank Transaction waiting for your decision is not part of any Upload Plan until you decide.</span></span></div>
+<div class="banner grey"><span class="txt"><b>Nothing to upload</b> <span class="d">Waiting for your decision: 1</span></span></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab on" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
@@ -818,7 +818,7 @@
 <div class="screen-title">Household</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
 <div class="body">
-<div class="banner red"><span class="txt"><b>No Upload Plan prepared: Recovery Check open</b> <span class="d">Slussen started from data that may lack what it last recorded. Transactions sent after that data was saved are protected against a duplicate only by the Budget App's refusal of a reused Import Identifier and by the Comparison.</span></span> <a class="cta-btn" href="recovery-check.html#open">Recovery Check</a></div>
+<div class="banner red"><span class="txt"><b>No Upload Plan prepared: Recovery Check open</b> <span class="d">Data may lack recent sends · check the Budget App, then confirm</span></span> <a class="cta-btn" href="recovery-check.html#open">Recovery Check</a></div>
 <div class="card">
   <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
   <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
@@ -856,7 +856,7 @@
 <a class="card amber" href="bank-account.html#removed" style="display:block">
   <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
   <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
-  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+  <div class="src-note">Restore its Configuration Key in the Build Configuration.</div>
 </a>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>

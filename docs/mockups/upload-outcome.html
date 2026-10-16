@@ -278,6 +278,20 @@
   .icons .row img.s { width: 48px; height: 48px; }
   .icons figcaption { font-size: 13px; color: var(--page-ink-2); margin-top: 10px; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .io { display: flex; gap: 10px; }
+  .io > div { flex: 1; background: var(--app-surface2); border-radius: 8px; padding: 8px 10px; }
+  .io .lbl { display: block; font-size: 10.5px; color: var(--app-text2); text-transform: uppercase; letter-spacing: .06em; }
+  .io .big { display: block; font-family: ui-monospace, monospace; font-size: 19px; font-weight: 700; color: var(--app-text); }
+  .io .big.in { color: var(--app-green); }
+  .netline { display: flex; justify-content: space-between; font-size: 12px; color: var(--app-text2); margin: 8px 2px 0; }
+  .netline b { font-family: ui-monospace, monospace; color: var(--app-text); }
+  .tiles { display: flex; gap: 6px; margin-top: 8px; }
+  .tile { flex: 1; text-align: center; border: 1px solid var(--app-line); border-radius: 8px; padding: 5px 2px; }
+  .tile .tn { font-size: 16px; font-weight: 700; font-family: ui-monospace, monospace; }
+  .tile .tl { font-size: 10px; color: var(--app-text2); }
+  .scope { font-size: 11px; color: var(--app-text2); margin-top: 8px; }
+  .steps .stepn { padding: 6px 2px; }
 </style>
 </head>
 <body>
@@ -288,72 +302,72 @@
 <p class="sub">What the Budget App confirmed, per Budget Account. An unconfirmed write is never shown as done.</p>
 <section>
 <h2>After the Upload</h2>
-<p class="lede">New screen. The predecessor showed the result only in the statuses. UC-006 step 13 requires a statement, per Budget Account, of what was written, what was not, and what has an unknown outcome.</p>
+<p class="lede">New screen: what was written, not written or unknown, per Budget Account (UC-006 step 13).</p>
 <div class="flow">
 <div class="state" id="written">
-<div class="step-label"><span class="n">UC-006 13</span><p><b>Truthful outcome per Budget Account.</b> Written means the Budget App confirmed it.</p></div>
+<div class="step-label"><span class="n">UC-006 13</span><p><b>Outcome per Budget Account.</b> Written means the Budget App confirmed it.</p></div>
 <div class="phone">
 <div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Outcome</div>
-<p class="screen-sub">Household · Upload Plan confirmed 14:35</p>
+<p class="screen-sub">Household</p>
 <div class="body">
-<div class="card teal"><span class="acct-h"><span class="nm">Checking</span></span> <span class="src-note blk"><span class="chip green">Written</span> 5: Corner Grocer, Northwind Power (match), Internet Transfer to Reserve (linked), Payroll Acme Tools (its earlier outcome was unknown), Lumen Streaming</span></div><div class="card teal"><span class="acct-h"><span class="nm">Rewards Card</span></span> <span class="src-note blk"><span class="chip green">Written</span> 2: Autopay Received (linked), Café Brisa</span></div><div class="card teal"><span class="acct-h"><span class="nm">Reserve Savings</span></span> <span class="src-note blk"><span class="chip green">Written</span> 2: Pinecrest Payment, Internet Transfer from Checking</span></div><div class="card "><span class="acct-h"><span class="nm">Transfer Counterparts</span></span> <span class="src-note blk"><span class="chip teal">Cleared</span> 2: in Reserve Savings and in Checking</span></div><p class="note">Written transactions arrived Cleared and wait for your approval in the Budget App. Statuses updated from the Budget App at 14:36.</p><a class="cta" href="budget.html#household">Back to Household</a>
+<div class="card teal"><div class="io"><div><span class="lbl">Written in</span> <span class="big in">+2,705.00</span></div><div><span class="lbl">Written out</span> <span class="big">−1,088.07</span></div></div></div><div class="card teal"><div class="acct-h"><span class="nm">Checking</span> <span class="amt r">+1,781.43</span></div><div class="tagrow"><span class="chip green">Written 5</span></div></div><div class="card teal"><div class="acct-h"><span class="nm">Rewards Card</span> <span class="amt r">+170.50</span></div><div class="tagrow"><span class="chip green">Written 2</span></div></div><div class="card teal"><div class="acct-h"><span class="nm">Reserve Savings</span> <span class="amt r">−335.00</span></div><div class="tagrow"><span class="chip green">Written 2</span></div></div><div class="card "><div class="acct-h"><span class="nm">Counterparts</span> <span class="amt r"></span></div><div class="tagrow"><span class="chip teal">Cleared 2</span></div></div><p class="note">Cleared · approve in the Budget App</p><a class="cta" href="budget.html#household">Household</a>
 </div>
-
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="outcome-unknown">
-<div class="step-label"><span class="n">UC-006 A8</span><p><b>Outcome Unknown</b> for some transactions; the other Budget Accounts are unaffected (UC-006 BR-012).</p></div>
+<div class="step-label"><span class="n">UC-006 A8</span><p><b>Outcome Unknown</b> for some transactions; other Budget Accounts unaffected (BR-012). Safe to resend because the Budget App refuses a reused Import Identifier (C-009).</p></div>
 <div class="phone">
-<div class="screen-title">Upload Outcome</div>
-<p class="screen-sub">Household · Upload Plan confirmed 14:35</p>
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Outcome</div>
+<p class="screen-sub">Household</p>
 <div class="body">
-<div class="card red"><span class="acct-h"><span class="nm">Checking</span></span> <span class="src-note blk"><span class="chip green">Written</span> 3: Corner Grocer, Northwind Power (match), Lumen Streaming</span> <span class="src-note blk"><span class="chip red">Outcome Unknown</span> 2: Internet Transfer to Reserve, Payroll Acme Tools. The connection was lost before the Budget App answered. Not shown as written. Because the Budget App refuses a reused Import Identifier (C-009), they stay eligible for the next Upload Plan under the same Import Identifiers and for the same Budget Account.</span></div><div class="card teal"><span class="acct-h"><span class="nm">Rewards Card</span></span> <span class="src-note blk"><span class="chip green">Written</span> 2</span></div><div class="card teal"><span class="acct-h"><span class="nm">Reserve Savings</span></span> <span class="src-note blk"><span class="chip green">Written</span> 2</span></div>
+<div class="card teal"><div class="io"><div><span class="lbl">Written in</span> <span class="big in">+255.00</span></div><div><span class="lbl">Written out</span> <span class="big">−588.07</span></div></div></div><div class="card red"><div class="acct-h"><span class="nm">Checking</span> <span class="amt r"></span></div><div class="tagrow"><span class="chip green">Written 3</span> <span class="chip red">Outcome Unknown 2</span></div><div class="txrow"><span class="p">Internet Transfer to Reserve</span> <span class="amt">−500.00</span><div class="stc"><span class="chip red">Outcome Unknown</span></div></div><div class="txrow"><span class="p">Payroll Acme Tools</span> <span class="amt">+2,450.00</span><div class="stc"><span class="chip red">Outcome Unknown</span></div></div></div><div class="card teal"><div class="acct-h"><span class="nm">Rewards Card</span> <span class="amt r"></span></div><div class="tagrow"><span class="chip green">Written 2</span></div></div><div class="card teal"><div class="acct-h"><span class="nm">Reserve Savings</span> <span class="amt r"></span></div><div class="tagrow"><span class="chip green">Written 2</span></div></div><p class="note">Resent in the next Upload Plan.</p>
 </div>
-
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="rejected">
-<div class="step-label"><span class="n">UC-006 A9</span><p><b>The Budget App rejected the transactions of one Budget Account</b>, with its reason.</p></div>
+<div class="step-label"><span class="n">UC-006 A9</span><p><b>Rejected by the Budget App</b> for one Budget Account, with its reason; they stay available for Upload.</p></div>
 <div class="phone">
-<div class="screen-title">Upload Outcome</div>
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Outcome</div>
 <p class="screen-sub">Household</p>
 <div class="body">
-<div class="card teal"><span class="acct-h"><span class="nm">Checking</span></span> <span class="src-note blk"><span class="chip green">Written</span> 5</span></div><div class="card red"><span class="acct-h"><span class="nm">Rewards Card</span></span> <span class="src-note blk"><span class="chip red">Not written</span> 2: rejected by the Budget App with the reason "the Budget Account is closed". They stay available for Upload.</span></div><div class="card teal"><span class="acct-h"><span class="nm">Reserve Savings</span></span> <span class="src-note blk"><span class="chip green">Written</span> 2</span></div>
+<div class="card teal"><div class="acct-h"><span class="nm">Checking</span> <span class="amt r"></span></div><div class="tagrow"><span class="chip green">Written 5</span></div></div><div class="card red"><div class="acct-h"><span class="nm">Rewards Card</span> <span class="amt r"></span></div><div class="tagrow"><span class="chip red">Not written 2</span></div><div class="note">Budget App: "the Budget Account is closed"</div></div><div class="card teal"><div class="acct-h"><span class="nm">Reserve Savings</span> <span class="amt r"></span></div><div class="tagrow"><span class="chip green">Written 2</span></div></div>
 </div>
-
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="not-linked">
-<div class="step-label"><span class="n">UC-006 A10</span><p><b>The Budget App cannot link a Transfer.</b> Drawn for a Budget App without linked transfers (NFR-015); YNAB links them.</p></div>
+<div class="step-label"><span class="n">UC-006 A10</span><p><b>The Budget App cannot link a Transfer</b>; the other Transfer Leg stays an ordinary Bank Transaction. Drawn for a replaceable Budget App; YNAB links Transfers.</p></div>
 <div class="phone">
-<div class="screen-title">Upload Outcome</div>
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Outcome</div>
 <p class="screen-sub">Household</p>
 <div class="body">
-<div class="card amber"><span class="acct-h"><span class="nm">Checking</span></span> <span class="src-note blk"><span class="chip green">Written</span> 5</span> <span class="src-note blk">Internet Transfer to Reserve was written as an <b>ordinary transaction</b>: the Budget App offers no way to link a Transfer. Its other Transfer Leg in Kestrel Reserve stays an ordinary Bank Transaction and is eligible for the next Upload Plan.</span></div>
+<div class="card amber"><div class="acct-h"><span class="nm">Checking</span> <span class="amt r"></span></div><div class="tagrow"><span class="chip green">Written 5</span></div><div class="txrow"><span class="p">Internet Transfer to Reserve</span> <span class="amt">−500.00</span><div class="stc"><span class="chip amber">written as ordinary</span></div></div></div>
 </div>
-
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="clear-failed">
-<div class="step-label"><span class="n">UC-006 A11</span><p><b>Marking a Transfer Counterpart Cleared failed.</b></p></div>
+<div class="step-label"><span class="n">UC-006 A11</span><p><b>Marking a Transfer Counterpart Cleared failed</b>; it goes into the next Upload Plan.</p></div>
 <div class="phone">
-<div class="screen-title">Upload Outcome</div>
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Outcome</div>
 <p class="screen-sub">Household</p>
 <div class="body">
-<div class="card teal"><span class="acct-h"><span class="nm">Checking</span></span> <span class="src-note blk"><span class="chip green">Written</span> 5</span></div><div class="card amber"><span class="acct-h"><span class="nm">Transfer Counterparts</span></span> <span class="src-note blk"><span class="chip teal">Cleared</span> 1: in Reserve Savings</span> <span class="src-note blk"><span class="chip amber">Not Cleared</span> 1: the counterpart in Checking (600.00) could not be marked Cleared. It stays uncleared and is in the next Upload Plan of Household.</span></div>
+<div class="card teal"><div class="acct-h"><span class="nm">Checking</span> <span class="amt r"></span></div><div class="tagrow"><span class="chip green">Written 5</span></div></div><div class="card amber"><div class="acct-h"><span class="nm">Counterparts</span> <span class="amt r"></span></div><div class="tagrow"><span class="chip teal">Cleared 1</span> <span class="chip amber">Not Cleared 1</span></div><div class="txrow"><span class="p">Checking · Card Payment</span> <span class="amt">600.00</span><div class="stc"><span class="chip grey">next plan</span></div></div></div>
 </div>
-
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="compare-failed">
-<div class="step-label"><span class="n">UC-006 A12</span><p><b>The Comparison after the Upload failed.</b></p></div>
+<div class="step-label"><span class="n">UC-006 A12</span><p><b>The Comparison after the Upload failed</b>; the outcomes shown are what the Budget App reported.</p></div>
 <div class="phone">
-<div class="screen-title">Upload Outcome</div>
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Outcome</div>
 <p class="screen-sub">Household</p>
 <div class="body">
-<div class="card teal"><span class="acct-h"><span class="nm">Checking</span></span> <span class="src-note blk"><span class="chip green">Written</span> 5</span></div><div class="card teal"><span class="acct-h"><span class="nm">Rewards Card</span></span> <span class="src-note blk"><span class="chip green">Written</span> 2</span></div><div class="banner"><span class="txt"><b>The Budget App could not be read after the Upload</b> <span class="d">The outcomes above are what the Budget App reported. Transaction Statuses will be updated at the next Comparison.</span></span></div>
+<div class="card teal"><div class="acct-h"><span class="nm">Checking</span> <span class="amt r"></span></div><div class="tagrow"><span class="chip green">Written 5</span></div></div><div class="card teal"><div class="acct-h"><span class="nm">Rewards Card</span> <span class="amt r"></span></div><div class="tagrow"><span class="chip green">Written 2</span></div></div><div class="banner"><span class="txt"><b>Statuses update at the next Comparison</b></span></div>
 </div>
-
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 </div>
