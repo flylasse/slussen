@@ -18,7 +18,7 @@
 
 ## Main Success Scenario
 
-1. Slussen shows each Bank Account with its Bank, its Source, the Budget and Budget Account it is mapped to, its Funded By when it is a credit card or its Transfer Partner otherwise, its Start Date, whether its Account Mapping is locked and why, whether it is identified, and whether it is a Retired Account.
+1. Slussen shows each Bank Account with its Bank, its Source, the Budget and Budget Account it is mapped to, its Funded By when it is a credit card or its Transfer Partner otherwise, and whether that value no longer applies (UC-005 BR-014), its Start Date, whether its Account Mapping is locked and why, whether it is identified, and whether it is a Retired Account.
 2. Operator selects a Bank Account that waits for confirmation of a proposed match.
 3. Slussen shows, from the Offered Bank Accounts the Source last delivered and without contacting it (BR-009), the proposed Bank Account with its Bank, name, kind, currency and the last four digits of its number, and the other Offered Bank Accounts of the Source.
 4. Operator confirms the proposed Bank Account.
@@ -102,7 +102,7 @@
 **Trigger:** Operator chooses to set, change or clear the Funded By of a credit card Bank Account or the Transfer Partner of another Bank Account (step 2)
 **Flow:**
 
-1. Slussen shows the Budget Accounts of the same Budget other than the Bank Account's own, including those Slussen does not fetch.
+1. Slussen shows the Budget Accounts of the same Budget, other than the Bank Account's own, that Slussen fetches (UC-005 BR-014).
 2. Operator chooses one, or clears the value.
 3. Slussen stores the Funded By or the Transfer Partner and detects the Transfers among the Bank Transactions not yet uploaded again (UC-005 BR-006).
 4. Slussen records the old and the new value in the Decision Journal.
@@ -178,7 +178,7 @@ A Bank Account can be identified again only while its Account Mapping is not loc
 
 ### BR-008: Funded By and Transfer Partner Are Set in the App
 
-A credit card Bank Account can have a Funded By and every other Bank Account a Transfer Partner (UC-005 BR-006). Both start empty, have no default in the build or the Build Configuration, and are set, changed or cleared here or kept from the Operator's answer when reviewing Transfers (UC-005). They are included in device backups and kept across a reinstall, a restore and an upgrade with the Account Mappings (BR-006).
+A credit card Bank Account can have a Funded By and every other Bank Account a Transfer Partner (UC-005 BR-006). Both are always a Budget Account that Slussen fetches (UC-005 BR-014). Both start empty, have no default in the build or the Build Configuration, and are set, changed or cleared here or kept from the Operator's answer when reviewing Transfers (UC-005). They are included in device backups and kept across a reinstall, a restore and an upgrade with the Account Mappings (BR-006).
 
 ### BR-009: Offered Bank Accounts Are Kept Until the Next Delivery
 

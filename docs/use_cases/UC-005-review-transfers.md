@@ -19,7 +19,7 @@
 
 1. Slussen shows each Transfer of the Budget with its two Budget Accounts, amount, dates and whether both Transfer Legs have arrived, flags every Guessed Transfer and shows the number of Guessed Transfers of the Budget.
 2. Operator selects a Transfer.
-3. Slussen shows the proposed other Budget Account and the other Budget Accounts of the same Budget and currency that the Transfer could belong to.
+3. Slussen shows the proposed other Budget Account and the other Budget Accounts of the same Budget and currency that Slussen fetches and that the Transfer could belong to (BR-014).
 4. Operator confirms the Transfer.
 5. Slussen stores the Transfer Decision Confirmed and, for a Guessed Transfer, removes the flag and lowers the number of Guessed Transfers of the Budget.
 6. Slussen records in the Decision Journal the Operator's decision together with the Transfer Slussen had proposed.
@@ -44,7 +44,7 @@
 
 ### A3: Choose Another Budget Account
 
-**Trigger:** Operator chooses another Budget Account as the other side of the Transfer (step 4)  
+**Trigger:** Operator chooses another Budget Account that Slussen fetches as the other side of the Transfer (step 4)  
 **Flow:**
 
 1. Slussen asks whether to keep this Budget Account as the Funded By of the Bank Account when it is a credit card, or as its Transfer Partner otherwise (BR-006).
@@ -128,7 +128,7 @@ Slussen always detects Transfers; there is no setting that switches detection of
 
 ### BR-002: Detecting a Transfer
 
-Two Bank Transactions form a Transfer when they have equal and opposite amounts, belong to two different Bank Accounts mapped into the same Budget and currency, are dated at most 5 days apart (5 by default, a number the Operator can change, UC-010), and are recognised as a Card Payment or as a Bank Transfer. A pair in which one Bank Account is a credit card is a Card Payment. A pair of two other Bank Accounts is a Bank Transfer only when the payee or memo of at least one of the two matches a Bank Transfer Description (BR-012). A single Bank Transaction whose other side has not arrived is a Lonely Transfer when the Budget Account of the other side is known and its payee or memo matches a description of the right list: a Card Payment Description for an inflow to a credit card Bank Account, whose other side is the card's Funded By, or for an outflow from another Bank Account, whose other side is the credit card Bank Account whose Funded By is that Bank Account's Budget Account; when more than one credit card Bank Account has that Funded By, the outflow is a Guessed Transfer (BR-003). Slussen never infers a credit card from the paying Bank Account: an outflow whose Budget Account is the Funded By of no credit card Bank Account follows the rules for a Bank Transfer Description, or stays an ordinary Bank Transaction; a Bank Transfer Description for a Bank Account that is not a credit card, whose other side is its Transfer Partner (BR-006). A Card Payment to a credit card Bank Account without a Funded By is shown as a Guessed Transfer (A8).
+Two Bank Transactions form a Transfer when they have equal and opposite amounts, belong to two different Bank Accounts mapped into the same Budget and currency, are dated at most 5 days apart (5 by default, a number the Operator can change, UC-010), and are recognised as a Card Payment or as a Bank Transfer. A pair in which one Bank Account is a credit card is a Card Payment. A pair of two other Bank Accounts is a Bank Transfer only when the payee or memo of at least one of the two matches a Bank Transfer Description (BR-012). A single Bank Transaction whose other side has not arrived is a Lonely Transfer when the Budget Account of the other side is known and is a Budget Account that Slussen fetches (BR-014) and its payee or memo matches a description of the right list: a Card Payment Description for an inflow to a credit card Bank Account, whose other side is the card's Funded By, or for an outflow from another Bank Account, whose other side is the credit card Bank Account whose Funded By is that Bank Account's Budget Account; when more than one credit card Bank Account has that Funded By, the outflow is a Guessed Transfer (BR-003). Slussen never infers a credit card from the paying Bank Account: an outflow whose Budget Account is the Funded By of no credit card Bank Account follows the rules for a Bank Transfer Description, or stays an ordinary Bank Transaction; a Bank Transfer Description for a Bank Account that is not a credit card, whose other side is its Transfer Partner (BR-006). A Card Payment to a credit card Bank Account without a Funded By is shown as a Guessed Transfer (A8).
 
 ### BR-003: One Transfer per Transaction
 
@@ -144,7 +144,7 @@ A Lonely Transfer whose other Transfer Leg has not arrived within 6 days (6 by d
 
 ### BR-006: Funded By and Transfer Partner
 
-A credit card Bank Account can have a Funded By, and every other Bank Account a Transfer Partner: one Budget Account each, in the same Budget as the Bank Account's own Account Mapping, which may be a Budget Account Slussen does not fetch. The Funded By is used on the Card Payment path and the Transfer Partner on the Bank Transfer path (BR-002, BR-003). Neither has a default: both start empty and are set in Manage Account Mappings (UC-009) or kept from the Operator's answer in A3 or A8. Every change is recorded in the Decision Journal and applies only to Transfers none of whose Transfer Legs has been uploaded.
+A credit card Bank Account can have a Funded By, and every other Bank Account a Transfer Partner: one Budget Account each, in the same Budget as the Bank Account's own Account Mapping, which is always a Budget Account that Slussen fetches (BR-014). The Funded By is used on the Card Payment path and the Transfer Partner on the Bank Transfer path (BR-002, BR-003). Neither has a default: both start empty and are set in Manage Account Mappings (UC-009) or kept from the Operator's answer in A3 or A8. Every change is recorded in the Decision Journal and applies only to Transfers none of whose Transfer Legs has been uploaded.
 
 ### BR-007: Held Means Both Sides Held
 
@@ -173,3 +173,7 @@ The Card Payment Descriptions and Bank Transfer Descriptions are Operator Settin
 ### BR-013: Doubt About a Transfer Leg Is Decided First
 
 The doubt about a Bank Transaction itself is decided before its Transfer is eligible. When a Transfer Leg of a pair or of a Lonely Transfer is Needs Review, for any reason (UC-003 BR-008, UC-003 BR-012), or Possible Import By Other Path (UC-003 BR-007), the whole Transfer is in no Upload Plan, from either side, until each such Transfer Leg has a Review Decision (UC-004 BR-009). When every such Transfer Leg is decided Import Anyway, it rejoins the Transfer, which then follows BR-010 and goes into the next Upload Plan as one linked transfer. When one is decided Already Present, the whole Transfer counts as already in the Budget App: neither Transfer Leg is proposed for an Upload Plan, and every other Transfer Leg of it has the status Already In Budget App while that decision holds (UC-003 BR-009). Otherwise, when one is decided Defer, the whole Transfer is held back and every other Transfer Leg of it has the status Deferred. Split (A1) is the only way to separate the two Transfer Legs. A Guessed Transfer also needs its Transfer Decision (BR-010).
+
+### BR-014: The Other Side Is a Budget Account Slussen Fetches
+
+The other side of a Transfer is always a Budget Account that Slussen fetches, that is, one that a Bank Account of the Build Configuration that is not a Retired Account is mapped to through an Account Mapping. A Budget Account that Slussen does not fetch, such as a Manually Kept Account, is never a Funded By, a Transfer Partner, the other side of a Lonely Transfer, the proposal of A8 or a choice in A3; a movement to or from it stays an ordinary Bank Transaction, as a movement across Budgets does (BR-004). A Funded By or Transfer Partner whose Budget Account loses its last such Account Mapping, because its Bank Account was removed from the Build Configuration or retired, is kept but no longer applies: Slussen does not use it to detect Transfers and shows that it no longer applies (UC-009), until the Operator changes or clears it or such a Bank Account is mapped to that Budget Account again.

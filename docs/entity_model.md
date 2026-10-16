@@ -187,7 +187,8 @@ One of the Operator's or a household member's Bank Accounts at a Bank, as expose
 - `balance_data_provider_id` is filled only when `file_format_id` is filled.
 - `balance_provider_reference` is filled exactly when `balance_data_provider_id` is filled.
 - Two Bank Accounts of the same Data Provider never have the same `provider_reference` or the same `bank_account_fingerprint`.
-- `funded_by_budget_account_id` and `transfer_partner_budget_account_id` belong to the same Budget as the Bank Account's own Account Mapping, differ from its own Budget Account, and may be a Manually Kept Account.
+- `funded_by_budget_account_id` and `transfer_partner_budget_account_id` belong to the same Budget as the Bank Account's own Account Mapping, differ from its own Budget Account, and are each a Budget Account that Slussen fetches, that is, one that a Bank Account of the Build Configuration that is not a Retired Account is mapped to through an Account Mapping; never a Manually Kept Account (UC-005 BR-014).
+- When that Budget Account loses its last Account Mapping of a Bank Account that is configured and not a Retired Account, the value is kept but no longer applies: it is not used to detect Transfers and is shown as not applying until the Operator changes or clears it or such a Bank Account is mapped to it again.
 - `funded_by_budget_account_id` is filled only when `bank_account_type` is Credit Card; `transfer_partner_budget_account_id` is filled only when `bank_account_type` is not Credit Card.
 - Neither has a default in the build or the Build Configuration; both start empty and every change is recorded in the Decision Journal.
 - A Retired Account keeps its identification, Account Mapping and history and can be restored.
@@ -525,6 +526,7 @@ The reviewed statement of exactly what Slussen will write to one Budget, or to o
 - `expires_at` is `OPERATOR_SETTINGS.upload_plan_minutes` after `prepared_at`.
 - At most one Upload Plan is Awaiting Confirmation at a time.
 - A plan Awaiting Confirmation whose `expires_at` has passed becomes Expired.
+- A plan Awaiting Confirmation becomes Cancelled when the Operator cancels it or leaves it without confirming (UC-006 BR-019); a Cancelled or Expired plan is never confirmed, and a new request prepares a new plan.
 - `new_count`, `match_count`, `total_inflow` and `total_outflow` equal what the plan's Eligible Transactions add up to.
 - A plan is Changed Before Writing, and writes nothing, when the Budget App, the Bank Transactions or the configuration changed after it was prepared.
 - Which transactions the plan holds is decided once, from the date on which the plan is prepared; a change of date while the plan is Awaiting Confirmation changes nothing in it.

@@ -153,7 +153,11 @@ reconciles the stored configuration with the generated one in one transaction:
 - an entry that maps a Bank Account with a locked Account Mapping to another Budget Account changes nothing in
   `account_mapping` (UC-009 A8);
 - Budgets are matched by `budget_app_reference`, Data Providers and File Formats by `source_key`, Banks by `name`;
-- nothing is ever deleted by reconciliation.
+- nothing is ever deleted by reconciliation. A `funded_by_budget_account_id` or `transfer_partner_budget_account_id`
+  whose Budget Account no longer receives through any Account Mapping of a Bank Account that is configured and not a
+  Retired Account is kept unchanged; the core treats it as no longer applying, uses it for no Transfer and shows it
+  as such, until the Operator changes or clears it or such a Bank Account is mapped to it again (UC-005 BR-014). It
+  applies again without any write when that happens.
 
 ### 3. Atomic storage operations
 
@@ -176,7 +180,7 @@ a step from two calls. Each operation that changes something an Upload Plan depe
 | O-10 | `ConsentStore.startRequest`, `consumeAnswer`, `replaceConsent`, `revoke` (`device.db`) | Start: a new Consent Request with its correlation, making earlier ones of the Bank unanswerable. Consume: the most-recent, lifetime and not-answered checks and `answered` set, together. Replace: the Bank Consent and its Bank Session in place of the earlier ones, refused when a newer Consent Request exists. Revoke: delete the Bank Consent, its Bank Session and every Consent Request of the Bank | UC-007 BR-002, BR-003, BR-004, BR-007; NFR-013 |
 | O-11 | `ConfigurationStore.reconcile` | §2, Bank Accounts and the Build Configuration | UC-009 A8, A11, A12, BR-010, BR-011; FR-096 |
 | O-12 | `RecoveryStore.openCheck`, `confirmChecks` | Open a Recovery Check with its cause; confirm every open check whose `compared_at` is filled, together with its Decision Journal record request | UC-006 BR-017, UC-008 A9, BR-009 |
-| O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses; a Review Decision on a Transfer Leg also sets the statuses of the other Transfer Legs of its Transfer (Deferred, or Already In Budget App while an Already Present decision holds) in the same transaction | UC-004 BR-006, BR-009; UC-005 BR-013; UC-009, UC-010 |
+| O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses; setting a Funded By or Transfer Partner (also from a Transfer Decision) is refused unless the Budget Account is in the same Budget, differs from the Bank Account's own, and receives through an Account Mapping of a configured Bank Account that is not a Retired Account, never a Manually Kept Account (UC-005 BR-014, `BANK_ACCOUNT` constraints); a Review Decision on a Transfer Leg also sets the statuses of the other Transfer Legs of its Transfer (Deferred, or Already In Budget App while an Already Present decision holds) in the same transaction | UC-004 BR-006, BR-009; UC-005 BR-013, BR-014; UC-009 BR-008, UC-010 |
 | O-14 | `UploadStore.recordClearing` | The result of one clearing (ADR-007 §6 step 8): a new `transfer_counterpart` with the leg's `sent_record_id`, its `budget_app_reference` and `state` Cleared (with `cleared_at`) or Uncleared; or an existing one set to Cleared with `cleared_at`. It never inserts, resets or changes a `sent_record` | UC-006 steps 10, BR-009, BR-010, BR-011, A11 |
 
 A crash at any point leaves each operation either complete or absent. Each has an instrumented test that injects a
@@ -482,3 +486,6 @@ run with JUnit 5 (ADR-004, ADR-005).
 - S-14: §2 (`entered_by` decided by the core with the marker rules, Slussen Unsupported Format included).
 - S-17: §3 O-13 (a decision on a Transfer Leg sets the other Transfer Legs' statuses atomically), §4 (the guarantee
   covers only what Slussen sent itself).
+- S-20 (UC-005 BR-014): §2 (a Funded By or Transfer Partner whose Budget Account loses its last mapping of a Bank
+  Account in use is kept but no longer applies), §3 O-13 (setting one is validated against Budget Accounts that
+  Slussen fetches, never a Manually Kept Account).

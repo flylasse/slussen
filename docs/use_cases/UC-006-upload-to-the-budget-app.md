@@ -43,12 +43,12 @@
 1. Slussen shows that there is nothing to upload and prepares no Upload Plan.
 2. Use case ends.
 
-### A2: Operator Cancels the Upload Plan
+### A2: Operator Cancels or Leaves the Upload Plan
 
-**Trigger:** Operator cancels instead of confirming (step 4)  
+**Trigger:** Operator cancels instead of confirming, or leaves the Upload Plan's screen (step 4)  
 **Flow:**
 
-1. Slussen discards the Upload Plan and ends the pause (BR-005).
+1. Slussen writes nothing, discards the Upload Plan and ends the pause (BR-005, BR-019).
 2. Use case ends.
 
 ### A3: Decision Changed While the Plan Awaits Confirmation
@@ -239,3 +239,7 @@ While a Recovery Check is open, Slussen prepares no Upload Plan. A Recovery Chec
 ### BR-018: Eligibility Is Fixed When the Plan Is Prepared
 
 Which transactions an Upload Plan holds is decided once, when the plan is prepared, from the current date at that moment: the Upload Window and the file upload window (UC-003 BR-011, UC-002 BR-004), the Start Date of each Bank Account (UC-003 BR-018) and the Lonely Transfer grace period (UC-005 BR-005). While the plan awaits confirmation, a change of date changes nothing in it, and confirming writes exactly the transactions the plan showed. The plan is protected by its visible expiry (BR-003) and by the check that the Budget App, the Bank Transactions and the configuration are unchanged (BR-004). The next Comparison after the plan is written, cancelled, discarded or expired gives the Transaction Statuses from the date of that Comparison (UC-003).
+
+### BR-019: An Upload Plan Exists Only While It Is Shown
+
+An Upload Plan exists only while the Operator is shown it. When the Operator leaves it without confirming, Slussen discards it as on cancelling (A2): nothing is written and the pause ends. A discarded, cancelled or expired Upload Plan is never shown or confirmed again. Every request for an Upload Plan prepares a new one from the current data.

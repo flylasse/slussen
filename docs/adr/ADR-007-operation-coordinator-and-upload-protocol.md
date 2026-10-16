@@ -75,7 +75,7 @@ plan is being written).
 | Account Mapping change (UC-009), Operator Setting change (UC-010) | admitted | refused | refused |
 | Review Decision, Transfer Decision (UC-004, UC-005) | admitted | admitted; the plan is replaced (§5) | refused until the Upload ends |
 | Prepare an Upload Plan (UC-006) | admitted only when §3 allows it | refused (one plan at a time) | refused |
-| Confirm the plan, cancel the plan (UC-006 steps 4-5, A2) | not applicable | admitted for that plan only | refused (no second confirmation) |
+| Confirm the plan, cancel or leave (UC-006 steps 4-5, A2, BR-019) | not applicable | admitted for that plan only | refused (no second confirmation) |
 | Confirm a Recovery Check (UC-008 A9) | admitted | refused | refused |
 
 "Refused" returns a typed reason that the screen shows; nothing is half started. A deferred Scheduled Fetch is
@@ -172,7 +172,9 @@ when every one is Import Anyway, the Transfer is planned by the rules above (S-1
 
 - A Review Decision or Transfer Decision is stored and the plan is replaced by a newly prepared one, with a new expiry,
   in one exclusive step (UC-006 A3, UC-004 A8). The old plan becomes Cancelled.
-- Cancelling sets the plan to Cancelled and the mode to Normal (UC-006 A2).
+- Cancelling or leaving the plan's screen (UC-006 A2, BR-019) sets the plan to Cancelled and the mode to Normal;
+  leaving is the same cancel command, sent by the UI when the screen is left. A Cancelled plan is never shown or
+  confirmed again, and a new request prepares a new plan.
 - When `expires_at` passes, the coordinator sets the plan to Expired and the mode to Normal (UC-006 A4). Confirmation
   checks the expiry again, so a timer that did not fire changes nothing.
 
@@ -274,7 +276,8 @@ Transfer has both Transfer Legs present and is cleared in the same Upload, and t
 either side until every such Transfer Leg is decided, and each outcome with the precedence Already Present, Defer,
 Import Anyway (S-17); a plan with only `ClearCounterpart` items, which inserts and resets no Sent Record (B-02); a Comparison
 interrupted between O-4 and O-5, after which preparation is refused until O-5 is committed (B-04); a Scheduled Fetch
-calling upload code and the wrapper refusing it; a restart in each mode. In `:persistence`, the instrumented crash
+calling upload code and the wrapper refusing it; leaving the plan's screen cancelling the plan as the cancel command
+does (UC-006 BR-019); a restart in each mode. In `:persistence`, the instrumented crash
 tests of O-4 to O-9 and O-14 (ADR-002 §3). Device and live evidence that must pass before the first slice that uploads
 is listed in ADR-005 §7.
 
@@ -353,3 +356,5 @@ is listed in ADR-005 §7.
 - S-18 (O-P2-16, UC-006 BR-018): §4 (date-dependent eligibility decided once at preparation from the coordinator's
   date), §6 step 5 (only the expiry is checked there; the date recheck is removed), §9 (a plan prepared before a change
   of date and confirmed after it writes exactly its items), Consequences.
+- S-20 (UC-006 A2, BR-019): §2 (the confirm/cancel row includes leaving), §5 (leaving the plan's screen is the cancel
+  command; the plan becomes Cancelled), §9 (test).
