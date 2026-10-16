@@ -127,6 +127,7 @@ An external online service from which Slussen fetches transactions and balances 
 | source_key            | Source Key that enters every Import Identifier of the Data Provider's transactions                   | String    | 50               | Not Null, Unique      |
 | stable_reference      | True when the Data Provider gives every Bank Transaction a Stable Reference                          | Boolean   | 1                | Not Null              |
 | bank_consent_required | True when each Bank must grant a Bank Consent before the Data Provider can read it                   | Boolean   | 1                | Not Null              |
+| fetch_cooldown_minutes | Fetch Cooldown of the Data Provider in minutes, an Operator Setting whose default the Data Provider's part declares; 0 switches it off | Integer   | 10               | Not Null, Min: 0, Max: 1440 |
 | request_limit         | Request Limit: number of requests Slussen sends to the Data Provider at most in any 24 hours, set in the Build Configuration, 24 by default | Integer   | 10               | Not Null, Min: 1, Max: 1000 |
 
 #### Constraints
@@ -654,7 +655,6 @@ The values the Operator can change inside the app, each with its allowed range a
 | upload_plan_minutes        | Upload Plan lifetime: minutes after which an Upload Plan that awaits confirmation expires, 10 by default | Integer   | 10               | Not Null, Min: 1, Max: 60  |
 | consent_request_minutes    | Consent Request lifetime: minutes for which a Consent Request can be answered, 15 by default    | Integer   | 10               | Not Null, Min: 5, Max: 30  |
 | fetch_history_size         | Number of most recent Fetches kept and shown, 60 by default                                       | Integer   | 10               | Not Null, Min: 10, Max: 500 |
-| fetch_cooldown_minutes     | Fetch Cooldown after a successful Fetch of a Data Provider, 60 by default; 0 switches it off      | Integer   | 10               | Not Null, Min: 0, Max: 1440 |
 | scheduled_fetches_per_day  | Fetch Schedule: number of Scheduled Fetches in any 24 hours, evenly spaced, 2 by default; 0 switches them off | Integer   | 10               | Not Null, Min: 0, Max: 2   |
 | transfer_pairing_days      | Largest number of days between the two Transfer Legs of a Transfer, 5 by default                  | Integer   | 10               | Not Null, Min: 0, Max: 30  |
 | lonely_transfer_grace_days | Number of days a Lonely Transfer waits for its other Transfer Leg before it becomes an ordinary transaction, 6 by default | Integer   | 10               | Not Null, Min: 0, Max: 30  |
@@ -674,6 +674,7 @@ The values the Operator can change inside the app, each with its allowed range a
 - `upload_as_cleared` is offered only when the Budget App supports the Cleared marker; otherwise it counts as false. A change applies only to what is written afterwards and changes nothing already in the Budget App.
 - The Request Limit of each Data Provider, the Configuration Keys and the Start Dates are set in the Build Configuration and are not Operator Settings.
 - `upload_window_days` applies to Bank Transactions from a Data Provider and `file_upload_window_days` to Bank Transactions from a Transaction File, whatever its File Format.
+- The Fetch Cooldown is an Operator Setting per Data Provider, kept as `DATA_PROVIDER.fetch_cooldown_minutes`; it starts at the default the Data Provider's part declares and is kept like the other Operator Settings.
 - The Card Payment and Bank Transfer Descriptions are Operator Settings too; because each is a list, they are kept as `TRANSFER_DESCRIPTION` records rather than as attributes here.
 - Numbers fixed by an outside party are not Operator Settings: the PSD2 access limit (C-006), the consent length the Bank or Data Provider reports (C-007), the Budget App's own rules (C-009) and the backup size limit Android sets (C-015).
 

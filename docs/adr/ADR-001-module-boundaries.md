@@ -251,6 +251,8 @@ data class DataProviderProfile(
     val sourceKey: String,             // DATA_PROVIDER.source_key; fixed forever once released (ADR-008 §2)
     val givesStableReference: Boolean, // DATA_PROVIDER.stable_reference (FR-072, UC-012 BR-005)
     val needsBankConsent: Boolean,     // DATA_PROVIDER.bank_consent_required
+    val defaultFetchCooldownMinutes: Int, // default of DATA_PROVIDER.fetch_cooldown_minutes, 0 to 1440, 0 switches it off;
+                                          // an Operator Setting the Operator can change (FR-016, UC-001 BR-006, UC-010)
 )
 ```
 
@@ -652,7 +654,7 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
 
 | Use case | Modules | What each part does |
 |---|---|---|
-| UC-001 Fetch Transactions | `:app`, `:core`, `:plugin-api`, Data Provider modules, `:budgetapp-ynab`, `:persistence` | `:app`: the Fetch action, the Scheduled Fetch worker (A12), the New Transaction Notification (BR-014). `:core` `fetch`: Back-off, Fetch Cooldown, the request gate (Request Limit, Unattended Access), per-scope outcomes (A5, A8, A9), identification, booked and non-zero filter, Unreadable Transactions (A17, BR-016), Offered Bank Accounts, Fetch Results; `:core` `identity`: Import Identifiers. Data Provider modules: the requests. `:budgetapp-ynab`: through the included UC-003. `:persistence`: O-1, O-2 (Bank Transactions, Unreadable Transactions, Account Balances, Fetches, Provider Requests, Back-offs; Offered Bank Accounts in `device.db`). |
+| UC-001 Fetch Transactions | `:app`, `:core`, `:plugin-api`, Data Provider modules, `:budgetapp-ynab`, `:persistence` | `:app`: the Fetch action for one Data Provider, for the Data Providers with a Bank Account in one Budget, or for all (A11), the Scheduled Fetch worker (A12), the New Transaction Notification (BR-014). `:core` `fetch`: Back-off, the Fetch Cooldown of each Data Provider (`DATA_PROVIDER.fetch_cooldown_minutes`, default declared by the plug-in's `DataProviderProfile`, BR-006), after which a Fetch served from stored data still goes on to the Comparison (A2), never starting a Bank Consent grant (BR-008), the request gate (Request Limit, Unattended Access), per-scope outcomes (A5, A8, A9), identification, booked and non-zero filter, Unreadable Transactions (A17, BR-016), Offered Bank Accounts, Fetch Results; `:core` `identity`: Import Identifiers. Data Provider modules: the requests. `:budgetapp-ynab`: through the included UC-003. `:persistence`: O-1, O-2 (Bank Transactions, Unreadable Transactions, Account Balances, Fetches, Provider Requests, Back-offs; Offered Bank Accounts in `device.db`). |
 | UC-002 Import a Transaction File | `:app`, `:core`, `:plugin-api`, `:fileformat-<export-format>`, `:budgetapp-ynab`, `:persistence` | `:app`: choosing the file. `:core` `fileimport`: all-or-nothing, references, occurrence numbers, the file upload window (FR-094). `:fileformat-<export-format>`: conversion into the Standard Import Format. `:persistence`: O-3. `:budgetapp-ynab`: through UC-003. |
 | UC-003 Compare With the Budget App | `:app`, `:core`, `:plugin-api`, `:budgetapp-ynab`, `:persistence` | `:app`: the re-read action and the statuses. `:core` `comparison` and `transfer`: the order of BR-001, recognising Slussen's marker and Slussen Unsupported Format (BR-008, ADR-008 §1), doubtful Transfer Legs holding their whole Transfer (BR-001, BR-014, UC-005 BR-013), Transfer detection, Transfer Counterparts from stored links (BR-020), Eligible Transactions, unknown outcomes (BR-017), the Recovery Check record (BR-019), the Comparison-pending marker (ADR-007 §3a). `:budgetapp-ynab`: reading changes since the last `ChangeCursor`. `:persistence`: O-4 (with the cursor and every read field), O-5. |
 | UC-004 Review Doubtful Transactions | `:app`, `:core`, `:persistence` | `:core` `review`: choices per Transaction Status, Unreadable Transactions (A9, BR-007), unknown outcomes (A10, BR-008), a decision on a Transfer Leg deciding its whole Transfer (A11, BR-009), locking after Upload. No plug-in. |
@@ -762,3 +764,7 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
 - S-20 (UC-005 BR-014): §7 UC-005 and UC-009 (the other side of a Transfer, Funded By and Transfer Partner only ever a
   Budget Account that Slussen fetches; a value whose Budget Account loses its last such Account Mapping is kept but no
   longer applies).
+- S-22 (FR-001, FR-016, UC-001 A2, A11, BR-006, BR-008, UC-010 BR-001, BR-002): §4.1 (`DataProviderProfile` declares
+  the default Fetch Cooldown, checked against 0 to 1440 by the contract tests of §4.4), §7 UC-001 (Fetch of one Data
+  Provider, of one Budget's Data Providers or of all; per-Data-Provider Fetch Cooldown; a Fetch served from it still
+  compares; a Fetch never starts a Bank Consent grant).

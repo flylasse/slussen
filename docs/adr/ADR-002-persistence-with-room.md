@@ -50,7 +50,8 @@ What the specification requires of storage:
 - **New entities of the architecture gate:** `BANK_SESSION` (S-02), `BANK_ACCOUNT.configuration_key` and
   `configured` (S-03, S-10, FR-096), `RECOVERY_CHECK` (S-06), `UNREADABLE_TRANSACTION` (S-07),
   `OFFERED_BANK_ACCOUNT` (S-08), `BUDGET_APP_TRANSACTION.memo` (S-09), `OPERATOR_SETTINGS.file_upload_window_days`
-  (S-01) and `backup_warning_percent` (NFR-019).
+  (S-01) and `backup_warning_percent` (NFR-019); `DATA_PROVIDER.fetch_cooldown_minutes` (S-22), the Fetch Cooldown of
+  each Data Provider, an Operator Setting kept per Data Provider instead of in `OPERATOR_SETTINGS`.
 - **The Decision Journal never affects decisions.** NFR-006, UC-010 BR-004, UC-011 BR-002; size limit by dropping
   the oldest entries (`DECISION_JOURNAL_ENTRY` constraints, UC-010 BR-003).
 - **Counters that survive a restart.** `PROVIDER_REQUEST` is kept for at least 24 hours, the window set by the Data
@@ -153,6 +154,9 @@ reconciles the stored configuration with the generated one in one transaction:
 - an entry that maps a Bank Account with a locked Account Mapping to another Budget Account changes nothing in
   `account_mapping` (UC-009 A8);
 - Budgets are matched by `budget_app_reference`, Data Providers and File Formats by `source_key`, Banks by `name`;
+- a `data_provider` row created by reconciliation gets `fetch_cooldown_minutes` from the default its plug-in declares
+  (`DataProviderProfile.defaultFetchCooldownMinutes`, ADR-001 §4.1); an existing row keeps the value the Operator set,
+  which is backed up and restored with the other Operator Settings (S-22, UC-001 BR-006);
 - nothing is ever deleted by reconciliation. A `funded_by_budget_account_id` or `transfer_partner_budget_account_id`
   whose Budget Account no longer receives through any Account Mapping of a Bank Account that is configured and not a
   Retired Account is kept unchanged; the core treats it as no longer applying, uses it for no Transfer and shows it
@@ -348,7 +352,8 @@ is closed:
    and `slussen.db-journal.unreadable-<epochMillis>-<random>` in the database directory, with 128 random bits as
    ADR-008 §7 says, and the rename never overwrites an existing file; `slussen.lastgood.db` is copied to
    `slussen.db`, or, without one, an empty database with the default content (one `operator_settings` record with
-   every default, the default Transfer Descriptions of UC-010 BR-007) is created; the part is reported to the core,
+   every default, the default Transfer Descriptions of UC-010 BR-007, and, through O-11 at the same start, one
+   `data_provider` row per Data Provider with its declared default Fetch Cooldown) is created; the part is reported to the core,
    which shows the notice of UC-008 A1; a Recovery Check is opened (§6).
 4. **Unreadable while running.** A `TypeConverter` that meets an unknown text, or a failed foreign key, throws
    `UnreadableStoredData`. The app does not continue on that data: for `slussen.db` it writes the start intent with
@@ -489,3 +494,6 @@ run with JUnit 5 (ADR-004, ADR-005).
 - S-20 (UC-005 BR-014): §2 (a Funded By or Transfer Partner whose Budget Account loses its last mapping of a Bank
   Account in use is kept but no longer applies), §3 O-13 (setting one is validated against Budget Accounts that
   Slussen fetches, never a Manually Kept Account).
+- S-22 (FR-016, UC-001 BR-006, UC-010 BR-001, BR-002): Context (`DATA_PROVIDER.fetch_cooldown_minutes` instead of an
+  `OPERATOR_SETTINGS` attribute), §2 (reconciliation sets a new Data Provider's Fetch Cooldown from its plug-in's
+  default and keeps the Operator's value otherwise), §8 step 3 (default content).

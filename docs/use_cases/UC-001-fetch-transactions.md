@@ -7,7 +7,7 @@
 **Primary Actor:** Operator  
 **Secondary Actors:** Data Provider  
 **Goal:** Bring the latest booked Bank Transactions and Account Balances of the Bank Accounts that one Data Provider reads into Slussen, compared with the Budget App, while spending no more Bank access than needed  
-**Trigger:** Operator starts a Fetch of a Data Provider or of all Data Providers at once, or the time of a Scheduled Fetch arrives  
+**Trigger:** Operator starts a Fetch of one Data Provider, of the Data Providers that have a Bank Account in one Budget, or of all Data Providers, or the time of a Scheduled Fetch arrives  
 **Status:** Approved  
 
 **Requirements:** [FR-001, FR-004, FR-005, FR-008, FR-009, FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-058, FR-064, FR-066, FR-076, FR-077, FR-078, FR-079, FR-080, NFR-002, NFR-004, NFR-007, NFR-008, NFR-016, NFR-018, NFR-020, C-006, C-007, C-012](../requirements.md)
@@ -51,7 +51,7 @@
 1. Slussen does not contact the Data Provider.
 2. Slussen shows the Bank Transactions and Account Balances already stored, states that they come from the last Fetch and when a new Fetch will contact the Data Provider again.
 3. Slussen records the Fetch with outcome Served From Fetch Cooldown.
-4. Use case ends.
+4. Use case continues at step 10, so that the Budget App is still read (BR-006).
 
 ### A3: Request Limit Reached
 
@@ -131,9 +131,9 @@
 3. Slussen records the outcome Not Recognised or Ambiguous Bank Account for that Bank Account.
 4. Use case continues at step 7 for the other Bank Accounts.
 
-### A11: Fetch of All Data Providers
+### A11: Fetch of Several Data Providers
 
-**Trigger:** Operator starts a Fetch of all Data Providers at once (step 1)  
+**Trigger:** Operator starts a Fetch of all Data Providers, or of the Data Providers that have a Bank Account in one Budget (step 1)  
 **Flow:**
 
 1. Slussen runs steps 2 to 9 for each Data Provider in turn, each under its own Back-off, Fetch Cooldown and Request Limit.
@@ -240,7 +240,7 @@ A timeout, an outage or an unreadable answer starts no Back-off. Slussen shows t
 
 ### BR-006: Fetch Cooldown
 
-For the Fetch Cooldown after a successful Fetch of a Data Provider (60 minutes by default, a number the Operator can change or set to 0 to switch off, UC-010), a new Fetch of that Data Provider, started by the Operator or as a Scheduled Fetch, is answered from the stored data without contacting it. A Fetch that delivered no Bank Account does not start a Fetch Cooldown.
+Each Data Provider has its own Fetch Cooldown, whose default comes with the Data Provider's part and which the Operator can change or set to 0 to switch off (UC-010). During it, a new Fetch of that Data Provider, started by the Operator or as a Scheduled Fetch, is answered from the stored data without contacting it, and the Comparison still reads the Budget App (UC-003). A Fetch that delivered no Bank Account does not start a Fetch Cooldown.
 
 ### BR-007: Request Limit
 
@@ -248,7 +248,7 @@ Slussen keeps every request it sends to a Data Provider as a Provider Request wi
 
 ### BR-008: No Contact Without Bank Consent
 
-Slussen never contacts a Bank whose Bank Consent is missing or expired. Other Banks of the same Data Provider are still read.
+Slussen never contacts a Bank whose Bank Consent is missing or expired. Other Banks of the same Data Provider are still read. A Fetch never starts a Bank Consent grant; the Operator starts it from the Blocked Reason (UC-007).
 
 ### BR-009: Fetch Period
 
