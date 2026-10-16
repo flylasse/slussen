@@ -282,56 +282,67 @@
 </head>
 <body>
 <main>
-<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html" class="here">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a></nav>
+<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html" class="here">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a> <a href="icons.html">Icons</a></nav>
 <p class="eyebrow">Slussen · screen mockup · UC-005 A3, A8</p>
 <h1>Choose the other Budget Account of a Transfer</h1>
 <p class="sub">The sheet behind Choose another Budget Account and behind a first Card Payment without Funded By.</p>
 <section>
 <h2>Choose another Budget Account</h2>
-<p class="lede">Adopted from the predecessor: the picker sheet with the candidates and the remember option at the bottom. Changed: candidates are Budget Accounts, not legs, so a Budget Account Slussen does not fetch can be chosen, and the remember option sets the Funded By or the Transfer Partner (UC-005 BR-006).</p>
+<p class="lede">Adopted from the predecessor: the picker sheet with the candidates and the remember option at the bottom. Changed: the candidates are the Budget Accounts that Slussen fetches, not legs, and the remember option sets the Funded By or the Transfer Partner (UC-005 BR-006, BR-014).</p>
 <div class="flow">
 <div class="state" id="choose">
-<div class="step-label"><span class="n">UC-005 A3 1–2 · A8</span><p><b>Choosing the other Budget Account.</b> The Budget Accounts of the same Budget and currency, including those Slussen does not fetch; then whether to keep the answer as the Funded By (credit card).</p></div>
+<div class="step-label"><span class="n">UC-005 A3 1–2 · A8</span><p><b>Choosing the paying Budget Account</b> of a first Card Payment: the Budget Accounts of the same Budget and currency that Slussen fetches; then whether to keep the answer as the card's Funded By.</p></div>
 <div class="phone">
 <div class="screen-title"><a class="back" href="transfers.html#first-card-payment">‹</a> Transfers</div>
 <p class="screen-sub">Household</p>
 <div class="body">
-<div class="sheet blue"><div class="grab"></div><h4>Which Budget Account paid Home Card?</h4><p class="ctx">Card Payment · Pinecrest Home Card · 2026-10-13 · +410.00 · Household (USD)</p><div class="pick sel"><span class="radio"></span> <span><span class="nm">Checking</span> <span class="meta">Kestrel Checking · fetched</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Reserve Savings</span> <span class="meta">Kestrel Reserve · fetched</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Cash Envelope</span> <span class="meta">Manually Kept Account · not fetched</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Car Loan</span> <span class="meta">Manually Kept Account · not fetched</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Rewards Card</span> <span class="meta">Pinecrest Rewards Card · fetched</span></span></div><div class="sec-t">Keep this answer?</div><div class="pick"><span class="radio"></span> <span><span class="nm">Just this Transfer</span> <span class="meta">Home Card keeps no Funded By.</span></span></div><div class="pick sel"><span class="radio"></span> <span><span class="nm">Keep Checking as the Funded By of Pinecrest Home Card</span> <span class="meta">Used for later Card Payments; you can change it in Account Mappings.</span></span></div><a class="cta" href="#paired">Use Checking</a></div>
+<div class="sheet blue"><div class="grab"></div><h4>Which Budget Account paid Home Card?</h4><p class="ctx">Card Payment · Pinecrest Home Card · 2026-10-14 · +95.00 · Household (USD)</p><div class="pick sel"><span class="radio"></span> <span><span class="nm">Checking</span> <span class="meta">Kestrel Checking</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Reserve Savings</span> <span class="meta">Kestrel Reserve</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Rewards Card</span> <span class="meta">Pinecrest Rewards Card</span></span></div><p class="note">Only Budget Accounts that Slussen fetches can be the other side of a Transfer (UC-005 BR-014). Manually Kept Accounts, such as Cash Envelope, are not offered.</p><div class="sec-t">Keep this answer?</div><div class="pick"><span class="radio"></span> <span><span class="nm">Just this Transfer</span> <span class="meta">Home Card keeps no Funded By.</span></span></div><div class="pick sel"><span class="radio"></span> <span><span class="nm">Keep Checking as the Funded By of Pinecrest Home Card</span> <span class="meta">Used for later Card Payments; you can change it in Account Mappings.</span></span></div><a class="cta" href="#lonely-result">Use Checking</a></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="lonely-result">
+<div class="step-label"><span class="n">UC-005 A3 3–4</span><p><b>No Bank Transaction to pair with yet</b>: the Transfer becomes a Lonely Transfer towards the chosen Budget Account.</p></div>
+<div class="phone">
+<div class="screen-title">Transfers</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="card teal"><span class="acct-h"><span class="chip teal">Card Payment</span> <span class="chip grey">Lonely Transfer</span> <span class="nm">Checking → Home Card</span> <span class="amt r">95.00</span></span><div class="note">No Bank Transaction of Kestrel Checking pairs with it yet. A Lonely Transfer towards Checking: the other side is expected by 2026-10-20 (Lonely Transfer grace period, 6 days by default, an Operator Setting). Transfer Decision: Budget Account Chosen. Eligible for the next Upload Plan as a linked transfer.</div></div><div class="banner grey"><span class="txt"><b>Funded By of Pinecrest Home Card set to Checking</b> <span class="d">Recorded in the Decision Journal.</span></span></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="choose-pair">
+<div class="step-label"><span class="n">UC-005 A3 1–2</span><p><b>Choosing another Budget Account</b> than Slussen's proposal.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="transfers.html#selected">‹</a> Transfers</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="sheet blue"><div class="grab"></div><h4>Which Budget Account is the other side?</h4><p class="ctx">Card Payment · Pinecrest Home Card · 2026-10-13 · +410.00 · Household (USD)</p><div class="pick"><span class="radio"></span> <span><span class="nm">Checking</span> <span class="meta">current proposal · Kestrel Checking 10-12 −410.00</span></span></div><div class="pick sel"><span class="radio"></span> <span><span class="nm">Reserve Savings</span> <span class="meta">Kestrel Reserve 10-10 −410.00</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Rewards Card</span> <span class="meta">Pinecrest Rewards Card</span></span></div><p class="note">Only Budget Accounts that Slussen fetches can be the other side of a Transfer (UC-005 BR-014). Manually Kept Accounts, such as Cash Envelope, are not offered.</p><div class="sec-t">Keep this answer?</div><div class="pick sel"><span class="radio"></span> <span><span class="nm">Just this Transfer</span> <span class="meta">Home Card keeps no Funded By.</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Keep Reserve Savings as the Funded By of Pinecrest Home Card</span> <span class="meta">Used for later Card Payments.</span></span></div><a class="cta" href="#paired">Use Reserve Savings</a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="paired">
+<div class="step-label"><span class="n">UC-005 A3 3–4</span><p><b>Paired</b> with a Bank Transaction of the chosen Budget Account's Bank Account; the earlier proposal becomes ordinary.</p></div>
+<div class="phone">
+<div class="screen-title">Transfers</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="card teal"><span class="acct-h"><span class="chip teal">Card Payment</span> <span class="nm">Reserve Savings → Home Card</span> <span class="amt r">410.00</span></span><div class="note">Paired with Kestrel Reserve 2026-10-10 −410.00 (opposite amount, within the transfer pairing days, 5 by default, an Operator Setting). Transfer Decision: Budget Account Chosen. Guessed Transfer flag removed.</div></div><div class="txrow"><span class="d">10-12</span> <span class="p">Pinecrest Home Autopay <span class="why">Kestrel Checking: no longer part of this Transfer; an ordinary Bank Transaction</span></span> <span class="amt">−410.00</span><div class="stc"><span class="chip green">New</span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="partner">
 <div class="step-label"><span class="n">UC-005 A3 · Transfer Partner</span><p><b>For a Bank Account that is not a credit card</b>, the question is about the Transfer Partner.</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="transfers.html#selected">‹</a> Transfers</div>
+<div class="screen-title"><a class="back" href="transfers.html#list">‹</a> Transfers</div>
 <p class="screen-sub">Household</p>
 <div class="body">
-<div class="sheet blue"><div class="grab"></div><h4>Which Budget Account is the other side?</h4><p class="ctx">Bank Transfer · Kestrel Checking · 2026-10-11 · −500.00</p><div class="pick"><span class="radio"></span> <span><span class="nm">Reserve Savings</span> <span class="meta">current proposal · Transfer Partner</span></span></div><div class="pick sel"><span class="radio"></span> <span><span class="nm">Cash Envelope</span> <span class="meta">Manually Kept Account · not fetched</span></span></div><div class="sec-t">Keep this answer?</div><div class="pick sel"><span class="radio"></span> <span><span class="nm">Just this Transfer</span> <span class="meta">Transfer Partner of Kestrel Checking stays Reserve Savings.</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Keep Cash Envelope as the Transfer Partner of Kestrel Checking</span> <span class="meta">Used first when a Bank Transfer pairing is guessed.</span></span></div><a class="cta" href="#lonely-result">Use Cash Envelope</a></div>
+<div class="sheet blue"><div class="grab"></div><h4>Which Budget Account is the other side?</h4><p class="ctx">Bank Transfer · Kestrel Checking · 2026-10-11 · −500.00</p><div class="pick sel"><span class="radio"></span> <span><span class="nm">Reserve Savings</span> <span class="meta">current proposal · Kestrel Reserve 10-11 +500.00</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Rewards Card</span> <span class="meta">Pinecrest Rewards Card</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Home Card</span> <span class="meta">Pinecrest Home Card</span></span></div><p class="note">Only Budget Accounts that Slussen fetches can be the other side of a Transfer (UC-005 BR-014). Manually Kept Accounts, such as Cash Envelope, are not offered.</p><div class="sec-t">Keep this answer?</div><div class="pick"><span class="radio"></span> <span><span class="nm">Just this Transfer</span> <span class="meta">Kestrel Checking keeps no Transfer Partner.</span></span></div><div class="pick sel"><span class="radio"></span> <span><span class="nm">Keep Reserve Savings as the Transfer Partner of Kestrel Checking</span> <span class="meta">Used first when a Bank Transfer pairing is guessed.</span></span></div><a class="cta" href="transfers.html#list">Use Reserve Savings</a></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
-</div>
-</div>
-<div class="state" id="paired">
-<div class="step-label"><span class="n">UC-005 A3 3–4</span><p><b>Paired</b> with a Bank Transaction of the chosen Budget Account's Bank Account.</p></div>
-<div class="phone">
-<div class="screen-title">Transfers</div>
-<p class="screen-sub">Household</p>
-<div class="body">
-<div class="card teal"><span class="acct-h"><span class="chip teal">Card Payment</span> <span class="nm">Checking → Home Card</span> <span class="amt r">410.00</span></span><div class="note">Paired with Kestrel Checking 2026-10-12 −410.00 (opposite amount, within the transfer pairing days, 5 by default, an Operator Setting). Transfer Decision: Budget Account Chosen. Guessed Transfer flag removed.</div></div><div class="snack"><span>Funded By of Pinecrest Home Card set to Checking; recorded in the Decision Journal.</span> <b>OK</b></div>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
-</div>
-</div>
-<div class="state" id="lonely-result">
-<div class="step-label"><span class="n">UC-005 A3 3</span><p><b>No Bank Transaction to pair with</b>: the Transfer becomes a Lonely Transfer towards the chosen Budget Account.</p></div>
-<div class="phone">
-<div class="screen-title">Transfers</div>
-<p class="screen-sub">Household</p>
-<div class="body">
-<div class="card teal"><span class="acct-h"><span class="chip teal">Bank Transfer</span> <span class="chip grey">Lonely Transfer</span> <span class="nm">Checking → Cash Envelope</span> <span class="amt r">500.00</span></span><div class="note">No Bank Transaction to pair with: Cash Envelope is not fetched. A Lonely Transfer towards Cash Envelope, eligible for the next Upload Plan as a linked transfer. If it is not uploaded by 2026-10-17, it becomes an ordinary Bank Transaction (Lonely Transfer grace period, 6 days by default, an Operator Setting). Transfer Decision: Budget Account Chosen.</div></div>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 </div>

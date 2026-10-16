@@ -282,133 +282,139 @@
 </head>
 <body>
 <main>
-<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html" class="here">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a></nav>
+<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html" class="here">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a> <a href="icons.html">Icons</a></nav>
 <p class="eyebrow">Slussen · screen mockup · UC-008, UC-001, UC-002, UC-003, UC-006</p>
 <h1>Budget workspace</h1>
 <p class="sub">One tab per Budget. Everything shown comes from stored data until the Operator starts a Fetch, a Transaction File import or a read of the Budget App.</p>
 <section>
 <h2>Budget workspaces</h2>
-<p class="lede">Adopted from the predecessor: one Budget per bottom tab, a Sources card and one card per Bank Account, a single button that prepares the Upload Plan. Changed: the counts are Eligible Transactions and Bank Transactions waiting for a decision (UC-008 step 1), Source Health and Freshness are separate lines (UC-008 BR-003), and the button prepares an Upload Plan instead of uploading.</p>
+<p class="lede">Adopted from the predecessor: one Budget per bottom tab, a Sources card and one card per Bank Account, a single button that leads to the Upload Plan. Changed: the counts are Eligible Transactions and Bank Transactions waiting for a decision (UC-008 step 1), Source Health and Freshness are separate lines (UC-008 BR-003), every blocked Bank Account is listed with its Blocked Reason, and the button prepares an Upload Plan to review instead of uploading.</p>
 <div class="flow">
 <div class="state" id="household">
-<div class="step-label"><span class="n">UC-008 4–8</span><p><b>A Budget tab.</b> Only this Budget's Sources, Bank Accounts and counts. Each Source shows its Source Health with its time, separately its Freshness, and the number not yet uploaded. Each Bank Account shows its Account Balance next to its Budget Account's balance, the difference and both read times. <b>Prepare Upload Plan</b> starts UC-006; <b>Fetch</b> starts UC-001; <b>Read the Budget App again</b> starts UC-003.</p></div>
+<div class="step-label"><span class="n">UC-008 4–8</span><p><b>A Budget tab.</b> Only this Budget's Sources, Bank Accounts and counts. Each Source shows its Source Health with its time, separately its Freshness, and the number not yet uploaded. Each Bank Account shows its Account Balance next to its Budget Account's balance, the difference and both read times, or its Blocked Reason. <b>Review Upload Plan</b> prepares a new Upload Plan from the current data (UC-006); <b>Fetch</b> starts UC-001; <b>Read the Budget App again</b> starts UC-003.</p></div>
 <div class="phone">
 <div class="screen-title">Household</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
 <div class="body">
 
 <div class="card">
-  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 06:03</span></div>
-  <div class="bh"><span class="meta">Eligible 8 · waiting for a decision 6</span></div>
-  <a class="cta-btn big" href="upload-plan.html#awaiting">Prepare Upload Plan · Eligible 8</a>
+  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
+  <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
+  <a class="cta-btn big" href="upload-plan.html#awaiting">Review Upload Plan · Eligible 9</a>
 </div>
-<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 1</span> <span class="chip amber">waiting for a decision: 6</span></a>
+<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">waiting for a decision: 9</span></a>
 <div class="card">
-  <div class="src-h">Sources <a class="r" href="#budget-app-reading">Read the Budget App again</a></div>
+  <div class="src-h">Sources <a class="r" href="#budget-app-read">Read the Budget App again</a></div>
   <div class="src-row"><span class="dot"></span> <span class="nm">SimpleFIN</span> <span class="ok">Fetched</span> <span class="gran">Data Provider</span></div>
-  <div class="src-note">Source Health: Fetched 2026-10-15 06:01 · started by the Fetch Schedule</div>
-  <div class="src-note">Freshness: data as of 2026-10-15 06:01</div>
-  <div class="src-note">Not yet uploaded: Eligible 8 · waiting for a decision 6</div>
+  <div class="src-note">Source Health: Fetched 2026-10-15 13:20 · started by you</div>
+  <div class="src-note">Freshness: data as of 2026-10-15 13:20</div>
+  <div class="src-note">Not yet uploaded: Eligible 9 · waiting for a decision 9</div>
   <a class="btn" href="#fetch-states">Fetch</a>
 </div>
 <a class="card" href="bank-account.html#checking" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 4</span></span>
-  <span class="balrow">Bank <b>4,182.55</b> Budget App <b>4,140.05</b> Difference <b>+42.50</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 6</span></div>
+  <div class="balrow">Bank <b>5,135.28</b> Budget App <b>4,140.05</b> Difference <b>+995.23</b> <span>read 13:20 / 13:21</span></div>
 </a>
 <a class="card" href="bank-account.html#rewards" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></span>
-  <span class="balrow">Bank <b>−1,268.40</b> Budget App <b>−1,268.40</b> Difference <b>0.00</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></div>
+  <div class="balrow">Bank <b>−547.90</b> Budget App <b>−1,268.40</b> Difference <b>+720.50</b> <span>read 13:20 / 13:21</span></div>
 </a>
-<a class="card" href="bank-account.html#balances" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 1</span></span>
-  <span class="balrow">Bank <b>−910.12</b> Budget App <b>−500.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></span>
+<a class="card" href="bank-account.html#home-card" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 2</span></div>
+  <div class="balrow">Bank <b>−405.12</b> Budget App <b>−910.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></div>
 </a>
-<div class="card">
-  <span class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 1</span></span>
-  <span class="balrow">Bank <b>12,075.00</b> Budget App <b>12,000.00</b> Difference <b>+75.00</b> <span>read 06:01 / 06:03</span></span>
+<a class="card" href="bank-account.html#reserve" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 2</span></div>
+  <div class="balrow">Bank <b>12,165.00</b> Budget App <b>12,000.00</b> Difference <b>+165.00</b> <span>read 13:20 / 13:21</span></div>
+</a>
+<a class="card amber" href="bank-account.html#removed" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
+  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+</a>
 </div>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="summer-house">
-<div class="step-label"><span class="n">UC-008 8</span><p><b>Blocked Reasons with their remedies</b> (UC-008 BR-006, UC-001 A4, A10, A13). Missing Bank Consent: grant it. Unrecognised Bank Account: confirm or identify it. Access limit reached: the time it frees up. Currency mismatch: correct the Build Configuration. Expiring Bank Consent: renew it.</p></div>
+<div class="step-label"><span class="n">UC-008 8</span><p><b>Blocked Reasons with their remedies</b> (UC-008 BR-006, UC-001 A4, A10). Expired Bank Consent: renew it. Unrecognised Bank Account: confirm or identify it. Currency mismatch: correct the Build Configuration. Expiring Bank Consent: renew it.</p></div>
 <div class="phone">
 <div class="screen-title">Summer House</div>
 <p class="screen-sub">Budget · EUR · from stored data</p>
 <div class="body">
 
 <div class="card">
-  <div class="bh"><span class="nm">Summer House</span> <span class="chip grey">EUR</span> <span class="meta r">Budget App read 2026-10-15 07:13</span></div>
-  <div class="bh"><span class="meta">Eligible 2 · waiting for a decision 1</span></div>
-  <a class="cta-btn big" href="upload-plan.html#awaiting">Prepare Upload Plan · Eligible 2</a>
+  <div class="bh"><span class="nm">Summer House</span> <span class="chip grey">EUR</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
+  <div class="bh"><span class="meta">Eligible 2 · waiting for a decision 2</span></div>
+  <a class="cta-btn big" href="upload-plan.html#awaiting">Review Upload Plan · Eligible 2</a>
 </div>
 <div class="card">
-  <div class="src-h">Sources <a class="r" href="#budget-app-reading">Read the Budget App again</a></div>
-  <div class="src-row"><span class="dot amber"></span> <span class="nm">Enable Banking</span> <span class="warn">1 Bank without Bank Consent</span> <span class="gran">Bank Consent per Bank</span></div>
+  <div class="src-h">Sources <a class="r" href="#budget-app-read">Read the Budget App again</a></div>
+  <div class="src-row"><span class="dot amber"></span> <span class="nm">Enable Banking</span> <span class="warn">1 Bank with expired Bank Consent</span> <span class="gran">Bank Consent per Bank</span></div>
   <div class="src-note">Source Health: Fetched 2026-10-15 07:12 · started by you</div>
   <div class="src-note">Freshness: data as of 2026-10-15 07:12</div>
-  <div class="src-note">Not yet uploaded: Eligible 2 · waiting for a decision 1</div>
+  <div class="src-note">Not yet uploaded: Eligible 2 · waiting for a decision 2</div>
   <div class="src-note">Aurora Bank: Bank Consent valid until 2026-10-19 · <a href="consent.html#grant" style="color:var(--app-blue)">Renew</a></div>
-  <div class="src-note">Vesta Sparbank: <b>Blocked: missing Bank Consent</b> · <a href="consent.html#grant" style="color:var(--app-blue)">Grant Bank Consent</a></div>
+  <div class="src-note">Vesta Sparbank: <b>Blocked: Bank Consent expired 2026-10-11</b> · <a href="consent.html#grant" style="color:var(--app-blue)">Renew Bank Consent</a></div>
   <a class="btn" href="#fetch-states">Fetch</a>
 </div>
-<div class="card"><span class="acct-h"><span class="nm">▸ Aurora Current</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 2</span></span>
-  <span class="balrow">Bank <b>3,410.80</b> Budget App <b>3,402.30</b> Difference <b>+8.50</b> <span>read 07:12 / 07:13</span></span></div>
-<div class="card amber"><span class="acct-h"><span class="nm">▸ Aurora Savings</span> <span class="r dot amber"></span></span>
-  <span class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">waiting 1</span></span>
-  <span class="src-note">Blocked for Scheduled Fetches: access limit reached until 19:05. A Scheduled Fetch reads the transactions of a Bank Account at most 4 times and its balance at most 4 times in any 24 hours, the limit PSD2 sets (C-006); a Fetch you start is not limited.</span></div>
-<div class="card amber"><span class="acct-h"><span class="nm">▸ Vesta Card</span> <span class="r dot amber"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Blocked: missing Bank Consent</span></span>
-  <span class="src-note">Not fetched; stored data as of 2026-10-02 08:30 is kept.</span> <a class="btn primary" href="consent.html#grant">Grant Bank Consent</a></div>
-<div class="card amber"><span class="acct-h"><span class="nm">▸ Aurora Joint</span> <span class="r dot amber"></span></span>
-  <span class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: unrecognised Bank Account</span></span>
-  <span class="src-note">Enable Banking delivered a Bank Account Slussen can only propose as a likely match. Its transactions are not used until you confirm it.</span> <a class="btn primary" href="account-mappings.html#confirm">Confirm or identify</a></div>
-<a class="card red" href="bank-account.html#currency-mismatch" style="display:block"><span class="acct-h"><span class="nm">▸ Aurora Dollar</span> <span class="r dot red"></span></span>
-  <span class="tagrow"><span class="chip grey">Savings</span> <span class="chip red">Blocked: currency mismatch</span></span>
-  <span class="src-note">Bank Account in USD, Budget in EUR: blocked from Upload, balance difference hidden. Correct the Build Configuration.</span></a>
+<div class="card"><div class="acct-h"><span class="nm">▸ Aurora Current</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 2</span></div>
+  <div class="balrow">Bank <b>3,410.80</b> Budget App <b>3,402.30</b> Difference <b>+8.50</b> <span>read 07:12 / 13:21</span></div></div>
+<div class="card"><div class="acct-h"><span class="nm">▸ Aurora Savings</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">waiting 2</span></div>
+  <div class="balrow">Bank <b>8,260.00</b> Budget App <b>8,000.00</b> Difference <b>+260.00</b> <span>read 07:12 / 13:21</span></div></div>
+<div class="card amber"><div class="acct-h"><span class="nm">▸ Vesta Card</span> <span class="r dot amber"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Blocked: Bank Consent expired</span></div>
+  <div class="src-note">Not fetched since the Bank Consent of Vesta Sparbank expired on 2026-10-11; stored data as of 2026-10-02 08:30 is kept.</div><a class="btn primary" href="consent.html#grant">Renew Bank Consent</a></div>
+<div class="card amber"><div class="acct-h"><span class="nm">▸ Aurora Joint</span> <span class="r dot amber"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: unrecognised Bank Account</span></div>
+  <div class="src-note">Enable Banking delivered a Bank Account Slussen can only propose as a likely match. Its transactions are not used until you confirm it.</div><a class="btn primary" href="account-mappings.html#confirm">Confirm or identify</a></div>
+<a class="card red" href="bank-account.html#currency-mismatch" style="display:block"><div class="acct-h"><span class="nm">▸ Aurora Dollar</span> <span class="r dot red"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip red">Blocked: currency mismatch</span></div>
+  <div class="src-note">Bank Account in USD, Budget in EUR: blocked from Upload, balance difference hidden. Correct the Build Configuration.</div></a>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab on" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab on" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="care-fund">
-<div class="step-label"><span class="n">UC-002 1</span><p><b>A file-imported Bank Account.</b> Its Source Health is the last Transaction File import, its Freshness counts from that import, and its Account Balance comes from a Data Provider with its own time (UC-002 BR-005, BR-006).</p></div>
+<div class="step-label"><span class="n">UC-002 1 · UC-001 BR-011</span><p><b>A file-imported Bank Account.</b> Its Source Health is the last Transaction File import, its Freshness counts from that import, and its Account Balance comes from a Fetch of SimpleFIN, with its own time and Fetch button (UC-002 BR-005, BR-006).</p></div>
 <div class="phone">
 <div class="screen-title">Care Fund</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
 <div class="body">
 
 <div class="card">
-  <div class="bh"><span class="nm">Care Fund</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 06:03</span></div>
+  <div class="bh"><span class="nm">Care Fund</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
   <div class="bh"><span class="meta">Eligible 0 · waiting for a decision 1</span></div>
-  <a class="cta-btn big" href="#nothing-to-upload">Prepare Upload Plan</a>
+  <a class="cta-btn big" href="#nothing-to-upload">Review Upload Plan</a>
 </div>
 <div class="card">
-  <div class="src-h">Sources <a class="r" href="#budget-app-reading">Read the Budget App again</a></div>
-  <div class="src-row"><span class="dot"></span> <span class="nm">Transaction File</span> <span class="ok">Imported</span> <span class="gran">File Format: Harbor Trust statement</span></div>
+  <div class="src-h">Sources <a class="r" href="#budget-app-read">Read the Budget App again</a></div>
+  <div class="src-row"><span class="dot"></span> <span class="nm">Transaction File</span> <span class="ok">Imported</span> <span class="gran">File Format: Harbor Health Trust statement</span></div>
   <div class="src-note">Source Health: Imported 2026-10-12 09:14 · taken in: 18</div>
   <div class="src-note">Freshness: data as of the Transaction File imported 2026-10-12 09:14</div>
   <div class="src-note">Not yet uploaded: Eligible 0 · waiting for a decision 1</div>
   <a class="btn primary" href="import-file.html#choose">Import Transaction File</a>
   <div class="hair"></div>
   <div class="src-row"><span class="dot"></span> <span class="nm">SimpleFIN</span> <span class="ok">Fetched</span> <span class="gran">Account Balance only</span></div>
-  <div class="src-note">Account Balance of Harbor Health Savings reported 2026-10-15 06:01</div>
+  <div class="src-note">Source Health: Fetched 2026-10-15 13:20 · Account Balance of Harbor Health Savings</div>
+  <a class="btn" href="#fetch-states">Fetch</a>
 </div>
-<div class="card"><span class="acct-h"><span class="nm">▸ Harbor Health Savings</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Savings</span> <span class="chip grey">Transaction File</span> <span class="chip amber">waiting 1</span></span>
-  <span class="balrow">Bank <b>6,310.20</b> Budget App <b>6,285.20</b> Difference <b>+25.00</b> <span>read 06:01 / 06:03</span></span>
-  <span class="src-note">Uploads use the file upload window (60 days by default, an Operator Setting).</span></div>
+<div class="card"><div class="acct-h"><span class="nm">▸ Harbor Health Savings</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip grey">Transaction File</span> <span class="chip amber">waiting 1</span></div>
+  <div class="balrow">Bank <b>6,310.20</b> Budget App <b>6,324.20</b> Difference <b>−14.00</b> <span>read 13:20 / 13:21</span></div>
+  <div class="src-note">Uploads use the file upload window (60 days by default, an Operator Setting).</div></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab on" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab on" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 </div>
-</section><section id="fetch-states" class="state"><h2>Buttons that answer back</h2><p class="lede">Adopted from the predecessor: the pressed button carries its own state. Changed: the provider-wait state offers no retry that skips the wait (UC-001 BR-004), a Request Limit warning asks for confirmation instead of blocking (UC-001 BR-015), and reading the Budget App is its own action.</p><div class="gallery"><div class="st"><h4>Ready</h4><p>Pressing starts a Fetch of this Data Provider, with you present.</p><div class="stage"><span class="btn">Fetch</span></div></div><div class="st"><h4>Fetching</h4><p>This button's operation runs; the other actions wait.</p><div class="stage"><span class="btn busy"><span class="spin"></span> Fetching SimpleFIN…</span></div></div><div class="st"><h4>Waiting for the running operation</h4><p>One operation runs at a time (ADR-007); a request made meanwhile waits and can be withdrawn.</p><div class="stage"><span class="btn busy"><span class="spin"></span> Waits for: Read the Budget App</span> <span class="btn">Withdraw</span></div></div><div class="st"><h4>Fetched</h4><p>Confirmation in place; Source Health and Freshness update.</p><div class="stage"><span class="btn done">✓ Fetched 14:31</span></div></div><div class="st"><h4>Fetch Cooldown (UC-001 A2)</h4><p>A Fetch now is answered from the stored data of the last Fetch and recorded as Served From Fetch Cooldown. The Fetch Cooldown is 60 minutes by default, an Operator Setting; 0 switches it off.</p><div class="stage"><span class="btn cool">✓ Served from the Fetch of 13:20 · contacts SimpleFIN again from 14:20</span></div></div><div class="st"><h4>Waiting for the provider (UC-001 A1, A5)</h4><p>The Data Provider or a Bank asked Slussen to wait: the period it named, or the default wait (8 hours by default, an Operator Setting). No action ends it, so no retry button is offered.</p><div class="stage"><span class="btn warn">Waiting for the provider until 22:10</span></div></div><div class="st"><h4>Request Limit warning (UC-001 A15, A16)</h4><p>Scheduled Fetches pause; a Fetch you start first shows the warning and the risk, and needs your confirmation.</p><div class="stage"><a class="btn warn" href="#request-limit-warning">Request Limit warning · Fetch anyway…</a></div></div><div class="st"><h4>Request Limit reached (UC-001 A3)</h4><p>No request until the oldest counted one leaves the window. The Request Limit is set per Data Provider in the Build Configuration (24 by default), counted over the preceding 24 hours, the window of the Data Provider's own limit.</p><div class="stage"><span class="btn blocked">Request Limit reached · frees up from 21:14</span></div></div><div class="st"><h4>Failed (UC-001 A6)</h4><p>A timeout, an outage or an unreadable answer starts no Back-off; you can fetch again at any time.</p><div class="stage"><span class="btn danger">Failed 14:05 · no answer</span> <span class="btn">Fetch again</span></div></div><div class="st"><h4>Configuration error (UC-001 A7)</h4><p>The Data Provider refused Slussen's service credentials.</p><div class="stage"><span class="btn danger">configuration error · correct the Build Configuration</span></div></div><div class="st"><h4>Missing Bank Consent (UC-001 A4)</h4><p>The Bank is not contacted; the action grants the Bank Consent.</p><div class="stage"><a class="btn primary" href="consent.html#grant">Grant Bank Consent</a></div></div><div class="st"><h4>Paused (UC-006 BR-005)</h4><p>An Upload Plan awaits confirmation; a Scheduled Fetch that falls due starts when the pause ends.</p><div class="stage"><span class="btn blocked">Fetch · paused while the Upload Plan awaits confirmation</span></div></div><div class="st"><h4>Reading the Budget App (UC-003)</h4><p>Reads the Budget App only and gives every Bank Transaction its Transaction Status again; no Bank is contacted.</p><div class="stage"><span class="btn busy"><span class="spin"></span> Reading the Budget App…</span></div></div></div></section><section>
+</section><section id="fetch-states" class="state"><h2>Buttons that answer back</h2><p class="lede">Adopted from the predecessor: the pressed button carries its own state. Changed: the provider-wait state offers no retry that skips the wait (UC-001 BR-004), a Request Limit warning asks for confirmation instead of blocking (UC-001 BR-015), and reading the Budget App is its own action.</p><div class="gallery"><div class="st"><h4>Ready</h4><p>Pressing starts a Fetch of this Data Provider, with you present.</p><div class="stage"><span class="btn">Fetch</span></div></div><div class="st"><h4>Fetching</h4><p>This button's operation runs; the other actions wait.</p><div class="stage"><span class="btn busy"><span class="spin"></span> Fetching SimpleFIN…</span></div></div><div class="st"><h4>Waiting for the running operation</h4><p>One operation runs at a time (ADR-007); a request made meanwhile waits for it.</p><div class="stage"><span class="btn busy"><span class="spin"></span> Waits for: Read the Budget App</span></div></div><div class="st"><h4>Fetched</h4><p>Confirmation in place; Source Health and Freshness update.</p><div class="stage"><span class="btn done">✓ Fetched 13:20</span></div></div><div class="st"><h4>Fetch Cooldown (UC-001 A2)</h4><p>A Fetch now is answered from the stored data of the last Fetch and recorded as Served From Fetch Cooldown. The Fetch Cooldown is 60 minutes by default, an Operator Setting; 0 switches it off.</p><div class="stage"><span class="btn cool">✓ Served from the Fetch of 13:20 · contacts SimpleFIN again from 14:20</span></div></div><div class="st"><h4>Waiting for the provider (UC-001 A1, A5)</h4><p>The Data Provider or a Bank asked Slussen to wait: the period it named, or the default wait (8 hours by default, an Operator Setting). No action ends it, so no retry button is offered.</p><div class="stage"><span class="btn warn">Waiting for the provider until 22:10</span></div></div><div class="st"><h4>Request Limit warning (UC-001 A15, A16)</h4><p>Scheduled Fetches pause; a Fetch you start first shows the warning and the risk, and needs your confirmation.</p><div class="stage"><a class="btn warn" href="#request-limit-warning">Request Limit warning · Fetch anyway…</a></div></div><div class="st"><h4>Request Limit reached (UC-001 A3)</h4><p>No request until the oldest counted one leaves the window. The Request Limit is set per Data Provider in the Build Configuration (24 by default), counted over the preceding 24 hours, the window of the Data Provider's own limit.</p><div class="stage"><span class="btn blocked">Request Limit reached · frees up from 21:14</span></div></div><div class="st"><h4>Failed (UC-001 A6)</h4><p>A timeout, an outage or an unreadable answer starts no Back-off; you can fetch again at any time.</p><div class="stage"><span class="btn danger">Failed 14:05 · no answer</span> <span class="btn">Fetch again</span></div></div><div class="st"><h4>Configuration error (UC-001 A7)</h4><p>The Data Provider refused Slussen's service credentials.</p><div class="stage"><span class="btn danger">configuration error · correct the Build Configuration</span></div></div><div class="st"><h4>Missing or expired Bank Consent (UC-001 A4)</h4><p>The Bank is not contacted; the action grants or renews the Bank Consent.</p><div class="stage"><a class="btn primary" href="consent.html#grant">Renew Bank Consent</a></div></div><div class="st"><h4>Reading the Budget App (UC-003)</h4><p>Reads the Budget App only and gives every Bank Transaction its Transaction Status again; no Bank is contacted.</p><div class="stage"><span class="btn busy"><span class="spin"></span> Reading the Budget App…</span></div></div></div></section><section>
 <h2>Fetch outcomes and Blocked Reasons</h2>
 <p class="lede">What a Budget shows when a Fetch or a read of the Budget App does not go as planned.</p>
 <div class="flow">
@@ -428,52 +434,106 @@
 <p><b>Further requests can get Slussen's access to Enable Banking disabled.</b></p>
 <div class="actions"><span class="c">Cancel</span> <span class="x">Fetch</span></div></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab on" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab on" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="fetch-failed">
-<div class="step-label"><span class="n">UC-001 A6, A14</span><p><b>The Data Provider did not answer usably.</b> Stored data stays; Source Health shows the failure with its time, Freshness still shows the age of the data; no Back-off starts. After a failed Scheduled Fetch, the next contact is the next Scheduled Fetch or a Fetch you start.</p></div>
+<div class="step-label"><span class="n">UC-001 A6</span><p><b>A Fetch you started got no usable answer.</b> Stored data stays; Source Health shows the failure with its time, Freshness still shows the age of the data; no Back-off starts.</p></div>
 <div class="phone">
 <div class="screen-title">Household</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
 <div class="body">
 
 <div class="card">
-  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 06:03</span></div>
-  <div class="bh"><span class="meta">Eligible 8 · waiting for a decision 6</span></div>
-  <a class="cta-btn big" href="upload-plan.html#awaiting">Prepare Upload Plan · Eligible 8</a>
+  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
+  <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
+  <a class="cta-btn big" href="upload-plan.html#awaiting">Review Upload Plan · Eligible 9</a>
 </div>
-<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 1</span> <span class="chip amber">waiting for a decision: 6</span></a>
+<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">waiting for a decision: 9</span></a>
 <div class="card red">
-  <div class="src-h">Sources <a class="r" href="#budget-app-reading">Read the Budget App again</a></div>
+  <div class="src-h">Sources <a class="r" href="#budget-app-read">Read the Budget App again</a></div>
   <div class="src-row"><span class="dot red"></span> <span class="nm">SimpleFIN</span> <span class="bad">Failed</span> <span class="gran">Data Provider</span></div>
   <div class="src-note">Source Health: Failed 2026-10-15 14:05 · no answer within the request timeout (30 seconds by default, an Operator Setting) · started by you</div>
-  <div class="src-note">Freshness: data as of 2026-10-15 06:01 (kept unchanged)</div>
-  <div class="src-note">Not yet uploaded: Eligible 8 · waiting for a decision 6</div>
+  <div class="src-note">Freshness: data as of 2026-10-15 13:20 (kept unchanged)</div>
+  <div class="src-note">Not yet uploaded: Eligible 9 · waiting for a decision 9</div>
   <span class="btn">Fetch again</span>
 </div>
 <a class="card" href="bank-account.html#checking" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 4</span></span>
-  <span class="balrow">Bank <b>4,182.55</b> Budget App <b>4,140.05</b> Difference <b>+42.50</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 6</span></div>
+  <div class="balrow">Bank <b>5,135.28</b> Budget App <b>4,140.05</b> Difference <b>+995.23</b> <span>read 13:20 / 13:21</span></div>
 </a>
 <a class="card" href="bank-account.html#rewards" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></span>
-  <span class="balrow">Bank <b>−1,268.40</b> Budget App <b>−1,268.40</b> Difference <b>0.00</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></div>
+  <div class="balrow">Bank <b>−547.90</b> Budget App <b>−1,268.40</b> Difference <b>+720.50</b> <span>read 13:20 / 13:21</span></div>
 </a>
-<a class="card" href="bank-account.html#balances" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 1</span></span>
-  <span class="balrow">Bank <b>−910.12</b> Budget App <b>−500.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></span>
+<a class="card" href="bank-account.html#home-card" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 2</span></div>
+  <div class="balrow">Bank <b>−405.12</b> Budget App <b>−910.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></div>
 </a>
+<a class="card" href="bank-account.html#reserve" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 2</span></div>
+  <div class="balrow">Bank <b>12,165.00</b> Budget App <b>12,000.00</b> Difference <b>+165.00</b> <span>read 13:20 / 13:21</span></div>
+</a>
+<a class="card amber" href="bank-account.html#removed" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
+  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+</a>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="fetch-failed-scheduled">
+<div class="step-label"><span class="n">UC-001 A14</span><p><b>A Scheduled Fetch met a transient failure</b> (seen when the Operator opens the app the next morning).</p></div>
+<div class="phone">
+<div class="screen-title">Household</div>
+<p class="screen-sub">Budget · USD · seen 2026-10-14 21:40</p>
+<div class="body">
+
 <div class="card">
-  <span class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 1</span></span>
-  <span class="balrow">Bank <b>12,075.00</b> Budget App <b>12,000.00</b> Difference <b>+75.00</b> <span>read 06:01 / 06:03</span></span>
+  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
+  <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
+  <a class="cta-btn big" href="upload-plan.html#awaiting">Review Upload Plan · Eligible 9</a>
 </div>
+<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">waiting for a decision: 9</span></a>
+<div class="card red">
+  <div class="src-row"><span class="dot red"></span> <span class="nm">SimpleFIN</span> <span class="bad">Failed</span> <span class="gran">Data Provider</span></div>
+  <div class="src-note">Source Health: Failed 2026-10-14 18:00 · unavailable · started by the Fetch Schedule</div>
+  <div class="src-note">Freshness: data as of 2026-10-14 06:01 (kept unchanged)</div>
+  <div class="src-note">The Scheduled Fetch is not repeated. SimpleFIN is next contacted by the next Scheduled Fetch, 2026-10-15 06:00, or when you fetch.</div>
+  <span class="btn">Fetch</span>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<a class="card" href="bank-account.html#checking" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 6</span></div>
+  <div class="balrow">Bank <b>5,135.28</b> Budget App <b>4,140.05</b> Difference <b>+995.23</b> <span>read 13:20 / 13:21</span></div>
+</a>
+<a class="card" href="bank-account.html#rewards" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></div>
+  <div class="balrow">Bank <b>−547.90</b> Budget App <b>−1,268.40</b> Difference <b>+720.50</b> <span>read 13:20 / 13:21</span></div>
+</a>
+<a class="card" href="bank-account.html#home-card" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 2</span></div>
+  <div class="balrow">Bank <b>−405.12</b> Budget App <b>−910.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></div>
+</a>
+<a class="card" href="bank-account.html#reserve" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 2</span></div>
+  <div class="balrow">Bank <b>12,165.00</b> Budget App <b>12,000.00</b> Difference <b>+165.00</b> <span>read 13:20 / 13:21</span></div>
+</a>
+<a class="card amber" href="bank-account.html#removed" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
+  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+</a>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="one-failed">
@@ -484,20 +544,20 @@
 <div class="body">
 
 <div class="card">
-  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 06:03</span></div>
-  <div class="bh"><span class="meta">Eligible 8 · waiting for a decision 6</span></div>
-  <a class="cta-btn big" href="upload-plan.html#awaiting">Prepare Upload Plan · Eligible 8</a>
+  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
+  <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
+  <a class="cta-btn big" href="upload-plan.html#awaiting">Review Upload Plan · Eligible 9</a>
 </div>
-<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 1</span> <span class="chip amber">waiting for a decision: 6</span></a>
+<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">waiting for a decision: 9</span></a>
 <div class="card"><div class="src-row"><span class="dot amber"></span> <span class="nm">SimpleFIN</span> <span class="warn">Fetched, 1 Bank Account failed</span></div>
-<div class="src-note">Source Health: Fetched 2026-10-15 14:20 · started by you</div><span class="btn done">✓ Fetched 14:20</span></div>
-<div class="card red"><span class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot red"></span></span>
-  <span class="tagrow"><span class="chip grey">Savings</span> <span class="chip red">Blocked: Fetch failed</span></span>
-  <span class="src-note">Failed 2026-10-15 14:20: SimpleFIN reported a failure for this Bank Account. Its stored data as of 06:01 is kept.</span> <span class="btn">Fetch again</span></div>
-<div class="card"><span class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 4</span></span></div>
+<div class="src-note">Source Health: Fetched 2026-10-15 13:20 · started by you</div><span class="btn done">✓ Fetched 13:20</span></div>
+<div class="card red"><div class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot red"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip red">Blocked: Fetch failed</span></div>
+  <div class="src-note">Failed 2026-10-15 13:20: SimpleFIN reported a failure for this Bank Account. Its stored data as of 06:01 is kept.</div><span class="btn">Fetch again</span></div>
+<div class="card"><div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 6</span></div></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="provider-wait">
@@ -514,7 +574,7 @@
   <span class="btn warn">Waiting for the provider until 22:10</span>
 </div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab on" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab on" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="config-error">
@@ -525,35 +585,40 @@
 <div class="body">
 
 <div class="card">
-  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 06:03</span></div>
-  <div class="bh"><span class="meta">Eligible 8 · waiting for a decision 6</span></div>
-  <a class="cta-btn big" href="upload-plan.html#awaiting">Prepare Upload Plan · Eligible 8</a>
+  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
+  <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
+  <a class="cta-btn big" href="upload-plan.html#awaiting">Review Upload Plan · Eligible 9</a>
 </div>
-<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 1</span> <span class="chip amber">waiting for a decision: 6</span></a>
+<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">waiting for a decision: 9</span></a>
 <div class="card red"><div class="src-row"><span class="dot red"></span> <span class="nm">SimpleFIN</span> <span class="bad">configuration error</span></div>
 <div class="src-note">SimpleFIN refused Slussen's service credentials at 14:05. Blocked: configuration error. Remedy: correct the Build Configuration and build again (UC-012).</div></div>
 <a class="card" href="bank-account.html#checking" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 4</span></span>
-  <span class="balrow">Bank <b>4,182.55</b> Budget App <b>4,140.05</b> Difference <b>+42.50</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 6</span></div>
+  <div class="balrow">Bank <b>5,135.28</b> Budget App <b>4,140.05</b> Difference <b>+995.23</b> <span>read 13:20 / 13:21</span></div>
 </a>
 <a class="card" href="bank-account.html#rewards" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></span>
-  <span class="balrow">Bank <b>−1,268.40</b> Budget App <b>−1,268.40</b> Difference <b>0.00</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></div>
+  <div class="balrow">Bank <b>−547.90</b> Budget App <b>−1,268.40</b> Difference <b>+720.50</b> <span>read 13:20 / 13:21</span></div>
 </a>
-<a class="card" href="bank-account.html#balances" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 1</span></span>
-  <span class="balrow">Bank <b>−910.12</b> Budget App <b>−500.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></span>
+<a class="card" href="bank-account.html#home-card" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 2</span></div>
+  <div class="balrow">Bank <b>−405.12</b> Budget App <b>−910.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></div>
 </a>
-<div class="card">
-  <span class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 1</span></span>
-  <span class="balrow">Bank <b>12,075.00</b> Budget App <b>12,000.00</b> Difference <b>+75.00</b> <span>read 06:01 / 06:03</span></span>
+<a class="card" href="bank-account.html#reserve" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 2</span></div>
+  <div class="balrow">Bank <b>12,165.00</b> Budget App <b>12,000.00</b> Difference <b>+165.00</b> <span>read 13:20 / 13:21</span></div>
+</a>
+<a class="card amber" href="bank-account.html#removed" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
+  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+</a>
 </div>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="budget-app-read">
@@ -562,43 +627,48 @@
 <div class="screen-title">Household</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
 <div class="body">
-<div class="banner blue" id="budget-app-reading"><span class="txt"><b>Reading the Budget App…</b> <span class="d">Slussen reads Household from the Budget App and gives every Bank Transaction its Transaction Status again. No Bank is contacted.</span></span></div>
+<div class="banner blue"><span class="txt"><b>Reading the Budget App…</b> <span class="d">Slussen reads every Budget with a mapped Bank Account from the Budget App and gives every Bank Transaction its Transaction Status again. No Bank is contacted.</span></span></div>
 <div class="card">
-  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 06:03</span></div>
-  <div class="bh"><span class="meta">Eligible 8 · waiting for a decision 6</span></div>
-  <span class="cta-btn big dim">Prepare Upload Plan · waits for the read</span>
+  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
+  <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
+  <span class="cta-btn big dim">Review Upload Plan · waits for the read</span>
 </div>
-<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 1</span> <span class="chip amber">waiting for a decision: 6</span></a>
+<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">waiting for a decision: 9</span></a>
 <div class="card">
-  <div class="src-h">Sources <a class="r" href="#budget-app-reading">Read the Budget App again</a></div>
+  <div class="src-h">Sources <a class="r" href="#budget-app-read">Read the Budget App again</a></div>
   <div class="src-row"><span class="dot"></span> <span class="nm">SimpleFIN</span> <span class="ok">Fetched</span> <span class="gran">Data Provider</span></div>
-  <div class="src-note">Source Health: Fetched 2026-10-15 06:01 · started by the Fetch Schedule</div>
-  <div class="src-note">Freshness: data as of 2026-10-15 06:01</div>
-  <div class="src-note">Not yet uploaded: Eligible 8 · waiting for a decision 6</div>
+  <div class="src-note">Source Health: Fetched 2026-10-15 13:20 · started by you</div>
+  <div class="src-note">Freshness: data as of 2026-10-15 13:20</div>
+  <div class="src-note">Not yet uploaded: Eligible 9 · waiting for a decision 9</div>
   <a class="btn" href="#fetch-states">Fetch</a>
 </div>
 <a class="card" href="bank-account.html#checking" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 4</span></span>
-  <span class="balrow">Bank <b>4,182.55</b> Budget App <b>4,140.05</b> Difference <b>+42.50</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 6</span></div>
+  <div class="balrow">Bank <b>5,135.28</b> Budget App <b>4,140.05</b> Difference <b>+995.23</b> <span>read 13:20 / 13:21</span></div>
 </a>
 <a class="card" href="bank-account.html#rewards" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></span>
-  <span class="balrow">Bank <b>−1,268.40</b> Budget App <b>−1,268.40</b> Difference <b>0.00</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></div>
+  <div class="balrow">Bank <b>−547.90</b> Budget App <b>−1,268.40</b> Difference <b>+720.50</b> <span>read 13:20 / 13:21</span></div>
 </a>
-<a class="card" href="bank-account.html#balances" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 1</span></span>
-  <span class="balrow">Bank <b>−910.12</b> Budget App <b>−500.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></span>
+<a class="card" href="bank-account.html#home-card" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 2</span></div>
+  <div class="balrow">Bank <b>−405.12</b> Budget App <b>−910.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></div>
 </a>
-<div class="card">
-  <span class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 1</span></span>
-  <span class="balrow">Bank <b>12,075.00</b> Budget App <b>12,000.00</b> Difference <b>+75.00</b> <span>read 06:01 / 06:03</span></span>
+<a class="card" href="bank-account.html#reserve" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 2</span></div>
+  <div class="balrow">Bank <b>12,165.00</b> Budget App <b>12,000.00</b> Difference <b>+165.00</b> <span>read 13:20 / 13:21</span></div>
+</a>
+<a class="card amber" href="bank-account.html#removed" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
+  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+</a>
 </div>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="budget-app-unreadable">
@@ -607,43 +677,48 @@
 <div class="screen-title">Household</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
 <div class="body">
-<div class="banner"><span class="txt"><b>The Budget App could not be read at 14:30</b> <span class="d">The Transaction Statuses below come from the last successful read, 2026-10-15 06:03.</span></span></div>
+<div class="banner"><span class="txt"><b>The Budget App could not be read at 14:30</b> <span class="d">The Transaction Statuses below come from the last successful read, 2026-10-15 13:21.</span></span></div>
 <div class="card">
-  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 06:03</span></div>
-  <div class="bh"><span class="meta">Eligible 8 · waiting for a decision 6</span></div>
-  <a class="cta-btn big" href="upload-plan.html#awaiting">Prepare Upload Plan · Eligible 8</a>
+  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
+  <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
+  <a class="cta-btn big" href="upload-plan.html#awaiting">Review Upload Plan · Eligible 9</a>
 </div>
-<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 1</span> <span class="chip amber">waiting for a decision: 6</span></a>
+<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">waiting for a decision: 9</span></a>
 <div class="card">
-  <div class="src-h">Sources <a class="r" href="#budget-app-reading">Read the Budget App again</a></div>
+  <div class="src-h">Sources <a class="r" href="#budget-app-read">Read the Budget App again</a></div>
   <div class="src-row"><span class="dot"></span> <span class="nm">SimpleFIN</span> <span class="ok">Fetched</span> <span class="gran">Data Provider</span></div>
-  <div class="src-note">Source Health: Fetched 2026-10-15 06:01 · started by the Fetch Schedule</div>
-  <div class="src-note">Freshness: data as of 2026-10-15 06:01</div>
-  <div class="src-note">Not yet uploaded: Eligible 8 · waiting for a decision 6</div>
+  <div class="src-note">Source Health: Fetched 2026-10-15 13:20 · started by you</div>
+  <div class="src-note">Freshness: data as of 2026-10-15 13:20</div>
+  <div class="src-note">Not yet uploaded: Eligible 9 · waiting for a decision 9</div>
   <a class="btn" href="#fetch-states">Fetch</a>
 </div>
 <a class="card" href="bank-account.html#checking" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 4</span></span>
-  <span class="balrow">Bank <b>4,182.55</b> Budget App <b>4,140.05</b> Difference <b>+42.50</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 6</span></div>
+  <div class="balrow">Bank <b>5,135.28</b> Budget App <b>4,140.05</b> Difference <b>+995.23</b> <span>read 13:20 / 13:21</span></div>
 </a>
 <a class="card" href="bank-account.html#rewards" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></span>
-  <span class="balrow">Bank <b>−1,268.40</b> Budget App <b>−1,268.40</b> Difference <b>0.00</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></div>
+  <div class="balrow">Bank <b>−547.90</b> Budget App <b>−1,268.40</b> Difference <b>+720.50</b> <span>read 13:20 / 13:21</span></div>
 </a>
-<a class="card" href="bank-account.html#balances" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 1</span></span>
-  <span class="balrow">Bank <b>−910.12</b> Budget App <b>−500.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></span>
+<a class="card" href="bank-account.html#home-card" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 2</span></div>
+  <div class="balrow">Bank <b>−405.12</b> Budget App <b>−910.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></div>
 </a>
-<div class="card">
-  <span class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 1</span></span>
-  <span class="balrow">Bank <b>12,075.00</b> Budget App <b>12,000.00</b> Difference <b>+75.00</b> <span>read 06:01 / 06:03</span></span>
+<a class="card" href="bank-account.html#reserve" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 2</span></div>
+  <div class="balrow">Bank <b>12,165.00</b> Budget App <b>12,000.00</b> Difference <b>+165.00</b> <span>read 13:20 / 13:21</span></div>
+</a>
+<a class="card amber" href="bank-account.html#removed" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
+  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+</a>
 </div>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="budget-app-config">
@@ -652,48 +727,53 @@
 <div class="screen-title">Household</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
 <div class="body">
-<div class="banner red"><span class="txt"><b>configuration error: the Budget App refused Slussen's credentials</b> <span class="d">Remedy: correct the Build Configuration (UC-012). Statuses from the last successful read, 2026-10-15 06:03.</span></span></div>
+<div class="banner red"><span class="txt"><b>configuration error: the Budget App refused Slussen's credentials</b> <span class="d">Remedy: correct the Build Configuration (UC-012). Statuses from the last successful read, 2026-10-15 13:21.</span></span></div>
 <div class="card">
-  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 06:03</span></div>
-  <div class="bh"><span class="meta">Eligible 8 · waiting for a decision 6</span></div>
-  <a class="cta-btn big" href="upload-plan.html#awaiting">Prepare Upload Plan · Eligible 8</a>
+  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
+  <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
+  <a class="cta-btn big" href="upload-plan.html#awaiting">Review Upload Plan · Eligible 9</a>
 </div>
-<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 1</span> <span class="chip amber">waiting for a decision: 6</span></a>
+<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">waiting for a decision: 9</span></a>
 <div class="card">
-  <div class="src-h">Sources <a class="r" href="#budget-app-reading">Read the Budget App again</a></div>
+  <div class="src-h">Sources <a class="r" href="#budget-app-read">Read the Budget App again</a></div>
   <div class="src-row"><span class="dot"></span> <span class="nm">SimpleFIN</span> <span class="ok">Fetched</span> <span class="gran">Data Provider</span></div>
-  <div class="src-note">Source Health: Fetched 2026-10-15 06:01 · started by the Fetch Schedule</div>
-  <div class="src-note">Freshness: data as of 2026-10-15 06:01</div>
-  <div class="src-note">Not yet uploaded: Eligible 8 · waiting for a decision 6</div>
+  <div class="src-note">Source Health: Fetched 2026-10-15 13:20 · started by you</div>
+  <div class="src-note">Freshness: data as of 2026-10-15 13:20</div>
+  <div class="src-note">Not yet uploaded: Eligible 9 · waiting for a decision 9</div>
   <a class="btn" href="#fetch-states">Fetch</a>
 </div>
 <a class="card" href="bank-account.html#checking" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 4</span></span>
-  <span class="balrow">Bank <b>4,182.55</b> Budget App <b>4,140.05</b> Difference <b>+42.50</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 6</span></div>
+  <div class="balrow">Bank <b>5,135.28</b> Budget App <b>4,140.05</b> Difference <b>+995.23</b> <span>read 13:20 / 13:21</span></div>
 </a>
 <a class="card" href="bank-account.html#rewards" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></span>
-  <span class="balrow">Bank <b>−1,268.40</b> Budget App <b>−1,268.40</b> Difference <b>0.00</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></div>
+  <div class="balrow">Bank <b>−547.90</b> Budget App <b>−1,268.40</b> Difference <b>+720.50</b> <span>read 13:20 / 13:21</span></div>
 </a>
-<a class="card" href="bank-account.html#balances" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 1</span></span>
-  <span class="balrow">Bank <b>−910.12</b> Budget App <b>−500.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></span>
+<a class="card" href="bank-account.html#home-card" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 2</span></div>
+  <div class="balrow">Bank <b>−405.12</b> Budget App <b>−910.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></div>
 </a>
-<div class="card">
-  <span class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 1</span></span>
-  <span class="balrow">Bank <b>12,075.00</b> Budget App <b>12,000.00</b> Difference <b>+75.00</b> <span>read 06:01 / 06:03</span></span>
+<a class="card" href="bank-account.html#reserve" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 2</span></div>
+  <div class="balrow">Bank <b>12,165.00</b> Budget App <b>12,000.00</b> Difference <b>+165.00</b> <span>read 13:20 / 13:21</span></div>
+</a>
+<a class="card amber" href="bank-account.html#removed" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
+  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+</a>
 </div>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 </div>
 </section><section>
-<h2>Empty, nothing to upload, paused, blocked</h2>
+<h2>Empty, nothing to upload, blocked</h2>
 <p class="lede"></p>
 <div class="flow">
 <div class="state" id="empty">
@@ -704,17 +784,17 @@
 <div class="body">
 <div class="card"><div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span></div>
 <div class="bh"><span class="meta">No Bank Transactions yet. Start a Fetch to bring them in.</span></div>
-<a class="cta-btn big dim" href="#recovery-blocked">Prepare Upload Plan · Recovery Check open</a></div>
+<a class="cta-btn big dim" href="#recovery-blocked">Review Upload Plan · Recovery Check open</a></div>
 <div class="card">
   <div class="src-h">Sources</div>
   <div class="src-row"><span class="dot grey"></span> <span class="nm">SimpleFIN</span> <span class="gran">Data Provider</span></div>
   <div class="src-note">Source Health: never fetched</div><div class="src-note">Freshness: no data yet</div>
   <a class="btn primary" href="#fetch-states">Fetch</a>
 </div>
-<div class="card"><span class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot grey"></span></span>
-<span class="balrow">Account Balance not known · Budget Account balance not known · no difference shown</span></div>
-<div class="card"><span class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot grey"></span></span>
-<span class="balrow">Account Balance not known · Budget Account balance not known · no difference shown</span></div>
+<div class="card"><div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot grey"></span></div>
+<div class="balrow">Account Balance not known · Budget Account balance not known · no difference shown</div></div>
+<div class="card"><div class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot grey"></span></div>
+<div class="balrow">Account Balance not known · Budget Account balance not known · no difference shown</div></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
@@ -729,94 +809,57 @@
 <div class="bh"><span class="meta">Eligible 0 · waiting for a decision 1</span></div></div>
 <div class="banner grey"><span class="txt"><b>Nothing to upload</b> <span class="d">Care Fund has no Eligible Transaction and no Transfer Counterpart to mark Cleared. No Upload Plan was prepared. The Bank Transaction waiting for your decision is not part of any Upload Plan until you decide.</span></span></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab on" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
-</div>
-</div>
-<div class="state" id="paused">
-<div class="step-label"><span class="n">UC-006 BR-005</span><p><b>Other work paused</b> while an Upload Plan awaits confirmation.</p></div>
-<div class="phone">
-<div class="screen-title">Household</div>
-<p class="screen-sub">Budget · USD · from stored data</p>
-<div class="body">
-<a class="banner blue" href="upload-plan.html#awaiting"><span class="txt"><b>Upload Plan awaits your confirmation · expires 14:42</b> <span class="d">Fetching, reading the Budget App, Transaction File imports, Bank Consents, Account Mappings and Operator Settings wait until it is confirmed, cancelled or expires. Review Decisions and Transfer Decisions stay available and replace the plan.</span></span> <span class="cta-btn">Review</span></a>
-<div class="card">
-  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 06:03</span></div>
-  <div class="bh"><span class="meta">Eligible 8 · waiting for a decision 6</span></div>
-  <a class="cta-btn big" href="upload-plan.html#awaiting">Review the Upload Plan awaiting confirmation</a>
-</div>
-<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 1</span> <span class="chip amber">waiting for a decision: 6</span></a>
-<div class="card">
-  <div class="src-h">Sources <span class="r" style="color:var(--app-text3)">Read the Budget App again · paused</span></div>
-  <div class="src-row"><span class="dot"></span> <span class="nm">SimpleFIN</span> <span class="ok">Fetched</span></div>
-  <div class="src-note">Source Health: Fetched 2026-10-15 06:01 · started by the Fetch Schedule</div>
-  <span class="btn blocked">Fetch · paused</span></div>
-<a class="card" href="bank-account.html#checking" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 4</span></span>
-  <span class="balrow">Bank <b>4,182.55</b> Budget App <b>4,140.05</b> Difference <b>+42.50</b> <span>read 06:01 / 06:03</span></span>
-</a>
-<a class="card" href="bank-account.html#rewards" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></span>
-  <span class="balrow">Bank <b>−1,268.40</b> Budget App <b>−1,268.40</b> Difference <b>0.00</b> <span>read 06:01 / 06:03</span></span>
-</a>
-<a class="card" href="bank-account.html#balances" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 1</span></span>
-  <span class="balrow">Bank <b>−910.12</b> Budget App <b>−500.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></span>
-</a>
-<div class="card">
-  <span class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 1</span></span>
-  <span class="balrow">Bank <b>12,075.00</b> Budget App <b>12,000.00</b> Difference <b>+75.00</b> <span>read 06:01 / 06:03</span></span>
-</div>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab on" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="recovery-blocked">
-<div class="step-label"><span class="n">UC-006 A13</span><p><b>Prepare Upload Plan while a Recovery Check is open.</b></p></div>
+<div class="step-label"><span class="n">UC-006 A13</span><p><b>Review Upload Plan while a Recovery Check is open.</b></p></div>
 <div class="phone">
 <div class="screen-title">Household</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
 <div class="body">
 <div class="banner red"><span class="txt"><b>No Upload Plan prepared: Recovery Check open</b> <span class="d">Slussen started from data that may lack what it last recorded. Transactions sent after that data was saved are protected against a duplicate only by the Budget App's refusal of a reused Import Identifier and by the Comparison.</span></span> <a class="cta-btn" href="recovery-check.html#open">Recovery Check</a></div>
 <div class="card">
-  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 06:03</span></div>
-  <div class="bh"><span class="meta">Eligible 8 · waiting for a decision 6</span></div>
-  <span class="cta-btn big dim">Prepare Upload Plan · Recovery Check open</span>
+  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">Budget App read 2026-10-15 13:21</span></div>
+  <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
+  <span class="cta-btn big dim">Review Upload Plan · Recovery Check open</span>
 </div>
-<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 1</span> <span class="chip amber">waiting for a decision: 6</span></a>
+<a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">waiting for a decision: 9</span></a>
 <div class="card">
-  <div class="src-h">Sources <a class="r" href="#budget-app-reading">Read the Budget App again</a></div>
+  <div class="src-h">Sources <a class="r" href="#budget-app-read">Read the Budget App again</a></div>
   <div class="src-row"><span class="dot"></span> <span class="nm">SimpleFIN</span> <span class="ok">Fetched</span> <span class="gran">Data Provider</span></div>
-  <div class="src-note">Source Health: Fetched 2026-10-15 06:01 · started by the Fetch Schedule</div>
-  <div class="src-note">Freshness: data as of 2026-10-15 06:01</div>
-  <div class="src-note">Not yet uploaded: Eligible 8 · waiting for a decision 6</div>
+  <div class="src-note">Source Health: Fetched 2026-10-15 13:20 · started by you</div>
+  <div class="src-note">Freshness: data as of 2026-10-15 13:20</div>
+  <div class="src-note">Not yet uploaded: Eligible 9 · waiting for a decision 9</div>
   <a class="btn" href="#fetch-states">Fetch</a>
 </div>
 <a class="card" href="bank-account.html#checking" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 4</span></span>
-  <span class="balrow">Bank <b>4,182.55</b> Budget App <b>4,140.05</b> Difference <b>+42.50</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Kestrel Checking</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Checking</span> <span class="chip green">Eligible 5</span> <span class="chip amber">waiting 6</span></div>
+  <div class="balrow">Bank <b>5,135.28</b> Budget App <b>4,140.05</b> Difference <b>+995.23</b> <span>read 13:20 / 13:21</span></div>
 </a>
 <a class="card" href="bank-account.html#rewards" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></span>
-  <span class="balrow">Bank <b>−1,268.40</b> Budget App <b>−1,268.40</b> Difference <b>0.00</b> <span>read 06:01 / 06:03</span></span>
+  <div class="acct-h"><span class="nm">▸ Pinecrest Rewards Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip green">Eligible 2</span> <span class="chip amber">waiting 1</span></div>
+  <div class="balrow">Bank <b>−547.90</b> Budget App <b>−1,268.40</b> Difference <b>+720.50</b> <span>read 13:20 / 13:21</span></div>
 </a>
-<a class="card" href="bank-account.html#balances" style="display:block">
-  <span class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 1</span></span>
-  <span class="balrow">Bank <b>−910.12</b> Budget App <b>−500.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></span>
+<a class="card" href="bank-account.html#home-card" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Pinecrest Home Card</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Credit Card</span> <span class="chip amber">Guessed Transfer 2</span></div>
+  <div class="balrow">Bank <b>−405.12</b> Budget App <b>−910.12</b> <span class="chip amber">Account Balance outdated · difference hidden</span></div>
 </a>
-<div class="card">
-  <span class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></span>
-  <span class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 1</span></span>
-  <span class="balrow">Bank <b>12,075.00</b> Budget App <b>12,000.00</b> Difference <b>+75.00</b> <span>read 06:01 / 06:03</span></span>
+<a class="card" href="bank-account.html#reserve" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Reserve</span> <span class="r dot"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip green">Eligible 2</span></div>
+  <div class="balrow">Bank <b>12,165.00</b> Budget App <b>12,000.00</b> Difference <b>+165.00</b> <span>read 13:20 / 13:21</span></div>
+</a>
+<a class="card amber" href="bank-account.html#removed" style="display:block">
+  <div class="acct-h"><span class="nm">▸ Kestrel Old Savings</span> <span class="r dot amber"></span></div>
+  <div class="tagrow"><span class="chip grey">Savings</span> <span class="chip amber">Blocked: removed from the Build Configuration</span></div>
+  <div class="src-note">Not fetched, nothing offered for Upload; history and locked Account Mapping kept. Remedy: restore the entry with its Configuration Key in the Build Configuration.</div>
+</a>
 </div>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">8</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 </div>
