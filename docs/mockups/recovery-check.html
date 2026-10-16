@@ -62,6 +62,7 @@
     padding: 14px 12px 8px; color: var(--app-text); font-size: 13px; line-height: 1.45; overflow: hidden;
     box-shadow: 0 8px 28px rgba(0,0,0,0.18); display: flex; flex-direction: column; max-width: 420px; }
   .phone a { color: inherit; text-decoration: none; }
+  .dialog code { font-family: inherit; font-size: inherit; }
   .phone .screen-title { font-size: 15px; font-weight: 700; margin: 2px 4px 1px; display: flex; align-items: center; gap: 8px; }
   .phone .screen-title .back { color: var(--app-text2); font-weight: 400; }
   .phone .screen-sub { font-size: 11px; color: var(--app-text2); margin: 0 4px 10px; }
@@ -294,7 +295,7 @@
 <div class="step-label"><span class="n">UC-008 A8, A9 1</span><p><b>The Recovery Check</b>, reached from the Overview banner or from Review Upload Plan.</p></div>
 <div class="phone">
 <div class="screen-title"><a class="back" href="overview.html#recovery">‹</a> Recovery Check</div>
-<p class="screen-sub">cause: Restored Backup</p>
+<p class="screen-sub">Cause: Restored Backup</p>
 <div class="body">
 <div class="banner red"><span class="txt"><b>Uploads blocked: Recovery Check open</b> <span class="d">Restored backup 09:02 · sends after it unknown</span></span></div><div class="card"><div class="stepn"><span class="i">1</span> <span><span class="t">Compare every Budget with the Budget App</span> <span class="d">Not done since the Recovery Check opened.</span></span></div><span class="pair"><a class="cta-btn" href="#comparing">Compare now</a></span><div class="stepn"><span class="i">2</span> <span><span class="t">Check the Budget App yourself</span> </span></div><div class="stepn"><span class="i">3</span> <span><span class="t">Confirm the Recovery Check</span> <span class="d">Available after step 1.</span></span></div></div>
 </div>
@@ -305,7 +306,7 @@
 <div class="step-label"><span class="n">UC-008 A9 1</span><p><b>Comparing</b> (UC-003).</p></div>
 <div class="phone">
 <div class="screen-title">Recovery Check</div>
-<p class="screen-sub">cause: Restored Backup</p>
+<p class="screen-sub">Cause: Restored Backup</p>
 <div class="body">
 <div class="banner red"><span class="txt"><b>Uploads blocked: Recovery Check open</b> <span class="d">Restored backup 09:02 · sends after it unknown</span></span></div><div class="banner blue"><span class="txt"><b>Reading every Budget with a mapped Bank Account…</b> <span class="d">Household read · Summer House reading · Care Fund waiting</span></span></div>
 </div>
@@ -316,9 +317,9 @@
 <div class="step-label"><span class="n">UC-008 A9 2–3</span><p><b>Confirming</b>, after a Comparison that read every Budget.</p></div>
 <div class="phone">
 <div class="screen-title">Recovery Check</div>
-<p class="screen-sub">cause: Restored Backup</p>
+<p class="screen-sub">Cause: Restored Backup</p>
 <div class="body">
-<div class="banner red"><span class="txt"><b>Uploads blocked: Recovery Check open</b> <span class="d">Restored backup 09:02 · sends after it unknown</span></span></div><div class="card"><div class="kv"><span class="k">Household</span> <span class="v">read 09:14 · Eligible 9 · waiting for a decision 9</span></div><div class="kv"><span class="k">Summer House</span> <span class="v">read 09:14 · Eligible 2 · waiting for a decision 2</span></div><div class="kv"><span class="k">Care Fund</span> <span class="v">read 09:14 · Eligible 0 · waiting for a decision 1</span></div><a class="small" style="color:var(--app-blue)" href="budget.html#household">See the Transaction Statuses ›</a></div><div class="card"><div class="pick sel"><span class="radio"></span> <span><span class="nm">I have checked the Budget App for transactions Slussen sent after the data it started from was saved.</span></span></div><span class="pair" style="margin-top:8px"><a class="cta-btn" href="#closed">Confirm Recovery Check</a> <a class="cta-btn ghost" href="#open">Cancel</a></span></div>
+<div class="banner red"><span class="txt"><b>Uploads blocked: Recovery Check open</b> <span class="d">Restored backup 09:02 · sends after it unknown</span></span></div><div class="card"><div class="kv"><span class="k">Household</span> <span class="v">Read 09:14 · Eligible 9 · waiting for a decision 9</span></div><div class="kv"><span class="k">Summer House</span> <span class="v">Read 09:14 · Eligible 2 · waiting for a decision 2</span></div><div class="kv"><span class="k">Care Fund</span> <span class="v">Read 09:14 · Eligible 0 · waiting for a decision 1</span></div><a class="small" style="color:var(--app-blue)" href="budget.html#household">See the Transaction Statuses ›</a></div><div class="card"><div class="pick sel"><span class="radio"></span> <span><span class="nm">I have checked the Budget App for transactions Slussen sent after the data it started from was saved.</span></span></div><span class="pair" style="margin-top:8px"><a class="cta-btn" href="#closed">Confirm Recovery Check</a> <a class="cta-btn ghost" href="#open">Cancel</a></span></div>
 </div>
 
 </div>
@@ -327,7 +328,7 @@
 <div class="step-label"><span class="n">UC-008 A9 1</span><p><b>A Budget could not be read</b>: the check stays open (UC-003 BR-019).</p></div>
 <div class="phone">
 <div class="screen-title">Recovery Check</div>
-<p class="screen-sub">cause: Restored Backup</p>
+<p class="screen-sub">Cause: Restored Backup</p>
 <div class="body">
 <div class="banner red"><span class="txt"><b>Uploads blocked: Recovery Check open</b> <span class="d">Restored backup 09:02 · sends after it unknown</span></span></div><div class="banner"><span class="txt"><b>The Budget App could not be read for Summer House</b> <span class="d">Still open · try again later</span></span></div>
 </div>

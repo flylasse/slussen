@@ -15,7 +15,7 @@
 
 This section lets a fresh orchestrator session (local or cloud) pick up the plan on branch `construction-kickoff`. Read `AGENTS.md`, then this section, then §1, §3 and §6. Update this section in every commit that moves the plan forward.
 
-**Where the plan stands:** the orchestrator is stopped at the **mockup gate**, paused by the operator on 2026-10-15. All mockup-gate work is done and pushed, including the text sweep of 2026-10-16 (O-P2-24); the gate passes when the operator says "resume".
+**Where the plan stands:** the orchestrator is stopped at the **mockup gate**, paused by the operator on 2026-10-15. All mockup-gate work is done and pushed, including the text sweep and capitalisation fixes of 2026-10-16 (O-P2-24, O-P2-25); the gate passes when the operator says "resume".
 
 **Done so far:**
 - Phases 0, 1 and 2 and the architecture gate are complete; A-01..A-28, B-01..B-14 and C-01 are dispositioned in §6; ADR-001..ADR-008 are Accepted (2026-10-15).
@@ -465,6 +465,7 @@ Phase 5 reviewed all 17 screens, `index.html` with its traceability table and Op
 | O-P2-22 | Mockup gate | UC-004 A10 and UC-006 A10 cannot occur with YNAB. | Keep them, drawn and labelled for a replaceable Budget App. | Agreed (2026-10-15). |
 | O-P2-23 | Mockup gate | Which launcher icon? | — | Concept A (Sluice) chosen (2026-10-15), with the arrow polished: its head must read clearly against the water and gate. Done in `icon-sluice.svg` and `icons.html`. |
 | O-P2-24 | Mockup gate | The Operator (2026-10-16): too much text on the Upload Plan, "i am a business user, i want to see what's going to happen to money: total in total out and transactions"; then a sweep of every screen, "keep relevant actionable info". | Numbers first: In, Out and Net on top, counts as tiles, short chips, rows with one status chip; rule explanations, defaults and reassurances leave the phone frames (they stay in the specification and the captions); captions at most two sentences. | Agreed (2026-10-16). Mockups only, no specification change; the Upload Plan's facts (UC-006 step 3, BR-002, FR-033) are all still shown. |
+| O-P2-25 | Mockup gate | The Operator (2026-10-16): the out-of-range message was hard to understand, and many labels and hints started lowercase. | Invalid-value messages say what is wrong, what to enter and the value that stays ("90 days is too many. Enter 1 to 60 days. Still 7 days."). Glossary terms keep Title Case everywhere; every other UI text starts with a capital letter (sentence case). | Agreed (2026-10-16). Mockups only. |
 
 ## 7. Plan closed
 
