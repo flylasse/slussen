@@ -15,18 +15,18 @@
 
 This section lets a fresh orchestrator session (local or cloud) pick up the plan on branch `construction-kickoff`. Read `AGENTS.md`, then this section, then §1, §3 and §6. Update this section in every commit that moves the plan forward.
 
-**Where the plan stands:** the orchestrator is stopped at the **mockup gate**. Since `ff455b3` (last pushed commit) the working tree holds uncommitted, gated changes for the operator's review (O-P2-33): S-23 (Budgets, Bank Accounts and Account Mappings set up in the app; UC-013), S-24 (service credentials in the app; UC-014; Build Configuration only for signing), all eight ADRs revised for them with "re-check pending (S-23/S-24)", the mockups (`setup.html` new, `account-mappings.html` rewritten, every screen swept) and this plan.
+**Where the plan stands (end of day 2026-10-16):** the orchestrator is stopped at the **mockup gate**, waiting for the external re-check. S-23 and S-24, the ADR revisions, the mockups and the O-P2-34 (1) change are committed and pushed by the operator in `fb3204c`. The ADRs still say "re-check pending (S-23/S-24)".
 
 **Done so far:**
 - Phases 0, 1 and 2 and the architecture gate are complete; A-01..A-28, B-01..B-14 and C-01 are dispositioned in §6; ADR-001..ADR-008 are Accepted (2026-10-15), revised for S-23/S-24 (2026-10-16), re-check pending.
 - Phase 3 (`tools/check_project_rules.py`), Phase 4 (`docs/mockups/`, now 18 screens with `setup.html`, `index.html`, three icon SVGs) and Phase 5 (findings M-01..M-20) are complete.
-- Specification changes S-01..S-22 are committed and pushed; S-23 and S-24 are written and uncommitted.
-- Mockup gate: M-01..M-20 dispositioned; O-P2-20..O-P2-30 and O-P2-33 answered (Upload continues when leaving, icon A, numbers-first screens, sentence case, normal-day frames, pull to refresh, many Budgets, mapping and credentials in the app, no orchestrator commits).
+- Specification changes S-01..S-24 are committed and pushed (S-23/S-24 in `fb3204c`), including UC-006 BR-020 (a Rejected transaction follows the current Account Mapping, O-P2-34 (1)).
+- Mockup gate: M-01..M-20 dispositioned; O-P2-20..O-P2-34 answered (Upload continues when leaving, icon A, numbers-first screens, sentence case, normal-day frames, pull to refresh, many Budgets, mapping and credentials in the app, no orchestrator commits, Gemini re-check, first slice, Rejected follows the current Account Mapping).
 
 **Next steps, in order:**
-1. **Operator:** reviews the working-tree diff (`git diff ff455b3 -- docs/` plus the new files `docs/use_cases/UC-013-*.md`, `docs/use_cases/UC-014-*.md`, `docs/mockups/setup.html`), then commits and pushes. Proposed commit message: `docs: mockup gate - S-23/S-24 setup and credentials in the app, ADRs revised`.
-2. **Done (2026-10-16):** the operator answered O-P2-31 (re-check with Gemini CLI), O-P2-32 (first slice UC-012 + UC-014 + UC-013 + UC-008) and O-P2-34 (Rejected follows the current Account Mapping; keep `live-test.properties`; E-13 in the first slice; defer the rest).
-3. **External re-check (Gemini CLI, Gemini 4 Argon, operator):** prompt in §4 "Mockup gate — external re-check of S-23/S-24"; the orchestrator records the result in §6; on a clean verdict the ADRs' "re-check pending" is removed.
+1. **External re-check (operator, Gemini CLI with Gemini 4 Argon):** run the prompt in §4 "Mockup gate — external re-check of S-23/S-24" on `construction-kickoff` at or after `fb3204c`; it reviews `ff455b3..HEAD` and commits only `docs/reviews/mockup_gate_s23_s24_recheck.md` (no push).
+2. **Orchestrator:** gates the review, records the result in §6, and on a clean verdict removes "re-check pending" from the ADRs; D-nn findings go to the operator for disposition. Changes are left uncommitted for the operator (O-P2-33).
+3. **Optional small follow-ups (orchestrator proposals, not yet decided):** (a) skip the move confirmation of UC-009 A8 when a mapping has only Rejected sends (it now asks with "0 sent"); (b) one line in `upload-outcome.html` (UC-006 A9) that rejected transactions follow the current Account Mapping.
 4. **Operator:** says "resume". The orchestrator fills the §5 "Mockup gate" row's gate result.
 5. **Phase 6:** module skeleton, sub-agent on `inherit` with the verbatim §4 prompt; gate as in §3 (ADR-003 §6 TestKit tests, `NoCredentialInAppTest`, a planted forbidden dependency failing `check`); the launcher icon is icon A (`docs/mockups/icon-sluice.svg`) as an adaptive icon.
 6. **Phase 7:** the first slice UC-012 + UC-014 + UC-013 + UC-008 (O-P2-32); then Phase 8, Phase 9 (operator acceptance on the phone), Phase 10.
