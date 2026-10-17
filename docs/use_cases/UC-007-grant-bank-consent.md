@@ -10,16 +10,16 @@
 **Trigger:** Operator asks to grant, renew or revoke the Bank Consent of a Bank  
 **Status:** Approved  
 
-**Requirements:** [FR-010, FR-011, FR-042, FR-058, FR-082, NFR-008, NFR-009, NFR-013, C-006, C-007](../requirements.md)
+**Requirements:** [FR-010, FR-011, FR-042, FR-058, FR-082, FR-098, NFR-008, NFR-009, NFR-013, C-006, C-007](../requirements.md)
 
 ## Preconditions
 
-- The Bank and its Bank Accounts are part of the Build Configuration with a Data Provider that needs a Bank Consent.
+- The Operator has entered service credentials, accepted by it, for a Data Provider that needs a Bank Consent (UC-014).
 - No Upload Plan is awaiting confirmation (UC-006 BR-005).
 
 ## Main Success Scenario
 
-1. Operator asks to grant the Bank Consent of a Bank, or to renew it, from any place where Slussen shows that the Bank Consent is missing, expiring or expired.
+1. Operator asks to grant the Bank Consent of a Bank that the Data Provider reaches, also before any of its Bank Accounts is added (UC-013), or to renew it, from any place where Slussen shows that the Bank Consent is missing, expiring or expired.
 2. Slussen starts a Consent Request for the Bank with the Data Provider, which makes every earlier Consent Request of this Bank unanswerable.
 3. Data Provider hands Slussen the way to the Bank's Strong Customer Authentication.
 4. Slussen sends the Operator to the Bank's Strong Customer Authentication.
@@ -27,7 +27,7 @@
 6. Bank confirms the consent to the Data Provider, and the Operator returns to Slussen with the result.
 7. Slussen checks that the result answers the most recent Consent Request for this Bank, arrives within the Consent Request lifetime and has not been used before (BR-002).
 8. Slussen stores the Bank Consent with the expiry date the Bank or Data Provider reports and the Bank Session it opens, replacing any earlier Bank Consent and Bank Session of this Bank (BR-004).
-9. Slussen keeps the Bank Accounts the Bank Consent covers as Offered Bank Accounts (UC-009 BR-009) and identifies each as a Bank Account of the Build Configuration (UC-009 BR-004).
+9. Slussen keeps the Bank Accounts the Bank Consent covers as Offered Bank Accounts (UC-009 BR-009) and identifies each that the Operator already added (UC-009 BR-004); the others can be added (UC-013).
 10. Slussen shows the Bank Consent as valid, with its expiry date and the Bank Accounts it covers.
 
 ## Alternative Flows
@@ -78,7 +78,7 @@
 
 ### A6: Bank Account Not Identified
 
-**Trigger:** Two Bank Accounts of the Build Configuration are possible for one covered Bank Account, or two Account Mappings would point to the same one (step 9)  
+**Trigger:** Two of the Bank Accounts the Operator added are possible for one covered Bank Account, or two Account Mappings would point to the same one (step 9)  
 **Flow:**
 
 1. Slussen stops for that Bank Account and shows the Blocked Reason "unrecognised Bank Account".

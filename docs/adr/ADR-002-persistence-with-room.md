@@ -2,11 +2,12 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate).
+Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24).
 
 History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
 Phase 2 review and the specification changes S-01 to S-10; revised 2026-10-15 after the Phase 2b re-review and S-12 to
-S-14; later revisions at the gate are listed under "Review findings addressed".
+S-14; revised for S-23/S-24 on 2026-10-16, pending an external check; revised 2026-10-16 for O-P2-34 (1); later
+revisions at the gate are listed under "Review findings addressed".
 
 ## Context
 
@@ -17,17 +18,17 @@ What the specification requires of storage:
   it or already held it. UC-006 BR-007, FR-038: a send with an unknown outcome is sent again automatically, under the
   same Import Identifier and to the same Budget Account, only when the Budget App refuses a reused Import Identifier;
   otherwise it waits for the Operator's Review Decision. UC-006 step 6 records every Eligible Transaction of the plan
-  and locks the Account Mappings; A7: when the Sent Record "cannot be stored completely", Slussen sends nothing.
+  and records the first send through each Account Mapping (S-23); A7: when the Sent Record "cannot be stored completely", Slussen sends nothing.
   `SENT_RECORD` constraints: unique `import_identifier` per `budget_account_id`; Not Yet Known and Unknown outcomes are
   resolved by a later read (UC-003 BR-017).
 - **What survives a reinstall with restore, and an upgrade.** FR-042 (changed), NFR-010 (changed), NFR-017,
   UC-006 BR-014, UC-009 BR-006, BR-008, UC-010 BR-006: the stored Bank Transactions, the Sent Record, how Slussen
-  recognises each Bank Account with its Configuration Key, the Account Mappings with their locks, Funded By and
-  Transfer Partner, the Review Decisions and Transfer Decisions, the Operator Settings, **as of the time the device
+  recognises each Bank Account with its generated identifier, name and Start Date, the chosen Budgets, the Account
+  Mappings with the time of their first send, Funded By and Transfer Partner, the Review Decisions and Transfer Decisions, the Operator Settings, **as of the time the device
   backup was made**, and in full on an upgrade.
 - **What never leaves the device in a backup or device-to-device transfer.** NFR-009 (changed), UC-007 BR-005,
-  `BANK_SESSION`, `OFFERED_BANK_ACCOUNT`: no log, no Bank Consent data, no Bank Session, no Consent Request in
-  progress, no Offered Bank Account. NFR-011, UC-011 BR-004: no Decision Journal.
+  `BANK_SESSION`, `OFFERED_BANK_ACCOUNT`, `SERVICE_CREDENTIAL`: no log, no service credential, no Bank Consent data,
+  no Bank Session, no Consent Request in progress, no Offered Bank Account (NFR-021, UC-014 BR-003). NFR-011, UC-011 BR-004: no Decision Journal.
 - **The Recovery Check (S-06).** FR-095, NFR-005 (changed), UC-006 BR-017, A13, UC-008 A1, A8, A9, BR-009,
   `RECOVERY_CHECK`: after Slussen starts from its last good copy, from data restored from a device backup or from the
   empty data of a new installation, no Upload Plan is prepared until a Comparison has run and the Operator has
@@ -47,8 +48,11 @@ What the specification requires of storage:
   Unsupported Format).
 - **All-or-nothing steps.** UC-002 BR-001 (a Transaction File is taken in as a whole or not at all); UC-003 BR-016
   (every later read takes all changes since the previous read); UC-007 BR-002 (a Consent Request is answered once).
-- **New entities of the architecture gate:** `BANK_SESSION` (S-02), `BANK_ACCOUNT.configuration_key` and
-  `configured` (S-03, S-10, FR-096), `RECOVERY_CHECK` (S-06), `UNREADABLE_TRANSACTION` (S-07),
+- **Set in the app, credentials on the device (S-23, S-24).** UC-013, UC-009, UC-014, FR-097 to FR-102, NFR-021:
+  `BUDGET.served`, `BANK_ACCOUNT.generated_identifier` (replacing the Configuration Key and `configured` of S-03 and
+  S-10), `ACCOUNT_MAPPING.first_sent_at` (replacing `locked_at`), `OFFERED_BANK_ACCOUNT.balance`, `SERVICE_CREDENTIAL`,
+  `DATA_PROVIDER.request_limit` declared by the part, `FETCH.outcome` Credentials Refused.
+- **New entities of the architecture gate:** `BANK_SESSION` (S-02), `RECOVERY_CHECK` (S-06), `UNREADABLE_TRANSACTION` (S-07),
   `OFFERED_BANK_ACCOUNT` (S-08), `BUDGET_APP_TRANSACTION.memo` (S-09), `OPERATOR_SETTINGS.file_upload_window_days`
   (S-01) and `backup_warning_percent` (NFR-019); `DATA_PROVIDER.fetch_cooldown_minutes` (S-22), the Fetch Cooldown of
   each Data Provider, an Operator Setting kept per Data Provider instead of in `OPERATOR_SETTINGS`.
@@ -85,8 +89,8 @@ rules lives in different database files.
 
 | Database | File | Backed up and transferred | Tables |
 |---|---|---|---|
-| Main | `slussen.db` in the app's database directory (`Context.getDatabasePath`) | **Yes**, and nothing else is | every entity of `docs/entity_model.md` except the five below, plus the technical tables of §2 marked `slussen.db` |
-| Device | `device.db` in `Context.noBackupFilesDir` | No | `bank_consent`, `bank_session`, `consent_request`, `offered_bank_account`, and the technical table `consent_request_correlation` |
+| Main | `slussen.db` in the app's database directory (`Context.getDatabasePath`) | **Yes**, and nothing else is | every entity of `docs/entity_model.md` except the six below, plus the technical tables of §2 marked `slussen.db` |
+| Device | `device.db` in `Context.noBackupFilesDir` | No | `service_credential` (§2a), `bank_consent`, `bank_session`, `consent_request`, `offered_bank_account`, and the technical table `consent_request_correlation` |
 | Journal | `journal.db` in `Context.noBackupFilesDir` | No | `decision_journal_entry` |
 
 `slussen.db` therefore holds: `budget`, `budget_account`, `budget_app_transaction`, `data_provider`, `file_format`,
@@ -95,8 +99,9 @@ rules lives in different database files.
 `upload_plan`, `eligible_transaction`, `sent_record`, `transfer_counterpart`, `recovery_check`, `operator_settings`,
 `transfer_description`, and the technical tables `budget_read_state`, `coordinator_state` and `upload_plan_item`.
 
-`device.db` holds what stays on this installation: Bank Consents with their Bank Sessions and Consent Requests
-(UC-007 BR-005) and the Offered Bank Accounts (UC-009 BR-009, O-P2-07). The Phase 1 name `consent.db` is replaced
+`device.db` holds what stays on this installation: the encrypted service credentials (UC-014 BR-003), Bank Consents
+with their Bank Sessions and Consent Requests (UC-007 BR-005) and the Offered Bank Accounts (UC-009 BR-009, O-P2-07).
+The key that encrypts the service credentials lives in the Android Keystore, not in a file (§2a). The Phase 1 name `consent.db` is replaced
 because the file now holds more than consent data.
 
 Besides the three databases, Slussen keeps exactly these files, all in `noBackupFilesDir`: `installation.id` (§6),
@@ -118,8 +123,9 @@ name.
   `Match For Typed Entry`), through one Room `TypeConverter` per value set. An unknown text read back is unreadable
   data (§8).
 - `Unique` and `Foreign Key` become Room indices and foreign keys when both tables are in the same database
-  (`bank_session.bank_consent_id` is a real foreign key in `device.db`; `bank_account.configuration_key` a unique
-  index in `slussen.db`). A reference across databases (`bank_consent.bank_id`, `bank_consent.data_provider_id`,
+  (`bank_session.bank_consent_id` is a real foreign key in `device.db`; `bank_account.generated_identifier` a unique
+  index in `slussen.db`). A reference across databases (`service_credential.data_provider_id`,
+  `bank_consent.bank_id`, `bank_consent.data_provider_id`,
   `consent_request.bank_id`, `consent_request.data_provider_id`, `offered_bank_account.data_provider_id`, `bank_id`
   and `proposed_bank_account_id`) is a plain column; the core checks it.
 - `BUDGET_APP_TRANSACTION` is stored with every attribute of the entity model, `transfer_link_reference`,
@@ -137,31 +143,62 @@ Technical storage that is not in the entity model, complete list:
 |---|---|---|---|
 | `budget_read_state` | `slussen.db` | `budget_id` (key), `change_cursor` (TEXT) | The opaque `ChangeCursor` of ADR-001 §4.2.3 that lets every later read take "all changes since the previous read" (UC-003 BR-016); technical by the Operator's answer to O-P1-03. Written only by O-4. |
 | `coordinator_state` | `slussen.db` | one row: `mode` (Normal, Plan Open, Uploading), `upload_plan_id`, `state_version` (INTEGER), `scheduled_fetch_deferred` (BOOLEAN), `comparison_pending` (BOOLEAN) | The operation coordinator's mode, the version of everything an Upload Plan depends on, and the marker that a Comparison's read is stored but its conclusions are not (ADR-007 §2, §3a, §6). |
-| `upload_plan_item` | `slussen.db` | `upload_plan_id`, `position`, `write_kind` (`Create`, `LinkedTransfer`, `ClearCounterpart`), `bank_transaction_id`, `budget_account_id`, `import_identifier`, `occurrence`, `booked_date`, `amount`, `payee_sent`, `memo_sent`, `cleared`, `transfer_budget_account_id`, `clear_counterpart`, `transfer_counterpart_id` and `counterpart_reference` (clearing items only), `reused_sent_record_id`, `reused_outcome`, plus the plan's captured `state_version`, `change_cursor` per Budget and configuration fingerprint in a header row | The immutable write set of an Upload Plan (ADR-007 §4). Inserted only by O-6; never updated. |
+| `upload_plan_item` | `slussen.db` | `upload_plan_id`, `position`, `write_kind` (`Create`, `LinkedTransfer`, `ClearCounterpart`), `bank_transaction_id`, `budget_account_id`, `import_identifier`, `occurrence`, `booked_date`, `amount`, `payee_sent`, `memo_sent`, `cleared`, `transfer_budget_account_id`, `clear_counterpart`, `transfer_counterpart_id` and `counterpart_reference` (clearing items only), `reused_sent_record_id`, `reused_outcome`, plus the plan's captured `state_version` and `change_cursor` per Budget in a header row | The immutable write set of an Upload Plan (ADR-007 §4). Inserted only by O-6; never updated. |
 | `consent_request_correlation` | `device.db` | `consent_request_id` (key, foreign key), `state_digest` (TEXT, SHA-256 of the `state`, unique), `provider_handle` (TEXT, the plug-in's opaque handle) | Matches the answer from Strong Customer Authentication to its Consent Request (ADR-001 §4.1). The `state` itself is never stored. |
 
-**Bank Accounts and the Build Configuration (S-03, S-10, FR-096; A-05).** Each Bank Account entry of the Build
-Configuration carries its Configuration Key (ADR-003 §2). At every start, before any operation is admitted, O-11
-reconciles the stored configuration with the generated one in one transaction:
+**Budgets, Bank Accounts and Account Mappings are set in the app (S-23; UC-013, UC-009).** There is no Build
+Configuration of them and no reconciliation by key:
 
-- a stored `bank_account` is matched by `configuration_key` only, never by name or position; its `name`, `currency`,
-  kind, Source, Start Date and Bank follow the entry;
-- a stored Bank Account whose key no entry has gets `configured` false and keeps its identification, history,
-  Account Mapping and lock (UC-009 A11); one whose key returns gets `configured` true;
-- an entry with a key no stored Bank Account has becomes a new `bank_account`; its Account Mapping is not stored when
-  its Budget Account already receives through a locked Account Mapping, also one of a Bank Account whose `configured`
-  is false (UC-009 A12), and the Bank Account shows the Blocked Reason "configuration error";
-- an entry that maps a Bank Account with a locked Account Mapping to another Budget Account changes nothing in
-  `account_mapping` (UC-009 A8);
-- Budgets are matched by `budget_app_reference`, Data Providers and File Formats by `source_key`, Banks by `name`;
-- a `data_provider` row created by reconciliation gets `fetch_cooldown_minutes` from the default its plug-in declares
-  (`DataProviderProfile.defaultFetchCooldownMinutes`, ADR-001 §4.1); an existing row keeps the value the Operator set,
-  which is backed up and restored with the other Operator Settings (S-22, UC-001 BR-006);
-- nothing is ever deleted by reconciliation. A `funded_by_budget_account_id` or `transfer_partner_budget_account_id`
-  whose Budget Account no longer receives through any Account Mapping of a Bank Account that is configured and not a
-  Retired Account is kept unchanged; the core treats it as no longer applying, uses it for no Transfer and shows it
-  as such, until the Operator changes or clears it or such a Bank Account is mapped to it again (UC-005 BR-014). It
-  applies again without any write when that happens.
+- `budget.served` is true for each Budget the Operator chose (UC-013 BR-001); only served Budgets are read, compared and
+  shown. A Budget is stored when the Budget App lists it and the Operator chooses it; it stops being served only when
+  no Bank Account is mapped into it (UC-013 A2).
+- `bank_account.generated_identifier` is generated by the core when the Bank Account is added (UC-013 BR-003): a random
+  version 4 UUID as RFC 9562 defines it, from `java.security.SecureRandom`, 122 random bits (ADR-008 §7, NFR-020), in
+  its 36-character text form; unique index; never changed or migrated. History, Account Mapping, Sent Records and
+  decisions refer to the Bank Account's row, which this identifier names for good; `name` is editable and never
+  identifies (UC-009 BR-010, BR-011).
+- `account_mapping.first_sent_at` (the Phase 1-2 `locked_at`) is set at the first send through the mapping (§4). A move
+  or removal of a mapping with `first_sent_at` filled happens only through O-13 after the Operator's confirmation
+  (UC-009 A8, A11, BR-003); after a move `first_sent_at` is empty until the first send to the new Budget Account. The
+  Sent Records keep their `budget_account_id` (UC-003 BR-021), except that a later retry of a Rejected send moves its
+  record to the Budget Account of the current Account Mapping (§4 step 2; UC-006 BR-020, O-P2-34 (1)).
+- `offered_bank_account.balance` holds the balance the Data Provider reported with the delivery (UC-013 step 5).
+- `data_provider.request_limit` is not an Operator Setting: O-11 sets it at every start from the value the Data
+  Provider's part declares (`DataProviderProfile.requestLimit`, ADR-001 §4.1; FR-017).
+- `fetch.outcome` has the value Credentials Refused (UC-001 A7); the Phase 1-2 value Configuration Error is gone.
+- A `funded_by_budget_account_id` or `transfer_partner_budget_account_id` whose Budget Account no longer receives
+  through any Account Mapping of a Bank Account that is not a Retired Account is kept unchanged; the core treats it as
+  no longer applying, uses it for no Transfer and shows it as such, until the Operator changes or clears it or such a
+  Bank Account is mapped to it again (UC-005 BR-014). It applies again without any write when that happens.
+
+**O-11 registers the plug-ins.** At every start, before any operation is admitted, O-11 stores one `data_provider` row
+per Data Provider of the build and one `file_format` row per File Pre-processor, matched by `source_key`, in one
+transaction: a new `data_provider` row gets `fetch_cooldown_minutes` from the default its plug-in declares
+(`DataProviderProfile.defaultFetchCooldownMinutes`), an existing row keeps the value the Operator set, which is backed
+up and restored with the other Operator Settings (S-22, UC-001 BR-006); `request_limit` is always set from the part.
+Nothing is ever deleted by it.
+
+### 2a. Service credentials, encrypted on the device (S-24)
+
+NFR-021, UC-014 BR-003, BR-004, `SERVICE_CREDENTIAL`:
+
+- `service_credential` is a table of `device.db`, which is never backed up or transferred (§1, §5). At most one row for
+  the Budget App and one per Data Provider; `data_provider_id` is a plain column across databases.
+- `secret` holds the credential the plug-in returned from its check (ADR-001 §4.5) as one ciphertext:
+  AES-256 in GCM mode with a fresh 96-bit IV per encryption, stored as Base64 of IV, ciphertext and tag. The key is an
+  Android Keystore key (`AndroidKeyStore`, alias `slussen.service-credential`), generated on the device with
+  `KeyGenParameterSpec` for encryption and decryption only, GCM without padding, randomized encryption required. A
+  Keystore key cannot be exported and is not part of any backup, so the ciphertext is useless off the device. No library
+  is added (the platform's `javax.crypto` and the Keystore provider; ADR-001 §2).
+- Only `:persistence` encrypts and decrypts, behind the port `CredentialVault` (ADR-001 §3); the plaintext exists only
+  as a `Secret` in memory and is handed to the plug-in in its `RequestContext` (ADR-001 §4.0).
+- O-16 replaces the row only after the service accepted the new credential (UC-014 step 4, A1) and deletes it on
+  removal (A3).
+- A ciphertext that cannot be decrypted (for example the Keystore key is gone) is treated as missing credentials: the
+  row is deleted and the Blocked Reason "credentials missing" is shown (UC-014 BR-005). It is not Decision-Critical
+  Data and opens no Recovery Check (§6).
+- After a reinstall or on a new device, `device.db` and the key are not restored; the Operator enters the credentials
+  again (UC-014 BR-004).
 
 ### 3. Atomic storage operations
 
@@ -176,16 +213,18 @@ a step from two calls. Each operation that changes something an Upload Plan depe
 | O-2 | `FetchStore.replaceOfferedBankAccounts` (`device.db`) | Replaces the Offered Bank Accounts of a Data Provider, or of one Bank through it, with the latest delivery | UC-009 BR-009 |
 | O-3 | `FileImportStore.importWhole` | The `transaction_file` record Imported and every new Bank Transaction of the file with its occurrence number and Import Identifier; a collision or any failure stores none of them and the core records the file as Rejected in a separate step | UC-002 BR-001, BR-003, A6, NFR-020, ADR-008 §5 |
 | O-4 | `BudgetAppCopyStore.applyChangeSet` | The changed `budget_app_transaction` records (upserted by `budget_app_reference`) with every attribute, Transfer link, merge target, Cleared and approved included, the Budget Account balances, `budget.last_read_at` and the next `change_cursor`, only if the stored cursor still equals the one the read started from; and `coordinator_state.comparison_pending` set (ADR-007 §3a) | UC-003 step 1, BR-016, BR-020 |
-| O-5 | `ComparisonStore.applyComparison` | Conclusions computed from stored data only (the stored copy of O-4, never a transient read): Transaction Statuses, Sent Records settled as Written when their Import Identifier was found, Transfer Counterparts reconciled from the stored `transfer_link_reference` with their stored `cleared` value (ADR-001 §4.2.3), `recovery_check.compared_at` when every Budget with a mapped Bank Account was read in the Comparison, and `comparison_pending` cleared | UC-003 steps 3-7, BR-017, BR-019, BR-020; UC-005 BR-009 |
+| O-5 | `ComparisonStore.applyComparison` | Conclusions computed from stored data only (the stored copy of O-4, never a transient read): Transaction Statuses, Sent Records settled as Written when their Import Identifier was found, Transfer Counterparts reconciled from the stored `transfer_link_reference` with their stored `cleared` value (ADR-001 §4.2.3), `recovery_check.compared_at` when every Budget with a mapped Bank Account was read in the Comparison, and `comparison_pending` cleared; a Bank Transaction with a Sent Record is compared with the Budget Account recorded in its Sent Record as well as with its current one (UC-003 BR-021) | UC-003 steps 3-7, BR-017, BR-019, BR-020, BR-021; UC-005 BR-009 |
 | O-6 | `UploadStore.preparePlan` | The `upload_plan`, its `eligible_transaction` and `upload_plan_item` records, and the mode Plan Open | ADR-007 §4 |
 | O-7 | `UploadStore.confirmPlan` | §4 below: the Sent Record before every transaction send, with the expiry checked inside the transaction | UC-006 step 6, A5, A7, BR-006 |
 | O-8 | `UploadStore.recordOutcomes` | The reported outcomes of one Budget Account's transaction sends | UC-006 steps 8-9, A8, A9, BR-012 |
 | O-9 | `UploadStore.finishUpload` | The end of the Upload and the mode Normal | UC-006 step 12 |
 | O-10 | `ConsentStore.startRequest`, `consumeAnswer`, `replaceConsent`, `revoke` (`device.db`) | Start: a new Consent Request with its correlation, making earlier ones of the Bank unanswerable. Consume: the most-recent, lifetime and not-answered checks and `answered` set, together. Replace: the Bank Consent and its Bank Session in place of the earlier ones, refused when a newer Consent Request exists. Revoke: delete the Bank Consent, its Bank Session and every Consent Request of the Bank | UC-007 BR-002, BR-003, BR-004, BR-007; NFR-013 |
-| O-11 | `ConfigurationStore.reconcile` | §2, Bank Accounts and the Build Configuration | UC-009 A8, A11, A12, BR-010, BR-011; FR-096 |
+| O-11 | `PluginRegistryStore.reconcile` | §2, the Data Providers and File Formats of the build, with the Request Limit and the default Fetch Cooldown their parts declare | FR-017, UC-001 BR-006, BR-007 |
 | O-12 | `RecoveryStore.openCheck`, `confirmChecks` | Open a Recovery Check with its cause; confirm every open check whose `compared_at` is filled, together with its Decision Journal record request | UC-006 BR-017, UC-008 A9, BR-009 |
-| O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses; setting a Funded By or Transfer Partner (also from a Transfer Decision) is refused unless the Budget Account is in the same Budget, differs from the Bank Account's own, and receives through an Account Mapping of a configured Bank Account that is not a Retired Account, never a Manually Kept Account (UC-005 BR-014, `BANK_ACCOUNT` constraints); a Review Decision on a Transfer Leg also sets the statuses of the other Transfer Legs of its Transfer (Deferred, or Already In Budget App while an Already Present decision holds) in the same transaction | UC-004 BR-006, BR-009; UC-005 BR-013, BR-014; UC-009 BR-008, UC-010 |
+| O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses; setting a Funded By or Transfer Partner (also from a Transfer Decision) is refused unless the Budget Account is in the same Budget, differs from the Bank Account's own, and receives through an Account Mapping of a Bank Account that is not a Retired Account, never a Manually Kept Account (UC-005 BR-014, `BANK_ACCOUNT` constraints); `MappingStore.move` and `MappingStore.remove` change or delete an Account Mapping, refused when `first_sent_at` is filled unless the call carries the Operator's confirmation of the stated number of sent transactions, record the change and reset `first_sent_at` on a move (UC-009 A8, A11, BR-003); renaming, Start Date and identifying again are single updates (UC-009 A6, A7, A12, A13); a Review Decision on a Transfer Leg also sets the statuses of the other Transfer Legs of its Transfer (Deferred, or Already In Budget App while an Already Present decision holds) in the same transaction | UC-004 BR-006, BR-009; UC-005 BR-013, BR-014; UC-009 BR-003, BR-007, BR-008, A6-A13, UC-010 |
 | O-14 | `UploadStore.recordClearing` | The result of one clearing (ADR-007 §6 step 8): a new `transfer_counterpart` with the leg's `sent_record_id`, its `budget_app_reference` and `state` Cleared (with `cleared_at`) or Uncleared; or an existing one set to Cleared with `cleared_at`. It never inserts, resets or changes a `sent_record` | UC-006 steps 10, BR-009, BR-010, BR-011, A11 |
+| O-15 | `ConnectionStore.serveBudgets`, `ConnectionStore.addBankAccount` | Serve: set `budget.served` for the chosen Budgets, refused for a Budget into which a Bank Account is mapped (UC-013 A2). Add: a new `bank_account` with its generated identifier, proposed name, optional Start Date, how the Source identifies it, and its `account_mapping`, refused when the Budget Account already receives through an Account Mapping or its Budget has another currency (UC-013 A5) | UC-013 steps 3-10, BR-001, BR-003, A2, A4, A5; FR-097, FR-098 |
+| O-16 | `CredentialStore.replace`, `CredentialStore.remove` (`device.db`) | Replace: the encrypted `service_credential` of one service, only after the service accepted it, in place of the earlier one. Remove: delete it (§2a) | UC-014 steps 4, A1, A3; NFR-021 |
 
 A crash at any point leaves each operation either complete or absent. Each has an instrumented test that injects a
 failure before the commit and checks that nothing of it is visible (ADR-005 §7, E-05). Because O-4 stores the cursor
@@ -199,7 +238,7 @@ committed (ADR-007 §3a, B-04).
 O-7, `slussen.core.port.UploadStore.confirmPlan`:
 
 ```kotlin
-/** Commits the Sent Record of every transaction-send item of the plan, locks the Account Mappings, confirms the plan
+/** Commits the Sent Record of every transaction-send item of the plan, records first sends, confirms the plan
  *  and sets the mode Uploading, all or nothing, only while now is before the plan's expires_at. Returns only after
  *  the commit is durable. Throws PlanExpired, or SentRecordNotStored when anything fails or a reused Sent Record no
  *  longer has the outcome captured at preparation. Clearing items are not touched. */
@@ -216,17 +255,22 @@ suspend fun confirmPlan(plan: UploadPlanId, now: Instant)
    `sent_as_transfer` and `sent_at`;
 2. for each transaction-send item that reuses a Sent Record (a retry, ADR-007 §4), updates that `sent_record`: `outcome` Not Yet Known,
    `upload_plan_id` of this plan, `sent_at`, and the `booked_date` and `amount` sent, **only where its `outcome` still
-   equals `reused_outcome`**; its `import_identifier` and `budget_account_id` are never changed;
-3. sets `account_mapping.locked_at` to the same time for every Account Mapping of those transactions whose
-   `locked_at` is empty (UC-009 BR-003);
+   equals `reused_outcome`**; its `import_identifier` is never changed, and its `budget_account_id` is set to the
+   item's: for a retry of a Not Yet Known or Unknown send that is always the stored one (UC-009 BR-003), and for a
+   retry of a Rejected send it is the Budget Account of the current Account Mapping, which differs from the stored
+   one after a move (ADR-007 §4; UC-006 BR-020, O-P2-34 (1));
+3. sets `account_mapping.first_sent_at` to the same time for every Account Mapping that a new send or a retry of a
+   Rejected send of the plan goes through, to its current Budget Account, whose `first_sent_at` is empty (UC-006
+   step 6, UC-009 BR-003);
 4. sets the `upload_plan.state` to Confirmed, only where it is still Awaiting Confirmation, and the coordinator mode to
    Uploading.
 
 `ClearCounterpart` items get no Sent Record and change none; their results are stored by O-14 (B-02).
 
 The unique index on (`budget_account_id`, `import_identifier`) of `sent_record` stays. A retry never inserts, so it
-never meets the index (A-01); a violation can only come from a new send whose Import Identifier is already held, which
-ADR-008 §5 prevents, and is then UC-006 A7 (nothing sent, plan discarded, mode Normal).
+never meets the index (A-01); a retry of a Rejected send that changes `budget_account_id` keeps an Import Identifier
+that only its own record carries. A violation can only come from a send whose Import Identifier another record
+already carries, which ADR-008 §5 prevents, and is then UC-006 A7 (nothing sent, plan discarded, mode Normal).
 
 `UploadExecutor` sends only after `confirmPlan` has returned, and only the items of the plan, through the write
 permit (ADR-007 §6, §7). After a crash before the outcomes are stored, the records stay Not Yet Known, become Unknown
@@ -241,7 +285,9 @@ Present is never sent again, whatever happens later on this installation. A send
 same Sent Record as a request that never arrived; Slussen cannot tell them apart and does not claim to. Such a send is
 resent automatically only to a Budget App that declares it refuses a reused Import Identifier, which the live tests
 prove for YNAB before Uploads rely on it (ADR-005 §7, E-10); with any other Budget App it waits for the Operator's
-Review Decision. Exactly once is not claimed for a Budget App that does neither. And it covers only what Slussen sent
+Review Decision. Exactly once is not claimed for a Budget App that does neither. A Rejected send was refused, so no
+Budget Account holds it (ADR-001 §4.2.1 F-2); sending it again to the current Account Mapping after a move cannot
+create a second copy (UC-006 BR-020). And it covers only what Slussen sent
 itself: a resemblance to an Import by an Other Import Path or to a Typed Entry is a reason for review, not a
 guarantee (UC-003 BR-007, FR-021).
 
@@ -288,9 +334,10 @@ sequence and reports its result through `StartState` (ADR-001 §3):
 | any | unreadable, started from the last good copy or empty (§8) | last good copy | Last Good Copy |
 
 **Only Decision-Critical Data opens a Recovery Check (S-13, B-06).** `slussen.db` holds all Decision-Critical Data
-(the Bank Transactions with their statuses, the Sent Record, the Bank Account identifications, the Account Mappings
-with their locks, the Review and Transfer Decisions, the Operator Settings), so damage to it, wherever in the file,
-opens one. Damage to `device.db` (Bank Consents, Bank Sessions, Consent Requests, Offered Bank Accounts) or to
+(the Bank Transactions with their statuses, the Sent Record, the chosen Budgets, the Bank Accounts with their
+identifications, names and Start Dates, the Account Mappings with the time of their first send, the Review and Transfer Decisions, the Operator Settings), so damage to it, wherever in the file,
+opens one. Damage to `device.db` (service credentials, Bank Consents, Bank Sessions, Consent Requests, Offered Bank
+Accounts) or to
 `journal.db` (the Decision Journal) shows the notice of UC-008 A1 only, opens no Recovery Check and changes no Upload
 Plan or Upload (NFR-005, NFR-006, UC-010 BR-004).
 
@@ -320,7 +367,7 @@ Each boundary is tested by an interruption (ADR-005 §7, E-12).
 While any Recovery Check is open, the coordinator prepares no Upload Plan (ADR-007 §3); UC-008 A8 shows why. A
 Comparison that read every Budget with a mapped Bank Account fills `compared_at` (O-5, UC-003 BR-019), and only then
 can the Operator confirm (O-12, UC-008 A9). This is how the data a backup or a last good copy lacks (Sent Records,
-locks, decisions written after it was made) is dealt with: the Comparison finds every transaction Slussen sent by its
+first sends, decisions written after it was made) is dealt with: the Comparison finds every transaction Slussen sent by its
 Import Identifier (ADR-008), which no build can change, and the Operator checks the Budget App before any Upload.
 Uploads never go ahead on a Sent Record that may be incomplete; a warning alone is not used.
 
@@ -365,8 +412,8 @@ is closed:
    again), and losing the journal changes nothing (NFR-006). Their unreadable originals are kept the same way, they
    start empty, the notice of UC-008 A1 names the part, and no Recovery Check is opened (S-13).
 
-The parts are named for the Operator: `slussen.db` "stored transactions, decisions and settings", `device.db` "Bank
-Consents and Offered Bank Accounts", `journal.db` "Decision Journal". The copy, the replacement, the logical check,
+The parts are named for the Operator: `slussen.db` "stored transactions, decisions and settings", `device.db` "service
+credentials, Bank Consents and Offered Bank Accounts", `journal.db` "Decision Journal". The copy, the replacement, the logical check,
 the restart path and the preservation of originals are proven on a device with `minSdk` (ADR-005 §7, E-01 to E-04)
 before the first slice that uploads.
 
@@ -405,9 +452,10 @@ run with JUnit 5 (ADR-004, ADR-005).
   the Sent Record and its Import Identifier, and, for a lost answer, on the Budget App's declared refusal of a reused
   Import Identifier or the Operator's decision (S-05). A crash at any point leaves either no Sent Record and nothing
   sent, or a Not Yet Known or Unknown record that the next Comparison settles when the Budget App holds it.
-- A restore after reinstall brings back exactly `slussen.db` as of Android's last backup. Bank Consents, Bank
-  Sessions, Offered Bank Accounts and the Decision Journal start empty; the Bank Accounts of Banks that need a Bank
-  Consent show "missing consent" until the Operator grants again (FR-042), and UC-009 A10 applies until the next Fetch.
+- A restore after reinstall brings back exactly `slussen.db` as of Android's last backup. Service credentials,
+  Bank Consents, Bank Sessions, Offered Bank Accounts and the Decision Journal start empty: the Operator enters the
+  credentials again (UC-014 BR-004), the Bank Accounts of Banks that need a Bank Consent show "missing consent" until
+  the Operator grants again (FR-042), and UC-009 A10 applies until the next Fetch.
 - After a restore, a new installation or a last good copy, Uploads wait for the Recovery Check. The Operator can see
   the Transaction Statuses at once; only Uploads wait.
 - Cross-database references are checked by the core, not by SQLite.
@@ -470,7 +518,7 @@ run with JUnit 5 (ADR-004, ADR-005).
 - A-03 (with S-06): §6 (the Recovery Check after a last good copy blocks Uploads), §8.
 - A-04 (with S-04, S-06, NFR-019): §5 (what a backup can give, the size warning), §6 (restore and new installation
   detected and gated).
-- A-05 (with S-03, S-10): §2 (reconciliation by Configuration Key, removal, return, new keys, locks).
+- A-05 (with S-03, S-10): superseded by S-23; §2 (the generated identifier, set when the Bank Account is added).
 - A-07: §3 (named atomic operations O-1 to O-14; the cursor stored with its change set).
 - A-09: §3 O-5 (Transfer Counterparts reconciled from links).
 - A-11 (with S-07): §1 and §2 (`unreadable_transaction`), §3 O-1.
@@ -497,3 +545,13 @@ run with JUnit 5 (ADR-004, ADR-005).
 - S-22 (FR-016, UC-001 BR-006, UC-010 BR-001, BR-002): Context (`DATA_PROVIDER.fetch_cooldown_minutes` instead of an
   `OPERATOR_SETTINGS` attribute), §2 (reconciliation sets a new Data Provider's Fetch Cooldown from its plug-in's
   default and keeps the Operator's value otherwise), §8 step 3 (default content).
+- S-23/S-24 (2026-10-16, re-check pending): Context; §1 (`service_credential` in `device.db`, the Keystore key); §2
+  (no Build Configuration of Budgets, Bank Accounts or Account Mappings; `budget.served`,
+  `bank_account.generated_identifier`, `account_mapping.first_sent_at`, `offered_bank_account.balance`,
+  `data_provider.request_limit` from the part, `fetch.outcome` Credentials Refused; O-11 registers the plug-ins); new
+  §2a (service credentials encrypted with a non-exportable Android Keystore key, AES-256-GCM, never backed up); §3 O-5
+  (UC-003 BR-021), O-13 (deliberate move and removal of an Account Mapping), new O-15 (UC-013) and O-16 (UC-014); §4
+  step 3 (`first_sent_at`); the configuration fingerprint is no longer captured.
+  - O-P2-34 (1) (2026-10-16, the Operator): §2 and §4 steps 2 and 3 (a retry of a Rejected send updates its Sent
+    Record's `budget_account_id` to the current Account Mapping and records `first_sent_at` there; unknown outcomes
+    keep theirs), §4 "What this guarantees"; ADR-007 §4, UC-006 BR-020.

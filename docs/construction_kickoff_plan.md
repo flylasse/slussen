@@ -7,28 +7,30 @@
 **Phase 0 evidence (2026-10-14):** predecessor commit read = 46efbf004a98d802a30aba7dbd7601624bd1f19f (origin/main after fetch); modules = 8; mockups = 6.
 **Method:** AIUP Marketplace at commit `05af8163838df704620ebe1121cd6019dbce276c`, local clone `C:\work\marketplace`. There is **no Android/Kotlin stack plugin** (bootstrap O-03), so construction follows `docs/workflow.md` (construction inputs, traceability markers, requirement status) and uses `aiup-vaadin-jooq/skills/implement` as the pattern for the implementation phase, with every deviation recorded in §5. If `git -C C:\work\marketplace rev-parse HEAD` differs, stop and ask.
 **Version:** this PR sets `VERSION` to `0.1.0` (operator decision: first version of Slussen; the merged bootstrap PR counts as 0.0.0). Later PRs follow `AGENTS.md` §5.
-**Gate tools:** `python tools/lint_specs.py --strict`; from Phase 3 on, `tools/check_project_rules.py`; from Phase 6 on, `gradlew check` (compile, unit tests, Konsist architecture tests) plus a test that packaging fails without a Build Configuration; only the Operator runs `gradlew build` with a real Build Configuration (O-P1-06, A-28).
+**Gate tools:** `python tools/lint_specs.py --strict`; from Phase 3 on, `tools/check_project_rules.py`; from Phase 6 on, `gradlew check` (compile, unit tests, Konsist architecture tests) with the ADR-003 §6 TestKit tests (a debug package builds without a Build Configuration, a release package refuses to, a misplaced or partial Build Configuration fails every build, no planted credential or template key appears in a built debug APK); only the Operator builds `release` with `signing.properties` (O-P1-06, A-28, S-24).
 
 ---
 
-## 0. Resume here (state as of 2026-10-15)
+## 0. Resume here (state as of 2026-10-16)
 
 This section lets a fresh orchestrator session (local or cloud) pick up the plan on branch `construction-kickoff`. Read `AGENTS.md`, then this section, then §1, §3 and §6. Update this section in every commit that moves the plan forward.
 
-**Where the plan stands:** the orchestrator is stopped at the **mockup gate**, paused by the operator on 2026-10-15. All mockup-gate work is done and pushed, including the text sweep capitalisation fixes, normal-day frames, pull to refresh and many-Budgets navigation of 2026-10-16 (O-P2-24..O-P2-28, S-22); the gate passes when the operator says "resume".
+**Where the plan stands:** the orchestrator is stopped at the **mockup gate**. Since `ff455b3` (last pushed commit) the working tree holds uncommitted, gated changes for the operator's review (O-P2-33): S-23 (Budgets, Bank Accounts and Account Mappings set up in the app; UC-013), S-24 (service credentials in the app; UC-014; Build Configuration only for signing), all eight ADRs revised for them with "re-check pending (S-23/S-24)", the mockups (`setup.html` new, `account-mappings.html` rewritten, every screen swept) and this plan.
 
 **Done so far:**
-- Phases 0, 1 and 2 and the architecture gate are complete; A-01..A-28, B-01..B-14 and C-01 are dispositioned in §6; ADR-001..ADR-008 are Accepted (2026-10-15).
-- Phase 3 (`tools/check_project_rules.py`), Phase 4 (`docs/mockups/`, 17 screens, `index.html`, three icon SVGs) and Phase 5 (findings M-01..M-20) are complete.
-- Specification changes S-01..S-22 are committed; the ADRs are aligned with them (S-21 touches only UC-006; S-22 aligned ADR-001 and ADR-002).
-- Mockup gate, done: M-01..M-20 dispositioned; mockups revised (bottom navigation always visible; the Upload Plan lives in its Budget's tab and is discarded on leaving before confirming; UNDO, Withdraw and the access-limit frame removed); `icons.html` added; O-P2-20..O-P2-23 answered: leaving after confirming does not cancel the Upload (S-21), the Strong Customer Authentication result may come back by paste field or optional redirect (decided in the Bank Consent slice), the YNAB-impossible flows stay, icon A (Sluice) chosen with its arrow polished; every screen trimmed to numbers and actionable text (O-P2-24).
-- Nothing is open for the mockup gate.
+- Phases 0, 1 and 2 and the architecture gate are complete; A-01..A-28, B-01..B-14 and C-01 are dispositioned in §6; ADR-001..ADR-008 are Accepted (2026-10-15), revised for S-23/S-24 (2026-10-16), re-check pending.
+- Phase 3 (`tools/check_project_rules.py`), Phase 4 (`docs/mockups/`, now 18 screens with `setup.html`, `index.html`, three icon SVGs) and Phase 5 (findings M-01..M-20) are complete.
+- Specification changes S-01..S-22 are committed and pushed; S-23 and S-24 are written and uncommitted.
+- Mockup gate: M-01..M-20 dispositioned; O-P2-20..O-P2-30 and O-P2-33 answered (Upload continues when leaving, icon A, numbers-first screens, sentence case, normal-day frames, pull to refresh, many Budgets, mapping and credentials in the app, no orchestrator commits).
 
 **Next steps, in order:**
-1. **Operator:** says "resume" (optionally after a last look at `docs/mockups/index.html` and `icons.html`). The orchestrator then fills the §5 "Mockup gate" row's gate result.
-2. **Phase 6:** module skeleton, sub-agent on `inherit` with the verbatim §4 prompt; gate: `gradlew check` (compile, unit tests, Konsist), the packaging-refusal test without a Build Configuration, and a planted forbidden dependency failing them; the launcher icon is icon A (`docs/mockups/icon-sluice.svg`) as an adaptive icon.
-3. **Phase 7:** vertical slice UC-012 + UC-008; then Phase 8 (README how-to, templates), Phase 9 (operator acceptance on the phone), Phase 10 (close).
-4. **Still owed by the operator, outside this plan:** the bootstrap's §7 "Verdict on the method" (`docs/archive/bootstrap_aiup_spec_plan.md`); committing the README in the private configuration clone in `build-config/local/` (the orchestrator does not commit there).
+1. **Operator:** reviews the working-tree diff (`git diff ff455b3 -- docs/` plus the new files `docs/use_cases/UC-013-*.md`, `docs/use_cases/UC-014-*.md`, `docs/mockups/setup.html`), then commits and pushes. Proposed commit message: `docs: mockup gate - S-23/S-24 setup and credentials in the app, ADRs revised`.
+2. **Done (2026-10-16):** the operator answered O-P2-31 (re-check with Gemini CLI), O-P2-32 (first slice UC-012 + UC-014 + UC-013 + UC-008) and O-P2-34 (Rejected follows the current Account Mapping; keep `live-test.properties`; E-13 in the first slice; defer the rest).
+3. **External re-check (Gemini CLI, Gemini 4 Argon, operator):** prompt in §4 "Mockup gate — external re-check of S-23/S-24"; the orchestrator records the result in §6; on a clean verdict the ADRs' "re-check pending" is removed.
+4. **Operator:** says "resume". The orchestrator fills the §5 "Mockup gate" row's gate result.
+5. **Phase 6:** module skeleton, sub-agent on `inherit` with the verbatim §4 prompt; gate as in §3 (ADR-003 §6 TestKit tests, `NoCredentialInAppTest`, a planted forbidden dependency failing `check`); the launcher icon is icon A (`docs/mockups/icon-sluice.svg`) as an adaptive icon.
+6. **Phase 7:** the first slice UC-012 + UC-014 + UC-013 + UC-008 (O-P2-32); then Phase 8, Phase 9 (operator acceptance on the phone), Phase 10.
+7. **Still owed by the operator, outside this plan:** the bootstrap's §7 "Verdict on the method"; committing the README in the private configuration clone in `build-config/local/` (updated by the orchestrator on 2026-10-16 for S-24: signing only, plus the optional test-only `live-test.properties`; not committed by the orchestrator).
 
 **Environment for a session that is not on the operator's Windows machine:**
 - `scratch/` is git-ignored and does not exist in a fresh clone. Everything a later phase needs from it is already in this plan:
@@ -46,6 +48,7 @@ This section lets a fresh orchestrator session (local or cloud) pick up the plan
   - End the PR body with "🤖 Generated with [Claude Code](https://claude.com/claude-code)".
   - `main` is protected by the "Force PR" ruleset.
   - Files use CRLF; keep it when editing.
+  - Since 2026-10-16 the orchestrator does not commit or push; it leaves gated changes for the operator (O-P2-33).
 - **Private data:** no agent reads, writes or prints the operator's Build Configuration (`build-config/local/`), §1.2.
 
 ## 1. How this plan is executed (global prompt for the orchestrator)
@@ -86,10 +89,10 @@ The rules of the bootstrap plan's §1 apply unchanged: one sub-agent per phase w
 | 4 | HTML mockups and icon proposals | `docs/mockups/*.html`, `docs/mockups/index.html`, `docs/mockups/icon-*.svg` | `inherit` | every operator-facing step of UC-001..UC-011 is reachable on a mockup screen (traceability table in `index.html`); only invented names and amounts; `check_project_rules.py` exits 0 | `docs: phase 4 - screen mockups and icon proposals` |
 | 5 | Adversarial mockup review (report only) | findings into §6 | `pro` | every finding has an ID and a location; no file other than this plan changed | `docs: phase 5 - mockup review findings` |
 | — | **Mockup gate — orchestrator stops here** | operator reviews the mockups and the findings, the mockups are revised, an icon is chosen | operator | operator says "resume" | operator's own commit |
-| 6 | Module skeleton | Gradle modules per ADR-001, Konsist tests, Room setup, Build Configuration loading per ADR; the app's version name read from `VERSION` (`AGENTS.md` §5) | `inherit` | `gradlew check` passes, including the Konsist tests and the test that packaging fails without a Build Configuration; a planted forbidden dependency makes them fail | `build: phase 6 - module skeleton` |
-| 7 | Vertical slice UC-012 + UC-008 | use case tests first, then the implementation, with the `workflow.md` markers adapted per ADR | `inherit` | `gradlew check` passes; every BR of UC-012 and UC-008 has a test that names it; every BR the code enforces has its implementation marker; UC-008 screen matches the accepted mockup; UC-008 A8 (Recovery Check open) is shown, its confirmation (A9) unavailable until a slice builds UC-003 (O-P2-09) | `feat: phase 7 - set up an own build and check import status` |
-| 8 | README how-to | `README.md` adopting-developer section; the Configuration Templates for SimpleFIN, Enable Banking and YNAB | `inherit` | the how-to covers clone or fork, where the Build Configuration goes (UC-012 BR-002), build and install; the templates hold no real values; `check_project_rules.py` exits 0 | `docs: phase 8 - adopting developer how-to and templates` |
-| 9 | **Acceptance — operator** | operator's own Build Configuration (never committed, never read by an agent), each Start Date = the day after the predecessor's last upload | operator | the `release` variant (signed per ADR-005, O-P2-05) builds, installs and shows the operator's Bank Accounts per UC-008; misplacing the configuration fails the build (UC-012 A6) | none |
+| 6 | Module skeleton | Gradle modules per ADR-001, Konsist tests, Room setup, the signing-only Build Configuration checks (ADR-003) and the credential vault (ADR-002 §2a); the app's version name read from `VERSION` (`AGENTS.md` §5) | `inherit` | `gradlew check` passes, including the Konsist, bytecode and traceability tests and the ADR-003 §6 TestKit tests (debug builds without a Build Configuration, release refuses to, a misplaced or partial Build Configuration fails every build, `NoCredentialInAppTest` finds no planted credential or template key in a built debug APK); a planted forbidden dependency makes `check` fail; agents may also run `gradlew :app:assembleDebug` | `build: phase 6 - module skeleton` |
+| 7 | Vertical slice UC-012 + UC-014 + UC-013 + UC-008 (O-P2-32) | use case tests first, then the implementation, with the `workflow.md` markers adapted per ADR | `inherit` | `gradlew check` passes; every BR of UC-012, UC-014, UC-013 and UC-008 has a test that names it; the credential vault tests and evidence E-13 (ADR-005 §7) pass; the UC-014 and UC-013 screens match `setup.html` and `account-mappings.html`; every BR the code enforces has its implementation marker; UC-008 screen matches the accepted mockup; UC-008 A8 (Recovery Check open) is shown, its confirmation (A9) unavailable until a slice builds UC-003 (O-P2-09) | `feat: phase 7 - set up an own build and check import status` |
+| 8 | README how-to | `README.md` adopting-developer section; the signing Configuration Template (S-24: credentials, Budgets and Bank Accounts are set up in the app) | `inherit` | the how-to covers clone or fork or installing an APK someone else built, the optional signing setup (UC-012 BR-002), build, install and the first run in the app (UC-013, UC-014); the template holds no real values; `check_project_rules.py` exits 0 | `docs: phase 8 - adopting developer how-to and templates` |
+| 9 | **Acceptance — operator** | operator's own signing setup (never committed, never read by an agent); credentials entered in the app (UC-014); Budgets and Bank Accounts connected in the app (UC-013), each Start Date = the day after the predecessor's last upload | operator | the `release` variant (signed per ADR-005, O-P2-05) builds, installs, takes the credentials, Budgets and Bank Accounts in the app and shows the operator's Bank Accounts per UC-008; a misplaced Build Configuration fails the build (UC-012 A6) | none |
 | 10 | Close and archive | §7; requirement statuses per `workflow.md`; plan → `docs/archive/` | `inherit` | `lint_specs.py --strict` and `check_project_rules.py` exit 0; §7 filled | `docs: phase 10 - close construction kickoff plan` |
 
 ## 4. Phase prompts
@@ -244,6 +247,52 @@ version) and the commit you reviewed (git rev-parse HEAD). Then commit only that
 
 Gate (orchestrator): the reviewer's commit changes only its review file; every B-nn has a verdict; every C-nn has a location and evidence. Record the result in §6 with the commit `docs: architecture gate - record final check in plan`.
 
+### Mockup gate — external re-check of S-23/S-24 (Gemini CLI)
+
+Proposed by the orchestrator on 2026-10-16 (O-P2-31); the operator chose Gemini CLI with Gemini 4 Argon as the reviewer (2026-10-16). S-23 and S-24 change Accepted ADRs, so an external check runs before Phase 6. The operator first reviews and commits the working-tree changes, then starts Gemini CLI with Gemini 4 Argon in `C:\work\slussen` on `construction-kickoff` and gives it this prompt verbatim:
+
+```text
+You are an external reviewer of architecture decisions for Slussen (AIUP project; the specification in docs/
+is the source of truth; the ADRs in docs/adr/ are Accepted, with "re-check pending (S-23/S-24)" on their
+Status lines). You reviewed earlier versions in docs/reviews/phase2_architecture_review.md,
+phase2b_architecture_rereview.md and phase2c_architecture_final_check.md.
+
+Since commit ff455b3 the Operator approved two specification changes (docs/construction_kickoff_plan.md §6,
+S-23 and S-24) and the ADRs were revised for them:
+- S-23: Budgets, Bank Accounts and Account Mappings are set up in the app (new UC-013, reworked UC-009); the
+  Configuration Key is replaced by a generated identifier; a Bank Account's name is editable and never
+  identifies it; after a send, an Account Mapping is moved or removed only by a confirmed act, and sent
+  transactions are never sent again (UC-009 BR-003, UC-003 BR-021); a transaction the Budget App rejected
+  follows the current Account Mapping when retried, while one whose outcome is unknown keeps its recorded
+  Budget Account.
+- S-24: service credentials are entered in the app (new UC-014), stored only on the device, encrypted with a
+  non-exportable key, and never in the repository, an APK, a backup, a log or the Decision Journal; the Build
+  Configuration is optional and holds only the signing setup; the Request Limit is declared by each Data
+  Provider's part.
+
+Read AGENTS.md, then review only the change since ff455b3 (git diff ff455b3..HEAD -- docs/), reading
+surrounding sections as needed. Answer exactly two questions:
+1. Exactly once and nothing without confirmation: can any path created by S-23/S-24 (adding, pairing,
+   moving, removing or identifying a Bank Account again; credentials refused, removed or lost on reinstall;
+   restore) send a transaction twice, send one to a Budget Account the Operator did not confirm, or make a
+   sent transaction eligible again? Cite the rule that prevents it, or report the gap.
+2. Any new contradiction of severity High: between ADRs, between an ADR and the specification, or inside the
+   changed specification. Report only High findings, as D-01, D-02, ..., each with a location, the evidence
+   and, in one line, what would fix it. Mark one "uncertain" if unsure. Do not report Medium or Low.
+
+Rules:
+- Do not modify any file except the review file below. Do not access anything outside this repository, and
+  do not read scratch/ or build-config/local/.
+- End with a one-line verdict: can the Operator remove "re-check pending" from the ADRs, yes or no, and
+  which D-nn block it.
+
+Write the review to docs/reviews/mockup_gate_s23_s24_recheck.md with a header naming yourself (model and
+version) and the commit you reviewed (git rev-parse HEAD). Then commit only that file with the message
+"docs: mockup gate - external re-check of S-23/S-24". Do not push; the Operator pushes.
+```
+
+Gate (orchestrator): the reviewer's commit changes only its review file; question 1 is answered per path; every D-nn has a location and evidence. The orchestrator records the result in §6 and leaves it uncommitted for the operator (O-P2-33).
+
 ### Phase 3 — Project-rule check (`inherit`)
 
 Write `tools/check_project_rules.py`, with `--self-test`, which checks `docs/` for the three `AGENTS.md` §2 rules:
@@ -267,15 +316,17 @@ Review the mockups against the use cases: missing states or alternative flows, s
 
 ### Phase 6 — Module skeleton (`inherit`)
 
-Build the Gradle modules, dependencies, Konsist tests, Room setup and Build Configuration loading exactly as the Accepted ADRs say, with no use case behaviour yet. Prove the Konsist rules by a forbidden dependency that fails them (planted, then removed).
+Build the Gradle modules, dependencies, Konsist tests, Room setup, the signing-only Build Configuration checks and the credential vault exactly as the Accepted ADRs say (as revised for S-23/S-24), with no use case behaviour yet. Prove the Konsist rules by a forbidden dependency that fails them (planted, then removed).
 
-### Phase 7 — Vertical slice UC-012 + UC-008 (`inherit`)
+### Phase 7 — Vertical slice UC-012 + UC-014 + UC-013 + UC-008 (`inherit`)
+
+Since S-23/S-24 (O-P2-32) Bank Accounts exist only after the Operator has entered credentials (UC-014) and connected Budgets and Bank Accounts (UC-013) in the app, so the first slice takes the path from a fresh install to the UC-008 status screen: UC-012 (own build), UC-014 (credentials, with the credential vault and evidence E-13), UC-013 (choose Budgets, pair Bank Accounts) and UC-008 (import status). It does not upload.
 
 Follow `aiup-vaadin-jooq/skills/implement` as the pattern and record every adaptation:
 - **Inputs:** the inputs from `workflow.md`'s *Construction inputs*: only the requirements on each use case's Requirements line, the entity model, the glossary and the ADRs.
 - **Tests first,** carrying the use case and BR ids per ADR-004.
 - **Then the implementation,** with a marker per enforced BR.
-- **The UC-008 screen** follows the accepted mockup.
+- **The screens** follow the accepted mockups: `setup.html` (UC-014, UC-013), `account-mappings.html` (UC-013 pairing) and the UC-008 screen.
 
 Stop and report if the specification is wrong or incomplete (§1.3).
 
@@ -429,6 +480,8 @@ Phase 5 reviewed all 17 screens, `index.html` with its traceability table and Op
 | S-20 | Mockup gate (operator's mockup feedback, M-08) | UC-006 A2, new BR-019, `UPLOAD_PLAN`; UC-005 BR-002, BR-006, step 3, A3, new BR-014; UC-009 step 1, A9, BR-008; glossary Funded By, Transfer Partner; FR-091; `BANK_ACCOUNT`; ADR-001, ADR-002, ADR-007 aligned | (1) An Upload Plan exists only while it is shown: leaving its screen discards it as on cancelling; every request prepares a new plan; a decision changed inside the plan rebuilds it in place (A3 kept, operator's choice (a)). (2) A Transfer's other side is always a Budget Account that Slussen fetches; a Funded By or Transfer Partner whose Budget Account loses its last mapping is kept but no longer applies. | Approved by the Operator (2026-10-15). |
 | S-21 | Mockup gate (O-P2-20) | UC-006 A2 trigger, BR-019 | Leaving the Upload Plan's screen after confirming is not cancelling and changes nothing: Slussen finishes the Upload and shows its outcome when the Operator next opens the Budget or the outcome. A2 applies only before confirming. | Approved by the Operator (2026-10-15). |
 | S-22 | Mockup gate (O-P2-27) | UC-001 trigger, A2, A11, BR-006, BR-008; UC-010 step 1, BR-001, BR-002; FR-001, FR-016; glossary Fetch Cooldown, Operator Setting; entity model `DATA_PROVIDER.fetch_cooldown_minutes` (moved from `OPERATOR_SETTINGS`); ADR-001 (`DataProviderProfile.defaultFetchCooldownMinutes`, UC-001 row) and ADR-002 (reconciliation O-11, default content) aligned | (1) A Fetch served from the Fetch Cooldown continues with the Comparison, so the Budget App is still read. (2) A Fetch covers one Data Provider, the Data Providers with a Bank Account in one Budget, or all. (3) The Fetch Cooldown is set per Data Provider; its default comes with the Data Provider's part, the Operator can change it, 0 switches it off. (4) A Fetch never starts a Bank Consent grant. | Approved by the Operator (2026-10-16). |
+| S-23 | Mockup gate (O-P2-29, O-P2-30) | vision; FR-042, FR-056, FR-071, FR-075, NFR-010, new FR-097..FR-100, FR-057 and FR-096 Rejected; glossary (Configuration Key removed; Bank Account, Offered Bank Account, Start Date, Account Mapping, Decision-Critical Data, Build Configuration); entity model (`BUDGET.served`, `BANK_ACCOUNT.generated_identifier`, `ACCOUNT_MAPPING.first_sent_at`, `OFFERED_BANK_ACCOUNT.balance`); new UC-013; UC-001, UC-002, UC-003 (new BR-021), UC-005, UC-006, UC-007, UC-008, UC-009 (reworked), UC-010, UC-012; `use_cases.puml`; all ADRs aligned (re-check pending) | Reverses bootstrap VG-07: Budgets, Bank Accounts, Account Mappings and Start Dates are set up in the app; the Operator pairs Offered Bank Accounts with Budget Accounts, names and balances side by side; the Configuration Key is replaced by a generated identifier; a Bank Account's name is editable and never identifies it; after a send, an Account Mapping is moved or removed only by a confirmed act that states how many were sent; sent transactions stay in the Budget App and are never sent again. | Approved by the Operator (2026-10-16). |
+| S-24 | Mockup gate (O-P2-30) | vision (constraint One Operator per Installation); FR-017, FR-042, FR-064, FR-070, FR-071, FR-093, NFR-009, C-003, C-004, new FR-101, FR-102, NFR-021; glossary (Request Limit, Configuration Template, Build Configuration); entity model (`SERVICE_CREDENTIAL`, `DATA_PROVIDER.request_limit`, `FETCH.outcome` Credentials Refused); new UC-014; UC-001, UC-003, UC-006, UC-007, UC-008, UC-009, UC-010, UC-012 (rewritten), UC-013 (first-run order BR-008); `use_cases.puml`; all ADRs aligned, ADR-003 rewritten (re-check pending) | Service credentials are entered in the app and stored only on the device, encrypted with a non-exportable key; never in the repository, an APK, a backup, an export, a log or the Decision Journal; entered again after a reinstall. The Build Configuration is optional and holds only the signing setup; an APK may be shared. The Request Limit is declared by each Data Provider's part and cannot be changed. | Approved by the Operator (2026-10-16). |
 
 **Open questions for the operator:**
 
@@ -470,6 +523,12 @@ Phase 5 reviewed all 17 screens, `index.html` with its traceability table and Op
 | O-P2-26 | Mockup gate | The Operator (2026-10-16): the Budget mockup covered only edge cases; the normal success state was missing. | A first frame showing the normal day: everything fetched and compared, balances match, nothing to upload (`budget.html#in-sync`), and a matching all-clear first frame on the Overview (`overview.html#all-clear`). | Agreed (2026-10-16). Mockups only. |
 | O-P2-27 | Mockup gate | The Operator (2026-10-16): "Read the Budget App again" inside the Sources card is misleading (a Source is an input, the Budget App the destination); where and when should the Budget App be read, and should pull to refresh refresh everything, on every screen? | Option B: the Budget header names the destination ("YNAB · read 13:21 ⟳"), the Sources card holds only Sources. Pull to refresh fetches what the screen shows (Overview: all Data Providers; Budget tab: that Budget's Data Providers; Bank Account: its Data Provider), then reads the Budget App; none on the Upload Plan, Settings or sheets. Sources are protected by a Fetch Cooldown per Data Provider (default from its plug-in), the Request Limit, Back-offs and the PSD2 unattended limit; a Fetch never starts a Bank Consent grant. | Agreed (2026-10-16): "we are aligned on all points." S-22; ADR-001 and ADR-002 aligned. |
 | O-P2-28 | Mockup gate | The Operator (2026-10-16): what happens when an Adopting Developer has more Budgets than the bottom bar fits? | Material 3's bottom navigation holds three to five destinations; with Overview and Settings fixed, up to three Budgets keep their own tabs. With four or more the bar becomes Overview · Budgets · Settings, Budgets opens the last Budget viewed with the combined badge, and the Budget header becomes a switcher sheet. | Agreed (2026-10-16), option A: "wouldn't affect me in the current state, but, at least i have a plan". Mockups only (`budget.html#many-tab`, `#many-switcher`, `#many-overview`); every other screen keeps three Budgets. |
+| O-P2-29 | Mockup gate | The Operator (2026-10-16): the Account Mappings screen shows the Build Configuration's name, not the Source's; do Sources deliver readable names, and must mapping be fixed before the build? Evidence: the SimpleFIN public demo (`name`, `id`, `org.name`, `currency`, `balance`) and the predecessor's Enable Banking tests (`name` often the holder, `product` a product name, `cash_account_type`, identification hash): names depend on the Bank. | Option B: map in the app; editable names; generated identifiers. | Agreed (2026-10-16): "B. revisit the Use Cases and trickle down ... worth it for scaling the use of the app"; names editable "so that the user can identify it with their own mental model". S-23. |
+| O-P2-30 | Mockup gate | Re-mapping after transactions were sent; choosing Budgets and entering credentials in the app. | Re-mapping at the Operator's discretion, by a confirmed act stating the count; the existing rules handle the transactions already sent. Budgets chosen from the Budget App's list. Credentials in the app, encrypted on the device; Build Configuration only for signing. | Agreed (2026-10-16): "leave that to user discretion and let all our other error handling deal with the fallout"; "yes let's do it" (credentials). S-23, S-24. |
+| O-P2-31 | Mockup gate | S-23/S-24 change Accepted ADRs before Phase 6. | An external check, narrow (exactly once and High contradictions only), prompt in §4 "Mockup gate — external re-check of S-23/S-24". | Agreed (2026-10-16); the operator runs it with Gemini CLI, Gemini 4 Argon. |
+| O-P2-32 | Mockup gate | The first slice (UC-012 + UC-008) and the Phase 9 acceptance assumed Bank Accounts from the build; now they appear only after UC-014 and UC-013 in the app. | The first slice is UC-012 + UC-014 + UC-013 + UC-008; no use case changes, only the Phase 7 scope. | Agreed (2026-10-16). Phase 7 row and prompt changed. |
+| O-P2-33 | Mockup gate | The operator (2026-10-16): "please stop auto commit and push, i would like to review myself the diffs before pushing." | The orchestrator gates every change and leaves it uncommitted, with a proposed commit message; the operator commits and pushes. Replaces §1's "one commit per phase, pushed" for the orchestrator. | Agreed (2026-10-16). |
+| O-P2-34 | Mockup gate | Open items from S-23/S-24 and the ADR revision: (1) a Rejected Sent Record after a moved Account Mapping is retried to its recorded Budget Account (ADR-002/007 assumption; the specification states it only for an unknown outcome); (2) `live-test.properties` holds test-only YNAB credentials in `build-config/local/`, outside the Build Configuration, read by no app build; (3) evidence E-13 (credential encryption and non-restore) belongs to the first slice that stores credentials; (4) no explicit state for a Bank Account its Source stops offering; (5) no guard on an APK built by someone else; (6) no export or import of Account Mappings. | (1) Instead: a Rejected transaction follows the current Account Mapping (it was not written; a move is often the fix); only an unknown outcome stays with its recorded Budget Account. (2) Keep; it is test-only and covered by `NoCredentialInAppTest`. (3) The first slice, which now includes UC-014. (4)-(6) Defer. | Agreed (2026-10-16) as recommended: (1) applied to ADR-007 and the specification by a sub-agent; (2) kept; (3) Phase 7 row; (4)-(6) deferred. |
 
 ## 7. Plan closed
 

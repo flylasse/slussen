@@ -10,21 +10,21 @@
 **Trigger:** Operator starts a Fetch of one Data Provider, of the Data Providers that have a Bank Account in one Budget, or of all Data Providers, or the time of a Scheduled Fetch arrives  
 **Status:** Approved  
 
-**Requirements:** [FR-001, FR-004, FR-005, FR-008, FR-009, FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-058, FR-064, FR-066, FR-076, FR-077, FR-078, FR-079, FR-080, NFR-002, NFR-004, NFR-007, NFR-008, NFR-016, NFR-018, NFR-020, C-006, C-007, C-012](../requirements.md)
+**Requirements:** [FR-001, FR-004, FR-005, FR-008, FR-009, FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-058, FR-064, FR-066, FR-076, FR-077, FR-078, FR-079, FR-080, FR-098, FR-102, NFR-002, NFR-004, NFR-007, NFR-008, NFR-016, NFR-018, NFR-020, C-006, C-007, C-012](../requirements.md)
 
 ## Preconditions
 
-- The Data Provider and the Bank Accounts it reads are part of the Build Configuration, each Bank Account with an Account Mapping.
+- The Operator has entered service credentials for the Data Provider that it accepted (UC-014).
 - No Upload Plan is awaiting confirmation (UC-006 BR-005).
 
 ## Main Success Scenario
 
 1. Operator starts a Fetch of a Data Provider.
 2. Slussen checks that the Data Provider is in no Back-off, is not within its Fetch Cooldown and has not reached its Request Limit.
-3. Slussen selects the Bank Accounts to read: every Bank Account of the Data Provider that is not a Retired Account and whose Bank has a valid Bank Consent when the Data Provider needs one.
-4. Slussen asks the Data Provider, with the Operator present, for the transactions and the balance of each selected Bank Account for the fetch period, and keeps each request as a Provider Request (BR-007).
+3. Slussen selects the Bank Accounts to read: every Bank Account the Operator added for the Data Provider (UC-013) that has an Account Mapping, is not a Retired Account and whose Bank has a valid Bank Consent when the Data Provider needs one.
+4. Slussen asks the Data Provider, with the Operator present, for the Bank Accounts it offers and for the transactions and the balance of each selected Bank Account for the fetch period, and keeps each request as a Provider Request (BR-007).
 5. Data Provider delivers the transactions and the Account Balance of each selected Bank Account.
-6. Slussen keeps the delivered Bank Accounts as Offered Bank Accounts (UC-009 BR-009) and identifies each with certainty as one Bank Account of the Build Configuration.
+6. Slussen keeps the delivered Bank Accounts as Offered Bank Accounts (UC-009 BR-009) and identifies each selected one with certainty as one of the Bank Accounts the Operator added.
 7. Slussen keeps the booked Bank Transactions with an amount other than zero and leaves out the others.
 8. Slussen stores the Bank Transactions and Account Balances of each identified Bank Account, including the balance the Data Provider reports for a Bank Account whose transactions come from Transaction Files.
 9. Slussen records in the Decision Journal each Bank Transaction it received for the first time or with changed content (UC-011 BR-001).
@@ -55,7 +55,7 @@
 
 ### A3: Request Limit Reached
 
-**Trigger:** The Data Provider's Request Limit (Build Configuration) is reached in the preceding 24 hours, the window of the Data Provider's own limit (step 2)  
+**Trigger:** The Data Provider's Request Limit (declared by its part) is reached in the preceding 24 hours, the window of the Data Provider's own limit (step 2)  
 **Flow:**
 
 1. Slussen does not contact the Data Provider.
@@ -94,12 +94,12 @@
 
 ### A7: Data Provider Refuses Slussen's Credentials
 
-**Trigger:** The Data Provider answers that the service credentials of the Build Configuration are not valid or not allowed (step 5)  
+**Trigger:** The Data Provider answers that the service credentials the Operator entered are not valid or not allowed (step 5)  
 **Flow:**
 
 1. Slussen starts no Back-off and keeps the previously stored Bank Transactions and Account Balances unchanged.
-2. Slussen records the Fetch with outcome Configuration Error.
-3. Slussen shows the Blocked Reason "configuration error" with the action that removes it: correct the Build Configuration (UC-012).
+2. Slussen records the Fetch with outcome Credentials Refused.
+3. Slussen shows the Blocked Reason "credentials refused" with the action that removes it: enter the credentials again (UC-014).
 4. Use case ends.
 
 ### A8: Failure for One Bank Account
@@ -123,7 +123,7 @@
 
 ### A10: Bank Account Not Identified With Certainty
 
-**Trigger:** A delivered Bank Account cannot be identified with certainty as a Bank Account of the Build Configuration (step 6)  
+**Trigger:** A delivered Bank Account can only probably be identified as one of the Bank Accounts the Operator added, or two of them are possible (step 6)  
 **Flow:**
 
 1. Slussen does not use the transactions of that Bank Account.
@@ -196,6 +196,14 @@
 1. Slussen keeps it as an Unreadable Transaction of that Bank Account, with whatever fields could be read, the reason and the status Needs Review (BR-016).
 2. Use case continues at step 7 for the other transactions.
 
+### A18: Bank Account Not Added
+
+**Trigger:** A delivered Bank Account matches none of the Bank Accounts the Operator added (step 6)  
+**Flow:**
+
+1. Slussen keeps it only as an Offered Bank Account that the Operator can add (UC-013) and uses none of its transactions.
+2. Use case continues at step 7 for the other Bank Accounts.
+
 ## Postconditions
 
 ### Success Postconditions
@@ -244,7 +252,7 @@ Each Data Provider has its own Fetch Cooldown, whose default comes with the Data
 
 ### BR-007: Request Limit
 
-Slussen keeps every request it sends to a Data Provider as a Provider Request with its time, and sends a Data Provider at most its Request Limit of requests in the preceding 24 hours, the window of the Data Provider's own limit (24 requests by default, set per Data Provider in the Build Configuration). The count survives a restart of the app, does not depend on calendar day or time zone, and is not lifted by a Fetch the Operator starts. Times are shown in the device's local time.
+Slussen keeps every request it sends to a Data Provider as a Provider Request with its time, and sends a Data Provider at most its Request Limit of requests in the preceding 24 hours, the window of the Data Provider's own limit (declared by each Data Provider's part from the Data Provider's own limit, UC-012 BR-011). The count survives a restart of the app, does not depend on calendar day or time zone, and is not lifted by a Fetch the Operator starts. Times are shown in the device's local time.
 
 ### BR-008: No Contact Without Bank Consent
 
@@ -260,7 +268,7 @@ A failure, a Back-off, a Fetch Cooldown, a reached Request Limit or a reached Un
 
 ### BR-011: Balance of a File-Imported Bank Account
 
-For a Bank Account whose transactions come from Transaction Files, the Account Balance is taken from the Data Provider that the Build Configuration names for its balance, during a Fetch of that Data Provider.
+For a Bank Account whose transactions come from Transaction Files, the Account Balance is taken from the Data Provider the Operator chose for its balance (UC-013 BR-006), during a Fetch of that Data Provider.
 
 ### BR-012: Operator Present or Unattended
 

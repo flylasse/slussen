@@ -2,11 +2,11 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate).
+Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24).
 
 History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
-Phase 2 review: live tests and their credentials, device evidence; later revisions at the gate are listed under
-"Review findings addressed".
+Phase 2 review: live tests and their credentials, device evidence; revised for S-23/S-24 on 2026-10-16, pending an
+external check; later revisions at the gate are listed under "Review findings addressed".
 
 ## Context
 
@@ -109,7 +109,8 @@ Rules:
   Flow row's code, exactly as the `aiup-vaadin-jooq` entry of `workflow.md`.
 - Tests against a real throwaway YNAB Budget (C-011) carry `@Tag("live")` and run only with `-PincludeLive`;
   `gradlew check` excludes them. Their credentials and the reference of the throwaway Budget come from
-  `build-config/local/live-test.properties`, a file of the Operator's ignored Build Configuration location with its
+  `build-config/local/live-test.properties`, a test-only file in the ignored location `build-config/local/` that is
+  not part of the Build Configuration and is never read by a task that builds an app (ADR-003 §1, §4; S-24), with its
   template `build-config/live-test.template.properties` and every rule of ADR-003 (placement, `# secret`, never
   printed) (O-P1-07). A live test that finds no such file fails with the message where the file belongs, instead of
   passing silently. **Agents never run live tests**, never with `-PincludeLive`, and never read that file; only the
@@ -183,3 +184,5 @@ given the `aiup-vaadin-jooq` agent definition (`agents/uc-coverage.md`) together
   cover the persistence evidence of ADR-002.
 - O-P1-07: §2 (live-test credentials in `build-config/local/live-test.properties`, tagged, never run by agents).
 - A-21 in part: the T-rules run as Konsist rule K-14 with scope Test (ADR-001 §6.2).
+- S-23/S-24 (2026-10-16, re-check pending): §2 (`live-test.properties` is a test-only file beside the Build
+  Configuration, never read by an app build, so no credential reaches a built app; ADR-003 §4).

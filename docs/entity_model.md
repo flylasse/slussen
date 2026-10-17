@@ -19,6 +19,7 @@ erDiagram
     BANK ||--o{ CONSENT_REQUEST : "is asked by"
     DATA_PROVIDER ||--o{ CONSENT_REQUEST : "starts"
     BANK_CONSENT ||--o| BANK_SESSION : "opens"
+    DATA_PROVIDER |o--o| SERVICE_CREDENTIAL : "is reached with"
     DATA_PROVIDER ||--o{ OFFERED_BANK_ACCOUNT : "offers"
     BANK |o--o{ OFFERED_BANK_ACCOUNT : "holds"
     BANK_ACCOUNT |o--o{ OFFERED_BANK_ACCOUNT : "is proposed as"
@@ -66,6 +67,11 @@ One single-currency workspace in the Budget App that holds Budget Accounts and i
 | name                 | Name of the Budget as shown to the Operator                              | String    | 100              | Not Null              |
 | currency             | ISO 4217 code of the Budget's currency, for example EUR                  | String    | 3                | Not Null              |
 | last_read_at         | Time of the last successful read of this Budget from the Budget App, empty before the first one | DateTime  | -                | Optional              |
+| served               | True when the Operator chose that Slussen serves this Budget (UC-013)                     | Boolean   | 1                | Not Null              |
+
+#### Constraints
+
+- Only a Budget whose `served` is true is read, compared and shown; it stops being served only when no Bank Account is mapped into it.
 
 ### BUDGET_ACCOUNT
 
@@ -128,11 +134,11 @@ An external online service from which Slussen fetches transactions and balances 
 | stable_reference      | True when the Data Provider gives every Bank Transaction a Stable Reference                          | Boolean   | 1                | Not Null              |
 | bank_consent_required | True when each Bank must grant a Bank Consent before the Data Provider can read it                   | Boolean   | 1                | Not Null              |
 | fetch_cooldown_minutes | Fetch Cooldown of the Data Provider in minutes, an Operator Setting whose default the Data Provider's part declares; 0 switches it off | Integer   | 10               | Not Null, Min: 0, Max: 1440 |
-| request_limit         | Request Limit: number of requests Slussen sends to the Data Provider at most in any 24 hours, set in the Build Configuration, 24 by default | Integer   | 10               | Not Null, Min: 1, Max: 1000 |
+| request_limit         | Request Limit: number of requests Slussen sends to the Data Provider at most in any 24 hours, declared by the Data Provider's part from the Data Provider's own limit; not an Operator Setting | Integer   | 10               | Not Null, Min: 1, Max: 1000 |
 
 #### Constraints
 
-- The number of Provider Requests of the Data Provider sent in the preceding 24 hours, the window of the Data Provider's own limit, never exceeds `request_limit`, the Request Limit set in the Build Configuration; the count does not depend on calendar day or time zone.
+- The number of Provider Requests of the Data Provider sent in the preceding 24 hours, the window of the Data Provider's own limit, never exceeds `request_limit`, the Request Limit set by the Data Provider's part; the count does not depend on calendar day or time zone.
 
 ### FILE_FORMAT
 
@@ -160,25 +166,24 @@ A financial service company that holds one or more of the Operator's Bank Accoun
 
 ### BANK_ACCOUNT
 
-One of the Operator's or a household member's Bank Accounts at a Bank, as exposed by a Data Provider or a File Format and configured in the Build Configuration.
+One of the Operator's or a household member's Bank Accounts at a Bank, as exposed by a Data Provider or a File Format and added by the Operator in the app.
 
 | Attribute                         | Description                                                                                                   | Data Type | Length/Precision | Validation Rules                         |
 |-----------------------------------|---------------------------------------------------------------------------------------------------------------|-----------|------------------|------------------------------------------|
 | id                                | Unique identifier                                                                                             | Long      | 19               | Primary Key, Sequence                    |
-| configuration_key                 | Configuration Key: key the Build Configuration gives the Bank Account when it is first configured, never changed afterwards | String    | 50               | Not Null, Unique                         |
+| generated_identifier              | Identifier Slussen generates when the Bank Account is added, as unlikely to collide as a random UUID (NFR-020); never changes | String    | 36               | Not Null, Unique                         |
 | bank_id                           | Bank that holds the Bank Account                                                                              | Long      | 19               | Not Null, Foreign Key (BANK.id)          |
 | data_provider_id                  | Data Provider that delivers the Bank Account's transactions, empty when they come from Transaction Files     | Long      | 19               | Optional                                 |
 | file_format_id                    | File Format of the Bank Account's Transaction Files, empty when a Data Provider delivers the transactions     | Long      | 19               | Optional                                 |
 | balance_data_provider_id          | Data Provider that reports the Bank Account's balance when the transactions come from Transaction Files      | Long      | 19               | Optional                                 |
-| name                              | Name of the Bank Account as shown to the Operator                                                             | String    | 100              | Not Null                                 |
+| name                              | Name of the Bank Account as shown to the Operator, proposed from what its Source delivers and editable by the Operator; never used to identify it | String    | 100              | Not Null                                 |
 | currency                          | ISO 4217 code of the Bank Account's currency                                                                  | String    | 3                | Not Null                                 |
 | bank_account_type                 | Kind of Bank Account, which decides which Transfers it can take part in                                       | String    | 20               | Not Null, Values: Checking, Savings, Credit Card, Other |
-| start_date                        | Start Date set in the Build Configuration, before which no Bank Transaction of the Bank Account is offered for Upload; empty when there is none | Date      | -                | Optional                                 |
+| start_date                        | Start Date set by the Operator in the app, before which no Bank Transaction of the Bank Account is offered for Upload; empty when there is none | Date      | -                | Optional                                 |
 | provider_reference                | Identifier the Data Provider gives the Bank Account, recorded once the Bank Account is identified with certainty | String    | 200              | Optional                                 |
 | bank_account_fingerprint          | One-way fingerprint of the Bank Account number that recognises the Bank Account when the Data Provider's identifier changes | String    | 64               | Optional                                 |
 | balance_provider_reference        | Identifier the balance Data Provider gives the Bank Account                                                   | String    | 200              | Optional                                 |
 | retired                           | True when the Operator has retired the Bank Account so that it is neither fetched nor uploaded                | Boolean   | 1                | Not Null                                 |
-| configured                        | True while the Build Configuration has an entry with the Bank Account's `configuration_key`                   | Boolean   | 1                | Not Null                                 |
 | funded_by_budget_account_id       | Funded By: Budget Account that pays this credit card Bank Account by default, empty until the Operator sets it | Long      | 19               | Optional                                 |
 | transfer_partner_budget_account_id | Transfer Partner: Budget Account that money most often moves to and from for this Bank Account, empty until the Operator sets it | Long      | 19               | Optional                                 |
 
@@ -188,31 +193,30 @@ One of the Operator's or a household member's Bank Accounts at a Bank, as expose
 - `balance_data_provider_id` is filled only when `file_format_id` is filled.
 - `balance_provider_reference` is filled exactly when `balance_data_provider_id` is filled.
 - Two Bank Accounts of the same Data Provider never have the same `provider_reference` or the same `bank_account_fingerprint`.
-- `funded_by_budget_account_id` and `transfer_partner_budget_account_id` belong to the same Budget as the Bank Account's own Account Mapping, differ from its own Budget Account, and are each a Budget Account that Slussen fetches, that is, one that a Bank Account of the Build Configuration that is not a Retired Account is mapped to through an Account Mapping; never a Manually Kept Account (UC-005 BR-014).
-- When that Budget Account loses its last Account Mapping of a Bank Account that is configured and not a Retired Account, the value is kept but no longer applies: it is not used to detect Transfers and is shown as not applying until the Operator changes or clears it or such a Bank Account is mapped to it again.
+- `funded_by_budget_account_id` and `transfer_partner_budget_account_id` belong to the same Budget as the Bank Account's own Account Mapping, differ from its own Budget Account, and are each a Budget Account that Slussen fetches, that is, one that a Bank Account the Operator added that is not a Retired Account is mapped to through an Account Mapping; never a Manually Kept Account (UC-005 BR-014).
+- When that Budget Account loses its last Account Mapping of a Bank Account that is not a Retired Account, the value is kept but no longer applies: it is not used to detect Transfers and is shown as not applying until the Operator changes or clears it or such a Bank Account is mapped to it again.
 - `funded_by_budget_account_id` is filled only when `bank_account_type` is Credit Card; `transfer_partner_budget_account_id` is filled only when `bank_account_type` is not Credit Card.
-- Neither has a default in the build or the Build Configuration; both start empty and every change is recorded in the Decision Journal.
+- Neither has a default; both start empty and every change is recorded in the Decision Journal.
 - A Retired Account keeps its identification, Account Mapping and history and can be restored.
-- `configuration_key` never changes once stored. Each Bank Account entry of the Build Configuration is matched to the stored Bank Account with the same `configuration_key`, never by its name or position, so that renaming or reordering entries changes no identification, Account Mapping or lock.
-- A Bank Account whose `configured` is false, because its entry was removed or given a new Configuration Key, keeps its identification, history, Account Mapping and lock; it is neither fetched nor offered for Upload and is still shown with the reason. It is in use again when an entry with its `configuration_key` returns.
-- An entry with a Configuration Key that no stored Bank Account has is a new Bank Account; its Account Mapping is refused when it points at a Budget Account that already receives through a locked Account Mapping, also one of a Bank Account whose `configured` is false.
+- `generated_identifier` never changes once stored; `name` never identifies the Bank Account (UC-009 BR-011).
+- A Bank Account without an Account Mapping keeps its identification and history and is neither compared nor offered for Upload until the Operator maps it again (UC-009).
 
 ### ACCOUNT_MAPPING
 
-The configured link from one Bank Account to one Budget Account, locked once a transaction has been sent through it.
+The link from one Bank Account to one Budget Account that the Operator sets in the app; once a transaction has been sent through it, it is moved or removed only by a deliberate action the Operator confirms.
 
 | Attribute         | Description                                                                                  | Data Type | Length/Precision | Validation Rules                          |
 |-------------------|----------------------------------------------------------------------------------------------|-----------|------------------|-------------------------------------------|
 | id                | Unique identifier                                                                            | Long      | 19               | Primary Key, Sequence                     |
 | bank_account_id   | Bank Account whose transactions the mapping sends                                            | Long      | 19               | Not Null, Foreign Key (BANK_ACCOUNT.id)   |
 | budget_account_id | Budget Account that receives the Bank Account's transactions                                 | Long      | 19               | Not Null, Foreign Key (BUDGET_ACCOUNT.id) |
-| locked_at         | Time the first transaction was recorded as sent through the mapping, whatever the outcome; empty until then | DateTime  | -                | Optional                                  |
+| first_sent_at     | Time the first transaction was recorded as sent through the mapping to its current Budget Account, whatever the outcome (a new send or a retry of a Rejected send); empty until then | DateTime  | -                | Optional                                  |
 
 #### Constraints
 
 - A Bank Account has at most one Account Mapping, and a Budget Account receives through at most one Account Mapping.
 - The Bank Account's currency equals the currency of the Budget Account's Budget; otherwise the Bank Account is blocked from Upload.
-- Once `locked_at` is filled, `budget_account_id` never changes.
+- Once `first_sent_at` is filled, `budget_account_id` changes, or the mapping is removed, only by the Operator's confirmed action, which states how many transactions were sent through it (UC-009 BR-003); after a move `first_sent_at` is empty until the first send to the new Budget Account.
 
 ### OFFERED_BANK_ACCOUNT
 
@@ -228,8 +232,9 @@ A Bank Account that a Data Provider delivered in its latest list of Bank Account
 | name                     | Name of the Bank Account as the Data Provider describes it                                    | String    | 100              | Optional                                 |
 | bank_account_kind        | Kind of Bank Account as the Data Provider describes it, for example checking or credit card   | String    | 50               | Optional                                 |
 | currency                 | ISO 4217 code of the Bank Account's currency                                                  | String    | 3                | Optional                                 |
+| balance                  | Balance of the Bank Account as the Data Provider reported it, empty when it reported none      | Decimal   | 12,3             | Optional                                 |
 | last_four_digits         | Last four digits of the Bank Account number, the part of a Bank Account or card number that banks and card issuers conventionally show; the only digits of the number Slussen keeps | String    | 4                | Optional                                 |
-| proposed_bank_account_id | Bank Account of the Build Configuration that this one is proposed as a likely match for, empty when there is none | Long      | 19               | Optional                                 |
+| proposed_bank_account_id | Bank Account the Operator added that this one is proposed as a likely match for, empty when there is none | Long      | 19               | Optional                                 |
 | offered_at               | Time the Data Provider delivered the Bank Account                                             | DateTime  | -                | Not Null                                 |
 
 #### Constraints
@@ -276,6 +281,22 @@ The session at a Data Provider that a granted Bank Consent opens and through whi
 - A Bank Session is never included in device backups or transfers and is not restored after a reinstall.
 - `session_reference` never appears in device logs, in any logging mode, or in the Decision Journal.
 
+### SERVICE_CREDENTIAL
+
+The credentials the Operator entered in the app for the Budget App or for one Data Provider, kept so that Slussen can use that service.
+
+| Attribute        | Description                                                                                  | Data Type | Length/Precision | Validation Rules      |
+|------------------|----------------------------------------------------------------------------------------------|-----------|------------------|-----------------------|
+| id               | Unique identifier                                                                            | Long      | 19               | Primary Key, Sequence |
+| data_provider_id | Data Provider the credentials are for, empty for the Budget App                              | Long      | 19               | Optional              |
+| secret           | The credentials as the service needs them, stored encrypted with a key that never leaves the device | String    | 4000             | Not Null              |
+| accepted_at      | Time the service accepted the credentials when the Operator entered them                    | DateTime  | -                | Not Null              |
+
+#### Constraints
+
+- At most one `SERVICE_CREDENTIAL` exists for the Budget App and at most one for each Data Provider; new credentials replace the earlier ones only once the service accepted them (UC-014).
+- `secret` is never in a built app, a device backup or device-to-device transfer, a Journal Export, the Decision Journal or a log, in any logging mode, and is not restored after a reinstall (NFR-021).
+
 ### CONSENT_REQUEST
 
 One attempt to grant or renew the Bank Consent of a Bank, started with a Data Provider and answered at most once.
@@ -305,7 +326,7 @@ One read of transactions and balances from a Data Provider, started by the Opera
 | data_provider_id | Data Provider that was read                   | Long      | 19               | Not Null, Foreign Key (DATA_PROVIDER.id) |
 | started_at       | Time the Fetch started                        | DateTime  | -                | Not Null                                 |
 | started_by       | Whether the Operator started the Fetch, with the Operator present, or the Fetch Schedule started it, unattended | String    | 20               | Not Null, Values: Operator, Schedule     |
-| outcome          | What the Fetch achieved                       | String    | 30               | Not Null, Values: Fetched, Served From Fetch Cooldown, Waiting For Back-off, Request Limit Reached, Failed, Not Consented, Configuration Error |
+| outcome          | What the Fetch achieved                       | String    | 30               | Not Null, Values: Fetched, Served From Fetch Cooldown, Waiting For Back-off, Request Limit Reached, Failed, Not Consented, Credentials Refused |
 
 #### Constraints
 
@@ -574,8 +595,10 @@ Slussen's own durable record of one transaction it sent to the Budget App, which
 - The `import_identifier` of the first send (`occurrence` 0) equals the Bank Transaction's `import_identifier`; each Re-upload uses a new `import_identifier` derived from it and the occurrence (FR-074).
 - A Bank Transaction with a Sent Record whose `outcome` is Written or Already Present is not sent again, except by a Re-upload Review Decision.
 - A Sent Record with `outcome` Not Yet Known or Unknown keeps its `import_identifier` and `budget_account_id`, so that sending it again goes to the same Budget Account under the same Import Identifier. It is sent again automatically only when the Budget App refuses a reused Import Identifier (NFR-015), and otherwise only after the Operator's Review Decision Import Anyway.
+- A Sent Record with `outcome` Rejected keeps its `import_identifier`; it is sent again to the Budget Account of the Bank Account's current Account Mapping, and that send sets its `budget_account_id` to that Budget Account, also after a move, because the Budget App holds nothing of it (UC-006 BR-020).
 - An `outcome` Not Yet Known or Unknown becomes Written when a later read of the Budget App finds the `import_identifier` in `budget_account_id`.
 - `budget_app_reference` is filled only when `outcome` is Written or Already Present.
+- A Sent Record keeps its `budget_account_id` when the Operator moves or removes the Account Mapping it was sent through. When its `outcome` is Written or Already Present, its Bank Transaction is never sent again, except by a Re-upload Review Decision, which sends it to the Budget Account of the current Account Mapping under a new `import_identifier`; when it is Not Yet Known or Unknown, any later send goes to the recorded `budget_account_id` (UC-009 BR-003); when it is Rejected, the next send goes to the current Account Mapping (UC-006 BR-020).
 
 ### TRANSFER_COUNTERPART
 
@@ -641,7 +664,7 @@ One event in the Decision Journal: what Slussen fetched or concluded, what the O
 
 ### OPERATOR_SETTINGS
 
-The values the Operator can change inside the app, each with its allowed range and default; values set in the Build Configuration are not part of it.
+The values the Operator can change inside the app, each with its allowed range and default; values that a Data Provider's part declares are not part of it.
 
 | Attribute                  | Description                                                                                       | Data Type | Length/Precision | Validation Rules           |
 |----------------------------|---------------------------------------------------------------------------------------------------|-----------|------------------|----------------------------|
@@ -672,7 +695,7 @@ The values the Operator can change inside the app, each with its allowed range a
 - Exactly one `OPERATOR_SETTINGS` record exists; it starts with every default and is kept across a reinstall with restore from a device backup and across an upgrade.
 - Transfer detection is always on and has no setting.
 - `upload_as_cleared` is offered only when the Budget App supports the Cleared marker; otherwise it counts as false. A change applies only to what is written afterwards and changes nothing already in the Budget App.
-- The Request Limit of each Data Provider, the Configuration Keys and the Start Dates are set in the Build Configuration and are not Operator Settings.
+- The Request Limit of each Data Provider is declared by its part and is not an Operator Setting, because it protects the Data Provider's own limit. The chosen Budgets (`BUDGET.served`), the Bank Accounts with their names and Start Dates, and the Account Mappings are set in the app (UC-013, UC-009) and are kept like the Operator Settings.
 - `upload_window_days` applies to Bank Transactions from a Data Provider and `file_upload_window_days` to Bank Transactions from a Transaction File, whatever its File Format.
 - The Fetch Cooldown is an Operator Setting per Data Provider, kept as `DATA_PROVIDER.fetch_cooldown_minutes`; it starts at the default the Data Provider's part declares and is kept like the other Operator Settings.
 - The Card Payment and Bank Transfer Descriptions are Operator Settings too; because each is a list, they are kept as `TRANSFER_DESCRIPTION` records rather than as attributes here.

@@ -10,7 +10,7 @@
 **Trigger:** Operator asks to upload one Budget or one Bank Account  
 **Status:** Approved  
 
-**Requirements:** [FR-030, FR-031, FR-033, FR-034, FR-035, FR-036, FR-037, FR-038, FR-039, FR-041, FR-042, FR-044, FR-047, FR-051, FR-052, FR-053, FR-055, FR-057, FR-064, FR-066, FR-074, FR-075, FR-077, FR-090, FR-094, FR-095, NFR-001, NFR-002, NFR-003, NFR-004, NFR-010, NFR-015, NFR-016, NFR-017, C-009, C-011, C-012](../requirements.md)
+**Requirements:** [FR-030, FR-031, FR-033, FR-034, FR-035, FR-036, FR-037, FR-038, FR-039, FR-041, FR-042, FR-044, FR-047, FR-051, FR-052, FR-053, FR-055, FR-064, FR-066, FR-074, FR-075, FR-077, FR-090, FR-094, FR-095, FR-100, NFR-001, NFR-002, NFR-003, NFR-004, NFR-010, NFR-015, NFR-016, NFR-017, C-009, C-011, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -24,7 +24,7 @@
 3. Slussen shows the Upload Plan: the Budget, the Budget Accounts, the number of transactions to create and to send as a match for a Typed Entry, the total inflow, the total outflow, whether the transactions arrive Cleared, every Transfer Counterpart that will be marked Cleared, and when the plan expires.
 4. Operator confirms the Upload Plan.
 5. Slussen checks that the Upload Plan has not expired and reads the Budget App again to check that the Budget App, the Bank Transactions and the configuration are unchanged since the plan was prepared.
-6. Slussen records each Eligible Transaction of the plan in the Sent Record with its Import Identifier, its Budget Account and the outcome not yet known, and locks the Account Mapping of every Bank Account concerned (UC-009 BR-003).
+6. Slussen records each Eligible Transaction of the plan in the Sent Record with its Import Identifier, its Budget Account and the outcome not yet known, and records the first send through the Account Mapping of every Bank Account concerned where none is recorded yet (UC-009 BR-003).
 7. Slussen sends the Eligible Transactions to the Budget App, each with its Import Identifier, marked Cleared while Upload as Cleared is on and always waiting for the Operator's approval (BR-008), with payee and memo shortened where the Budget App requires it (BR-015), and each Transfer as one linked transfer through one Transfer Leg.
 8. Budget App reports for each transaction that it was created or that it already held it.
 9. Slussen records the reported outcome of each transaction in the Sent Record.
@@ -78,11 +78,11 @@
 
 ### A6: Budget App Cannot Be Read or Refuses Slussen's Credentials
 
-**Trigger:** The Budget App does not answer, is unavailable, or answers that the service credentials of the Build Configuration are not valid or not allowed (step 5)  
+**Trigger:** The Budget App does not answer, is unavailable, or answers that the service credentials the Operator entered are not valid or not allowed (step 5)  
 **Flow:**
 
 1. Slussen writes nothing, discards the Upload Plan and ends the pause.
-2. Slussen shows that the Budget App could not be read, or the Blocked Reason "configuration error" with the action that removes it: correct the Build Configuration (UC-012).
+2. Slussen shows that the Budget App could not be read, or the Blocked Reason "credentials refused" with the action that removes it: enter the credentials again (UC-014).
 3. Use case ends.
 
 ### A7: Sent Record Cannot Be Stored
@@ -108,7 +108,7 @@
 **Trigger:** The Budget App rejects the transactions of a Budget Account (step 8)  
 **Flow:**
 
-1. Slussen records the outcome Rejected in the Sent Record for these transactions and keeps them available for Upload.
+1. Slussen records the outcome Rejected in the Sent Record for these transactions and keeps them available for Upload, under the same Import Identifiers and for the Budget Account of the current Account Mapping, also when the Operator moves the Account Mapping before the next Upload (BR-020).
 2. Slussen shows the rejection with the Budget App's reason.
 3. Use case continues at step 9 for the transactions of the other Budget Accounts.
 
@@ -152,7 +152,7 @@
 
 - Every confirmed Eligible Transaction exists exactly once in its Budget Account in the Budget App, marked Cleared exactly when Upload as Cleared was on, and waiting for the Operator's approval.
 - The Sent Record holds every transaction sent, with its Import Identifier, its Budget Account and its confirmed outcome.
-- The Account Mapping of every Bank Account through which a transaction was sent is locked.
+- For every Account Mapping through which a transaction was sent, the time of its first send is stored, so that it is moved or removed only with the Operator's confirmation (UC-009 BR-003).
 - Every Transfer Counterpart the plan stated is marked Cleared.
 - The Upload Plan and the Upload are recorded in the Decision Journal, unless the Decision Journal is switched off.
 - Other work is available again.
@@ -222,7 +222,7 @@ Right after an Upload, Slussen compares the uploaded Budget with the Budget App 
 
 ### BR-014: Sent Record Kept Across a Reinstall, Restore or Upgrade
 
-The Sent Record is included in device backups, restored after a reinstall and kept on an upgrade of the same build, together with the stored Bank Transactions, the Bank Account identifications and Account Mappings (UC-009 BR-006) and the Review Decisions and Transfer Decisions. Bank Consents and their Bank Sessions are not restored (UC-007 BR-005). After a restore, Uploads wait for the Recovery Check (BR-017).
+The Sent Record is included in device backups, restored after a reinstall and kept on an upgrade of the same build, together with the stored Bank Transactions, the Bank Account identifications and Account Mappings (UC-009 BR-006) and the Review Decisions and Transfer Decisions. Bank Consents with their Bank Sessions and the service credentials are not restored (UC-007 BR-005, UC-014 BR-004). After a restore, Uploads wait for the Recovery Check (BR-017).
 
 ### BR-015: Long Payee and Memo
 
@@ -243,3 +243,7 @@ Which transactions an Upload Plan holds is decided once, when the plan is prepar
 ### BR-019: An Upload Plan Exists Only While It Is Shown
 
 An Upload Plan exists only while the Operator is shown it. When the Operator leaves it without confirming, Slussen discards it as on cancelling (A2): nothing is written and the pause ends. A discarded, cancelled or expired Upload Plan is never shown or confirmed again. Every request for an Upload Plan prepares a new one from the current data. Once the Operator has confirmed the Upload Plan, leaving its screen is not cancelling and changes nothing: Slussen finishes the Upload (steps 5 to 12, including the alternative flows that write nothing) and shows its outcome (step 13) when the Operator next opens the Budget or the outcome.
+
+### BR-020: A Rejected Transaction Follows the Current Account Mapping
+
+A transaction the Budget App rejected was not written, so the Budget App holds it in no Budget Account. It stays available for Upload and is sent again, under the same Import Identifier, to the Budget Account of its Bank Account's current Account Mapping, also when the Operator has moved the Account Mapping since the rejection; moving the mapping is often what fixes the rejection. Its Sent Record then names the Budget Account it was sent to. While the Bank Account has no Account Mapping, it is not offered for Upload (UC-009 A11). This differs from a transaction whose outcome is unknown, which keeps the Budget Account recorded in its Sent Record (BR-007, UC-009 BR-003), and from one the Budget App created or already held, which is never sent again because of a move (BR-006, UC-003 BR-021).

@@ -36,9 +36,10 @@ continue its history, identities or Import Identifiers.
   typing and checking as possible. They also need to see quickly when something needs their decision, such as a
   doubtful match, a Guessed Transfer, or a Bank that needs a new Bank Consent.
 - **The Adopting Developer** is a skilled developer with a similar problem who clones the public repository and
-  builds Slussen for their own household. They need to understand how Slussen works and how to configure it with
-  their own Bank Accounts and credentials, and how to add the Data Provider, File Format or Budget App they need,
-  without changing Slussen's core rules. They then become the Operator of their own build.
+  builds Slussen for their own household, or installs an app someone else built. They need to understand how
+  Slussen works, how to set it up in the app with their own credentials and Bank Accounts, and how to add the Data
+  Provider, File Format or Budget App they need, without changing Slussen's core rules. They then become the
+  Operator of their own installation.
 - Other household members' Bank Accounts may be imported, but those people do not use Slussen. Each installation is
   built and configured for one Operator.
 
@@ -76,9 +77,9 @@ continue its history, identities or Import Identifiers.
   wait, for every Fetch, also when the Operator retries, it holds back repeat Fetches for a while after a
   successful one, and it keeps Unattended Accesses within the Banks' limit.
 - **Shareability.** Slussen is developed as a public repository that holds no personal data, Bank information or
-  credentials. An Adopting Developer can build Slussen from it with their own Bank Accounts, Data Providers and
-  Budget App configuration, starting from the repository's Configuration Templates, and has a clear operating model
-  for each, without editing Slussen's core rules. Slussen explains itself by example: the defaults it ships, such as
+  credentials. An Adopting Developer can build Slussen from it, or install an app someone else built, and set up
+  their own Data Providers, Budget App and Bank Accounts in the app, with a clear operating model for each, without
+  editing Slussen's core rules. Slussen explains itself by example: the defaults it ships, such as
   its Operator Settings and Transfer Descriptions, are the ones its first Operator uses in practice, so a new user
   sees what works and how to adapt it.
 
@@ -114,10 +115,11 @@ continue its history, identities or Import Identifiers.
 - Detecting Transfers between the Operator's own Bank Accounts in the same Budget and currency, and posting them as
   one linked transfer. This includes a Transfer whose other side has not arrived yet. Transfer detection is
   always on, and the Operator reviews Guessed Transfers.
-- Mapping each Bank Account to one Budget and Budget Account in the Budget App. Once a Bank Account has uploaded, that
-  Account Mapping is locked, and a Bank Account can be retired and restored without losing its history. Each Bank Account
-  can have a Start Date in the Build Configuration, before which nothing is offered for Upload; such a
-  transaction is shown with its reason, never dropped silently.
+- Connecting Budgets and Bank Accounts in the app: choosing the Budgets Slussen serves and pairing each Bank Account
+  a Source offers with one Budget Account. Moving a mapping after transactions were sent through it is a deliberate
+  act the Operator confirms, and a Bank Account can be retired and restored without losing its history. Each Bank
+  Account can have a Start Date, set in the app, before which nothing is offered for Upload; such a transaction is
+  shown with its reason, never dropped silently.
 - Working with several Budgets in different currencies, each as its own workspace.
 - Showing each Account Balance next to its Budget Account's balance in the Budget App, in one place, so the Operator can
   reconcile them.
@@ -127,8 +129,8 @@ continue its history, identities or Import Identifiers.
   happened to each Import in the Budget App. The Operator can export it, together with the Budget App's current
   data, for review outside the app.
 - Keeping the Operator's transaction history, decisions and the Sent Record across a reinstall, a restore from a
-  device backup and an upgrade of the same build. Bank Consents do not survive a reinstall: the Operator grants each
-  Bank Consent again. After a restore, Slussen checks the Budget App before it uploads again.
+  device backup and an upgrade of the same build. Bank Consents and service credentials do not survive a reinstall:
+  the Operator grants each Bank Consent and enters each credential again. After a restore, Slussen checks the Budget App before it uploads again.
 
 ### Out of scope
 
@@ -151,8 +153,6 @@ continue its history, identities or Import Identifiers.
   on both sides.
 - Correcting what other tools or the Budget App's own importer already wrote to it, such as a wrongly linked
   Transfer.
-- Adding a new Bank Account to Slussen from inside the app. The Operator's Bank Accounts are part of the Build
-  Configuration.
 - Moving a Bank Account's already-uploaded history to a different Budget Account.
 - Analysing the Decision Journal inside the app. Analysis happens on the exported file.
 
@@ -160,11 +160,11 @@ continue its history, identities or Import Identifiers.
 
 - **Android phone, on the device.** Slussen runs natively on the Operator's Android phone, so that the Operator
   can fetch, review and upload wherever they are. Everything Slussen stores stays on the device.
-- **Private build for one Operator.** Each installation is built for one Operator. That Operator's Bank Accounts and
-  service credentials come from a Build Configuration kept in a location the repository ignores and never committed, and are
-  included at build time. The built app is installed directly on the phone and must never be published, because the credentials can be
-  extracted from it. The design keeps its concerns separated, so that being built for one Operator does not rule
-  out later features such as several Operators.
+- **One Operator per installation.** Each installation serves one Operator, who enters their service credentials
+  in the app, where they stay on the device, encrypted. A built app holds no credentials, so it may be installed by
+  others; only an own release build needs a Build Configuration, for its signing setup, kept in a location the
+  repository ignores and never committed. The design keeps its concerns separated, so that serving one Operator
+  does not rule out later features such as several Operators.
 - **Banking regulation (PSD2).** European Banks allow an application without the Bank Account holder present four
   accesses per Bank Account in any 24 hours, counted separately for transactions and balances. A Fetch the Operator
   starts is made with the holder present and is not under this limit. A Bank Consent lasts until the expiry date
@@ -189,8 +189,8 @@ continue its history, identities or Import Identifiers.
   or the Budget App) are fixed, and Slussen says where they come from.
 - **Sensitive data.** By default, logs contain no transaction data or Bank Account numbers. The Operator can switch
   on Detailed Logging that includes them, for troubleshooting; those logs stay on the device. Credentials and
-  Bank Sessions are never written to logs, even then. Neither logs nor Bank Sessions are ever included in device
-  backups. The repository, including its specifications, tests
+  Bank Sessions are never written to logs, even then. Neither logs, credentials nor Bank Sessions are ever included
+  in device backups. The repository, including its specifications, tests
   and fixtures, contains no real Bank Account names, Bank Account numbers, transactions or credentials.
 - **Specification first.** Slussen is developed with the AI Unified Process: the specification in `docs/` is the
   source of truth, and the Predecessor App is evidence of intent, not a template to copy.
@@ -207,8 +207,8 @@ continue its history, identities or Import Identifiers.
   any Upload relies on that behaviour.
 - Every time the Operator opens the app while a Bank Consent is about to expire, they are warned, and no Bank
   access is spent on a request that Slussen knew would fail.
-- The public repository contains no personal data or credentials. It provides a Configuration Template for each
-  Data Provider and the Budget App in this build (SimpleFIN, Enable Banking, YNAB) that shows an Adopting
-  Developer what to fill in and where to get it, without being a working configuration.
-- Adding a Data Provider, a File Format or a Budget App touches only that part and the Build Configuration,
-  not the rules for comparing, reviewing and deciding.
+- The public repository and every built app contain no personal data or credentials. For each Data Provider and
+  the Budget App in this build (SimpleFIN, Enable Banking, YNAB), the app shows the Operator which credentials to
+  enter and where to get them.
+- Adding a Data Provider, a File Format or a Budget App touches only that part, not the rules for comparing,
+  reviewing and deciding.

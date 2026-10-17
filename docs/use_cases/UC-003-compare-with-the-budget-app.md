@@ -10,11 +10,11 @@
 **Trigger:** Operator asks Slussen to read the Budget App again, or Fetch Transactions, Import a Transaction File or Upload to the Budget App reaches its Comparison step  
 **Status:** Approved  
 
-**Requirements:** [FR-009, FR-019, FR-020, FR-021, FR-023, FR-024, FR-025, FR-026, FR-027, FR-030, FR-031, FR-032, FR-038, FR-040, FR-046, FR-061, FR-066, FR-074, FR-075, FR-094, FR-095, NFR-002, NFR-004, NFR-015, NFR-016, NFR-020, C-009, C-011, C-012](../requirements.md)
+**Requirements:** [FR-009, FR-019, FR-020, FR-021, FR-023, FR-024, FR-025, FR-026, FR-027, FR-030, FR-031, FR-032, FR-038, FR-040, FR-046, FR-061, FR-066, FR-074, FR-075, FR-094, FR-095, NFR-002, NFR-004, NFR-015, NFR-016, NFR-020, FR-100, C-009, C-011, C-012](../requirements.md)
 
 ## Preconditions
 
-- Every Budget of the Build Configuration exists in the Budget App.
+- Every Budget Slussen serves exists in the Budget App (UC-013).
 - No Upload Plan is awaiting confirmation (UC-006 BR-005).
 
 ## Main Success Scenario
@@ -40,11 +40,11 @@
 
 ### A2: Budget App Refuses Slussen's Credentials
 
-**Trigger:** The Budget App answers that the service credentials of the Build Configuration are not valid or not allowed (step 1)  
+**Trigger:** The Budget App answers that the service credentials the Operator entered are not valid or not allowed (step 1)  
 **Flow:**
 
 1. Slussen keeps the previous Transaction Statuses and the stored Budget App Transactions of every Budget.
-2. Slussen shows the Blocked Reason "configuration error" with the action that removes it: correct the Build Configuration (UC-012).
+2. Slussen shows the Blocked Reason "credentials refused" with the action that removes it: enter the credentials again (UC-014).
 3. Use case ends.
 
 ### A3: Currency Mismatch
@@ -105,7 +105,7 @@
 
 ### BR-001: Order of the Comparison
 
-The first rule that applies gives the Transaction Status: a Bank Account with a currency mismatch is blocked (BR-013); a transaction whose Import Identifier, or the Import Identifier of a Re-upload of it, is held in its Budget Account is Already In Budget App (BR-003); one Slussen sent that was deleted or merged in the Budget App is Deleted In Budget App or Merged In Budget App (BR-004, BR-005), unless the Operator chose Re-upload; one whose earlier send has an unknown outcome is Outcome Unknown (BR-017); one dated before the Start Date of its Bank Account is Before Start Date (BR-018); one dated outside the Upload Window is Too Old or In The Future (BR-011); one with a Review Decision follows that decision (BR-009, BR-010, UC-004 BR-006); one without a Stable Reference is Needs Review (BR-012); one that resembles an Import whose Import Identifier begins with Slussen's marker in a form Slussen does not support is Needs Review (BR-008); one that resembles an Import by an Other Import Path is Possible Import By Other Path (BR-007); each of these three also when it is a Transfer Leg, whose Transfer then waits for the Operator's Review Decision (UC-005 BR-013); one that is a Transfer Leg follows the Transfer (UC-005 BR-010); one that matches a Typed Entry is Match For Typed Entry (BR-006); every other transaction is New.
+The first rule that applies gives the Transaction Status: a Bank Account with a currency mismatch is blocked (BR-013); a transaction whose Import Identifier, or the Import Identifier of a Re-upload of it, is held in its Budget Account, or in the Budget Account recorded in its Sent Record (BR-021), is Already In Budget App (BR-003); one Slussen sent that was deleted or merged in the Budget App is Deleted In Budget App or Merged In Budget App (BR-004, BR-005), unless the Operator chose Re-upload; one whose earlier send has an unknown outcome is Outcome Unknown (BR-017); one dated before the Start Date of its Bank Account is Before Start Date (BR-018); one dated outside the Upload Window is Too Old or In The Future (BR-011); one with a Review Decision follows that decision (BR-009, BR-010, UC-004 BR-006); one without a Stable Reference is Needs Review (BR-012); one that resembles an Import whose Import Identifier begins with Slussen's marker in a form Slussen does not support is Needs Review (BR-008); one that resembles an Import by an Other Import Path is Possible Import By Other Path (BR-007); each of these three also when it is a Transfer Leg, whose Transfer then waits for the Operator's Review Decision (UC-005 BR-013); one that is a Transfer Leg follows the Transfer (UC-005 BR-010); one that matches a Typed Entry is Match For Typed Entry (BR-006); every other transaction is New.
 
 ### BR-002: Import Identifier
 
@@ -173,7 +173,7 @@ At every Comparison, a Sent Record whose outcome is not yet known or unknown is 
 
 ### BR-018: Start Date
 
-A Bank Transaction that has not been sent and is dated before the Start Date that the Build Configuration sets for its Bank Account is Before Start Date. It stays visible with that reason and is never offered for Upload, also not through a Review Decision. A Bank Account without a Start Date has no such limit; its transactions are bounded by the Upload Window only.
+A Bank Transaction that has not been sent and is dated before the Start Date the Operator set for its Bank Account is Before Start Date. It stays visible with that reason and is never offered for Upload, also not through a Review Decision. A Bank Account without a Start Date has no such limit; its transactions are bounded by the Upload Window only.
 
 ### BR-019: Comparison for a Recovery Check
 
@@ -182,3 +182,7 @@ While a Recovery Check is open (UC-006 BR-017), a Comparison that read every Bud
 ### BR-020: What the Stored Copy Keeps
 
 For each Budget App Transaction, Slussen's stored copy keeps, as the Budget App last reported them, its date, payee, memo, amount and Import Identifier, whether it is present, deleted or merged and the transaction it was merged into, the other side of the linked Transfer it belongs to, and whether it is Cleared and approved. The copy and the point up to which the Budget App was read are stored together, so that nothing the Budget App reported is lost when Slussen stops between two steps.
+
+### BR-021: Sent Transactions After a Moved Account Mapping
+
+After the Operator moved or removed an Account Mapping (UC-009 BR-003), a Bank Transaction with a Sent Record is compared with the Budget Account recorded in its Sent Record as well as with its current one. Found by its Import Identifier in either, it is Already In Budget App; deleted or merged in the Budget App, it is Deleted In Budget App or Merged In Budget App and can be sent again only by a Re-upload decision (UC-004 BR-003). It is never New and never an Eligible Transaction because of the move. A Bank Transaction whose Sent Record is Rejected was not written; the move changes nothing for it except that its next send goes to the current Budget Account (UC-006 BR-020).

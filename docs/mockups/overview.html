@@ -283,7 +283,7 @@
 </head>
 <body>
 <main>
-<nav class="site"><a href="index.html">Index</a> <a href="overview.html" class="here">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a> <a href="icons.html">Icons</a></nav>
+<nav class="site"><a href="index.html">Index</a> <a href="overview.html" class="here">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a> <a href="setup.html">Setup</a> <a href="icons.html">Icons</a></nav>
 <p class="eyebrow">Slussen · screen mockup · UC-008, UC-001 A12</p>
 <h1>Overview: every Budget at a glance</h1>
 <p class="sub">The first tab. Counts and blocked states per Budget, consent warnings, and the Recovery Check and backup warnings that appear when the app opens.</p>
@@ -315,7 +315,7 @@
 <a class="card amber" href="budget.html#household" style="display:block">
   <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="r dot amber"></span></div>
   <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
-  <div class="tagrow"><span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">Blocked: Kestrel Old Savings, removed from the Build Configuration</span></div>
+  <div class="tagrow"><span class="chip amber">Guessed Transfers: 2</span></div>
 </a>
 <a class="card amber" href="budget.html#summer-house" style="display:block">
   <div class="bh"><span class="nm">Summer House</span> <span class="chip grey">EUR</span> <span class="r dot amber"></span></div>
@@ -361,7 +361,7 @@
 <p class="lede">Empty data, damaged data and the warnings that appear at every opening.</p>
 <div class="flow">
 <div class="state" id="new-installation">
-<div class="step-label"><span class="n">Empty</span><p><b>First start, empty.</b> The Budgets come from the Build Configuration; nothing is fetched yet.</p></div>
+<div class="step-label"><span class="n">Empty</span><p><b>First start, empty</b>: setup comes first (UC-013); a new installation also opens a Recovery Check (UC-006 BR-017).</p></div>
 <div class="phone">
 <div class="screen-title">Slussen</div>
 <p class="screen-sub">Overview · new installation</p>
@@ -370,12 +370,7 @@
 <a class="banner red" href="recovery-check.html#open"><span class="txt"><b>Uploads blocked: Recovery Check open</b>
 <span class="d">New installation · earlier sends unknown · check the Budget App, then confirm</span></span>
 <span class="cta-btn">Recovery Check</span></a>
-<div class="card"><div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span></div>
-<div class="bh"><span class="meta">No Fetch yet · no Comparison yet</span></div><a class="btn primary" href="budget.html#empty">Open and fetch</a></div>
-<div class="card"><div class="bh"><span class="nm">Summer House</span> <span class="chip grey">EUR</span></div>
-<div class="bh"><span class="meta">No Fetch yet · no Bank Consent yet</span></div><a class="btn primary" href="consent.html#grant">Grant Bank Consent</a></div>
-<div class="card"><div class="bh"><span class="nm">Care Fund</span> <span class="chip grey">USD</span></div>
-<div class="bh"><span class="meta">No Transaction File imported yet</span></div><a class="btn primary" href="import-file.html#choose">Import Transaction File</a></div>
+<div class="card"><div class="bh"><span class="nm">No Bank Account added yet</span></div><a class="cta" href="setup.html#welcome">Set up Slussen</a></div>
 </div>
 <div class="nav"><a class="tab on" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
@@ -411,7 +406,7 @@
 <a class="card amber" href="budget.html#household" style="display:block">
   <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="r dot amber"></span></div>
   <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
-  <div class="tagrow"><span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">Blocked: Kestrel Old Savings, removed from the Build Configuration</span></div>
+  <div class="tagrow"><span class="chip amber">Guessed Transfers: 2</span></div>
 </a>
 <a class="card amber" href="budget.html#summer-house" style="display:block">
   <div class="bh"><span class="nm">Summer House</span> <span class="chip grey">EUR</span> <span class="r dot amber"></span></div>
@@ -454,7 +449,7 @@
 <a class="card amber" href="budget.html#household" style="display:block">
   <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="r dot amber"></span></div>
   <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
-  <div class="tagrow"><span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">Blocked: Kestrel Old Savings, removed from the Build Configuration</span></div>
+  <div class="tagrow"><span class="chip amber">Guessed Transfers: 2</span></div>
 </a>
 <a class="card amber" href="budget.html#summer-house" style="display:block">
   <div class="bh"><span class="nm">Summer House</span> <span class="chip grey">EUR</span> <span class="r dot amber"></span></div>

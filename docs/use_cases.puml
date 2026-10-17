@@ -20,6 +20,8 @@ rectangle "Slussen" {
     usecase "UC-010\nAdjust Settings" as UC010
     usecase "UC-011\nExport the Decision Journal" as UC011
     usecase "UC-012\nSet Up an Own Build" as UC012
+    usecase "UC-013\nConnect Budgets and Bank Accounts" as UC013
+    usecase "UC-014\nManage Service Credentials" as UC014
 }
 
 operator --> UC001
@@ -33,6 +35,8 @@ operator --> UC008
 operator --> UC009
 operator --> UC010
 operator --> UC011
+operator --> UC013
+operator --> UC014
 developer --> UC012
 
 UC001 --> provider
@@ -41,9 +45,14 @@ UC006 --> budgetapp
 UC007 --> provider
 UC007 --> bank
 UC011 --> budgetapp
+UC013 --> budgetapp
+UC013 --> provider
+UC014 --> budgetapp
+UC014 --> provider
 
 UC001 ..> UC003 : <<include>>
 UC002 ..> UC003 : <<include>>
 UC006 ..> UC003 : <<include>>
+UC013 ..> UC014 : <<include>>
 
 @enduml

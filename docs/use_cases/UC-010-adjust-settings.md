@@ -122,7 +122,7 @@
 
 ### BR-001: Operator Settings and Defaults
 
-By default the Upload Window is 7 days, the file upload window 60 days, the fetch period 60 days, the Fetch Cooldown of each Data Provider the default its Data Provider's part declares, the Fetch Schedule 2 Scheduled Fetches in any 24 hours, the default wait 8 hours, the Request Limit warning pause 24 hours, the request timeout 30 seconds, the Upload Plan lifetime 10 minutes, the Consent Request lifetime 15 minutes, the number of recent Fetches kept 60, Upload as Cleared on, the transfer pairing days 5, the Lonely Transfer grace period 6 days, the outdated-balance limit 36 hours, the consent warning lead time 7 days, the Decision Journal on with a size limit of 50 MB and a warning threshold of 80%, the backup warning threshold 80% of the backup size limit Android sets (C-015), and Detailed Logging off. Transfer detection is always on and is not an Operator Setting (UC-005 BR-001). The default Card Payment and Bank Transfer Descriptions are listed in BR-007. The Request Limit of each Data Provider, the Configuration Keys and the Start Dates are set in the Build Configuration and are not Operator Settings. Numbers fixed by an outside party are not Operator Settings either: the PSD2 access limit (C-006), the consent length the Bank or Data Provider reports (C-007), the Budget App's own rules (C-009) and the backup size limit Android sets (C-015).
+By default the Upload Window is 7 days, the file upload window 60 days, the fetch period 60 days, the Fetch Cooldown of each Data Provider the default its Data Provider's part declares, the Fetch Schedule 2 Scheduled Fetches in any 24 hours, the default wait 8 hours, the Request Limit warning pause 24 hours, the request timeout 30 seconds, the Upload Plan lifetime 10 minutes, the Consent Request lifetime 15 minutes, the number of recent Fetches kept 60, Upload as Cleared on, the transfer pairing days 5, the Lonely Transfer grace period 6 days, the outdated-balance limit 36 hours, the consent warning lead time 7 days, the Decision Journal on with a size limit of 50 MB and a warning threshold of 80%, the backup warning threshold 80% of the backup size limit Android sets (C-015), and Detailed Logging off. Transfer detection is always on and is not an Operator Setting (UC-005 BR-001). The default Card Payment and Bank Transfer Descriptions are listed in BR-007. The Request Limit of each Data Provider is declared by its part and is not an Operator Setting, because it protects the Data Provider's own limit; the chosen Budgets, the Bank Accounts with their names and Start Dates and the Account Mappings are set in the app (UC-013, UC-009), not here. Numbers fixed by an outside party are not Operator Settings either: the PSD2 access limit (C-006), the consent length the Bank or Data Provider reports (C-007), the Budget App's own rules (C-009) and the backup size limit Android sets (C-015).
 
 ### BR-002: Allowed Ranges
 
@@ -146,7 +146,7 @@ The Operator Settings are included in device backups, restored after a reinstall
 
 ### BR-007: Default Description Lists
 
-The default lists ship with the build from the repository, not from the Build Configuration.
+The default lists ship with the build from the repository.
 
 | Card Payment Descriptions | Bank Transfer Descriptions |
 |---|---|

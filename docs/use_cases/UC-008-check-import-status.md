@@ -13,7 +13,7 @@
 
 ## Preconditions
 
-- The Build Configuration holds at least one Budget with a mapped Bank Account.
+- Slussen serves at least one Budget with a mapped Bank Account (UC-013).
 
 ## Main Success Scenario
 
@@ -141,7 +141,7 @@ The difference is the Account Balance minus the balance of the Budget Account as
 
 ### BR-006: Blocked Reasons and Their Remedies
 
-Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; a failed Fetch, the time of the failure and the action that fetches again (UC-001); Request Limit reached or access limit reached, the time the limit frees up; configuration error or currency mismatch, correct the Build Configuration (UC-012); Recovery Check open, compare with the Budget App and confirm (BR-009); removed from the Build Configuration, restore the entry with its Configuration Key in the Build Configuration (UC-009 BR-011).
+Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; a failed Fetch, the time of the failure and the action that fetches again (UC-001); Request Limit reached or access limit reached, the time the limit frees up; credentials refused or missing, enter them (UC-014); currency mismatch, move the Account Mapping (UC-009 A8); Recovery Check open, compare with the Budget App and confirm (BR-009).
 
 ### BR-007: One Budget at a Time
 

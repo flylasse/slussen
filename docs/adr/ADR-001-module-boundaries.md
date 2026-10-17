@@ -2,11 +2,12 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate).
+Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24).
 
 History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
 Phase 2 review and the specification changes S-01 to S-10; revised 2026-10-15 after the Phase 2b re-review and S-12 to
-S-14; later revisions at the gate are listed under "Review findings addressed".
+S-14; revised for S-23/S-24 on 2026-10-16, pending an external check; later revisions at the gate are listed under
+"Review findings addressed".
 
 ## Context
 
@@ -24,12 +25,15 @@ depend on one Data Provider, one File Format or one Budget App:
   Format;
 - the specification changes of the architecture gate (construction kickoff plan §6): S-01 the file upload window is
   one Operator Setting for every File Format (FR-094); S-02 `BANK_SESSION`; S-03 and S-10 the Configuration Key and
-  `BANK_ACCOUNT.configured` (FR-096); S-05 the Budget App capability "refuses a reused Import Identifier"; S-06 the
+  `BANK_ACCOUNT.configured` (FR-096, both superseded by S-23); S-05 the Budget App capability "refuses a reused Import Identifier"; S-06 the
   Recovery Check (FR-095, `RECOVERY_CHECK`); S-07 the Unreadable Transaction (`UNREADABLE_TRANSACTION`); S-08 the
   Offered Bank Account (`OFFERED_BANK_ACCOUNT`); S-09 `BUDGET_APP_TRANSACTION.memo`; NFR-019 and C-015 the backup size
   warning; S-11 NFR-020 identifier uniqueness; S-12 the stored copy keeps Transfer link, merge target, Cleared and
   approved (`BUDGET_APP_TRANSACTION`, UC-003 BR-020); S-14 marker ownership and `entered_by` Slussen Unsupported Format
-  (UC-003 BR-001, BR-008).
+  (UC-003 BR-001, BR-008); S-23 Budgets, Bank Accounts and Account Mappings set in the app (UC-013, UC-009, FR-097 to
+  FR-100), a generated Bank Account identifier, deliberate moves of an Account Mapping (UC-009 BR-003, UC-003 BR-021);
+  S-24 service credentials entered in the app and kept only on the device (UC-014, FR-101, FR-102, NFR-021), the
+  Request Limit declared by each Data Provider's part (FR-017), no credential in a built app (UC-012 BR-012).
 
 The Operator decided (bootstrap plan O-03): Gradle modules for the core, each Budget App, each Data Provider, each
 File Pre-processor and the app, enforced by Konsist architecture tests, recorded in an ADR before construction. The
@@ -109,7 +113,7 @@ Package root is `slussen`. Every module owns exactly one package root and nothin
 | `:budgetapp-ynab` | `kotlin("jvm")` | `slussen.budgetapp.ynab` | The YNAB Budget App: everything that depends on YNAB's behaviour (C-009). |
 | `:fileformat-<export-format>` | `kotlin("jvm")` | `slussen.fileformat.<export-format without hyphens>` | The one File Pre-processor of this build (C-010), named after the export format it reads, never after a Bank (O-P1-01): for example `:fileformat-hsa-csv` with package root `slussen.fileformat.hsacsv`. The class inside may name the Bank. |
 | `:persistence` | `com.android.library` | `slussen.persistence` | Room databases, DAOs and the implementations of the core's storage ports; the start sequence, last good copy and backup rule files (ADR-002). |
-| `:app` | `com.android.application` | `slussen.app` | Compose UI and ViewModels, the composition root, the Scheduled Fetch worker, the New Transaction Notification, the return from Strong Customer Authentication, file choosing and saving, the log adapter (ADR-006), and the generated Build Configuration (ADR-003). |
+| `:app` | `com.android.application` | `slussen.app` | Compose UI and ViewModels, the composition root, the Scheduled Fetch worker, the New Transaction Notification, the return from Strong Customer Authentication, file choosing and saving (also the private key file of a service credential), the screens of UC-013 and UC-014, and the log adapter (ADR-006). No configuration is generated into it (ADR-003 §4). |
 | `:testing` | `kotlin("jvm")` | `slussen.testing` | Test-only: in-memory fakes of the core's ports and of the three plug-in contracts, invented example data. |
 | `:architecture-tests` | `kotlin("jvm")` | `slussen.architecture` | Test-only: the Konsist rules (§6.2), the bytecode rules (§6.3) and the traceability checks of ADR-004. |
 
@@ -118,7 +122,7 @@ Pre-processor is `:fileformat-<name>`; `<name>` is words of lowercase letters an
 the package root is `<name>` with the hyphens removed.
 
 Build logic lives in an included build `build-logic/` (convention plugins, the module-graph check of §6.1, the task
-graph of §6.4, the Build Configuration tasks of ADR-003, the version name and signing of ADR-005). It is not an app
+graph of §6.4, the signing, placement and no-credential checks of ADR-003, the version name and signing of ADR-005). It is not an app
 module.
 
 Every module is always part of the build. There is no module that is included only when an Android SDK is present
@@ -176,6 +180,8 @@ The core reaches everything outside it through interfaces it owns in `slussen.co
   C-015; ADR-002 §5), implemented by `:persistence`;
 - `Clock` (`java.time.Clock`, injected; the core never calls `Instant.now()` or `System.currentTimeMillis()`) and
   `RandomSource` (a `java.security.SecureRandom`, injected; for Consent Request `state` values, §4.1);
+- `CredentialVault` (encrypt, store, read and delete the service credential of one service with the non-exportable
+  Android Keystore key; ADR-002 §2a), implemented by `:persistence`;
 - `NewTransactionNotifier` and `ScheduledFetchScheduler`, implemented by `:app`.
 
 Logging is not a port of the core: the core and the plug-ins use the diagnostic contract `SlussenLog` of `:plugin-api`
@@ -193,8 +199,8 @@ entity model precision `12,3`), `CurrencyCode` (ISO 4217), `Secret` (a credentia
 `toString()` returns a fixed mask; ADR-006), `BankAccountNumber` (the number as the Data Provider delivers it,
 letters and formatting included, masked like `Secret`; the core turns it into the one-way `bank_account_fingerprint`,
 scoped by Data Provider and Bank, and the `last_four_digits` of an Offered Bank Account, ADR-008 §8, and never stores
-it),
-`PluginSettings` (the plug-in's own Build Configuration values, ADR-003).
+it). There is no `PluginSettings`: a plug-in gets no values from a Build Configuration (S-24, ADR-003 §4); its
+credential comes in `RequestContext.credential` (§4.5).
 
 #### 4.0 Every network request: admission, counting, timeout and cancellation
 
@@ -204,6 +210,7 @@ Every contract method that may send a request takes a `RequestContext`:
 interface RequestContext {
     val gate: RequestGate
     val timeout: RequestTimeout                         // the request timeout Operator Setting, NFR-016
+    val credential: Secret?                             // the stored service credential (§4.5); null only in CredentialCapability.check
 }
 
 fun interface RequestGate { suspend fun admit(request: RequestDescriptor): Admission }
@@ -242,6 +249,7 @@ enum class RefusalScope { BankAccount, Bank, Source }  // Source = the whole Dat
 ```kotlin
 interface DataProvider {
     val profile: DataProviderProfile
+    val credentials: CredentialCapability              // §4.5
     val bankConsent: BankConsentCapability?            // non-null exactly when profile.needsBankConsent
     suspend fun fetch(request: FetchRequest, context: RequestContext): FetchResponse
 }
@@ -253,6 +261,8 @@ data class DataProviderProfile(
     val needsBankConsent: Boolean,     // DATA_PROVIDER.bank_consent_required
     val defaultFetchCooldownMinutes: Int, // default of DATA_PROVIDER.fetch_cooldown_minutes, 0 to 1440, 0 switches it off;
                                           // an Operator Setting the Operator can change (FR-016, UC-001 BR-006, UC-010)
+    val requestLimit: Int,             // DATA_PROVIDER.request_limit, 1 to 1000: the Data Provider's own limit, KDoc names
+                                       // its source; not an Operator Setting (FR-017, UC-001 BR-007, UC-012 BR-011)
 )
 ```
 
@@ -348,6 +358,7 @@ The contract is split so that the right to write can be confined (§6, ADR-007 �
 ```kotlin
 interface BudgetApp {
     val profile: BudgetAppProfile
+    val credentials: CredentialCapability              // §4.5
     val reader: BudgetAppReader
     val writer: BudgetAppWriter
 }
@@ -397,7 +408,9 @@ ADR, not a new switch read by the core.
 
 ##### 4.2.3 Reading: the normalized read model (A-09, A-10, A-23)
 
-- `BudgetAppReader.readBudgets(context)` returns each Budget and its Budget Accounts with name, currency and balance.
+- `BudgetAppReader.readBudgets(context)` returns every Budget the Budget App lists, with its Budget Accounts, their
+  names, currency and balances; the core shows them for the Operator's choice of served Budgets (UC-013 steps 2-5) and
+  reads only served Budgets otherwise (`BUDGET.served`).
 - `BudgetAppReader.readTransaction(budgetReference, transactionReference, context)` returns that one transaction in
   the form below, or `NotFound`. It neither takes nor returns a cursor and stores nothing; the Upload uses it only to
   find the counterpart of a linked Transfer it has just created (ADR-007 §6 step 8, B-01).
@@ -454,7 +467,8 @@ data class BudgetAppTransactionRead(
   `Unknown` and is the only change to an existing
   Budget App Transaction the contract offers (FR-055, UC-006 BR-011).
 - At composition the core checks `importIdentifierMaxLength` against ADR-008 §6 and every number against its range;
-  a failure blocks every Upload with the Blocked Reason "configuration error".
+  a failure is a defect of this build's Budget App part, which its contract test catches before release; at run time
+  every Upload is refused and the import status shows why.
 
 #### 4.3 File Pre-processor (`slussen.pluginapi.fileformat`)
 
@@ -502,8 +516,44 @@ invented recorded answers served by a local test server. They check at least:
 - for a Budget App: F-1 to F-8; a duplicate Import Identifier is answered `AlreadyPresent`; both sides of a linked
   transfer carry each other's references; two look-alike Transfers stay apart; `importIdentifierMaxLength` is at
   least the protocol's length;
+- for a Data Provider and the Budget App: `check` admits every request through the gate, answers `Accepted`,
+  `Refused` or `TransientFailure` for recorded answers, never reveals the input in a result or a `toString()`, and the
+  declared `requestLimit` and `defaultFetchCooldownMinutes` lie in their ranges (§4.1, §4.5);
 - for a File Pre-processor: a file with one unreadable line is `Rejected`; converting the same bytes twice gives equal
   results; every declared number lies in its range.
+
+#### 4.5 Service credentials (`slussen.pluginapi.credential`; S-24)
+
+Each Data Provider and the Budget App part declare the credentials the Operator enters for them and how they are
+checked (UC-014 BR-002, FR-101); the core stores the result encrypted on the device (ADR-002 §2a) and hands it back
+in every `RequestContext`:
+
+```kotlin
+interface CredentialCapability {
+    val form: CredentialForm                      // the fields the Operator fills in, each with what it is and where to get it
+    suspend fun check(input: CredentialInput, context: RequestContext): CredentialCheck
+}
+data class CredentialForm(val fields: List<CredentialField>)
+data class CredentialField(val key: String, val kind: FieldKind, val description: String)  // kind: Text, Secret, File (chosen with the device's file picker)
+sealed interface CredentialCheck {
+    data class Accepted(val credential: Secret) : CredentialCheck  // what the core stores, encrypted
+    data object Refused : CredentialCheck                         // UC-014 A1
+    data class TransientFailure(val kind: FailureKind) : CredentialCheck  // UC-014 A2
+}
+```
+
+- `DataProvider` and `BudgetApp` each have `val credentials: CredentialCapability`.
+- `check` contacts the service through the request gate (§4.0, counted as `request_kind` Other for a Data Provider)
+  and returns the credential Slussen keeps, which need not be what the Operator typed. This build: YNAB, a personal
+  access token, checked by listing the Budgets; SimpleFIN, a setup token, which `check` exchanges once for the access
+  credential, returns that credential and discards the setup token; Enable Banking, the application id and the private
+  key file of the household's own registered application, checked with a signed request (UC-014 BR-002, C-008).
+- The core never interprets a credential. `RequestContext.credential` carries the stored one to every other call; a
+  service that answers that it refuses it gives `CredentialsRefused` (§4.1, F-8), and the core then shows the Blocked
+  Reason "credentials refused"; without stored credentials the core contacts no service and shows "credentials
+  missing" (UC-014 BR-005).
+- `CredentialInput`, `CredentialCheck.Accepted.credential` and `RequestContext.credential` are `Secret` values (ADR-006
+  §2); a plug-in never stores, logs or returns one in any other result.
 
 ### 5. Composition
 
@@ -512,20 +562,21 @@ framework). It lists the plug-ins of the build explicitly:
 
 ```kotlin
 val plugins = Plugins(
-    dataProviders = listOf(SimpleFinDataProvider(settings("simplefin"), log), EnableBankingDataProvider(settings("enablebanking"), log)),
-    budgetApp = YnabBudgetApp(settings("ynab"), log),
+    dataProviders = listOf(SimpleFinDataProvider(log), EnableBankingDataProvider(log)),
+    budgetApp = YnabBudgetApp(log),
     filePreprocessors = listOf(/* the one File Pre-processor of this build, :fileformat-<export-format> */),
 )
 ```
 
-Each plug-in receives its own `PluginSettings` and the diagnostic `SlussenLog` (ADR-006) at construction, and a
-`RequestContext` with every call (§4.0). `CompositionRoot` creates the one `OperationCoordinator` (ADR-007 §1) and
+Each plug-in receives only the diagnostic `SlussenLog` (ADR-006) at construction, and a `RequestContext` with every
+call (§4.0), which carries its stored service credential (§4.5). Nothing is generated from a Build Configuration
+(ADR-003 §4). `CompositionRoot` creates the one `OperationCoordinator` (ADR-007 §1) and
 runs the composition checks of §4.2.4 and ADR-008 §6.
 
 Adding a Data Provider or File Pre-processor, or replacing the Budget App (UC-012 A2-A4), touches only: the new
 module, one line in `settings.gradle.kts`, one dependency line in `app/build.gradle.kts`, one entry in
-`CompositionRoot`, its Configuration Template (ADR-003), and the allowed-dependency table of §2 when it is a new
-module group. It touches no file in `:core` or `:plugin-api` (NFR-014, NFR-015).
+`CompositionRoot`, and the allowed-dependency table of §2 when it is a new module group. Its credential form is part
+of its own module (§4.5); there is no template to add (UC-012 A2-A4). It touches no file in `:core` or `:plugin-api` (NFR-014, NFR-015).
 
 `CompositionRoot` hands the core the `BudgetAppReader` and the `BudgetAppWriter` separately: the Comparison and the
 export receive only the reader; `slussen.core.upload` receives the writer and wraps it at once in
@@ -608,9 +659,9 @@ Wiring a task into `check` alone does not run it for `:app:assembleDebug` or a t
 - `:architecture-tests:test` (Konsist, bytecode and traceability rules) takes the compiled classes of every module as
   inputs and depends on their compile tasks. It is a dependency of the root `check`, of every module's `check`, and of
   every packaging task of `:app` (`package*`, `bundle*`, and therefore `assemble*` and `install*`).
-- `check` of the included build `build-logic/` (its unit tests and the Gradle TestKit test that packaging fails
-  without a Build Configuration, ADR-003 §6) is a dependency of the root `check`.
-- The Build Configuration tasks are ordered as ADR-003 §5 and §6 say.
+- `check` of the included build `build-logic/` (its unit tests and the Gradle TestKit tests of ADR-003 §6, among them
+  `NoCredentialInAppTest`) is a dependency of the root `check`.
+- The placement and signing tasks are ordered as ADR-003 §3 and §5 say.
 - The supported entry points are `gradlew check`, `gradlew :<module>:check` and every packaging or install task. A
   module's `test` task run alone gets the module graph check but not the Konsist and bytecode rules; it is a
   developer's shortcut, never a gate.
@@ -654,18 +705,20 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
 
 | Use case | Modules | What each part does |
 |---|---|---|
-| UC-001 Fetch Transactions | `:app`, `:core`, `:plugin-api`, Data Provider modules, `:budgetapp-ynab`, `:persistence` | `:app`: the Fetch action for one Data Provider, for the Data Providers with a Bank Account in one Budget, or for all (A11), the Scheduled Fetch worker (A12), the New Transaction Notification (BR-014). `:core` `fetch`: Back-off, the Fetch Cooldown of each Data Provider (`DATA_PROVIDER.fetch_cooldown_minutes`, default declared by the plug-in's `DataProviderProfile`, BR-006), after which a Fetch served from stored data still goes on to the Comparison (A2), never starting a Bank Consent grant (BR-008), the request gate (Request Limit, Unattended Access), per-scope outcomes (A5, A8, A9), identification, booked and non-zero filter, Unreadable Transactions (A17, BR-016), Offered Bank Accounts, Fetch Results; `:core` `identity`: Import Identifiers. Data Provider modules: the requests. `:budgetapp-ynab`: through the included UC-003. `:persistence`: O-1, O-2 (Bank Transactions, Unreadable Transactions, Account Balances, Fetches, Provider Requests, Back-offs; Offered Bank Accounts in `device.db`). |
+| UC-001 Fetch Transactions | `:app`, `:core`, `:plugin-api`, Data Provider modules, `:budgetapp-ynab`, `:persistence` | `:app`: the Fetch action for one Data Provider, for the Data Providers with a Bank Account in one Budget, or for all (A11), the Scheduled Fetch worker (A12), the New Transaction Notification (BR-014). `:core` `fetch`: Back-off, the Fetch Cooldown of each Data Provider (`DATA_PROVIDER.fetch_cooldown_minutes`, default declared by the plug-in's `DataProviderProfile`, BR-006), after which a Fetch served from stored data still goes on to the Comparison (A2), never starting a Bank Consent grant (BR-008), the request gate (Request Limit, Unattended Access), per-scope outcomes (A5, A8, A9), identification, booked and non-zero filter, Unreadable Transactions (A17, BR-016), Offered Bank Accounts with their balance, identifying only Bank Accounts the Operator added and keeping the others for UC-013 (A18), no contact without accepted service credentials and Credentials Refused (A7, UC-014 BR-005), Fetch Results; `:core` `identity`: Import Identifiers. Data Provider modules: the requests. `:budgetapp-ynab`: through the included UC-003. `:persistence`: O-1, O-2 (Bank Transactions, Unreadable Transactions, Account Balances, Fetches, Provider Requests, Back-offs; Offered Bank Accounts in `device.db`). |
 | UC-002 Import a Transaction File | `:app`, `:core`, `:plugin-api`, `:fileformat-<export-format>`, `:budgetapp-ynab`, `:persistence` | `:app`: choosing the file. `:core` `fileimport`: all-or-nothing, references, occurrence numbers, the file upload window (FR-094). `:fileformat-<export-format>`: conversion into the Standard Import Format. `:persistence`: O-3. `:budgetapp-ynab`: through UC-003. |
 | UC-003 Compare With the Budget App | `:app`, `:core`, `:plugin-api`, `:budgetapp-ynab`, `:persistence` | `:app`: the re-read action and the statuses. `:core` `comparison` and `transfer`: the order of BR-001, recognising Slussen's marker and Slussen Unsupported Format (BR-008, ADR-008 §1), doubtful Transfer Legs holding their whole Transfer (BR-001, BR-014, UC-005 BR-013), Transfer detection, Transfer Counterparts from stored links (BR-020), Eligible Transactions, unknown outcomes (BR-017), the Recovery Check record (BR-019), the Comparison-pending marker (ADR-007 §3a). `:budgetapp-ynab`: reading changes since the last `ChangeCursor`. `:persistence`: O-4 (with the cursor and every read field), O-5. |
 | UC-004 Review Doubtful Transactions | `:app`, `:core`, `:persistence` | `:core` `review`: choices per Transaction Status, Unreadable Transactions (A9, BR-007), unknown outcomes (A10, BR-008), a decision on a Transfer Leg deciding its whole Transfer (A11, BR-009), locking after Upload. No plug-in. |
-| UC-005 Review Transfers | `:app`, `:core`, `:persistence` | `:core` `transfer`: Transfer Decisions, a doubtful Transfer Leg holding its Transfer (A9, BR-013), Funded By and Transfer Partner, the other side of a Transfer always a Budget Account that Slussen fetches, never a Manually Kept Account, and a Funded By or Transfer Partner that no longer applies when its Budget Account has lost its last Account Mapping of a configured Bank Account that is not a Retired Account (BR-014). No plug-in. |
+| UC-005 Review Transfers | `:app`, `:core`, `:persistence` | `:core` `transfer`: Transfer Decisions, a doubtful Transfer Leg holding its Transfer (A9, BR-013), Funded By and Transfer Partner, the other side of a Transfer always a Budget Account that Slussen fetches, never a Manually Kept Account, and a Funded By or Transfer Partner that no longer applies when its Budget Account has lost its last Account Mapping of a Bank Account that is not a Retired Account (BR-014). No plug-in. |
 | UC-006 Upload to the Budget App | `:app`, `:core`, `:plugin-api`, `:budgetapp-ynab`, `:persistence` | `:core` `operation` and `upload`: the coordinator, the Upload Plan and its write set, the pause, the check before writing, the Sent Record before sending, retries, the write permit, outcomes, the Recovery Check gate (A13) (ADR-007); `:core` `identity`: Re-upload identifiers. `:budgetapp-ynab`: the write and marking Cleared. `:persistence`: O-6 to O-9, O-14 (clearing results). |
 | UC-007 Grant Bank Consent | `:app`, `:core`, `:plugin-api`, `:provider-enablebanking`, `:persistence` | `:app`: opening the Bank's Strong Customer Authentication and receiving the return. `:core` `consent`: the `state` value and its digest, one-time, most recent, lifetime, revocation, Offered Bank Accounts. `:provider-enablebanking`: the only Data Provider of this build that needs a Bank Consent. `:persistence`: O-10 in `device.db` (Bank Consents, Bank Sessions, Consent Requests and their correlation), excluded from backups. |
-| UC-008 Check Import Status | `:app`, `:core`, `:persistence` | `:core` `status`: counts, Source Health, Freshness, Blocked Reasons (with "Recovery Check open" and "removed from the Build Configuration"), outdated balances, the expiry warning, the backup size warning (A7, BR-010); `:core` `recovery`: the Recovery Check (A8, A9, BR-009), opened only for damage to Decision-Critical Data, a notice only for other parts (A1). `:persistence`: `StartState` with the start intent, `BackupSizeMonitor`, O-12. No plug-in and no network in its own flow (K-08); A9 starts UC-003, which reads the Budget App through `:budgetapp-ynab`. |
-| UC-009 Manage Account Mappings | `:app`, `:core`, `:persistence` | `:core` `mapping`: identification from stored Offered Bank Accounts (BR-009, A6, A10), locks, retire and restore, Configuration Keys and Bank Accounts out of the Build Configuration (BR-010, BR-011, A11, A12), Funded By and Transfer Partner, offered only from Budget Accounts that Slussen fetches and shown as no longer applying when that Budget Account loses its last such Account Mapping (BR-008, UC-005 BR-014). `:persistence`: O-11, O-13, Offered Bank Accounts in `device.db`. No plug-in. |
+| UC-008 Check Import Status | `:app`, `:core`, `:persistence` | `:core` `status`: counts, Source Health, Freshness, Blocked Reasons (with "Recovery Check open", "credentials refused", "credentials missing" and, for a currency mismatch, moving the Account Mapping, BR-006), outdated balances, the expiry warning, the backup size warning (A7, BR-010); `:core` `recovery`: the Recovery Check (A8, A9, BR-009), opened only for damage to Decision-Critical Data, a notice only for other parts (A1). `:persistence`: `StartState` with the start intent, `BackupSizeMonitor`, O-12. No plug-in and no network in its own flow (K-08); A9 starts UC-003, which reads the Budget App through `:budgetapp-ynab`. |
+| UC-009 Manage Account Mappings | `:app`, `:core`, `:persistence` | `:core` `mapping`: identification from stored Offered Bank Accounts (BR-009, A6, A7, A10), identifying again after a send only with the Operator's confirmation (BR-007), moving or removing an Account Mapping, after a send only with the Operator's confirmation of the stated number (A8, A11, BR-003), renaming (A12, BR-011), the Start Date (A13), retire and restore, the generated identifier (BR-010), Funded By and Transfer Partner, offered only from Budget Accounts that Slussen fetches and shown as no longer applying when that Budget Account loses its last such Account Mapping (BR-008, UC-005 BR-014). `:persistence`: O-13, Offered Bank Accounts in `device.db`. No plug-in. |
 | UC-010 Adjust Settings | `:app`, `:core`, `:persistence` | `:core` `settings`: ranges, defaults (file upload window, backup warning threshold included), Transfer Descriptions, re-status; `:core` `journal`: size limit and clearing. `:app`: Detailed Logging read by the log adapter (ADR-006), and the Scheduled Fetch worker rescheduled when the Fetch Schedule changes (A6). |
 | UC-011 Export the Decision Journal | `:app`, `:core`, `:plugin-api`, `:budgetapp-ynab`, `:persistence` | `:app`: choosing where to save. `:core` `journal`: the export with date, payee, memo, amount and Budget Account of each Budget App Transaction, codes for payee and memo. `:budgetapp-ynab`: reading current transactions (A2 falls back to the stored copy, which holds the memo). `:persistence`: the journal database. |
-| UC-012 Set Up an Own Build | `build-logic/`, `build-config/`, `:app`, `:plugin-api`, every plug-in module, `.gitignore`, `README.md` | `build-logic/`: reading, checking and refusing the Build Configuration with its Configuration Keys (ADR-003), the version name and signing (ADR-005). `build-config/`: the Configuration Templates. `:app`: the generated Build Configuration and the composition root. `:plugin-api` and plug-in modules: A2-A4. `README.md`: the how-to (Phase 8). |
+| UC-012 Set Up an Own Build | `build-logic/`, `build-config/`, `:app`, `:plugin-api`, every plug-in module, `.gitignore`, `README.md` | `build-logic/`: the optional signing Build Configuration, its checks and the refusal of a misplaced one (A1, A6, BR-009), the rule and test that no credential enters a built app (BR-012, ADR-003 §4), the version name and signing (ADR-005); a `debug` build needs no Build Configuration (A5). `build-config/`: the signing Configuration Template. `:app`: the composition root. `:plugin-api` and plug-in modules: A2-A4, each part with its credential form, Request Limit and default Fetch Cooldown. `README.md`: the how-to (Phase 8). |
+| UC-013 Connect Budgets and Bank Accounts | `:app`, `:core`, `:plugin-api`, Data Provider modules, `:budgetapp-ynab`, `:persistence` | `:app`: the first-run order (BR-008) and the pairing screen. `:core` `connection`: served Budgets (BR-001, A2), pairing an Offered Bank Account with an unmapped Budget Account of the same currency (BR-002, A5), the generated identifier (BR-003, ADR-008 §7), the proposed name (BR-004), the Start Date (BR-005), Bank Accounts of a File Format (BR-006, A4). `:budgetapp-ynab`: listing Budgets and Budget Accounts. Data Provider modules: Offered Bank Accounts through UC-001 or UC-007 (A3). `:persistence`: O-15, Offered Bank Accounts in `device.db`. |
+| UC-014 Manage Service Credentials | `:app`, `:core`, `:plugin-api`, Data Provider modules, `:budgetapp-ynab`, `:persistence` | `:app`: the credential form of each part, the file picker for a key file. `:core` `credential`: entering, checking, replacing and removing (A1-A4), the Blocked Reasons "credentials refused" and "credentials missing" (BR-005). Plug-in modules: `CredentialCapability` (§4.5), the SimpleFIN setup-token exchange. `:persistence`: `CredentialVault` and O-16, `service_credential` encrypted in `device.db` (ADR-002 §2a). |
 
 ## Consequences
 
@@ -768,3 +821,10 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
   the default Fetch Cooldown, checked against 0 to 1440 by the contract tests of §4.4), §7 UC-001 (Fetch of one Data
   Provider, of one Budget's Data Providers or of all; per-Data-Provider Fetch Cooldown; a Fetch served from it still
   compares; a Fetch never starts a Bank Consent grant).
+- S-23/S-24 (2026-10-16, re-check pending): Context; §1 (`:app` without a generated Build Configuration, with the
+  screens of UC-013 and UC-014); §3 (`CredentialVault`); §4 (no `PluginSettings`); §4.0 (`RequestContext.credential`);
+  §4.1 (`DataProviderProfile.requestLimit`, `DataProvider.credentials`); §4.2 (`BudgetApp.credentials`, `readBudgets`
+  for the choice of served Budgets); §4.4 (credential and declared-number contract tests); new §4.5 (each part's
+  credential form and check, the SimpleFIN setup-token exchange); §5 (composition without settings or templates);
+  §6.4 (`NoCredentialInAppTest` in place of the packaging-refusal test); §7 (rows UC-008, UC-009, UC-012 changed, rows
+  UC-013 and UC-014 added). The module map is unchanged: no module is added or removed.

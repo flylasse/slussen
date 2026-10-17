@@ -2,10 +2,12 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate).
+Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24).
 
 History: proposed 2026-10-14, architecture gate, revision after the Phase 2 review; revised 2026-10-15 after the Phase
-2b re-review and S-12; later revisions at the gate are listed under "Review findings addressed".
+2b re-review and S-12; revised for S-23/S-24 on 2026-10-16, pending an external check; revised 2026-10-16 for the
+Operator's decision O-P2-34 (1) (a Rejected send follows the current Account Mapping); later revisions at the gate
+are listed under "Review findings addressed".
 
 This ADR is new. The Phase 2 review showed that the Upload pause, the check before writing, retries of unknown
 outcomes and the Recovery Check all need one shared protocol that decides which operation may run when, what an Upload
@@ -26,7 +28,8 @@ Plan captures and what happens after the process dies (A-01, A-08). Spread over 
   Sent Record before sending it and never sends again one the Budget App confirmed. A send with an unknown outcome is
   sent again automatically, under the same Import Identifier and to the same Budget Account, only when the Budget App
   plug-in declares that the Budget App refuses a reused Import Identifier; otherwise it waits for the Operator's Review
-  Decision (UC-004 BR-008). A rejected send stays available for Upload (A9).
+  Decision (UC-004 BR-008). A rejected send stays available for Upload (A9) and, because nothing was written, goes to
+  the Budget Account of the current Account Mapping, also after a move (UC-006 BR-020, UC-009 BR-003; O-P2-34 (1)).
 - UC-006 BR-017, A13, FR-095, `RECOVERY_CHECK` (S-06): while a Recovery Check is open, no Upload Plan is prepared.
 - UC-006 BR-001, UC-001 BR-013: nothing is uploaded automatically or by a Scheduled Fetch.
 - UC-006 A10, BR-008, BR-009, BR-016: how a Transfer, the Cleared marker and approval are written; the plan states
@@ -72,7 +75,7 @@ plan is being written).
 | Import a Transaction File (UC-002) | admitted | refused | refused |
 | Read the Budget App and compare (UC-003), Journal Export (UC-011) | admitted | refused | only as the reads of §6 steps 4, 8 and 9 of the running Upload |
 | Start, answer or revoke a Consent Request or Bank Consent (UC-007) | admitted | refused | refused |
-| Account Mapping change (UC-009), Operator Setting change (UC-010) | admitted | refused | refused |
+| Account Mapping change, rename, Start Date (UC-009), Operator Setting change (UC-010), choosing served Budgets and adding Bank Accounts (UC-013), entering, changing or removing service credentials (UC-014) | admitted | refused | refused |
 | Review Decision, Transfer Decision (UC-004, UC-005) | admitted | admitted; the plan is replaced (§5) | refused until the Upload ends |
 | Prepare an Upload Plan (UC-006) | admitted only when §3 allows it | refused (one plan at a time) | refused |
 | Confirm the plan, cancel or leave (UC-006 steps 4-5, A2, BR-019) | not applicable | admitted for that plan only | refused (no second confirmation) |
@@ -121,8 +124,10 @@ that nothing is decided while writing:
     App reference) that a Comparison reconciled from the stored links and that is still uncleared: the counterpart of
     an earlier Lonely Transfer whose other side has arrived (UC-006 BR-010), or one whose clearing failed before
     (A11). They carry no Import Identifier and never touch a Sent Record (B-02);
-- the inputs the check before writing compares (§6): the `state_version` of `coordinator_state`, the
-  `ChangeCursor` of each Budget concerned, and the configuration fingerprint (ADR-003 §6).
+- the inputs the check before writing compares (§6): the `state_version` of `coordinator_state` and the
+  `ChangeCursor` of each Budget concerned. There is no configuration fingerprint any more: the configuration (served
+  Budgets, Bank Accounts, Account Mappings, Start Dates, Operator Settings) is stored data whose every change raises
+  `state_version`, and service credentials cannot change while a plan is open (§2; S-23, S-24).
 
 The counts, totals and the list shown to the Operator (UC-006 step 3) are computed from these items, so the plan shown
 is the plan written; `counterpart_count` counts the clearing items plus the `LinkedTransfer` items whose
@@ -132,17 +137,28 @@ Which send each Eligible Transaction becomes (this is what makes a retry possibl
 
 | The Bank Transaction's Sent Record for its current occurrence | Item |
 |---|---|
-| none | a new send: `occurrence` 0, the Bank Transaction's own Import Identifier, the Budget Account of its Account Mapping |
-| Rejected (UC-006 A9) | a retry of that Sent Record: same Import Identifier, same Budget Account |
+| none | a new send: `occurrence` 0, the Bank Transaction's own Import Identifier, the Budget Account of its current Account Mapping |
+| Rejected (UC-006 A9) | a retry of that Sent Record: same Import Identifier, the Budget Account of its current Account Mapping (UC-006 BR-020) |
 | Not Yet Known or Unknown, and the Budget App refuses a reused Import Identifier | a retry of that Sent Record (UC-006 BR-007) |
 | Not Yet Known or Unknown, the Budget App does not refuse a reused Import Identifier, and the Review Decision is Import Anyway | a retry of that Sent Record (UC-004 BR-008) |
 | Not Yet Known or Unknown otherwise | not eligible; the Bank Transaction waits for the Operator's Review Decision |
 | Written or Already Present, with a Re-upload decision | a new send with the next free occurrence and its Import Identifier (ADR-008 §5) |
 | Written or Already Present otherwise | not eligible (UC-006 BR-006) |
 
-A retry uses the Budget Account recorded in its Sent Record. If the Bank Account's Account Mapping no longer points
-there (impossible while the lock of UC-009 BR-003 holds), the item is left out and the Bank Transaction shows the
-Blocked Reason "configuration error".
+A retry of a Sent Record whose outcome is Not Yet Known or Unknown uses the Budget Account recorded in its Sent Record,
+also when the Operator has moved the Account Mapping since (UC-009 BR-003: a Sent Record whose outcome is unknown at
+the move keeps its Budget Account, and any later send of it goes there), because the Budget App may already hold it
+there and only that Budget Account refuses its reused Import Identifier. A retry of a Rejected Sent Record goes to the
+Budget Account of the Bank Account's current Account Mapping, also after a move (UC-006 BR-020, O-P2-34 (1)): the
+Budget App refused it, so it holds it nowhere (a refusal because the Import Identifier is already held is
+`AlreadyPresent`, never `Rejected`, ADR-001 §4.2.1 F-2), and moving the mapping is often the Operator's fix for the
+rejection. The retry keeps its Import Identifier, which no Budget Account holds, and it reuses and updates its one
+Sent Record rather than inserting a new one: O-7 sets the record's Budget Account to the item's (ADR-002 §4 step 2),
+so the record always names the Budget Account it was last sent to, and the unique Import Identifier per Budget Account
+holds. While the Bank Account has no Account Mapping, a Rejected Sent Record yields no item (UC-009 A11). A
+transaction with a Sent Record whose outcome is Written or Already Present never becomes a new send because of a move
+(UC-003 BR-021); only a Re-upload decision sends it again, to the current Budget Account under a new Import
+Identifier.
 
 Budget App capabilities are resolved here, never while writing (A-10):
 
@@ -187,10 +203,10 @@ Confirmation runs as one operation in this order; any failure before step 6 writ
 2. **Local state unchanged.** `coordinator_state.state_version` equals the plan's captured value. Every storage
    operation that changes something a plan depends on (Bank Transactions and their statuses, Review Decisions and
    Transfer Decisions, Account Mappings, Operator Settings, Transfer Descriptions, the stored Budget App copy, Sent
-   Records, Transfer Counterparts) raises `state_version` in its own transaction (ADR-002 §3). Different: the plan
-   becomes Changed Before Writing (A5).
-3. **Configuration unchanged.** The configuration fingerprint equals the captured one. Different: Changed Before
-   Writing.
+   Records, Transfer Counterparts, served Budgets, Bank Accounts with their Start Dates) raises `state_version` in its
+   own transaction (ADR-002 §3). Different: the plan becomes Changed Before Writing (A5).
+3. **Configuration unchanged.** Since S-23/S-24 the configuration is stored data covered by step 2; nothing else is
+   compared here. (Service credentials cannot change during Plan Open, §2.)
 4. **Budget App unchanged.** For each Budget of the plan, the reader is asked for the changes since the plan's
    captured `ChangeCursor`. Any change in that Budget makes the plan Changed Before Writing; the change set is then
    stored (O-4, which marks the Comparison pending) and the Comparison is recomputed and committed (O-5, §3a) before
@@ -203,14 +219,16 @@ Confirmation runs as one operation in this order; any failure before step 6 writ
    BR-018), and steps 2 to 4 are the only other checks before writing (BR-004).
 6. **Sent Record before send.** One storage operation (O-7, ADR-002 §4), for the transaction-send items only: inserts
    a Sent Record with outcome Not Yet Known for every new send; for every retry, updates the reused Sent Record
-   (outcome Not Yet Known, `upload_plan_id` of this plan, `sent_at`, date and amount sent) only if its outcome is
-   still the one captured at preparation; locks the Account Mappings concerned; sets the plan to Confirmed; and sets
+   (outcome Not Yet Known, `upload_plan_id` of this plan, `sent_at`, date and amount sent, and the Budget Account of
+   the item, which differs from the stored one only for a retry of a Rejected send after a move, §4) only if its
+   outcome is still the one captured at preparation; records the first send through each Account Mapping that a new
+   send or a retry of a Rejected send goes through (`first_sent_at`, UC-009 BR-003); sets the plan to Confirmed; and sets
    the mode to Uploading. Clearing items get no Sent Record and change none (B-02). All or nothing. A failure is
    UC-006 A7 (nothing sent, plan discarded, mode Normal).
 7. **Write.** `slussen.core.upload.UploadExecutor` sends the transaction-send items of the plan, and only those, per
    Budget Account (UC-006 BR-012), through the write permit of §7. Each reported result is stored per Budget Account
    (O-8): Created and Already Present become Written and Already Present with the Budget App reference; Rejected keeps
-   the item available for a retry (A9); a timeout, a lost connection or a cancelled request becomes Unknown (A8,
+   the transaction available for a retry, which goes to its current Account Mapping (A9, BR-020); a timeout, a lost connection or a cancelled request becomes Unknown (A8,
    NFR-016).
 8. **Clear (UC-006 step 10, BR-009, BR-010, A11; B-01, B-02).** Only what the confirmed plan states is cleared:
    - For each `LinkedTransfer` item whose `clear_counterpart` is true and whose result in step 7 was Created, the
@@ -270,7 +288,9 @@ during Plan Open replacing the plan; a second confirmation refused; expiry at co
 reached during the read of step 4 (B-07); a plan prepared before a change of date and confirmed after it, holding a
 transaction that would be outside the Upload Window and a Lonely Transfer whose grace period would have ended on the
 new date, writes exactly its items, while its expiry still applies (UC-006 BR-018); each check of §6 failing; the retry
-table of §4 for both values of the reuse-refusal capability; a plan with a retry and a new send together; a plan whose
+table of §4 for both values of the reuse-refusal capability; after a move of the Account Mapping, a retry of a
+Rejected send planned and recorded for the new Budget Account (with `first_sent_at` set there) and a retry of an
+Unknown send planned for the recorded one (O-P2-34 (1)); a plan with a retry and a new send together; a plan whose
 Transfer has both Transfer Legs present and is cleared in the same Upload, and the same with the leg's answer lost
 (B-01); a Transfer with a Transfer Leg that is Needs Review or Possible Import By Other Path, yielding no item from
 either side until every such Transfer Leg is decided, and each outcome with the precedence Already Present, Defer,
@@ -288,7 +308,8 @@ is listed in ADR-005 §7.
   Operator Setting, NFR-016).
 - Exactly once now has a precise scope (S-05): Slussen never sends again what the Budget App confirmed, and resends an
   unknown outcome on its own only to a Budget App that refuses a reused Import Identifier. With any other Budget App,
-  the Operator decides.
+  the Operator decides. Sending a Rejected transaction to a moved Account Mapping does not weaken this: the Budget App
+  refused it, so no Budget Account holds it, and its one Sent Record then names where it was sent.
 - The check before writing is strict: any change in a Budget since preparation, also in a Budget Account the plan
   does not touch, makes the plan Changed Before Writing. That can ask the Operator to prepare again more often than
   strictly needed; it never writes against a changed Budget.
@@ -308,6 +329,8 @@ is listed in ADR-005 §7.
   harder to prove.
 - **Inserting a new Sent Record for each attempt.** Rejected: it breaks the entity model's unique Import Identifier per
   Budget Account, which is what makes a retry recognisable (A-01).
+- **Keeping a Rejected send's recorded Budget Account after a move.** Rejected by the Operator (O-P2-34 (1)): nothing
+  was written, so there is nothing to protect there, and the move is often what fixes the rejection.
 - **Keeping an open plan across a restart.** Rejected: the confirmation screen is gone and the plan's inputs may be
   stale; preparing again is cheap.
 - **Resuming an interrupted Upload automatically at start.** Rejected: it would write without the Operator present, and
@@ -358,3 +381,11 @@ is listed in ADR-005 §7.
   of date and confirmed after it writes exactly its items), Consequences.
 - S-20 (UC-006 A2, BR-019): §2 (the confirm/cancel row includes leaving), §5 (leaving the plan's screen is the cancel
   command; the plan becomes Cancelled), §9 (test).
+- S-23/S-24 (2026-10-16, re-check pending): §2 (UC-009 changes, UC-013 and UC-014 refused while a plan is open or an
+  Upload runs), §4 (no configuration fingerprint; a new send goes to the current Account Mapping; a retry keeps its Sent
+  Record's Budget Account after a move, UC-009 BR-003, UC-003 BR-021), §6 steps 2, 3 and 6 (configuration is stored data
+  under `state_version`; `first_sent_at` instead of a lock).
+  - O-P2-34 (1) (2026-10-16, the Operator): Context, §4 (the retry table and the paragraph after it: a retry of a
+    Rejected send goes to the current Account Mapping, keeps its Import Identifier and updates its Sent Record's Budget
+    Account; the unknown-outcome rule is unchanged), §6 steps 6 and 7, §9, Consequences, Alternatives; UC-006 BR-020,
+    UC-009 BR-003, ADR-002 §4.
