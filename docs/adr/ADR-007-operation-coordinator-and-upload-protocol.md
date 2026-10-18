@@ -157,9 +157,11 @@ rejection. The retry keeps its Import Identifier, which no Budget Account holds,
 Sent Record rather than inserting a new one: O-7 sets the record's Budget Account to the item's (ADR-002 §4 step 2),
 so the record always names the Budget Account it was last sent to, and the unique Import Identifier per Budget Account
 holds. While the Bank Account has no Account Mapping, a Rejected Sent Record yields no item (UC-009 A11). A move or
-removal needs the Operator's confirmation only while a Sent Record through the mapping has an outcome other than
-Rejected; when every one is Rejected, nothing was written and O-13 moves or removes the mapping without asking
-(UC-009 A8, A11, BR-003; ADR-002 §3). A
+removal, and identifying the Bank Account again, needs the Operator's confirmation only while a Sent Record of the Bank
+Account's transactions with the mapping's Budget Account, also one sent through an earlier mapping to it, has an
+outcome other than Rejected; the confirmation states that number and, separately, the number of Rejected ones. When
+every one is Rejected, nothing was written and O-13 acts without asking; mapping a Bank Account that has no mapping
+never asks (UC-009 A6-A8, A11, BR-003, BR-007; ADR-002 §3). A
 transaction with a Sent Record whose outcome is Written or Already Present never becomes a new send because of a move
 (UC-003 BR-021); only a Re-upload decision sends it again, to the current Budget Account under a new Import
 Identifier.
@@ -294,9 +296,10 @@ transaction that would be outside the Upload Window and a Lonely Transfer whose 
 new date, writes exactly its items, while its expiry still applies (UC-006 BR-018); each check of §6 failing; the retry
 table of §4 for both values of the reuse-refusal capability; after a move of the Account Mapping, a retry of a
 Rejected send planned and recorded for the new Budget Account (with `first_sent_at` set there) and a retry of an
-Unknown send planned for the recorded one (O-P2-34 (1)); a move and a removal of an Account Mapping whose Sent Records
+Unknown send planned for the recorded one (O-P2-34 (1)); a move, a removal and an identification again of an Account Mapping whose Sent Records
 are all Rejected accepted without the Operator's confirmation, and refused without it once one of them is Written,
-Already Present, Not Yet Known or Unknown (UC-009 BR-003); a plan with a retry and a new send together; a plan whose
+Already Present, Not Yet Known or Unknown, also after the mapping was removed and mapped again to the same Budget
+Account (UC-009 BR-003, BR-007); a plan with a retry and a new send together; a plan whose
 Transfer has both Transfer Legs present and is cleared in the same Upload, and the same with the leg's answer lost
 (B-01); a Transfer with a Transfer Leg that is Needs Review or Possible Import By Other Path, yielding no item from
 either side until every such Transfer Leg is decided, and each outcome with the precedence Already Present, Defer,
@@ -396,3 +399,4 @@ is listed in ADR-005 §7.
     Account; the unknown-outcome rule is unchanged), §6 steps 6 and 7, §9, Consequences, Alternatives; UC-006 BR-020,
     UC-009 BR-003, ADR-002 §4.
 - Mockup gate follow-up (2026-10-18): §4 and §9 (no confirmation to move or remove an Account Mapping whose Sent Records are all Rejected; UC-009 A8, A11, BR-003).
+- Pre-Phase-6 review follow-up (2026-10-18): §4 and §9 (identifying again guarded like a move or removal; the guard counts Sent Records to the mapping's Budget Account also through an earlier mapping, the Rejected ones stated separately; mapping a Bank Account again never asks; UC-009 A6-A8, A11, BR-003, BR-007).

@@ -15,14 +15,14 @@
 ## Preconditions
 
 - The Operator has entered service credentials for the Data Provider that it accepted (UC-014).
-- No Upload Plan is awaiting confirmation (UC-006 BR-005).
+- No Upload Plan is awaiting confirmation and no Upload is being written (UC-006 BR-005).
 
 ## Main Success Scenario
 
 1. Operator starts a Fetch of a Data Provider.
 2. Slussen checks that the Data Provider is in no Back-off, is not within its Fetch Cooldown and has not reached its Request Limit.
-3. Slussen selects the Bank Accounts to read: every Bank Account the Operator added for the Data Provider (UC-013) that has an Account Mapping, is not a Retired Account and whose Bank has a valid Bank Consent when the Data Provider needs one.
-4. Slussen asks the Data Provider, with the Operator present, for the Bank Accounts it offers and for the transactions and the balance of each selected Bank Account for the fetch period, and keeps each request as a Provider Request (BR-007).
+3. Slussen selects the Bank Accounts to read: every Bank Account the Operator added for the Data Provider (UC-013), and, for its balance only, every Bank Account whose transactions come from Transaction Files and whose balance the Operator chose to take from the Data Provider (BR-011), that has an Account Mapping, is not a Retired Account and whose Bank has a valid Bank Consent when the Data Provider needs one.
+4. Slussen asks the Data Provider, with the Operator present, for the Bank Accounts it offers, also when no Bank Account is selected, and for the transactions and the balance of each selected Bank Account for the fetch period, only the balance for one whose transactions come from Transaction Files, and keeps each request as a Provider Request (BR-007).
 5. Data Provider delivers the transactions and the Account Balance of each selected Bank Account.
 6. Slussen keeps the delivered Bank Accounts as Offered Bank Accounts (UC-009 BR-009) and identifies each selected one with certainty as one of the Bank Accounts the Operator added.
 7. Slussen keeps the booked Bank Transactions with an amount other than zero and leaves out the others.
@@ -48,9 +48,9 @@
 **Trigger:** The last successful Fetch of the Data Provider lies within the Fetch Cooldown (step 2)  
 **Flow:**
 
-1. Slussen does not contact the Data Provider.
-2. Slussen shows the Bank Transactions and Account Balances already stored, states that they come from the last Fetch and when a new Fetch will contact the Data Provider again.
-3. Slussen records the Fetch with outcome Served From Fetch Cooldown.
+1. Slussen does not contact the Data Provider, except for a Bank Account selected as step 3 describes that the Operator added, or whose identification the Operator confirmed or changed (UC-009), since that Fetch (BR-006): Slussen reads only those Bank Accounts from the Data Provider as steps 4 to 9 describe, or, when the Request Limit is reached, reads none of them and shows the Blocked Reason "Request Limit reached" as A3 describes.
+2. Slussen shows the Bank Transactions and Account Balances already stored of the other Bank Accounts, states that they come from the last Fetch and when a new Fetch will contact the Data Provider again.
+3. Slussen records the Fetch with outcome Served From Fetch Cooldown, with the outcome for each Bank Account it read.
 4. Use case continues at step 10, so that the Budget App is still read (BR-006).
 
 ### A3: Request Limit Reached
@@ -248,7 +248,7 @@ A timeout, an outage or an unreadable answer starts no Back-off. Slussen shows t
 
 ### BR-006: Fetch Cooldown
 
-Each Data Provider has its own Fetch Cooldown, whose default comes with the Data Provider's part and which the Operator can change, reset to that default or set to 0 to switch off on the Data Provider's page in Connections (UC-010 A10, BR-010). During it, a new Fetch of that Data Provider, started by the Operator or as a Scheduled Fetch, is answered from the stored data without contacting it, and the Comparison still reads the Budget App (UC-003). A Fetch that delivered no Bank Account does not start a Fetch Cooldown.
+Each Data Provider has its own Fetch Cooldown, whose default comes with the Data Provider's part and which the Operator can change, reset to that default or set to 0 to switch off on the Data Provider's page in Connections (UC-010 A10, BR-010). During it, a new Fetch of that Data Provider, started by the Operator or as a Scheduled Fetch, is answered from the stored data without contacting it, and the Comparison still reads the Budget App (UC-003). A Fetch that delivered no Bank Account does not start a Fetch Cooldown. A Bank Account the Operator added, or whose identification the Operator confirmed or changed (UC-009), since the Data Provider's last successful Fetch is not served from the Fetch Cooldown, because nothing of it under that identification is stored yet: a Fetch within the Fetch Cooldown reads it from the Data Provider (A2). That read is kept as a Provider Request and counts against the Request Limit (BR-007), and in a Scheduled Fetch against the Unattended Access limit (BR-012), like any other request; it neither starts nor extends the Fetch Cooldown.
 
 ### BR-007: Request Limit
 
@@ -276,7 +276,7 @@ A Fetch the Operator starts is made with the Operator present and is never count
 
 ### BR-013: Fetch Schedule
 
-Scheduled Fetches follow the Fetch Schedule (UC-010): 2 in any 24 hours by default, evenly spaced, a number the Operator can lower to 1 or to 0 to switch them off. A Scheduled Fetch fetches all Data Providers and compares, and never prepares an Upload Plan, writes to the Budget App or waits for an answer from the Operator. A Scheduled Fetch that falls due while an Upload Plan awaits confirmation starts when that pause ends (UC-006 BR-005).
+Scheduled Fetches follow the Fetch Schedule (UC-010): 2 in any 24 hours by default, evenly spaced, a number the Operator can lower to 1 or to 0 to switch them off. A Scheduled Fetch fetches all Data Providers and compares, and never prepares an Upload Plan, writes to the Budget App or waits for an answer from the Operator. A Scheduled Fetch that falls due while an Upload Plan awaits confirmation or its Upload is being written starts when that pause ends (UC-006 BR-005).
 
 ### BR-014: New Transaction Notification
 

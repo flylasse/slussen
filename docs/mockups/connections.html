@@ -412,23 +412,45 @@
 </div>
 </div>
 <div class="state" id="enable-banking-remove">
-<div class="step-label"><span class="n">UC-014 A3 1–2</span><p><b>Remove Enable Banking's credentials</b>: confirmation first. Removing leads to the page state drawn for SimpleFIN in <a href="setup.html#removed">removed</a>.</p></div>
+<div class="step-label"><span class="n">UC-014 A3 1–2</span><p><b>Remove Enable Banking's credentials</b>: confirmation first. Removing leads to <a href="#enable-banking-removed">Enable Banking removed</a>.</p></div>
 <div class="phone">
 <div class="screen-title"><a class="back" href="#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Data Provider · needs Bank Consent</p>
 <div class="body">
-<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">Enable Banking</span></div></div><div style="height:200px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Remove Enable Banking credentials?</h4><p>Enable Banking is not contacted until you enter new ones. Its Bank Consents can't be renewed until then.</p><div class="actions"><a class="c" href="#enable-banking">Cancel</a> <a class="x" href="setup.html#removed">Remove</a></div></div><div style="height:120px"></div>
+<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">Enable Banking</span></div></div><div style="height:200px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Remove Enable Banking credentials?</h4><p>Enable Banking is not contacted until you enter new ones. Its Bank Consents can't be renewed until then.</p><div class="actions"><a class="c" href="#enable-banking">Cancel</a> <a class="x" href="#enable-banking-removed">Remove</a></div></div><div style="height:120px"></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="ynab-remove">
-<div class="step-label"><span class="n">UC-014 A3 1–2</span><p><b>Remove YNAB's token</b>: confirmation first. Every Budget then shows the Blocked Reason credentials missing, as drawn for SimpleFIN in <a href="setup.html#removed">removed</a>.</p></div>
+<div class="step-label"><span class="n">UC-014 A3 1–2</span><p><b>Remove YNAB's token</b>: confirmation first. Removing leads to <a href="#ynab-removed">YNAB removed</a>, where every Budget shows the Blocked Reason credentials missing.</p></div>
 <div class="phone">
 <div class="screen-title"><a class="back" href="#ynab">‹</a> YNAB</div>
 <p class="screen-sub">Budget App</p>
 <div class="body">
-<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">YNAB</span></div></div><div style="height:200px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Remove the YNAB token?</h4><p>YNAB is not read or written until you enter a new one. No Upload Plan can be prepared until then.</p><div class="actions"><a class="c" href="#ynab">Cancel</a> <a class="x" href="setup.html#removed">Remove</a></div></div><div style="height:120px"></div>
+<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">YNAB</span></div></div><div style="height:200px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Remove the YNAB token?</h4><p>YNAB is not read or written until you enter a new one. No Upload Plan can be prepared until then.</p><div class="actions"><a class="c" href="#ynab">Cancel</a> <a class="x" href="#ynab-removed">Remove</a></div></div><div style="height:120px"></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="enable-banking-removed">
+<div class="step-label"><span class="n">UC-014 A3 3–5 · BR-005 · BR-007</span><p><b>Enable Banking removed</b>: its page stays reachable with the Blocked Reason credentials missing; its Bank Consents stay listed but can't be renewed until credentials are entered.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#list">‹</a> Enable Banking</div>
+<p class="screen-sub">Data Provider · needs Bank Consent</p>
+<div class="body">
+<div class="card"><div class="src-row"><span class="dot amber"></span> <span class="nm">Credentials missing</span> <span class="warn">Not contacted</span></div></div><div class="banner"><span class="txt"><b>Blocked: credentials missing</b> <span class="d">Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar, Vesta Card</span></span></div><div class="sec-t">Credentials</div><div class="card"><div class="cfg-row"><span class="nm">Application id and key file <span class="hint">Removed · recorded in the Decision Journal</span></span> <span class="chip amber">Missing</span></div><a class="btn primary" href="#enable-banking-replace">Enter credentials</a></div><div class="sec-t">Bank Consents · 2</div><div class="card"><div class="src-row"><span class="dot amber"></span> <span class="nm">Aurora Bank</span> <span class="warn">Expires 2026-10-19</span></div><div class="src-row"><span class="dot"></span> <span class="nm">Vesta Sparbank</span> <span class="ok">Valid until 2027-04-12</span></div><div class="src-note">Renew after entering credentials</div></div><div class="sec-t">Fetching</div><div class="card"><a class="cfg-row" href="#fetch-cooldown"><span class="nm">Fetch Cooldown <span class="hint">Minutes · default 360, declared by its part · 0 to 1440 · 0 is off</span></span> <span class="val">6 h</span></a></div><div class="sec-t">Bank Accounts · 5</div><div class="card"><div class="acct-line">Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar, Vesta Card</div><a class="btn" href="account-mappings.html#map">Account Mappings</a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="ynab-removed">
+<div class="step-label"><span class="n">UC-014 A3 3–5 · BR-005 · BR-007</span><p><b>YNAB removed</b>: the page stays reachable; every Budget shows the Blocked Reason credentials missing, and no Upload Plan can be prepared until a token is entered.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#list">‹</a> YNAB</div>
+<p class="screen-sub">Budget App</p>
+<div class="body">
+<div class="card"><div class="src-row"><span class="dot amber"></span> <span class="nm">Credentials missing</span> <span class="warn">Not read or written</span></div></div><div class="banner"><span class="txt"><b>Blocked: credentials missing</b> <span class="d">Household, Summer House, Care Fund</span></span></div><div class="sec-t">Credentials</div><div class="card"><div class="cfg-row"><span class="nm">Personal access token <span class="hint">Removed · recorded in the Decision Journal</span></span> <span class="chip amber">Missing</span></div><a class="btn primary" href="#ynab-replace">Enter token</a></div><div class="sec-t">Budgets in use · 3</div><div class="card"><div class="acct-line">Household <span class="amt">USD</span></div><div class="acct-line">Summer House <span class="amt">EUR</span></div><div class="acct-line">Care Fund <span class="amt">USD</span></div></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>

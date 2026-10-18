@@ -152,7 +152,7 @@
 
 - Every confirmed Eligible Transaction exists exactly once in its Budget Account in the Budget App, marked Cleared exactly when Upload as Cleared was on, and waiting for the Operator's approval.
 - The Sent Record holds every transaction sent, with its Import Identifier, its Budget Account and its confirmed outcome.
-- For every Account Mapping through which a transaction was sent, the time of its first send is stored, so that it is moved or removed only with the Operator's confirmation (UC-009 BR-003).
+- For every Account Mapping through which a transaction was sent, the time of its first send is stored, and its Sent Records ensure that it is moved or removed only with the Operator's confirmation (UC-009 BR-003).
 - Every Transfer Counterpart the plan stated is marked Cleared.
 - The Upload Plan and the Upload are recorded in the Decision Journal, unless the Decision Journal is switched off.
 - Other work is available again.
@@ -186,7 +186,7 @@ Immediately before writing, Slussen checks the Budget App, the Bank Transactions
 
 ### BR-005: Other Work Pauses While a Plan Awaits Confirmation or Is Being Written
 
-At most one Upload Plan awaits confirmation at a time. From the moment it is prepared until it is cancelled, discarded or expires, or, once confirmed, until its Upload is written, also after the Operator has left its screen (BR-019), fetching (a Scheduled Fetch that falls due starts when the pause ends), file imports, reading the Budget App and all setup are unavailable: entering, replacing or removing service credentials (UC-014), choosing Budgets and adding Bank Accounts (UC-013), Account Mapping changes (UC-009), granting, renewing or revoking a Bank Consent (UC-007) and changes to Operator Settings (UC-010). While the plan awaits confirmation, only confirming, cancelling and changing Review Decisions or Transfer Decisions are allowed; while its Upload is being written, Slussen shows that setup is paused until the Upload is written. Looking at the import status stays available.
+At most one Upload Plan awaits confirmation at a time. From the moment it is prepared until it is cancelled, discarded or expires, or, once confirmed, until its Upload is written, also after the Operator has left its screen (BR-019), fetching (a Scheduled Fetch that falls due starts when the pause ends), file imports, reading the Budget App (UC-003, also for a Journal Export, UC-011) and all setup are unavailable: entering, replacing or removing service credentials (UC-014), choosing Budgets and adding Bank Accounts (UC-013), Account Mapping changes (UC-009), granting, renewing or revoking a Bank Consent (UC-007) and changes to Operator Settings (UC-010). While the plan awaits confirmation, only confirming, cancelling and changing Review Decisions or Transfer Decisions are allowed; while its Upload is being written, Slussen shows that setup is paused until the Upload is written. Looking at the import status stays available.
 
 ### BR-006: Exactly Once Through the Sent Record
 
