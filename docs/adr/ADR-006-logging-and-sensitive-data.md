@@ -2,11 +2,11 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24).
+Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24/S-25).
 
 History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
-Phase 2 review and the specification change S-02; revised for S-23/S-24 on 2026-10-16, pending an external check;
-later revisions at the gate are listed under "Review findings addressed".
+Phase 2 review and the specification change S-02; revised for S-23/S-24 on 2026-10-16 and for S-25 on
+2026-10-18, pending an external check; later revisions at the gate are listed under "Review findings addressed".
 
 ## Context
 
@@ -24,7 +24,7 @@ later revisions at the gate are listed under "Review findings addressed".
 - NFR-021, UC-014 BR-003, `SERVICE_CREDENTIAL` (S-24): service credentials are entered in the app and are never in a
   built app, a device backup or transfer, a Journal Export, the Decision Journal or a log, in any logging mode.
   UC-014 step 5: a change of credentials is journaled without any credential.
-- ADR-003 §7: no value of the Build Configuration (since S-24 only the signing setup) is ever printed.
+- ADR-003 §5: no release signing value or live-test credential (Gradle properties since S-25) is ever printed.
 - Evidence: the bootstrap plan records (D-21) that the Predecessor App logged Bank Account identifiers at INFO level,
   and says construction must not port that behaviour.
 - The Phase 2 review found that the free-text event name of the Phase 1 `SlussenLog` bypassed the typed facts
@@ -76,8 +76,8 @@ sealed interface LogFact {
 Service credentials (`SERVICE_CREDENTIAL.secret`, its plaintext, the input the Operator typed or chose, a SimpleFIN
 setup token and the access credential it is exchanged for, an Enable Banking private key file), Bank Consent data, Bank
 Sessions (`BANK_SESSION.session_reference`), Consent Request `state` values and the plug-in's consent handle,
-authentication codes, one-time values and the values of `build-config/local/`. They are held only
-in `Secret` or `ConsentSession` (ADR-001 §4), whose `toString()` returns a fixed mask. Reading their content requires
+authentication codes and one-time values; at build time also the release signing values and live-test credentials
+(ADR-003 §5). At run time they are held only in `Secret` or `ConsentSession` (ADR-001 §4), whose `toString()` returns a fixed mask. Reading their content requires
 the opt-in annotation `@SensitiveApi` (Kotlin `@RequiresOptIn`):
 
 - `Secret.reveal()` and `ConsentSession.reveal()` are annotated `@SensitiveApi`.
@@ -133,12 +133,12 @@ about a fake:
   input, recorded answers and errors;
 - with Detailed Logging off, no planted amount, payee, memo, Bank Account number or its last four digits appears
   (NFR-007);
-- with Detailed Logging on, no planted credential, Bank Session, handle, `state`, code or Build Configuration value
+- with Detailed Logging on, no planted credential, Bank Session, handle, `state`, code or signing value
   appears (NFR-008), and the Decision Journal entries of UC-014 (credentials changed or removed) and every Journal
   Export hold none of them (NFR-012, NFR-021);
-- a Gradle TestKit test of `build-logic/` runs the Build Configuration tasks on a fixture with planted values and
-  checks that no value appears in any output, at every log level (ADR-003 §7); `NoCredentialInAppTest` checks that none
-  enters a built app (ADR-003 §4).
+- the Gradle TestKit test `NoCredentialInAppTest` of `build-logic/` builds a fixture with planted signing and
+  live-test values and checks that none appears in the build's output at any log level (ADR-003 §5) or enters a built
+  app (ADR-003 §3).
 
 ## Consequences
 
@@ -177,3 +177,6 @@ about a fake:
   SimpleFIN setup token and exchanged credential and the Enable Banking key file never logged or journaled;
   `:persistence` may opt in to encrypt them; the encrypted storage itself is ADR-002 §2a); §6 (planted credentials in
   credential input, the UC-014 journal entries and Journal Exports checked).
+- S-25 (2026-10-18, re-check pending): Context, §2 and §6 (the values of `build-config/local/` become the release
+  signing values and live-test credentials, Gradle properties outside the repository; their output check is part of
+  `NoCredentialInAppTest`, ADR-003 §3, §5).

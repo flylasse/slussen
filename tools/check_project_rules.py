@@ -55,8 +55,6 @@ EXCEPTIONS = [
     ("AVOID_WORD", r"entity_model\.md$", r"^(?:[a-z]+ )*bank transaction id$",
      "a foreign key to BANK_TRANSACTION, named [<role>_]<entity>_id as the entity-model skill does "
      "(e.g. settled_by_bank_transaction_id); not a Stable Reference"),
-    ("NUMBER", r"ADR-003-build-configuration\.md$", r'for example "3 Budgets, 9 Bank Accounts"',
-     "an illustrative toString() output, not a quantity Slussen chooses"),
 ]
 
 # Numbers that are never a duration or count Slussen chooses.
@@ -69,7 +67,6 @@ NUMBER_EXEMPT_VALUES = {
 NUMBER_MARKERS = [
     r"\bdefault\b",                    # "8 hours by default"
     r"\bOperator Settings?\b",
-    r"\bBuild Configuration\b",
     r"\ba number (?:I|the Operator) can change\b",
     r"\bset by\b",                     # "set by Android"
     r"\b(?:YNAB|PSD2|Android|RFC|ISO|EU)\b",

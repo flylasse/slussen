@@ -170,7 +170,7 @@ A Bank Account has at most one Account Mapping, and a Budget Account receives th
 
 ### BR-002: Mappings Are Set in the App
 
-Bank Accounts are added and mapped in the app (UC-013) and changed here. The Build Configuration holds none of them (UC-012 BR-011).
+Bank Accounts are added and mapped in the app (UC-013) and changed here. No build is given any of them (UC-012 BR-011).
 
 ### BR-003: Moving a Mapping After a Send Is Deliberate
 

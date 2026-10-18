@@ -7,30 +7,32 @@
 **Phase 0 evidence (2026-10-14):** predecessor commit read = 46efbf004a98d802a30aba7dbd7601624bd1f19f (origin/main after fetch); modules = 8; mockups = 6.
 **Method:** AIUP Marketplace at commit `05af8163838df704620ebe1121cd6019dbce276c`, local clone `C:\work\marketplace`. There is **no Android/Kotlin stack plugin** (bootstrap O-03), so construction follows `docs/workflow.md` (construction inputs, traceability markers, requirement status) and uses `aiup-vaadin-jooq/skills/implement` as the pattern for the implementation phase, with every deviation recorded in §5. If `git -C C:\work\marketplace rev-parse HEAD` differs, stop and ask.
 **Version:** this PR sets `VERSION` to `0.1.0` (operator decision: first version of Slussen; the merged bootstrap PR counts as 0.0.0). Later PRs follow `AGENTS.md` §5.
-**Gate tools:** `python tools/lint_specs.py --strict`; from Phase 3 on, `tools/check_project_rules.py`; from Phase 6 on, `gradlew check` (compile, unit tests, Konsist architecture tests) with the ADR-003 §6 TestKit tests (a debug package builds without a Build Configuration, a release package refuses to, a misplaced or partial Build Configuration fails every build, no planted credential or template key appears in a built debug APK); only the Operator builds `release` with `signing.properties` (O-P1-06, A-28, S-24).
+**Gate tools:** `python tools/lint_specs.py --strict`; from Phase 3 on, `tools/check_project_rules.py`; from Phase 6 on, `gradlew check` (compile, unit tests, Konsist architecture tests) with the ADR-003 §6 TestKit tests (a debug package builds without signing values, a release package fails without them, naming each missing one and where it goes, no planted credential or signing value appears in a built debug APK); only the Operator builds `release` with their own signing values in `~/.gradle/gradle.properties` (O-P1-06, A-28, S-24, S-25).
 
 ---
 
-## 0. Resume here (state as of 2026-10-16)
+## 0. Resume here (state as of 2026-10-18)
 
 This section lets a fresh orchestrator session (local or cloud) pick up the plan on branch `construction-kickoff`. Read `AGENTS.md`, then this section, then §1, §3 and §6. Update this section in every commit that moves the plan forward.
 
 **Where the plan stands (end of day 2026-10-16):** the orchestrator is stopped at the **mockup gate**, waiting for the external re-check. S-23 and S-24, the ADR revisions, the mockups and the O-P2-34 (1) change are committed and pushed by the operator in `fb3204c`. The ADRs still say "re-check pending (S-23/S-24)".
 
+**Update 2026-10-18:** the operator decided S-25 (§6): the Build Configuration is dropped; an own release build reads its signing values from `~/.gradle/gradle.properties` or environment variables. S-25 is written (specification, ADR-001 and ADR-003 to ADR-006, mockups, `tools/check_project_rules.py`, this plan) and **uncommitted, for the operator's review before the Gemini re-check**; the changed ADRs now say "re-check pending (S-23/S-24/S-25)".
+
 **Done so far:**
 - Phases 0, 1 and 2 and the architecture gate are complete; A-01..A-28, B-01..B-14 and C-01 are dispositioned in §6; ADR-001..ADR-008 are Accepted (2026-10-15), revised for S-23/S-24 (2026-10-16), re-check pending.
 - Phase 3 (`tools/check_project_rules.py`), Phase 4 (`docs/mockups/`, now 18 screens with `setup.html`, `index.html`, three icon SVGs) and Phase 5 (findings M-01..M-20) are complete.
-- Specification changes S-01..S-24 are committed and pushed (S-23/S-24 in `fb3204c`), including UC-006 BR-020 (a Rejected transaction follows the current Account Mapping, O-P2-34 (1)).
+- Specification changes S-01..S-24 are committed and pushed (S-23/S-24 in `fb3204c`), including UC-006 BR-020 (a Rejected transaction follows the current Account Mapping, O-P2-34 (1)). S-25 (release signing from standard Gradle properties, no Build Configuration) is written and uncommitted (2026-10-18).
 - Mockup gate: M-01..M-20 dispositioned; O-P2-20..O-P2-34 answered (Upload continues when leaving, icon A, numbers-first screens, sentence case, normal-day frames, pull to refresh, many Budgets, mapping and credentials in the app, no orchestrator commits, Gemini re-check, first slice, Rejected follows the current Account Mapping).
 
 **Next steps, in order:**
-1. **External re-check (operator, Gemini CLI with Gemini 4 Argon):** run the prompt in §4 "Mockup gate — external re-check of S-23/S-24" on `construction-kickoff` at or after `fb3204c`; it reviews `ff455b3..HEAD` and commits only `docs/reviews/mockup_gate_s23_s24_recheck.md` (no push).
+1. **External re-check (operator, Gemini CLI with Gemini 4 Argon):** first review and commit S-25; then run the prompt in §4 "Mockup gate — external re-check of S-23/S-24" (now covering S-25 too) on `construction-kickoff` at or after the S-25 commit; it reviews `ff455b3..HEAD` and commits only `docs/reviews/mockup_gate_s23_s24_recheck.md` (no push).
 2. **Orchestrator:** gates the review, records the result in §6, and on a clean verdict removes "re-check pending" from the ADRs; D-nn findings go to the operator for disposition. Changes are left uncommitted for the operator (O-P2-33).
 3. **Optional small follow-ups (orchestrator proposals, not yet decided):** (a) skip the move confirmation of UC-009 A8 when a mapping has only Rejected sends (it now asks with "0 sent"); (b) one line in `upload-outcome.html` (UC-006 A9) that rejected transactions follow the current Account Mapping.
 4. **Operator:** says "resume". The orchestrator fills the §5 "Mockup gate" row's gate result.
-5. **Phase 6:** module skeleton, sub-agent on `inherit` with the verbatim §4 prompt; gate as in §3 (ADR-003 §6 TestKit tests, `NoCredentialInAppTest`, a planted forbidden dependency failing `check`); the launcher icon is icon A (`docs/mockups/icon-sluice.svg`) as an adaptive icon.
+5. **Phase 6:** module skeleton, sub-agent on `inherit` with the verbatim §4 prompt; gate as in §3 (ADR-003 §6 TestKit tests: debug without signing values, release failing clearly without them, `NoCredentialInAppTest`; a planted forbidden dependency failing `check`); the launcher icon is icon A (`docs/mockups/icon-sluice.svg`) as an adaptive icon.
 6. **Phase 7:** the first slice UC-012 + UC-014 + UC-013 + UC-008 (O-P2-32); then Phase 8, Phase 9 (operator acceptance on the phone), Phase 10.
-7. **Still owed by the operator, outside this plan:** the bootstrap's §7 "Verdict on the method"; committing the README in the private configuration clone in `build-config/local/` (updated by the orchestrator on 2026-10-16 for S-24: signing only, plus the optional test-only `live-test.properties`; not committed by the orchestrator).
+7. **Still owed by the operator, outside this plan:** the bootstrap's §7 "Verdict on the method"; committing the README in the private configuration clone in `build-config/local/` (updated by the orchestrator on 2026-10-16 for S-24: signing only, plus the optional test-only `live-test.properties`; not committed by the orchestrator). **Since S-25 (2026-10-18) that private clone is no longer needed:** the operator may move the signing values, and the live-test credentials, to `~/.gradle/gradle.properties` (property names in ADR-003 §1 and §4) and retire `build-config/local/`. The `.gitignore` line `build-config/local/` stays, harmless.
 
 **Environment for a session that is not on the operator's Windows machine:**
 - `scratch/` is git-ignored and does not exist in a fresh clone. Everything a later phase needs from it is already in this plan:
@@ -49,7 +51,7 @@ This section lets a fresh orchestrator session (local or cloud) pick up the plan
   - `main` is protected by the "Force PR" ruleset.
   - Files use CRLF; keep it when editing.
   - Since 2026-10-16 the orchestrator does not commit or push; it leaves gated changes for the operator (O-P2-33).
-- **Private data:** no agent reads, writes or prints the operator's Build Configuration (`build-config/local/`), §1.2.
+- **Private data:** no agent reads, writes or prints the operator's signing values or live-test credentials (`~/.gradle/gradle.properties`, environment variables) or the retired `build-config/local/`, §1.2.
 
 ## 1. How this plan is executed (global prompt for the orchestrator)
 
@@ -58,10 +60,10 @@ The rules of the bootstrap plan's §1 apply unchanged: one sub-agent per phase w
 1. **Three operator stops.**
    - **Architecture gate** after Phase 2. The orchestrator and the operator discuss the module boundaries before anything is built; the operator sets each ADR to Accepted.
    - **Mockup gate** after Phase 5. The operator reviews every screen before a single line of application code exists.
-   - **Acceptance** in Phase 9. The operator builds with their own Build Configuration and installs the app on their phone.
+   - **Acceptance** in Phase 9. The operator builds with their own signing values and installs the app on their phone.
 
    The orchestrator never moves past a stop on its own.
-2. **No private data reaches an agent.** The operator's Build Configuration holds credentials and real Bank Account names. No agent reads, writes or prints it. Mockups and tests use invented names and amounts only.
+2. **No private data reaches an agent.** The operator's signing values and live-test credentials (in `~/.gradle/gradle.properties` or environment variables since S-25; formerly the Build Configuration in `build-config/local/`) and everything entered in the app are private. No agent reads, writes or prints them. Mockups and tests use invented names and amounts only.
 3. **Specification first.** If construction shows that a use case, rule or entity is wrong or missing, the phase stops. The orchestrator records the finding in §6, and the specification is changed (operator-approved) before the code. Code never silently departs from an Approved use case.
 4. **The three `AGENTS.md` §2 project rules** apply to every document a phase writes. From Phase 3 on, they are checked by tool.
 
@@ -89,10 +91,10 @@ The rules of the bootstrap plan's §1 apply unchanged: one sub-agent per phase w
 | 4 | HTML mockups and icon proposals | `docs/mockups/*.html`, `docs/mockups/index.html`, `docs/mockups/icon-*.svg` | `inherit` | every operator-facing step of UC-001..UC-011 is reachable on a mockup screen (traceability table in `index.html`); only invented names and amounts; `check_project_rules.py` exits 0 | `docs: phase 4 - screen mockups and icon proposals` |
 | 5 | Adversarial mockup review (report only) | findings into §6 | `pro` | every finding has an ID and a location; no file other than this plan changed | `docs: phase 5 - mockup review findings` |
 | — | **Mockup gate — orchestrator stops here** | operator reviews the mockups and the findings, the mockups are revised, an icon is chosen | operator | operator says "resume" | operator's own commit |
-| 6 | Module skeleton | Gradle modules per ADR-001, Konsist tests, Room setup, the signing-only Build Configuration checks (ADR-003) and the credential vault (ADR-002 §2a); the app's version name read from `VERSION` (`AGENTS.md` §5) | `inherit` | `gradlew check` passes, including the Konsist, bytecode and traceability tests and the ADR-003 §6 TestKit tests (debug builds without a Build Configuration, release refuses to, a misplaced or partial Build Configuration fails every build, `NoCredentialInAppTest` finds no planted credential or template key in a built debug APK); a planted forbidden dependency makes `check` fail; agents may also run `gradlew :app:assembleDebug` | `build: phase 6 - module skeleton` |
+| 6 | Module skeleton | Gradle modules per ADR-001, Konsist tests, Room setup, the release signing check (ADR-003 §2) and the credential vault (ADR-002 §2a); the app's version name read from `VERSION` (`AGENTS.md` §5) | `inherit` | `gradlew check` passes, including the Konsist, bytecode and traceability tests and the ADR-003 §6 TestKit tests (debug builds without signing values, release fails without them naming each missing one and where it goes, `NoCredentialInAppTest` finds no planted credential or signing value in a built debug APK); a planted forbidden dependency makes `check` fail; agents may also run `gradlew :app:assembleDebug` | `build: phase 6 - module skeleton` |
 | 7 | Vertical slice UC-012 + UC-014 + UC-013 + UC-008 (O-P2-32) | use case tests first, then the implementation, with the `workflow.md` markers adapted per ADR | `inherit` | `gradlew check` passes; every BR of UC-012, UC-014, UC-013 and UC-008 has a test that names it; the credential vault tests and evidence E-13 (ADR-005 §7) pass; the UC-014 and UC-013 screens match `setup.html` and `account-mappings.html`; every BR the code enforces has its implementation marker; UC-008 screen matches the accepted mockup; UC-008 A8 (Recovery Check open) is shown, its confirmation (A9) unavailable until a slice builds UC-003 (O-P2-09) | `feat: phase 7 - set up an own build and check import status` |
-| 8 | README how-to | `README.md` adopting-developer section; the signing Configuration Template (S-24: credentials, Budgets and Bank Accounts are set up in the app) | `inherit` | the how-to covers clone or fork or installing an APK someone else built, the optional signing setup (UC-012 BR-002), build, install and the first run in the app (UC-013, UC-014); the template holds no real values; `check_project_rules.py` exits 0 | `docs: phase 8 - adopting developer how-to and templates` |
-| 9 | **Acceptance — operator** | operator's own signing setup (never committed, never read by an agent); credentials entered in the app (UC-014); Budgets and Bank Accounts connected in the app (UC-013), each Start Date = the day after the predecessor's last upload | operator | the `release` variant (signed per ADR-005, O-P2-05) builds, installs, takes the credentials, Budgets and Bank Accounts in the app and shows the operator's Bank Accounts per UC-008; a misplaced Build Configuration fails the build (UC-012 A6) | none |
+| 8 | README how-to | `README.md` adopting-developer section (S-25: no template; S-24: credentials, Budgets and Bank Accounts are set up in the app) | `inherit` | the how-to covers clone or fork or installing an APK someone else built, the signing properties of an own release build and where they go (`~/.gradle/gradle.properties` or environment variables; UC-012 BR-001, BR-002, ADR-003 §1), why a release build is recommended (UC-012 BR-009), build, install and the first run in the app (UC-013, UC-014); it holds no real values; `check_project_rules.py` exits 0 | `docs: phase 8 - adopting developer how-to` |
+| 9 | **Acceptance — operator** | operator's own signing values in `~/.gradle/gradle.properties` (never in the repository, never read by an agent; S-25); credentials entered in the app (UC-014); Budgets and Bank Accounts connected in the app (UC-013), each Start Date = the day after the predecessor's last upload | operator | the `release` variant (signed per ADR-005, O-P2-05) builds, installs, takes the credentials, Budgets and Bank Accounts in the app and shows the operator's Bank Accounts per UC-008 | none |
 | 10 | Close and archive | §7; requirement statuses per `workflow.md`; plan → `docs/archive/` | `inherit` | `lint_specs.py --strict` and `check_project_rules.py` exit 0; §7 filled | `docs: phase 10 - close construction kickoff plan` |
 
 ## 4. Phase prompts
@@ -253,12 +255,12 @@ Proposed by the orchestrator on 2026-10-16 (O-P2-31); the operator chose Gemini 
 
 ```text
 You are an external reviewer of architecture decisions for Slussen (AIUP project; the specification in docs/
-is the source of truth; the ADRs in docs/adr/ are Accepted, with "re-check pending (S-23/S-24)" on their
-Status lines). You reviewed earlier versions in docs/reviews/phase2_architecture_review.md,
+is the source of truth; the ADRs in docs/adr/ are Accepted, with "re-check pending (S-23/S-24)" or
+"re-check pending (S-23/S-24/S-25)" on their Status lines). You reviewed earlier versions in docs/reviews/phase2_architecture_review.md,
 phase2b_architecture_rereview.md and phase2c_architecture_final_check.md.
 
-Since commit ff455b3 the Operator approved two specification changes (docs/construction_kickoff_plan.md §6,
-S-23 and S-24) and the ADRs were revised for them:
+Since commit ff455b3 the Operator approved three specification changes (docs/construction_kickoff_plan.md §6,
+S-23, S-24 and S-25) and the ADRs were revised for them:
 - S-23: Budgets, Bank Accounts and Account Mappings are set up in the app (new UC-013, reworked UC-009); the
   Configuration Key is replaced by a generated identifier; a Bank Account's name is editable and never
   identifies it; after a send, an Account Mapping is moved or removed only by a confirmed act, and sent
@@ -269,10 +271,15 @@ S-23 and S-24) and the ADRs were revised for them:
   non-exportable key, and never in the repository, an APK, a backup, a log or the Decision Journal; the Build
   Configuration is optional and holds only the signing setup; the Request Limit is declared by each Data
   Provider's part.
+- S-25: the Build Configuration is dropped: an own release build reads its signing values from the standard
+  Gradle places outside the repository (~/.gradle/gradle.properties or environment variables) and fails,
+  naming what is missing, without them; a debug build needs none; no credential is in the repository or a
+  built app (NoCredentialInAppTest); FR-093 and the placement checks of ADR-003 are dropped; the live-test
+  credentials moved to Gradle properties.
 
 Read AGENTS.md, then review only the change since ff455b3 (git diff ff455b3..HEAD -- docs/), reading
 surrounding sections as needed. Answer exactly two questions:
-1. Exactly once and nothing without confirmation: can any path created by S-23/S-24 (adding, pairing,
+1. Exactly once and nothing without confirmation: can any path created by S-23/S-24/S-25 (adding, pairing,
    moving, removing or identifying a Bank Account again; credentials refused, removed or lost on reinstall;
    restore) send a transaction twice, send one to a Budget Account the Operator did not confirm, or make a
    sent transaction eligible again? Cite the rule that prevents it, or report the gap.
@@ -316,7 +323,7 @@ Review the mockups against the use cases: missing states or alternative flows, s
 
 ### Phase 6 — Module skeleton (`inherit`)
 
-Build the Gradle modules, dependencies, Konsist tests, Room setup, the signing-only Build Configuration checks and the credential vault exactly as the Accepted ADRs say (as revised for S-23/S-24), with no use case behaviour yet. Prove the Konsist rules by a forbidden dependency that fails them (planted, then removed).
+Build the Gradle modules, dependencies, Konsist tests, Room setup, the release signing check (ADR-003 §2) and the credential vault exactly as the Accepted ADRs say (as revised for S-23/S-24/S-25), with no use case behaviour yet. Prove the Konsist rules by a forbidden dependency that fails them (planted, then removed).
 
 ### Phase 7 — Vertical slice UC-012 + UC-014 + UC-013 + UC-008 (`inherit`)
 
@@ -330,9 +337,9 @@ Follow `aiup-vaadin-jooq/skills/implement` as the pattern and record every adapt
 
 Stop and report if the specification is wrong or incomplete (§1.3).
 
-### Phase 8 — README how-to and templates (`inherit`)
+### Phase 8 — README how-to (`inherit`)
 
-Write the adopting-developer how-to in `README.md`: clone or fork, where the Build Configuration goes, build, install. Write one Configuration Template per Data Provider and Budget App of this build, saying what to fill in and where to get it, with no real values.
+Write the adopting-developer how-to in `README.md`: clone or fork, or install an APK someone else built; for an own release build, the four signing properties of ADR-003 §1 and where they go (`~/.gradle/gradle.properties`, or `ORG_GRADLE_PROJECT_<property>` environment variables), with placeholders only, and why a release build is recommended (UC-012 BR-009); a debug build needs nothing; build, install; the first run in the app, where each Data Provider and the Budget App state which credentials to enter and where to get them (FR-070, UC-014 BR-002). Write no template file (S-25).
 
 ### Phase 10 — Close (`inherit`)
 
@@ -482,6 +489,7 @@ Phase 5 reviewed all 17 screens, `index.html` with its traceability table and Op
 | S-22 | Mockup gate (O-P2-27) | UC-001 trigger, A2, A11, BR-006, BR-008; UC-010 step 1, BR-001, BR-002; FR-001, FR-016; glossary Fetch Cooldown, Operator Setting; entity model `DATA_PROVIDER.fetch_cooldown_minutes` (moved from `OPERATOR_SETTINGS`); ADR-001 (`DataProviderProfile.defaultFetchCooldownMinutes`, UC-001 row) and ADR-002 (reconciliation O-11, default content) aligned | (1) A Fetch served from the Fetch Cooldown continues with the Comparison, so the Budget App is still read. (2) A Fetch covers one Data Provider, the Data Providers with a Bank Account in one Budget, or all. (3) The Fetch Cooldown is set per Data Provider; its default comes with the Data Provider's part, the Operator can change it, 0 switches it off. (4) A Fetch never starts a Bank Consent grant. | Approved by the Operator (2026-10-16). |
 | S-23 | Mockup gate (O-P2-29, O-P2-30) | vision; FR-042, FR-056, FR-071, FR-075, NFR-010, new FR-097..FR-100, FR-057 and FR-096 Rejected; glossary (Configuration Key removed; Bank Account, Offered Bank Account, Start Date, Account Mapping, Decision-Critical Data, Build Configuration); entity model (`BUDGET.served`, `BANK_ACCOUNT.generated_identifier`, `ACCOUNT_MAPPING.first_sent_at`, `OFFERED_BANK_ACCOUNT.balance`); new UC-013; UC-001, UC-002, UC-003 (new BR-021), UC-005, UC-006, UC-007, UC-008, UC-009 (reworked), UC-010, UC-012; `use_cases.puml`; all ADRs aligned (re-check pending) | Reverses bootstrap VG-07: Budgets, Bank Accounts, Account Mappings and Start Dates are set up in the app; the Operator pairs Offered Bank Accounts with Budget Accounts, names and balances side by side; the Configuration Key is replaced by a generated identifier; a Bank Account's name is editable and never identifies it; after a send, an Account Mapping is moved or removed only by a confirmed act that states how many were sent; sent transactions stay in the Budget App and are never sent again. | Approved by the Operator (2026-10-16). |
 | S-24 | Mockup gate (O-P2-30) | vision (constraint One Operator per Installation); FR-017, FR-042, FR-064, FR-070, FR-071, FR-093, NFR-009, C-003, C-004, new FR-101, FR-102, NFR-021; glossary (Request Limit, Configuration Template, Build Configuration); entity model (`SERVICE_CREDENTIAL`, `DATA_PROVIDER.request_limit`, `FETCH.outcome` Credentials Refused); new UC-014; UC-001, UC-003, UC-006, UC-007, UC-008, UC-009, UC-010, UC-012 (rewritten), UC-013 (first-run order BR-008); `use_cases.puml`; all ADRs aligned, ADR-003 rewritten (re-check pending) | Service credentials are entered in the app and stored only on the device, encrypted with a non-exportable key; never in the repository, an APK, a backup, an export, a log or the Decision Journal; entered again after a reinstall. The Build Configuration is optional and holds only the signing setup; an APK may be shared. The Request Limit is declared by each Data Provider's part and cannot be changed. | Approved by the Operator (2026-10-16). |
+| S-25 | Mockup gate (operator's decision, 2026-10-18) | FR-070 (reworked: Setup Guidance), FR-071 (simplified), FR-093 Rejected; glossary (Build Configuration and Configuration Template removed); vision (constraint One Operator per Installation); UC-012 (reworked: steps 1-6; A1 Signing Values Missing replaces the incomplete Build Configuration, old A6 dropped, old A7 is A6; BR-001, BR-002 and BR-009 replaced, BR-010 to BR-012 reworded), UC-009 BR-002, UC-014 BR-001; ADR-003 rewritten, ADR-001, ADR-004, ADR-005 and ADR-006 aligned (re-check pending (S-23/S-24/S-25)); mockups `settings.html`, `setup.html`, `index.html`; `tools/check_project_rules.py` (no Build Configuration marker) | After S-24 the Build Configuration held only the release signing setup, so it is dropped as a Slussen concept, with its Configuration Template, its ignored folder `build-config/local/` and its placement checks (FR-093, UC-012 A6, old BR-009, ADR-003 P-1..P-6, the misplaced and partial configuration tests). An own release build reads its signing values (keystore path, key alias, keystore and key passwords) from the standard Gradle places outside the repository: the user's `~/.gradle/gradle.properties` or environment variables (ADR-003 §1); without them a release build fails, naming what is missing and where it goes; a debug build, or an app someone else built, needs nothing. Kept: no service credential in the repository or a built app (UC-012 BR-012, `NoCredentialInAppTest`). The test-only live-test YNAB credentials move from `build-config/local/live-test.properties` to the same Gradle places, read only by the live-test task. Rationale: a release build is still recommended, because (1) updates must be signed with the same key, and debug keys are per machine, so losing the key forces an uninstall, which deletes the app's local data (history, Sent Records, credentials); (2) a debug build is debuggable, so its private data is readable over USB. A misplaced signing password has low impact (the keystore file is also needed), so no misplaced-configuration detection is needed. FR-093 is Rejected; its row is kept as for FR-057 and FR-096. | Agreed (2026-10-18). |
 
 **Open questions for the operator:**
 

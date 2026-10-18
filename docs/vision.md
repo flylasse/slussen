@@ -162,8 +162,8 @@ continue its history, identities or Import Identifiers.
   can fetch, review and upload wherever they are. Everything Slussen stores stays on the device.
 - **One Operator per installation.** Each installation serves one Operator, who enters their service credentials
   in the app, where they stay on the device, encrypted. A built app holds no credentials, so it may be installed by
-  others; only an own release build needs a Build Configuration, for its signing setup, kept in a location the
-  repository ignores and never committed. The design keeps its concerns separated, so that serving one Operator
+  others; only an own release build needs signing values, which its builder keeps outside the repository and never
+  commits. The design keeps its concerns separated, so that serving one Operator
   does not rule out later features such as several Operators.
 - **Banking regulation (PSD2).** European Banks allow an application without the Bank Account holder present four
   accesses per Bank Account in any 24 hours, counted separately for transactions and balances. A Fetch the Operator

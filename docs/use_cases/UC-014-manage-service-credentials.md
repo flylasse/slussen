@@ -78,7 +78,7 @@
 
 ### BR-001: Credentials Are Entered in the App
 
-The service credentials of the Budget App and of each Data Provider are entered by the Operator in the app, never in the Build Configuration, the repository or a built app (UC-012 BR-012).
+The service credentials of the Budget App and of each Data Provider are entered by the Operator in the app, never in the repository, among the signing values of a build or in a built app (UC-012 BR-012).
 
 ### BR-002: What Each Part Asks For
 

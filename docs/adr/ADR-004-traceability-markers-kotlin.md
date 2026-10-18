@@ -2,11 +2,11 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24).
+Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24/S-25).
 
 History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
-Phase 2 review: live tests and their credentials, device evidence; revised for S-23/S-24 on 2026-10-16, pending an
-external check; later revisions at the gate are listed under "Review findings addressed".
+Phase 2 review: live tests and their credentials, device evidence; revised for S-23/S-24 on 2026-10-16 and for S-25 on
+2026-10-18, pending an external check; later revisions at the gate are listed under "Review findings addressed".
 
 ## Context
 
@@ -108,12 +108,11 @@ Rules:
   added, it is `TC001<Name>IT` with `@DisplayName("TC-001: …")` on the class and `// Step <n>: <name>` above each
   Flow row's code, exactly as the `aiup-vaadin-jooq` entry of `workflow.md`.
 - Tests against a real throwaway YNAB Budget (C-011) carry `@Tag("live")` and run only with `-PincludeLive`;
-  `gradlew check` excludes them. Their credentials and the reference of the throwaway Budget come from
-  `build-config/local/live-test.properties`, a test-only file in the ignored location `build-config/local/` that is
-  not part of the Build Configuration and is never read by a task that builds an app (ADR-003 §1, §4; S-24), with its
-  template `build-config/live-test.template.properties` and every rule of ADR-003 (placement, `# secret`, never
-  printed) (O-P1-07). A live test that finds no such file fails with the message where the file belongs, instead of
-  passing silently. **Agents never run live tests**, never with `-PincludeLive`, and never read that file; only the
+  `gradlew check` excludes them. Their credentials and the reference of the throwaway Budget come from the test-only
+  Gradle properties of ADR-003 §4, set outside the repository in the Operator's `~/.gradle/gradle.properties` or as
+  environment variables, read only by the test task run with `-PincludeLive` and never by a task that builds an app
+  (O-P1-07; S-25). A live test that finds a property missing fails with a message naming it and where it goes,
+  instead of passing silently. **Agents never run live tests**, never with `-PincludeLive`, and never read those properties; only the
   Operator runs them, and the results are recorded as evidence E-10 of ADR-005 §7, which gates the first slice that
   uploads (A-27).
 - Each live test carries `@UseCase` with the use case and rule it proves (for example
@@ -186,3 +185,6 @@ given the `aiup-vaadin-jooq` agent definition (`agents/uc-coverage.md`) together
 - A-21 in part: the T-rules run as Konsist rule K-14 with scope Test (ADR-001 §6.2).
 - S-23/S-24 (2026-10-16, re-check pending): §2 (`live-test.properties` is a test-only file beside the Build
   Configuration, never read by an app build, so no credential reaches a built app; ADR-003 §4).
+- S-25 (2026-10-18, re-check pending): §2 (the live-test credentials moved from
+  `build-config/local/live-test.properties` to Gradle properties outside the repository, ADR-003 §4; read only by the
+  live-test task).

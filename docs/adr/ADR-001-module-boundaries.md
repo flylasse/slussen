@@ -2,12 +2,12 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24).
+Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24/S-25).
 
 History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
 Phase 2 review and the specification changes S-01 to S-10; revised 2026-10-15 after the Phase 2b re-review and S-12 to
-S-14; revised for S-23/S-24 on 2026-10-16, pending an external check; later revisions at the gate are listed under
-"Review findings addressed".
+S-14; revised for S-23/S-24 on 2026-10-16 and for S-25 on 2026-10-18, pending an external check; later revisions at
+the gate are listed under "Review findings addressed".
 
 ## Context
 
@@ -113,7 +113,7 @@ Package root is `slussen`. Every module owns exactly one package root and nothin
 | `:budgetapp-ynab` | `kotlin("jvm")` | `slussen.budgetapp.ynab` | The YNAB Budget App: everything that depends on YNAB's behaviour (C-009). |
 | `:fileformat-<export-format>` | `kotlin("jvm")` | `slussen.fileformat.<export-format without hyphens>` | The one File Pre-processor of this build (C-010), named after the export format it reads, never after a Bank (O-P1-01): for example `:fileformat-hsa-csv` with package root `slussen.fileformat.hsacsv`. The class inside may name the Bank. |
 | `:persistence` | `com.android.library` | `slussen.persistence` | Room databases, DAOs and the implementations of the core's storage ports; the start sequence, last good copy and backup rule files (ADR-002). |
-| `:app` | `com.android.application` | `slussen.app` | Compose UI and ViewModels, the composition root, the Scheduled Fetch worker, the New Transaction Notification, the return from Strong Customer Authentication, file choosing and saving (also the private key file of a service credential), the screens of UC-013 and UC-014, and the log adapter (ADR-006). No configuration is generated into it (ADR-003 §4). |
+| `:app` | `com.android.application` | `slussen.app` | Compose UI and ViewModels, the composition root, the Scheduled Fetch worker, the New Transaction Notification, the return from Strong Customer Authentication, file choosing and saving (also the private key file of a service credential), the screens of UC-013 and UC-014, and the log adapter (ADR-006). No configuration is generated into it (ADR-003 §3). |
 | `:testing` | `kotlin("jvm")` | `slussen.testing` | Test-only: in-memory fakes of the core's ports and of the three plug-in contracts, invented example data. |
 | `:architecture-tests` | `kotlin("jvm")` | `slussen.architecture` | Test-only: the Konsist rules (§6.2), the bytecode rules (§6.3) and the traceability checks of ADR-004. |
 
@@ -122,7 +122,7 @@ Pre-processor is `:fileformat-<name>`; `<name>` is words of lowercase letters an
 the package root is `<name>` with the hyphens removed.
 
 Build logic lives in an included build `build-logic/` (convention plugins, the module-graph check of §6.1, the task
-graph of §6.4, the signing, placement and no-credential checks of ADR-003, the version name and signing of ADR-005). It is not an app
+graph of §6.4, the release signing and no-credential checks of ADR-003, the version name and signing of ADR-005). It is not an app
 module.
 
 Every module is always part of the build. There is no module that is included only when an Android SDK is present
@@ -199,7 +199,7 @@ entity model precision `12,3`), `CurrencyCode` (ISO 4217), `Secret` (a credentia
 `toString()` returns a fixed mask; ADR-006), `BankAccountNumber` (the number as the Data Provider delivers it,
 letters and formatting included, masked like `Secret`; the core turns it into the one-way `bank_account_fingerprint`,
 scoped by Data Provider and Bank, and the `last_four_digits` of an Offered Bank Account, ADR-008 §8, and never stores
-it). There is no `PluginSettings`: a plug-in gets no values from a Build Configuration (S-24, ADR-003 §4); its
+it). There is no `PluginSettings`: a plug-in gets no values from the build (S-24, ADR-003 §3); its
 credential comes in `RequestContext.credential` (§4.5).
 
 #### 4.0 Every network request: admission, counting, timeout and cancellation
@@ -569,8 +569,8 @@ val plugins = Plugins(
 ```
 
 Each plug-in receives only the diagnostic `SlussenLog` (ADR-006) at construction, and a `RequestContext` with every
-call (§4.0), which carries its stored service credential (§4.5). Nothing is generated from a Build Configuration
-(ADR-003 §4). `CompositionRoot` creates the one `OperationCoordinator` (ADR-007 §1) and
+call (§4.0), which carries its stored service credential (§4.5). Nothing is generated from a build input
+(ADR-003 §3). `CompositionRoot` creates the one `OperationCoordinator` (ADR-007 §1) and
 runs the composition checks of §4.2.4 and ADR-008 §6.
 
 Adding a Data Provider or File Pre-processor, or replacing the Budget App (UC-012 A2-A4), touches only: the new
@@ -661,7 +661,7 @@ Wiring a task into `check` alone does not run it for `:app:assembleDebug` or a t
   every packaging task of `:app` (`package*`, `bundle*`, and therefore `assemble*` and `install*`).
 - `check` of the included build `build-logic/` (its unit tests and the Gradle TestKit tests of ADR-003 §6, among them
   `NoCredentialInAppTest`) is a dependency of the root `check`.
-- The placement and signing tasks are ordered as ADR-003 §3 and §5 say.
+- The release signing check runs before every packaging task of the `release` variant, as ADR-003 §2 says.
 - The supported entry points are `gradlew check`, `gradlew :<module>:check` and every packaging or install task. A
   module's `test` task run alone gets the module graph check but not the Konsist and bytecode rules; it is a
   developer's shortcut, never a gate.
@@ -716,7 +716,7 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
 | UC-009 Manage Account Mappings | `:app`, `:core`, `:persistence` | `:core` `mapping`: identification from stored Offered Bank Accounts (BR-009, A6, A7, A10), identifying again after a send only with the Operator's confirmation (BR-007), moving or removing an Account Mapping, after a send only with the Operator's confirmation of the stated number (A8, A11, BR-003), renaming (A12, BR-011), the Start Date (A13), retire and restore, the generated identifier (BR-010), Funded By and Transfer Partner, offered only from Budget Accounts that Slussen fetches and shown as no longer applying when that Budget Account loses its last such Account Mapping (BR-008, UC-005 BR-014). `:persistence`: O-13, Offered Bank Accounts in `device.db`. No plug-in. |
 | UC-010 Adjust Settings | `:app`, `:core`, `:persistence` | `:core` `settings`: ranges, defaults (file upload window, backup warning threshold included), Transfer Descriptions, re-status; `:core` `journal`: size limit and clearing. `:app`: Detailed Logging read by the log adapter (ADR-006), and the Scheduled Fetch worker rescheduled when the Fetch Schedule changes (A6). |
 | UC-011 Export the Decision Journal | `:app`, `:core`, `:plugin-api`, `:budgetapp-ynab`, `:persistence` | `:app`: choosing where to save. `:core` `journal`: the export with date, payee, memo, amount and Budget Account of each Budget App Transaction, codes for payee and memo. `:budgetapp-ynab`: reading current transactions (A2 falls back to the stored copy, which holds the memo). `:persistence`: the journal database. |
-| UC-012 Set Up an Own Build | `build-logic/`, `build-config/`, `:app`, `:plugin-api`, every plug-in module, `.gitignore`, `README.md` | `build-logic/`: the optional signing Build Configuration, its checks and the refusal of a misplaced one (A1, A6, BR-009), the rule and test that no credential enters a built app (BR-012, ADR-003 §4), the version name and signing (ADR-005); a `debug` build needs no Build Configuration (A5). `build-config/`: the signing Configuration Template. `:app`: the composition root. `:plugin-api` and plug-in modules: A2-A4, each part with its credential form, Request Limit and default Fetch Cooldown. `README.md`: the how-to (Phase 8). |
+| UC-012 Set Up an Own Build | `build-logic/`, `:app`, `:plugin-api`, every plug-in module, `.gitignore`, `README.md` | `build-logic/`: the release signing values from Gradle properties and the clear failure without them (BR-001, BR-002, A1, ADR-003 §1, §2), the rule and test that no credential enters a built app (BR-012, ADR-003 §3), the version name and signing (ADR-005); a `debug` build needs no signing values (A5). `:app`: the composition root. `:plugin-api` and plug-in modules: A2-A4, each part with its credential form, Request Limit and default Fetch Cooldown. `README.md`: the how-to, naming the signing values and where they go (FR-070, Phase 8). |
 | UC-013 Connect Budgets and Bank Accounts | `:app`, `:core`, `:plugin-api`, Data Provider modules, `:budgetapp-ynab`, `:persistence` | `:app`: the first-run order (BR-008) and the pairing screen. `:core` `connection`: served Budgets (BR-001, A2), pairing an Offered Bank Account with an unmapped Budget Account of the same currency (BR-002, A5), the generated identifier (BR-003, ADR-008 §7), the proposed name (BR-004), the Start Date (BR-005), Bank Accounts of a File Format (BR-006, A4). `:budgetapp-ynab`: listing Budgets and Budget Accounts. Data Provider modules: Offered Bank Accounts through UC-001 or UC-007 (A3). `:persistence`: O-15, Offered Bank Accounts in `device.db`. |
 | UC-014 Manage Service Credentials | `:app`, `:core`, `:plugin-api`, Data Provider modules, `:budgetapp-ynab`, `:persistence` | `:app`: the credential form of each part, the file picker for a key file. `:core` `credential`: entering, checking, replacing and removing (A1-A4), the Blocked Reasons "credentials refused" and "credentials missing" (BR-005). Plug-in modules: `CredentialCapability` (§4.5), the SimpleFIN setup-token exchange. `:persistence`: `CredentialVault` and O-16, `service_credential` encrypted in `device.db` (ADR-002 §2a). |
 
@@ -828,3 +828,7 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
   credential form and check, the SimpleFIN setup-token exchange); §5 (composition without settings or templates);
   §6.4 (`NoCredentialInAppTest` in place of the packaging-refusal test); §7 (rows UC-008, UC-009, UC-012 changed, rows
   UC-013 and UC-014 added). The module map is unchanged: no module is added or removed.
+- S-25 (2026-10-18, re-check pending): §1 (`build-logic/` holds the release signing and no-credential checks of
+  ADR-003; no placement checks); §4 and §5 (references to ADR-003 §3); §6.4 (the release signing check, no placement
+  task); §7 UC-012 (no `build-config/`, no Configuration Template; signing values from Gradle properties). The module
+  map is unchanged.

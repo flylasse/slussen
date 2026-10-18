@@ -2,12 +2,12 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24).
+Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24/S-25).
 
 History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
 Phase 2 review and the Operator's answers O-P1-06, O-P1-07, O-P1-08 and O-P2-05; revised 2026-10-15 after the Phase 2b
-re-review; revised for S-23/S-24 on 2026-10-16, pending an external check; later revisions at the gate are listed
-under "Review findings addressed".
+re-review; revised for S-23/S-24 on 2026-10-16 and for S-25 on 2026-10-18, pending an external check; later revisions
+at the gate are listed under "Review findings addressed".
 
 ## Context
 
@@ -21,13 +21,14 @@ under "Review findings addressed".
   name; the build reads it directly; every PR bumps it. `AGENTS.md` §3: a phase is complete only when its gate exits 0.
 - ADR-001 to ADR-004, ADR-007 and ADR-008 need a build in which every module, including the Android ones, is always
   compiled and checked, and tests run on JUnit 5.
-- S-24, UC-012 A5, BR-002, BR-011, BR-012: the Build Configuration is optional and holds only the signing setup of an
-  own release build; a debug build needs none; no credential is ever in a built app.
+- S-25, UC-012 A1, A5, BR-001, BR-002, BR-009, BR-011, BR-012: only an own release build needs signing values, kept
+  outside the repository; it fails clearly without them; a debug build needs none; the Operator keeps their data in an
+  own release build; no credential is ever in a built app.
 - The Operator's answers: O-P1-06 (agents gate on `gradlew check`; only the Operator runs `gradlew build`; the test
   that packaging fails without a Build Configuration is replaced since S-24, §3), O-P1-07 (live-test credentials in the Operator's ignored
-  location, tagged, never run by agents), O-P1-08 and O-P2-05 (the `release` variant, signed with a keystore outside
-  the repository whose path is in `build-config/local/signing.properties`, backed up by the Operator; `debug` only
-  until then).
+  location, since S-25 Gradle properties outside the repository, ADR-003 §4; tagged, never run by agents), O-P1-08 and O-P2-05 (the `release` variant, signed with a keystore outside
+  the repository whose path was in `build-config/local/signing.properties` and since S-25 is a Gradle property outside
+  the repository, ADR-003 §1; backed up by the Operator; `debug` only until then).
 - Evidence from the Predecessor App (`scratch/construction_inventory.md` §1-2), used as evidence and not as a
   template: Gradle 8.14.1, Kotlin 2.3.21, Android Gradle Plugin 8.12.0, Compose BOM 2025.06.00, JUnit Jupiter 5.11.4,
   JVM 17, `compileSdk` and `targetSdk` 35, `minSdk` 26, an `arm64-v8a` split; the Android modules were left out of
@@ -73,15 +74,15 @@ and `:app` must never pass by not running.
   plugin's Compose extension.
 - `gradlew check` runs: the compile of every module (each after `verifyModuleGraph`), every JVM test (local unit tests
   of the Android modules included), the Konsist, bytecode and traceability rules of `:architecture-tests`,
-  `verifyBuildConfigurationPlacement` (ADR-003 §5), and `check` of `build-logic/` with the TestKit tests of ADR-003
-  §6, among them `NoCredentialInAppTest` (no credential can enter a built app) and the test that a `debug` package
-  builds without a Build Configuration while a `release` package refuses to. The task graph that also runs these checks for targeted builds and packaging is ADR-001 §6.4. Tests
+  and `check` of `build-logic/` with the TestKit tests of ADR-003 §6, among them `NoCredentialInAppTest` (no
+  credential can enter a built app) and the tests that a `debug` package builds without signing values while a
+  `release` package fails, naming each missing one. The task graph that also runs these checks for targeted builds and packaging is ADR-001 §6.4. Tests
   tagged `live` are excluded unless `-PincludeLive` (ADR-004).
-- **The agent gate** of every construction phase that builds code is `gradlew check`, run without a Build
-  Configuration, which includes the tests of ADR-003 §6. Agents may also build and install a `debug` package
+- **The agent gate** of every construction phase that builds code is `gradlew check`, run without signing values,
+  which includes the tests of ADR-003 §6. Agents may also build and install a `debug` package
   (`gradlew :app:assembleDebug`), which needs no private data. Only the Operator builds a `release` package with the
-  real `signing.properties`, runs `connectedCheck` on the Operator's phone, and runs the live tests (O-P1-06, O-P1-07;
-  S-24).
+  real signing values, runs `connectedCheck` on the Operator's phone, and runs the live tests (O-P1-06, O-P1-07;
+  S-24, S-25).
 - Instrumented tests (`src/androidTest`) run with `gradlew connectedCheck` on a connected device or emulator; they
   are not part of `check`, because no device is guaranteed where `check` runs. They are part of the evidence of §7.
 - If Phase 6 finds that JUnit 5 cannot run the instrumented or Compose tests with the pinned AGP, it stops and
@@ -110,20 +111,22 @@ and `:app` must never pass by not running.
 ### 6. Variant and signing (O-P1-08, O-P2-05; A-25)
 
 - The Operator installs and keeps data in the **`release`** variant only. It is signed with the Operator's own
-  keystore, which lives **outside the repository**. `build-config/local/signing.properties` (template
-  `build-config/signing.template.properties`, the passwords marked `# secret`) holds the keystore path, the key alias
-  and the passwords, under every rule of ADR-003 (placement, never printed, never read by an agent). Since S-24 this
-  file is the whole Build Configuration; it holds no service credential, Budget or Bank Account (ADR-003 §2, §4).
-- `build-logic/` refuses to sign when the keystore path resolves inside the repository working tree, and refuses to
-  package `release` when `signing.properties` is absent or names no readable keystore; the message names the file,
-  never a value.
+  keystore, which lives **outside the repository**. The keystore path, the key alias and the passwords are the four
+  Gradle properties of ADR-003 §1, set in the Operator's `~/.gradle/gradle.properties` or as environment variables,
+  never in the repository, never printed and never read by an agent (S-25). They hold no service credential, Budget
+  or Bank Account (ADR-003 §3).
+- `build-logic/` refuses to package `release` when a signing property is missing, when the keystore path resolves
+  inside the repository working tree, or when it names no readable keystore; the message names each property and
+  where it goes, never a value (ADR-003 §2, UC-012 A1, BR-002).
 - The Operator keeps a backup of the keystore and its passwords outside the device and outside the repository. A lost
   keystore means a new installation (and with it a Recovery Check, ADR-002 §6), never an in-place upgrade.
-- A `debug` build needs no Build Configuration (UC-012 A5, BR-011): it is signed with the machine's default debug key,
-  is for trying out, and the Operator does not keep data in it. Until the Operator has created the keystore and
-  `signing.properties`, Phase 6 and later phases build `debug` only.
-- A built app holds no credential (ADR-003 §4), so a `release` package may be installed by another household, whose
-  Operator enters their own credentials (UC-012 A7, C-003); it is not distributed through an app store.
+- A `debug` build needs no signing values (UC-012 A5, BR-001): it is signed with the machine's default debug key, is
+  for trying out, and the Operator does not keep data in it (UC-012 BR-009): a debug key belongs to one machine, so
+  losing it forces an uninstall, which deletes the app's local data, and a debug build is debuggable, so its private
+  data can be read over USB. Until the Operator has created the keystore and set the signing values, Phase 6 and later
+  phases build `debug` only.
+- A built app holds no credential (ADR-003 §3), so a `release` package may be installed by another household, whose
+  Operator enters their own credentials (UC-012 A6, C-003); it is not distributed through an app store.
 
 ### 7. Evidence that gates the first slice that uploads (A-24, A-25, A-27)
 
@@ -156,8 +159,8 @@ fails on the device is changed by amending ADR-002, not worked around.
 ## Consequences
 
 - Every machine and every agent that builds Slussen needs JDK 17 and an Android SDK (plan §2 prerequisite).
-- A green `gradlew check` means every module compiled, every architecture rule ran, a misplaced Build Configuration
-  is refused, and no credential can enter a built app; nothing is skipped silently. It does not mean the device or live evidence passed; that is
+- A green `gradlew check` means every module compiled, every architecture rule ran, a `release` package without
+  signing values is refused, and no credential can enter a built app; nothing is skipped silently. It does not mean the device or live evidence passed; that is
   §7, and it gates Uploads, not the first slice.
 - Instrumented tests need a device; phone and live items need the Operator.
 - `VERSION` parts above 999 fail the build; at the pace of `AGENTS.md` §5 that limit is far away, and raising it is an
@@ -207,3 +210,6 @@ fails on the device is changed by amending ADR-002, not worked around.
   among them `NoCredentialInAppTest`; agents may build a `debug` package; the packaging-refusal test is replaced); §6
   (`signing.properties` is the whole Build Configuration; a debug build needs none; a release package may be installed
   by another household); §7 E-13 (credentials encrypted on the device, not restored); Consequences.
+- S-25 (2026-10-18, re-check pending): Context; §3 (`gradlew check` without signing values; no placement task); §6
+  (the signing values are Gradle properties outside the repository, ADR-003 §1; a release package without them fails
+  naming each; why a debug build does not hold the Operator's data); Consequences.

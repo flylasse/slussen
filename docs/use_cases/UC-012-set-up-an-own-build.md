@@ -9,7 +9,7 @@
 **Trigger:** Adopting Developer decides to use Slussen for their own household  
 **Status:** Approved  
 
-**Requirements:** [FR-070, FR-071, FR-072, FR-073, FR-083, FR-084, FR-085, FR-093, NFR-014, NFR-015, NFR-021, C-001, C-002, C-003, C-004, C-005, C-008, C-010, C-013](../requirements.md)
+**Requirements:** [FR-070, FR-071, FR-072, FR-073, FR-083, FR-084, FR-085, NFR-014, NFR-015, NFR-021, C-001, C-002, C-003, C-004, C-005, C-008, C-010, C-013](../requirements.md)
 
 ## Preconditions
 
@@ -17,23 +17,22 @@
 
 ## Main Success Scenario
 
-1. Adopting Developer gets their own copy of the public repository by cloning or forking it (BR-008) and opens the Configuration Template.
-2. Slussen's repository shows the Configuration Template for the signing setup of an own release build, stating what to fill in and where to get it.
-3. Adopting Developer fills in a Build Configuration with the signing setup in the location the repository ignores, next to the Configuration Template (BR-002, BR-011); the default Card Payment and Bank Transfer Descriptions ship with the repository and the Operator edits them in the app (UC-010 BR-007).
-4. Adopting Developer builds Slussen.
-5. Slussen's build reads the Build Configuration from that location only (BR-009), checks that it is complete, signs the app with it, and includes no service credential (BR-012).
-6. Adopting Developer installs the built app on their own phone.
-7. Slussen starts and lets the Operator enter the service credentials and connect Budgets and Bank Accounts in the app (UC-013), and the Adopting Developer is from now on the Operator of this installation.
+1. Adopting Developer gets their own copy of the public repository by cloning or forking it (BR-008).
+2. Adopting Developer keeps the signing values of an own release build outside the repository, where the repository's how-to says (BR-001).
+3. Adopting Developer builds an own release build of Slussen.
+4. Slussen's build takes the signing values from outside the repository, signs the app with the Adopting Developer's own key, and includes no service credential (BR-001, BR-012).
+5. Adopting Developer installs the built app on their own phone (BR-009).
+6. Slussen starts and lets the Operator enter the service credentials (UC-014) and connect Budgets and Bank Accounts in the app (UC-013), and the Adopting Developer is from now on the Operator of this installation.
 
 ## Alternative Flows
 
-### A1: Build Configuration Incomplete
+### A1: Signing Values Missing
 
-**Trigger:** The Build Configuration lacks a required entry or holds an entry its Configuration Template does not define (step 5)  
+**Trigger:** An own release build lacks one or more of its signing values (step 4)  
 **Flow:**
 
-1. Slussen's build names each missing or unknown entry and produces no app.
-2. Use case continues at step 3.
+1. Slussen's build names each missing signing value and where it goes, and produces no app (BR-002).
+2. Use case continues at step 2.
 
 ### A2: Data Provider Missing
 
@@ -66,24 +65,16 @@
 **Trigger:** Adopting Developer builds a debug build instead of an own release build (step 3)  
 **Flow:**
 
-1. Adopting Developer builds without a Build Configuration, which a debug build does not need (BR-011).
-2. Use case continues at step 6.
+1. Adopting Developer builds without signing values, which a debug build does not need (BR-001, BR-009).
+2. Use case continues at step 5.
 
-### A6: Build Configuration Found Elsewhere
-
-**Trigger:** Slussen's build finds a Build Configuration, or part of one recognised by its keys or by a value marked secret (BR-009), outside the location the repository ignores, for example in a tracked file (step 5)  
-**Flow:**
-
-1. Slussen's build does not use it, produces no app and states that the Build Configuration belongs in the location the repository ignores, next to the Configuration Template.
-2. Use case continues at step 3.
-
-### A7: Install an App Someone Else Built
+### A6: Install an App Someone Else Built
 
 **Trigger:** Adopting Developer installs an app that someone else built from the public repository instead of building one (step 1)  
 **Flow:**
 
 1. Adopting Developer installs that app on their own phone; it holds no credential of the one who built it (BR-003).
-2. Use case continues at step 7.
+2. Use case continues at step 6.
 
 ## Postconditions
 
@@ -94,19 +85,18 @@
 
 ### Failure Postconditions
 
-- The repository holds no real Bank Account names or numbers, Budget identifiers, transactions or credentials.
+- The repository holds no real Bank Account names or numbers, Budget identifiers, transactions, credentials or signing values.
 - No built app holds a service credential.
-- No Build Configuration found outside the location the repository ignores is used in a built app.
 
 ## Business Rules
 
-### BR-001: Template Without Real Values
+### BR-001: Signing Values Outside the Repository
 
-The repository provides a Configuration Template for the signing setup of an own release build. It shows what is needed and where to get it and never holds a working configuration. What each Data Provider and the Budget App need is stated in the app where the Operator enters their credentials (UC-014 BR-002).
+Only an own release build needs signing values: where the Adopting Developer's own signing key is kept, its alias and its passwords. The Adopting Developer keeps them outside the repository, in their own build settings or environment, never in the repository or in a folder of it; the repository's how-to names each signing value and where it goes. A debug build, or an app someone else built, needs none.
 
-### BR-002: Build Configuration in an Ignored Location
+### BR-002: A Release Build Without Its Signing Values Fails Clearly
 
-The Build Configuration is optional and holds only the signing setup of an own release build. It is kept in a location the repository ignores, next to the Configuration Template, is never committed and is used only when the app is built.
+An own release build that lacks a signing value produces no app and names each missing signing value and where it goes, never its content. It never signs with another key instead.
 
 ### BR-003: A Built App Holds No Credential
 
@@ -130,20 +120,20 @@ When another import path, such as the Predecessor App, already fed a Budget Acco
 
 ### BR-008: Own Copy by Clone or Fork
 
-The Adopting Developer gets their own copy of the repository by cloning or forking it. Either is safe, because the repository holds only the Configuration Template and no Build Configuration or credential. A fork of the public repository is itself public, so nothing personal is ever committed to it (BR-002).
+The Adopting Developer gets their own copy of the repository by cloning or forking it. Either is safe, because the repository holds no signing value or credential. A fork of the public repository is itself public, so nothing personal is ever committed to it (BR-001).
 
-### BR-009: Build Configuration Read Only From Its Location
+### BR-009: The Operator's Data Lives in an Own Release Build
 
-Slussen's build reads the Build Configuration only from the location the repository ignores. A Build Configuration, or part of one, found anywhere else, such as in a tracked file, is never used: the build fails and states where the Build Configuration belongs. Slussen recognises a part of a Build Configuration by its recognisable keys or by a value marked secret; a plain value pasted somewhere without its key cannot be recognised as configuration and stays protected only by the rule that the repository holds no personal data (C-005) and by review.
+The Operator keeps their data in an own release build, not in a debug build. An update installs over an installation only when it is signed with the same key; a debug key belongs to one machine, and losing the key forces an uninstall, which deletes the app's local data, including its history, Sent Records and credentials. A debug build can also be debugged, so its private data can be read through a cable connection. A debug build is for trying Slussen out.
 
 ### BR-010: The First Operator Builds the Same Way
 
-The first Operator of Slussen is an Adopting Developer too: their own build follows this use case, with their Build Configuration in the same ignored location, and has no other path.
+The first Operator of Slussen is an Adopting Developer too: their own build follows this use case, with their signing values outside the repository like every Adopting Developer's, and has no other path.
 
-### BR-011: Only the Signing Setup in the Build Configuration
+### BR-011: Nothing but the Signing Values Comes From Outside the App
 
-The Build Configuration holds only the signing setup of an own release build; a debug build, or an app someone else built, needs none. The Request Limit and the default Fetch Cooldown of each Data Provider are declared by its part. The service credentials are entered in the app (UC-014), and the Budgets, Bank Accounts, Account Mappings and Start Dates are set in the app (UC-013, UC-009), so that none of them needs a rebuild.
+Apart from the signing values of an own release build, nothing about an installation is given to the build. The Request Limit and the default Fetch Cooldown of each Data Provider are declared by its part. The service credentials are entered in the app (UC-014), and the Budgets, Bank Accounts, Account Mappings and Start Dates are set in the app (UC-013, UC-009), so that none of them needs a rebuild. The default Card Payment and Bank Transfer Descriptions ship with the repository and the Operator edits them in the app (UC-010 BR-007).
 
 ### BR-012: No Credential in the Repository or the Built App
 
-No service credential is ever in the repository, the Build Configuration or a built app: the build has no input for one and includes none. Credentials exist only on the Operator's device, where the Operator entered them (UC-014 BR-003).
+No service credential is ever in the repository, among the signing values or in a built app: the build has no input for one and includes none. Credentials exist only on the Operator's device, where the Operator entered them (UC-014 BR-003).
