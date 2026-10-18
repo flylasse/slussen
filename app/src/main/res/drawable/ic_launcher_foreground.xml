@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Foreground layer of icon A (docs/mockups/icon-sluice.svg, group "foreground"), converted by hand: the SVG's
+     transform translate(54 54) scale(0.8) translate(-54 -54) is a scale of 0.8 around the centre, and each rounded
+     rectangle (rx 2) is written as a path. All artwork stays inside the 66-unit safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.8"
+        android:scaleY="0.8">
+        <!-- rect x=27 y=64 width=23 height=18 rx=2 -->
+        <path
+            android:fillColor="#1F6F68"
+            android:pathData="M29,64h19a2,2 0,0 1,2 2v14a2,2 0,0 1,-2 2h-19a2,2 0,0 1,-2 -2v-14a2,2 0,0 1,2 -2z" />
+        <!-- rect x=58 y=54 width=23 height=28 rx=2 -->
+        <path
+            android:fillColor="#2F8F83"
+            android:pathData="M60,54h19a2,2 0,0 1,2 2v24a2,2 0,0 1,-2 2h-19a2,2 0,0 1,-2 -2v-24a2,2 0,0 1,2 -2z" />
+        <!-- rect x=49.5 y=46 width=9 height=38 rx=2 -->
+        <path
+            android:fillColor="#5FD4C4"
+            android:pathData="M51.5,46h5a2,2 0,0 1,2 2v34a2,2 0,0 1,-2 2h-5a2,2 0,0 1,-2 -2v-34a2,2 0,0 1,2 -2z" />
+        <!-- The arrow's dark outline: shaft (stroke 13, round caps) and head (stroke 6, round joins). -->
+        <path
+            android:pathData="M28,32H62"
+            android:strokeColor="#0E2B2A"
+            android:strokeLineCap="round"
+            android:strokeWidth="13" />
+        <path
+            android:fillColor="#0E2B2A"
+            android:pathData="M60,21L81,32L60,43Z"
+            android:strokeColor="#0E2B2A"
+            android:strokeLineJoin="round"
+            android:strokeWidth="6" />
+        <!-- The white arrow: shaft (stroke 7, round caps) and head (stroke 2, round joins). -->
+        <path
+            android:pathData="M28,32H62"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="round"
+            android:strokeWidth="7" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M60,21L81,32L60,43Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineJoin="round"
+            android:strokeWidth="2" />
+    </group>
+</vector>

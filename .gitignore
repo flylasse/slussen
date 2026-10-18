@@ -34,3 +34,6 @@ scratch/
 .DS_Store
 Thumbs.db
 __pycache__/
+
+# --- Kotlin 2 compiler data of every build, the included build-logic included ---
+.kotlin/

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 8 to 11 (ADR-002 §5): only slussen.db is backed up. -->
+<full-backup-content>
+    <include domain="database" path="slussen.db" />
+</full-backup-content>

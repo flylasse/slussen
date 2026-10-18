@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome layer of icon A (docs/mockups/icon-sluice.svg, group "monochrome") for themed icons (Android 13 and
+     later), tinted by the launcher; the SVG's opacities become alpha values. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.8"
+        android:scaleY="0.8">
+        <path
+            android:fillAlpha="0.45"
+            android:fillColor="#FFFFFF"
+            android:pathData="M29,64h19a2,2 0,0 1,2 2v14a2,2 0,0 1,-2 2h-19a2,2 0,0 1,-2 -2v-14a2,2 0,0 1,2 -2z" />
+        <path
+            android:fillAlpha="0.7"
+            android:fillColor="#FFFFFF"
+            android:pathData="M60,54h19a2,2 0,0 1,2 2v24a2,2 0,0 1,-2 2h-19a2,2 0,0 1,-2 -2v-24a2,2 0,0 1,2 -2z" />
+        <path
+            android:fillAlpha="0.85"
+            android:fillColor="#FFFFFF"
+            android:pathData="M51.5,46h5a2,2 0,0 1,2 2v34a2,2 0,0 1,-2 2h-5a2,2 0,0 1,-2 -2v-34a2,2 0,0 1,2 -2z" />
+        <path
+            android:pathData="M28,32H62"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="round"
+            android:strokeWidth="7" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M60,21L81,32L60,43Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineJoin="round"
+            android:strokeWidth="2" />
+    </group>
+</vector>

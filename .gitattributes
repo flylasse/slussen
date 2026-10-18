@@ -1,0 +1,18 @@
+# Text files are stored with LF and checked out with the platform's line ending (CRLF on Windows).
+* text=auto
+
+# The Unix wrapper script must keep LF, or it fails to run on Linux and macOS.
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Windows batch files keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files.
+*.jar binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.keystore binary
+*.jks binary

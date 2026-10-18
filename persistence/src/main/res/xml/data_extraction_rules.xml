@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12 and later (ADR-002 §5): only slussen.db is backed up and transferred. The rules include what must
+     survive instead of excluding what must not, so anything added later stays out until ADR-002 says otherwise. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="database" path="slussen.db" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="database" path="slussen.db" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,24 @@
+// A fixture project for the Gradle TestKit tests of ADR-003 section 6. It uses the same convention plugins as the
+// app, and holds only invented values. The test writes the catalog path and copies this file to settings.gradle.kts.
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    versionCatalogs {
+        create("libs") {
+            from(files("@CATALOG@"))
+        }
+    }
+}
+
+rootProject.name = "fixture"
+include(":app")

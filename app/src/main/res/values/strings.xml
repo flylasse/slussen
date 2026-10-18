@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Slussen</string>
+    <string name="placeholder_title">Slussen</string>
+    <string name="placeholder_text">The module skeleton is in place. The first screens come with the first slice.</string>
+</resources>

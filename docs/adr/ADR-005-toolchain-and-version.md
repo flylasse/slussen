@@ -105,8 +105,10 @@ and `:app` must never pass by not running.
   package root (ADR-001 §1).
 - The `debug` variant has `applicationIdSuffix ".debug"`, so a debug build installs beside the release installation
   and can never replace it or its data.
-- The app ships for `arm64-v8a` only when it has native code; Slussen's own code has none, so no ABI split is
-  configured unless a library adds native code.
+- A `release` package holds native code for `arm64-v8a` only; a `debug` package keeps every ABI (O-P2-40).
+  Slussen's own code has no native code, but Compose BOM 2025.06.00 adds `libandroidx.graphics.path.so` for four
+  ABIs, and the device evidence of §7 runs a debug build on an `x86_64` emulator. The `slussen.android-application`
+  convention sets `ndk.abiFilters` on the `release` build type only.
 
 ### 6. Variant and signing (O-P1-08, O-P2-05; A-25)
 
@@ -213,3 +215,5 @@ fails on the device is changed by amending ADR-002, not worked around.
 - S-25 (2026-10-18, re-checked externally 2026-10-18): Context; §3 (`gradlew check` without signing values; no placement task); §6
   (the signing values are Gradle properties outside the repository, ADR-003 §1; a release package without them fails
   naming each; why a debug build does not hold the Operator's data); Consequences.
+- Phase 6 (2026-10-18): O-P2-40: §5 (a `release` package holds `arm64-v8a` native code only, a `debug` package every
+  ABI, for the `x86_64` emulator of §7).

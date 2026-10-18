@@ -1,0 +1,69 @@
+# The one place for every plugin and library version (ADR-005 §1). No version appears in a build.gradle.kts.
+# Phase 6 starts from the Predecessor App's toolchain (ADR-005 §1) and pins every addition to one exact version.
+
+[versions]
+# Toolchain of ADR-005 §1, taken unchanged.
+agp = "8.12.0"
+kotlin = "2.3.21"
+compose-bom = "2025.06.00"
+junit = "5.11.4"
+junit-platform = "1.11.4"
+compile-sdk = "35"
+target-sdk = "35"
+min-sdk = "26"
+jvm-target = "17"
+
+# Additions of Phase 6 (ADR-005 §1), each one exact version compatible with the toolchain above.
+ksp = "2.3.8"
+room = "2.7.2"
+androidx-sqlite = "2.5.2"
+konsist = "0.17.3"
+asm = "9.8"
+work = "2.10.2"
+androidx-browser = "1.8.0"
+okhttp = "4.12.0"
+kotlinx-serialization = "1.8.1"
+kotlinx-coroutines = "1.10.2"
+android-junit5 = "1.11.3.0"
+androidx-activity = "1.10.1"
+androidx-core = "1.16.0"
+
+[libraries]
+# Production libraries, allowed per module group by ADR-001 §2.
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinx-coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+androidx-sqlite = { module = "androidx.sqlite:sqlite", version.ref = "androidx-sqlite" }
+androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+androidx-browser = { module = "androidx.browser:browser", version.ref = "androidx-browser" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+
+# Test libraries (ADR-001 §2: JUnit 5, kotlinx-coroutines-test, mockwebserver for plug-in modules, Konsist and ASM for :architecture-tests).
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
+okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "okhttp" }
+konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
+asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
+asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
+
+# Gradle plugins on the classpath of build-logic/ (the convention plugins apply them by id).
+gradle-plugin-android = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+gradle-plugin-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+gradle-plugin-compose = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
+gradle-plugin-serialization = { module = "org.jetbrains.kotlin:kotlin-serialization", version.ref = "kotlin" }
+gradle-plugin-ksp = { module = "com.google.devtools.ksp:symbol-processing-gradle-plugin", version.ref = "ksp" }
+gradle-plugin-android-junit5 = { module = "de.mannodermaus.gradle.plugins:android-junit5", version.ref = "android-junit5" }
+
+[plugins]
+# Only the convention plugins are applied by id in the modules; their versions come from build-logic's classpath.

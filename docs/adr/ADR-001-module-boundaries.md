@@ -213,9 +213,9 @@ interface RequestContext {
     val credential: Secret?                             // the stored service credential (§4.5); null only in CredentialCapability.check
 }
 
-fun interface RequestGate { suspend fun admit(request: RequestDescriptor): Admission }
+fun interface RequestGate { suspend fun admit(request: RequestSummary): Admission }
 
-data class RequestDescriptor(
+data class RequestSummary(
     val kind: RequestKind,                              // Transactions, Balance, Other (PROVIDER_REQUEST.request_kind); BudgetAppRead, BudgetAppWrite
     val bankReference: String?,                         // the Bank the request concerns, when it concerns one
     val bankAccountReference: String?,                  // the Bank Account it reads, when it reads one
@@ -331,7 +331,7 @@ sealed interface ProviderTransaction {
 ```kotlin
 interface BankConsentCapability {
     suspend fun startConsentRequest(bank: String, returnAddress: String, state: Secret, context: RequestContext): ConsentStart
-        // Started(authorizationAddress, handle: Secret?) | Refused(kind) | TransientFailure(kind)
+        // Started(consentAddress, handle: Secret?) | Refused(kind) | TransientFailure(kind)
     suspend fun completeConsent(answer: ConsentAnswer, handle: Secret?, context: RequestContext): ConsentCompletion
         // Completed(expiresAt, bankAccounts: List<DeliveredBankAccount>, session: ConsentSession) | NotConfirmed(kind) | TransientFailure(kind)
     suspend fun revoke(session: ConsentSession, context: RequestContext): RevokeResult   // Ended | NotConfirmed
@@ -863,3 +863,6 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
   §6.2 K-04 (scope extended to `slussen.app.ui..`); §7 rows UC-007, UC-010 (with `:plugin-api`) and UC-014. The
   module map is unchanged.
 - Pre-Phase-6 review follow-up (2026-10-18): §4.1 `FetchRequest` (possibly no Bank Account selected, the offered list still delivered; what to read per Bank Account, balance only by `balance_provider_reference`) and §7 UC-001 row (the Fetch Cooldown never serves a Bank Account added or identified again since the last Fetch); UC-001 steps 3-4, A2, BR-006, BR-011.
+- Phase 6 (2026-10-18): O-P2-39: §4.0 `RequestDescriptor` renamed `RequestSummary`, §4.1 `ConsentStart.Started`'s
+  `authorizationAddress` renamed `consentAddress`; both old names used glossary Avoid words ("descriptor",
+  "authorization").

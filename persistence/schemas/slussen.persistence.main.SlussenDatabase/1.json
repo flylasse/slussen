@@ -1,0 +1,151 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "c54e5cbd51f79a3accbe83093b93c2ee",
+    "entities": [
+      {
+        "tableName": "operator_settings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `upload_window_days` INTEGER NOT NULL, `file_upload_window_days` INTEGER NOT NULL, `fetch_period_days` INTEGER NOT NULL, `default_wait_hours` INTEGER NOT NULL, `request_limit_warning_hours` INTEGER NOT NULL, `request_timeout_seconds` INTEGER NOT NULL, `upload_plan_minutes` INTEGER NOT NULL, `consent_request_minutes` INTEGER NOT NULL, `fetch_history_size` INTEGER NOT NULL, `scheduled_fetches_per_day` INTEGER NOT NULL, `transfer_pairing_days` INTEGER NOT NULL, `lonely_transfer_grace_days` INTEGER NOT NULL, `outdated_balance_hours` INTEGER NOT NULL, `consent_warning_days` INTEGER NOT NULL, `journal_on` INTEGER NOT NULL, `journal_size_limit_mb` INTEGER NOT NULL, `journal_warning_percent` INTEGER NOT NULL, `backup_warning_percent` INTEGER NOT NULL, `detailed_logging` INTEGER NOT NULL, `upload_as_cleared` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uploadWindowDays",
+            "columnName": "upload_window_days",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileUploadWindowDays",
+            "columnName": "file_upload_window_days",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fetchPeriodDays",
+            "columnName": "fetch_period_days",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "defaultWaitHours",
+            "columnName": "default_wait_hours",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requestLimitWarningHours",
+            "columnName": "request_limit_warning_hours",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requestTimeoutSeconds",
+            "columnName": "request_timeout_seconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uploadPlanMinutes",
+            "columnName": "upload_plan_minutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consentRequestMinutes",
+            "columnName": "consent_request_minutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fetchHistorySize",
+            "columnName": "fetch_history_size",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scheduledFetchesPerDay",
+            "columnName": "scheduled_fetches_per_day",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transferPairingDays",
+            "columnName": "transfer_pairing_days",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lonelyTransferGraceDays",
+            "columnName": "lonely_transfer_grace_days",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outdatedBalanceHours",
+            "columnName": "outdated_balance_hours",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consentWarningDays",
+            "columnName": "consent_warning_days",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journalOn",
+            "columnName": "journal_on",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journalSizeLimitMb",
+            "columnName": "journal_size_limit_mb",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journalWarningPercent",
+            "columnName": "journal_warning_percent",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "backupWarningPercent",
+            "columnName": "backup_warning_percent",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "detailedLogging",
+            "columnName": "detailed_logging",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uploadAsCleared",
+            "columnName": "upload_as_cleared",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c54e5cbd51f79a3accbe83093b93c2ee')"
+    ]
+  }
+}
