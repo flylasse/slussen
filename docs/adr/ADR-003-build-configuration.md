@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24/S-25).
+Accepted (2026-10-15, by the Operator at the architecture gate); revised for S-23/S-24/S-25 and re-checked externally (2026-10-18, `docs/reviews/mockup_gate_recheck.md`, no High finding).
 
 History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
 Phase 2 review and the specification changes S-01, S-03 and S-10; revised 2026-10-15 after the Phase 2b re-review;
@@ -198,7 +198,7 @@ templates or its placement checks, S-23/S-24 or S-25 supersede them.
   superseded by S-25; the folder is no longer used by the build.
 - S-23/S-24 (2026-10-16): the Build Configuration was reduced to the signing setup; §3 adds the rule and the test that
   no credential can enter the repository or a built app.
-- S-25 (2026-10-18, re-check pending): title, Status, Context and Decision rewritten. The Build Configuration, the
+- S-25 (2026-10-18, re-checked externally 2026-10-18): title, Status, Context and Decision rewritten. The Build Configuration, the
   Configuration Template, `build-config/` and `build-config/local/`, the tasks `verifyBuildConfiguration` and
   `verifyBuildConfigurationPlacement`, the rules P-1 to P-6 and the tests of a misplaced, partial or nested
   configuration are dropped. §1: the four signing values are Gradle properties from `~/.gradle/gradle.properties` or

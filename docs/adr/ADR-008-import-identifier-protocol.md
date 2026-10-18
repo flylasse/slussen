@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24).
+Accepted (2026-10-15, by the Operator at the architecture gate); revised for S-23/S-24 and re-checked externally (2026-10-18, `docs/reviews/mockup_gate_recheck.md`, no High finding).
 
 History: proposed 2026-10-14, architecture gate, revision after the Phase 2 review; revised 2026-10-15 after the Phase
 2b re-review and S-14; revised for S-23/S-24 on 2026-10-16, pending an external check; later revisions at the gate are listed under "Review findings addressed".
@@ -310,6 +310,6 @@ field(the Bank's reference as the Data Provider delivers it, empty when it names
   BR-013, stated in ADR-001 §4.2.3), Consequences ("in an Upload Plan" instead of "uploaded").
 - A-02 in part: §6 and the Consequences make the identifier independent of the Budget App, which the refusal of a
   reused Import Identifier (ADR-001 §4.2, ADR-007 §6) depends on.
-- S-23/S-24 (2026-10-16, re-check pending): §6 (no Blocked Reason "configuration error"), §7 (the generated Bank
+- S-23/S-24 (2026-10-16, re-checked externally 2026-10-18): §6 (no Blocked Reason "configuration error"), §7 (the generated Bank
   Account identifier added, a random version 4 UUID meeting NFR-020; the configuration fingerprint removed, because
   there is no generated Build Configuration any more), Consequences.

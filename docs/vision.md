@@ -116,8 +116,8 @@ continue its history, identities or Import Identifiers.
   one linked transfer. This includes a Transfer whose other side has not arrived yet. Transfer detection is
   always on, and the Operator reviews Guessed Transfers.
 - Connecting Budgets and Bank Accounts in the app: choosing the Budgets Slussen serves and pairing each Bank Account
-  a Source offers with one Budget Account. Moving a mapping after transactions were sent through it is a deliberate
-  act the Operator confirms, and a Bank Account can be retired and restored without losing its history. Each Bank
+  a Source offers with one Budget Account. Moving a mapping after transactions sent through it may have been written
+  is a deliberate act the Operator confirms, and a Bank Account can be retired and restored without losing its history. Each Bank
   Account can have a Start Date, set in the app, before which nothing is offered for Upload; such a transaction is
   shown with its reason, never dropped silently.
 - Working with several Budgets in different currencies, each as its own workspace.

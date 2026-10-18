@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24/S-25/S-26).
+Accepted (2026-10-15, by the Operator at the architecture gate); revised for S-23/S-24/S-25/S-26 and re-checked externally (2026-10-18, `docs/reviews/mockup_gate_recheck.md`, no High finding).
 
 History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
 Phase 2 review and the specification changes S-01 to S-10; revised 2026-10-15 after the Phase 2b re-review and S-12 to
@@ -842,18 +842,18 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
   the default Fetch Cooldown, checked against 0 to 1440 by the contract tests of §4.4), §7 UC-001 (Fetch of one Data
   Provider, of one Budget's Data Providers or of all; per-Data-Provider Fetch Cooldown; a Fetch served from it still
   compares; a Fetch never starts a Bank Consent grant).
-- S-23/S-24 (2026-10-16, re-check pending): Context; §1 (`:app` without a generated Build Configuration, with the
+- S-23/S-24 (2026-10-16, re-checked externally 2026-10-18): Context; §1 (`:app` without a generated Build Configuration, with the
   screens of UC-013 and UC-014); §3 (`CredentialVault`); §4 (no `PluginSettings`); §4.0 (`RequestContext.credential`);
   §4.1 (`DataProviderProfile.requestLimit`, `DataProvider.credentials`); §4.2 (`BudgetApp.credentials`, `readBudgets`
   for the choice of served Budgets); §4.4 (credential and declared-number contract tests); new §4.5 (each part's
   credential form and check, the SimpleFIN setup-token exchange); §5 (composition without settings or templates);
   §6.4 (`NoCredentialInAppTest` in place of the packaging-refusal test); §7 (rows UC-008, UC-009, UC-012 changed, rows
   UC-013 and UC-014 added). The module map is unchanged: no module is added or removed.
-- S-25 (2026-10-18, re-check pending): §1 (`build-logic/` holds the release signing and no-credential checks of
+- S-25 (2026-10-18, re-checked externally 2026-10-18): §1 (`build-logic/` holds the release signing and no-credential checks of
   ADR-003; no placement checks); §4 and §5 (references to ADR-003 §3); §6.4 (the release signing check, no placement
   task); §7 UC-012 (no `build-config/`, no Configuration Template; signing values from Gradle properties). The module
   map is unchanged.
-- S-26 (2026-10-18, re-check pending; FR-103, UC-010 A10, BR-010, UC-014 BR-007, UC-007 BR-008, UC-012 A2): new §4.6
+- S-26 (2026-10-18, re-checked externally 2026-10-18; FR-103, UC-010 A10, BR-010, UC-014 BR-007, UC-007 BR-008, UC-012 A2): new §4.6
   (Connections and each service's page are generated from `DataProviderProfile`, `BudgetAppProfile` and
   `CredentialCapability.form`; the table maps each part of the page to its declaration; the profiles already declared
   everything the page needs, so no property is added); §4.1 and §4.2 (comments: `name` is the name on the page,

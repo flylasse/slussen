@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24/S-25).
+Accepted (2026-10-15, by the Operator at the architecture gate); revised for S-23/S-24/S-25 and re-checked externally (2026-10-18, `docs/reviews/mockup_gate_recheck.md`, no High finding).
 
 History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
 Phase 2 review: live tests and their credentials, device evidence; revised for S-23/S-24 on 2026-10-16 and for S-25 on
@@ -183,8 +183,8 @@ given the `aiup-vaadin-jooq` agent definition (`agents/uc-coverage.md`) together
   cover the persistence evidence of ADR-002.
 - O-P1-07: §2 (live-test credentials in `build-config/local/live-test.properties`, tagged, never run by agents).
 - A-21 in part: the T-rules run as Konsist rule K-14 with scope Test (ADR-001 §6.2).
-- S-23/S-24 (2026-10-16, re-check pending): §2 (`live-test.properties` is a test-only file beside the Build
+- S-23/S-24 (2026-10-16, re-checked externally 2026-10-18): §2 (`live-test.properties` is a test-only file beside the Build
   Configuration, never read by an app build, so no credential reaches a built app; ADR-003 §4).
-- S-25 (2026-10-18, re-check pending): §2 (the live-test credentials moved from
+- S-25 (2026-10-18, re-checked externally 2026-10-18): §2 (the live-test credentials moved from
   `build-config/local/live-test.properties` to Gradle properties outside the repository, ADR-003 §4; read only by the
   live-test task).

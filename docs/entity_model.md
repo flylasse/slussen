@@ -203,7 +203,7 @@ One of the Operator's or a household member's Bank Accounts at a Bank, as expose
 
 ### ACCOUNT_MAPPING
 
-The link from one Bank Account to one Budget Account that the Operator sets in the app; once a transaction has been sent through it, it is moved or removed only by a deliberate action the Operator confirms.
+The link from one Bank Account to one Budget Account that the Operator sets in the app; once a transaction sent through it has an outcome other than Rejected, it is moved or removed only by a deliberate action the Operator confirms.
 
 | Attribute         | Description                                                                                  | Data Type | Length/Precision | Validation Rules                          |
 |-------------------|----------------------------------------------------------------------------------------------|-----------|------------------|-------------------------------------------|
@@ -216,7 +216,7 @@ The link from one Bank Account to one Budget Account that the Operator sets in t
 
 - A Bank Account has at most one Account Mapping, and a Budget Account receives through at most one Account Mapping.
 - The Bank Account's currency equals the currency of the Budget Account's Budget; otherwise the Bank Account is blocked from Upload.
-- Once `first_sent_at` is filled, `budget_account_id` changes, or the mapping is removed, only by the Operator's confirmed action, which states how many transactions were sent through it (UC-009 BR-003); after a move `first_sent_at` is empty until the first send to the new Budget Account.
+- Once `first_sent_at` is filled and a `SENT_RECORD` of one of the Bank Account's Bank Transactions whose `budget_account_id` is the mapping's has an outcome other than Rejected (Written, Already Present, Not Yet Known or Unknown), `budget_account_id` changes, or the mapping is removed, only by the Operator's confirmed action, which states how many transactions were sent through it (UC-009 BR-003); while every such `SENT_RECORD` is Rejected, it changes or is removed without that confirmation, as before any send. After a move `first_sent_at` is empty until the first send to the new Budget Account.
 
 ### OFFERED_BANK_ACCOUNT
 

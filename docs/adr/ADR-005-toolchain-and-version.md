@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24/S-25).
+Accepted (2026-10-15, by the Operator at the architecture gate); revised for S-23/S-24/S-25 and re-checked externally (2026-10-18, `docs/reviews/mockup_gate_recheck.md`, no High finding).
 
 History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
 Phase 2 review and the Operator's answers O-P1-06, O-P1-07, O-P1-08 and O-P2-05; revised 2026-10-15 after the Phase 2b
@@ -206,10 +206,10 @@ fails on the device is changed by amending ADR-002, not worked around.
 - B-01, B-04: §7 E-05 and E-10 (the Comparison-pending marker; clearing a new counterpart in the same Upload).
 - B-05: §7 E-12 (interruption at every boundary of the start sequence).
 - B-06 (with S-13): §7 E-03 (journal and `device.db` damage opens no Recovery Check).
-- S-23/S-24 (2026-10-16, re-check pending): Context; §3 (the agent gate is `gradlew check` with the tests of ADR-003 §6,
+- S-23/S-24 (2026-10-16, re-checked externally 2026-10-18): Context; §3 (the agent gate is `gradlew check` with the tests of ADR-003 §6,
   among them `NoCredentialInAppTest`; agents may build a `debug` package; the packaging-refusal test is replaced); §6
   (`signing.properties` is the whole Build Configuration; a debug build needs none; a release package may be installed
   by another household); §7 E-13 (credentials encrypted on the device, not restored); Consequences.
-- S-25 (2026-10-18, re-check pending): Context; §3 (`gradlew check` without signing values; no placement task); §6
+- S-25 (2026-10-18, re-checked externally 2026-10-18): Context; §3 (`gradlew check` without signing values; no placement task); §6
   (the signing values are Gradle properties outside the repository, ADR-003 §1; a release package without them fails
   naming each; why a debug build does not hold the Operator's data); Consequences.

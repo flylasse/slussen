@@ -97,7 +97,7 @@
 
 1. Slussen shows the Budget Accounts of the Budgets it serves that receive through no Account Mapping and are in the Bank Account's currency.
 2. Operator chooses one.
-3. When transactions were already sent through the current Account Mapping, Slussen asks the Operator to confirm, stating their number, that they stay in the current Budget Account, that Slussen never sends them again, and that the Operator moves or deletes them in the Budget App, and, when the Budget App rejected some of them, their number and that they go to the new Budget Account at their next Upload (BR-003).
+3. When a transaction sent through the current Account Mapping was written, already present or has an unknown outcome, Slussen asks the Operator to confirm, stating their number, that they stay in the current Budget Account, that Slussen never sends them again, and that the Operator moves or deletes them in the Budget App, and, when the Budget App rejected some of them, their number and that they go to the new Budget Account at their next Upload (BR-003). When no transaction was sent through it, or the Budget App rejected every one, Slussen asks nothing and continues at step 5.
 4. Operator confirms, or cancels and the use case ends.
 5. Slussen moves the Account Mapping, records the move with that number in the Decision Journal, and gives the Bank Transactions their Transaction Status again (UC-003).
 6. Use case ends.
@@ -126,7 +126,7 @@
 **Trigger:** Operator chooses to remove the Account Mapping of a Bank Account (step 2)  
 **Flow:**
 
-1. When transactions were already sent through it, Slussen asks the Operator to confirm as in step 3 of A8, stating for the rejected ones that they wait until the Bank Account is mapped again.
+1. When a transaction sent through it was written, already present or has an unknown outcome, Slussen asks the Operator to confirm as in step 3 of A8, stating for the rejected ones that they wait until the Bank Account is mapped again. When no transaction was sent through it, or the Budget App rejected every one, Slussen asks nothing and continues at step 3 (BR-003).
 2. Operator confirms, or cancels and the use case ends.
 3. Slussen removes the Account Mapping and keeps the Bank Account with its identification and history, neither compared nor offered for Upload until the Operator maps it again (A8).
 4. Slussen records the change in the Decision Journal.
@@ -159,7 +159,7 @@
 ### Failure Postconditions
 
 - No Bank Account's transactions are used under an identification the Operator did not confirm or Slussen did not establish with certainty.
-- No Account Mapping through which transactions were sent is moved or removed without the Operator's confirmation.
+- No Account Mapping through which a transaction was written, found already present or sent with an unknown outcome is moved or removed without the Operator's confirmation.
 - No transaction Slussen sent becomes eligible again because of a change made here.
 
 ## Business Rules
@@ -174,7 +174,7 @@ Bank Accounts are added and mapped in the app (UC-013) and changed here. No buil
 
 ### BR-003: Moving a Mapping After a Send Is Deliberate
 
-Slussen records the time of the first send through an Account Mapping (UC-006 BR-006), whatever the Budget App answers. From then on, the Account Mapping is moved or removed only by an action the Operator confirms, after Slussen has stated how many transactions were sent through it; Slussen never does it on its own. The transactions already sent stay where they are in the Budget App, keep their Sent Records and are never sent again; the Operator moves or deletes them in the Budget App. Later Comparisons treat them by the existing rules (UC-003 BR-021): found by their Import Identifier, they are Already In Budget App; deleted there, they go to the Re-upload decision (UC-004 BR-003), which sends them under a new Import Identifier, so that the Budget App's refusal of a reused Import Identifier (C-009) does not stop them; a resemblance goes to review. A Sent Record whose outcome is unknown at the move keeps its Budget Account, and any later send of it goes there (UC-006 BR-007). A transaction the Budget App rejected was not written: it is not counted among the transactions that stay, Slussen states their number separately, and its next send goes to the Budget Account of the current Account Mapping (UC-006 BR-020).
+Slussen records the time of the first send through an Account Mapping (UC-006 BR-006), whatever the Budget App answers. Once a transaction sent through it has the outcome Written, Already Present, Not Yet Known or Unknown, the Account Mapping is moved or removed only by an action the Operator confirms, after Slussen has stated how many transactions were sent through it; Slussen never does it on its own. While the Budget App has rejected every transaction sent through it, nothing was written, and the Account Mapping is moved or removed without that confirmation, as before any send; the rejected transactions follow the current Account Mapping (UC-006 BR-020) and, after a removal, wait until the Bank Account is mapped again. The transactions already sent stay where they are in the Budget App, keep their Sent Records and are never sent again; the Operator moves or deletes them in the Budget App. Later Comparisons treat them by the existing rules (UC-003 BR-021): found by their Import Identifier, they are Already In Budget App; deleted there, they go to the Re-upload decision (UC-004 BR-003), which sends them under a new Import Identifier, so that the Budget App's refusal of a reused Import Identifier (C-009) does not stop them; a resemblance goes to review. A Sent Record whose outcome is unknown at the move keeps its Budget Account, and any later send of it goes there (UC-006 BR-007). A transaction the Budget App rejected was not written: it is not counted among the transactions that stay, Slussen states their number separately, and its next send goes to the Budget Account of the current Account Mapping (UC-006 BR-020).
 
 ### BR-004: Never Guess a Bank Account
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24).
+Accepted (2026-10-15, by the Operator at the architecture gate); revised for S-23/S-24 and re-checked externally (2026-10-18, `docs/reviews/mockup_gate_recheck.md`, no High finding).
 
 History: proposed 2026-10-14, architecture gate, revision after the Phase 2 review; revised 2026-10-15 after the Phase
 2b re-review and S-12; revised for S-23/S-24 on 2026-10-16, pending an external check; revised 2026-10-16 for the
@@ -155,7 +155,10 @@ Budget App refused it, so it holds it nowhere (a refusal because the Import Iden
 rejection. The retry keeps its Import Identifier, which no Budget Account holds, and it reuses and updates its one
 Sent Record rather than inserting a new one: O-7 sets the record's Budget Account to the item's (ADR-002 §4 step 2),
 so the record always names the Budget Account it was last sent to, and the unique Import Identifier per Budget Account
-holds. While the Bank Account has no Account Mapping, a Rejected Sent Record yields no item (UC-009 A11). A
+holds. While the Bank Account has no Account Mapping, a Rejected Sent Record yields no item (UC-009 A11). A move or
+removal needs the Operator's confirmation only while a Sent Record through the mapping has an outcome other than
+Rejected; when every one is Rejected, nothing was written and O-13 moves or removes the mapping without asking
+(UC-009 A8, A11, BR-003; ADR-002 §3). A
 transaction with a Sent Record whose outcome is Written or Already Present never becomes a new send because of a move
 (UC-003 BR-021); only a Re-upload decision sends it again, to the current Budget Account under a new Import
 Identifier.
@@ -290,7 +293,9 @@ transaction that would be outside the Upload Window and a Lonely Transfer whose 
 new date, writes exactly its items, while its expiry still applies (UC-006 BR-018); each check of §6 failing; the retry
 table of §4 for both values of the reuse-refusal capability; after a move of the Account Mapping, a retry of a
 Rejected send planned and recorded for the new Budget Account (with `first_sent_at` set there) and a retry of an
-Unknown send planned for the recorded one (O-P2-34 (1)); a plan with a retry and a new send together; a plan whose
+Unknown send planned for the recorded one (O-P2-34 (1)); a move and a removal of an Account Mapping whose Sent Records
+are all Rejected accepted without the Operator's confirmation, and refused without it once one of them is Written,
+Already Present, Not Yet Known or Unknown (UC-009 BR-003); a plan with a retry and a new send together; a plan whose
 Transfer has both Transfer Legs present and is cleared in the same Upload, and the same with the leg's answer lost
 (B-01); a Transfer with a Transfer Leg that is Needs Review or Possible Import By Other Path, yielding no item from
 either side until every such Transfer Leg is decided, and each outcome with the precedence Already Present, Defer,
@@ -381,7 +386,7 @@ is listed in ADR-005 §7.
   of date and confirmed after it writes exactly its items), Consequences.
 - S-20 (UC-006 A2, BR-019): §2 (the confirm/cancel row includes leaving), §5 (leaving the plan's screen is the cancel
   command; the plan becomes Cancelled), §9 (test).
-- S-23/S-24 (2026-10-16, re-check pending): §2 (UC-009 changes, UC-013 and UC-014 refused while a plan is open or an
+- S-23/S-24 (2026-10-16, re-checked externally 2026-10-18): §2 (UC-009 changes, UC-013 and UC-014 refused while a plan is open or an
   Upload runs), §4 (no configuration fingerprint; a new send goes to the current Account Mapping; a retry keeps its Sent
   Record's Budget Account after a move, UC-009 BR-003, UC-003 BR-021), §6 steps 2, 3 and 6 (configuration is stored data
   under `state_version`; `first_sent_at` instead of a lock).
@@ -389,3 +394,4 @@ is listed in ADR-005 §7.
     Rejected send goes to the current Account Mapping, keeps its Import Identifier and updates its Sent Record's Budget
     Account; the unknown-outcome rule is unchanged), §6 steps 6 and 7, §9, Consequences, Alternatives; UC-006 BR-020,
     UC-009 BR-003, ADR-002 §4.
+- Mockup gate follow-up (2026-10-18): §4 and §9 (no confirmation to move or remove an Account Mapping whose Sent Records are all Rejected; UC-009 A8, A11, BR-003).

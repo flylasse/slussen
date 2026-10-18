@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24).
+Accepted (2026-10-15, by the Operator at the architecture gate); revised for S-23/S-24 and re-checked externally (2026-10-18, `docs/reviews/mockup_gate_recheck.md`, no High finding).
 
 History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
 Phase 2 review and the specification changes S-01 to S-10; revised 2026-10-15 after the Phase 2b re-review and S-12 to
@@ -157,9 +157,11 @@ Configuration of them and no reconciliation by key:
   its 36-character text form; unique index; never changed or migrated. History, Account Mapping, Sent Records and
   decisions refer to the Bank Account's row, which this identifier names for good; `name` is editable and never
   identifies (UC-009 BR-010, BR-011).
-- `account_mapping.first_sent_at` (the Phase 1-2 `locked_at`) is set at the first send through the mapping (§4). A move
-  or removal of a mapping with `first_sent_at` filled happens only through O-13 after the Operator's confirmation
-  (UC-009 A8, A11, BR-003); after a move `first_sent_at` is empty until the first send to the new Budget Account. The
+- `account_mapping.first_sent_at` (the Phase 1-2 `locked_at`) is set at the first send through the mapping (§4),
+  whatever the outcome. A move or removal of a mapping with `first_sent_at` filled needs the Operator's confirmation in
+  O-13 only while a `sent_record` of the Bank Account's transactions with the mapping's `budget_account_id` has an
+  `outcome` other than Rejected; when every such record is Rejected, nothing was written and O-13 moves or removes it
+  without one (UC-009 A8, A11, BR-003); after a move `first_sent_at` is empty until the first send to the new Budget Account. The
   Sent Records keep their `budget_account_id` (UC-003 BR-021), except that a later retry of a Rejected send moves its
   record to the Budget Account of the current Account Mapping (§4 step 2; UC-006 BR-020, O-P2-34 (1)).
 - `offered_bank_account.balance` holds the balance the Data Provider reported with the delivery (UC-013 step 5).
@@ -221,7 +223,7 @@ a step from two calls. Each operation that changes something an Upload Plan depe
 | O-10 | `ConsentStore.startRequest`, `consumeAnswer`, `replaceConsent`, `revoke` (`device.db`) | Start: a new Consent Request with its correlation, making earlier ones of the Bank unanswerable. Consume: the most-recent, lifetime and not-answered checks and `answered` set, together. Replace: the Bank Consent and its Bank Session in place of the earlier ones, refused when a newer Consent Request exists. Revoke: delete the Bank Consent, its Bank Session and every Consent Request of the Bank | UC-007 BR-002, BR-003, BR-004, BR-007; NFR-013 |
 | O-11 | `PluginRegistryStore.reconcile` | §2, the Data Providers and File Formats of the build, with the Request Limit and the default Fetch Cooldown their parts declare | FR-017, UC-001 BR-006, BR-007 |
 | O-12 | `RecoveryStore.openCheck`, `confirmChecks` | Open a Recovery Check with its cause; confirm every open check whose `compared_at` is filled, together with its Decision Journal record request | UC-006 BR-017, UC-008 A9, BR-009 |
-| O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses; setting a Funded By or Transfer Partner (also from a Transfer Decision) is refused unless the Budget Account is in the same Budget, differs from the Bank Account's own, and receives through an Account Mapping of a Bank Account that is not a Retired Account, never a Manually Kept Account (UC-005 BR-014, `BANK_ACCOUNT` constraints); `MappingStore.move` and `MappingStore.remove` change or delete an Account Mapping, refused when `first_sent_at` is filled unless the call carries the Operator's confirmation of the stated number of sent transactions, record the change and reset `first_sent_at` on a move (UC-009 A8, A11, BR-003); renaming, Start Date and identifying again are single updates (UC-009 A6, A7, A12, A13); a Review Decision on a Transfer Leg also sets the statuses of the other Transfer Legs of its Transfer (Deferred, or Already In Budget App while an Already Present decision holds) in the same transaction | UC-004 BR-006, BR-009; UC-005 BR-013, BR-014; UC-009 BR-003, BR-007, BR-008, A6-A13, UC-010 |
+| O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses; setting a Funded By or Transfer Partner (also from a Transfer Decision) is refused unless the Budget Account is in the same Budget, differs from the Bank Account's own, and receives through an Account Mapping of a Bank Account that is not a Retired Account, never a Manually Kept Account (UC-005 BR-014, `BANK_ACCOUNT` constraints); `MappingStore.move` and `MappingStore.remove` change or delete an Account Mapping, refused when `first_sent_at` is filled and a `sent_record` through the mapping (the Bank Account's transactions, the mapping's `budget_account_id`) has an `outcome` other than Rejected, unless the call carries the Operator's confirmation of the stated number of sent transactions, record the change and reset `first_sent_at` on a move (UC-009 A8, A11, BR-003); renaming, Start Date and identifying again are single updates (UC-009 A6, A7, A12, A13); a Review Decision on a Transfer Leg also sets the statuses of the other Transfer Legs of its Transfer (Deferred, or Already In Budget App while an Already Present decision holds) in the same transaction | UC-004 BR-006, BR-009; UC-005 BR-013, BR-014; UC-009 BR-003, BR-007, BR-008, A6-A13, UC-010 |
 | O-14 | `UploadStore.recordClearing` | The result of one clearing (ADR-007 §6 step 8): a new `transfer_counterpart` with the leg's `sent_record_id`, its `budget_app_reference` and `state` Cleared (with `cleared_at`) or Uncleared; or an existing one set to Cleared with `cleared_at`. It never inserts, resets or changes a `sent_record` | UC-006 steps 10, BR-009, BR-010, BR-011, A11 |
 | O-15 | `ConnectionStore.serveBudgets`, `ConnectionStore.addBankAccount` | Serve: set `budget.served` for the chosen Budgets, refused for a Budget into which a Bank Account is mapped (UC-013 A2). Add: a new `bank_account` with its generated identifier, proposed name, optional Start Date, how the Source identifies it, and its `account_mapping`, refused when the Budget Account already receives through an Account Mapping or its Budget has another currency (UC-013 A5) | UC-013 steps 3-10, BR-001, BR-003, A2, A4, A5; FR-097, FR-098 |
 | O-16 | `CredentialStore.replace`, `CredentialStore.remove` (`device.db`) | Replace: the encrypted `service_credential` of one service, only after the service accepted it, in place of the earlier one. Remove: delete it (§2a) | UC-014 steps 4, A1, A3; NFR-021 |
@@ -545,7 +547,7 @@ run with JUnit 5 (ADR-004, ADR-005).
 - S-22 (FR-016, UC-001 BR-006, UC-010 BR-001, BR-002): Context (`DATA_PROVIDER.fetch_cooldown_minutes` instead of an
   `OPERATOR_SETTINGS` attribute), §2 (reconciliation sets a new Data Provider's Fetch Cooldown from its plug-in's
   default and keeps the Operator's value otherwise), §8 step 3 (default content).
-- S-23/S-24 (2026-10-16, re-check pending): Context; §1 (`service_credential` in `device.db`, the Keystore key); §2
+- S-23/S-24 (2026-10-16, re-checked externally 2026-10-18): Context; §1 (`service_credential` in `device.db`, the Keystore key); §2
   (no Build Configuration of Budgets, Bank Accounts or Account Mappings; `budget.served`,
   `bank_account.generated_identifier`, `account_mapping.first_sent_at`, `offered_bank_account.balance`,
   `data_provider.request_limit` from the part, `fetch.outcome` Credentials Refused; O-11 registers the plug-ins); new
@@ -555,3 +557,4 @@ run with JUnit 5 (ADR-004, ADR-005).
   - O-P2-34 (1) (2026-10-16, the Operator): §2 and §4 steps 2 and 3 (a retry of a Rejected send updates its Sent
     Record's `budget_account_id` to the current Account Mapping and records `first_sent_at` there; unknown outcomes
     keep theirs), §4 "What this guarantees"; ADR-007 §4, UC-006 BR-020.
+- Mockup gate follow-up (2026-10-18): §2 and §3 O-13 (no confirmation to move or remove an Account Mapping whose Sent Records are all Rejected; `first_sent_at` keeps its meaning; UC-009 A8, A11, BR-003).

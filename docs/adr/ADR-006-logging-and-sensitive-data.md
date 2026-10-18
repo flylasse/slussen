@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-10-15, by the Operator at the architecture gate); re-check pending (S-23/S-24/S-25).
+Accepted (2026-10-15, by the Operator at the architecture gate); revised for S-23/S-24/S-25 and re-checked externally (2026-10-18, `docs/reviews/mockup_gate_recheck.md`, no High finding).
 
 History: proposed 2026-10-14, construction kickoff Phase 1; revised 2026-10-14 at the architecture gate after the
 Phase 2 review and the specification change S-02; revised for S-23/S-24 on 2026-10-16 and for S-25 on
@@ -173,10 +173,10 @@ about a fake:
 - A-18: §1 (the contract is in `:plugin-api`; plug-ins receive it), §4.
 - A-19 in part: §5 (L-01, L-02 and L-04 backed by bytecode rules; what the rules do not prove).
 - S-02: §2 (Bank Sessions never logged).
-- S-23/S-24 (2026-10-16, re-check pending): Context (NFR-021, UC-014); §2 (service credentials, their typed input, the
+- S-23/S-24 (2026-10-16, re-checked externally 2026-10-18): Context (NFR-021, UC-014); §2 (service credentials, their typed input, the
   SimpleFIN setup token and exchanged credential and the Enable Banking key file never logged or journaled;
   `:persistence` may opt in to encrypt them; the encrypted storage itself is ADR-002 §2a); §6 (planted credentials in
   credential input, the UC-014 journal entries and Journal Exports checked).
-- S-25 (2026-10-18, re-check pending): Context, §2 and §6 (the values of `build-config/local/` become the release
+- S-25 (2026-10-18, re-checked externally 2026-10-18): Context, §2 and §6 (the values of `build-config/local/` become the release
   signing values and live-test credentials, Gradle properties outside the repository; their output check is part of
   `NoCredentialInAppTest`, ADR-003 §3, §5).
