@@ -294,7 +294,7 @@
 <div class="state" id="list">
 <div class="step-label"><span class="n">UC-007 1 · BR-008</span><p><b>Bank Consents on the Enable Banking page</b> in <a href="connections.html#enable-banking">Connections</a> (S-26). Grant, renew and revoke are also offered wherever Slussen shows a Bank Consent as missing, expiring or expired (UC-007 BR-003). Same state as that page, after Vesta Sparbank was renewed; the expired state is shown <a href="#expired">next</a>.</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="connections.html#list">‹</a> Enable Banking</div>
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
 <div class="sec-t">Bank Consents · 2</div><div class="card amber"><div class="src-row"><span class="dot amber"></span> <span class="nm">Aurora Bank</span> <span class="warn">Expires 2026-10-19</span></div><div class="src-note">Covers Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar</div><a class="btn primary" href="#grant">Renew</a> <a class="btn danger" href="#revoke">Revoke</a></div><div class="card"><div class="src-row"><span class="dot"></span> <span class="nm">Vesta Sparbank</span> <span class="ok">Valid until 2027-04-12</span></div><div class="src-note">Covers Vesta Card</div><a class="btn primary" href="#grant">Renew</a> <a class="btn danger" href="#revoke">Revoke</a></div><a class="btn primary" href="#grant" style="margin:0 0 9px">Grant Bank Consent for another Bank</a>
@@ -305,7 +305,7 @@
 <div class="state" id="expired">
 <div class="step-label"><span class="n">UC-007 1 · BR-003</span><p><b>Earlier state: Vesta Sparbank's Bank Consent expired</b> on 2026-10-11, before it was renewed (<a href="#granted">granted</a>). Renew opens the <a href="#grant">grant</a> sheet.</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="connections.html#list">‹</a> Enable Banking</div>
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
 <div class="sec-t">Bank Consents · 2</div><div class="card amber"><div class="src-row"><span class="dot amber"></span> <span class="nm">Aurora Bank</span> <span class="warn">Expires 2026-10-19</span></div><div class="src-note">Covers Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar</div><a class="btn primary" href="#grant">Renew</a> <a class="btn danger" href="#revoke">Revoke</a></div><div class="card amber"><div class="src-row"><span class="dot amber"></span> <span class="nm">Vesta Sparbank</span> <span class="warn">Bank Consent expired 2026-10-11</span></div><div class="src-note">Vesta Card not fetched</div><a class="btn primary" href="#grant">Renew Bank Consent</a></div>
@@ -316,7 +316,7 @@
 <div class="state" id="grant">
 <div class="step-label"><span class="n">UC-007 1–7</span><p><b>Granting or renewing.</b> A new Consent Request makes every earlier one of this Bank unanswerable.</p></div>
 <div class="phone">
-<div class="screen-title">Enable Banking</div>
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
 <div class="ghost"><div class="sec-t">Bank Consents · 2</div></div><div class="sheet blue"><div class="grab"></div><h4>Renew Bank Consent · Vesta Sparbank</h4><p class="ctx">Enable Banking · one sign-in for every Bank Account at the Bank</p><div class="stepn"><span class="i">1</span> <span><span class="t">Open Vesta Sparbank's Strong Customer Authentication</span> </span></div><span class="pair"><a class="cta-btn" href="#granted">Open my Bank</a></span><div class="stepn"><span class="i">2</span> <span><span class="t">Complete it with your Bank, for example with BankID</span></span></div><div class="stepn"><span class="i">3</span> <span><span class="t">Return to Slussen with the result</span> <span class="d">Until 14:47</span></span></div></div>
@@ -327,7 +327,7 @@
 <div class="state" id="granted">
 <div class="step-label"><span class="n">UC-007 8–10</span><p><b>Granted.</b> The Bank Consent with its expiry and the Bank Accounts it covers; any earlier Bank Consent and Bank Session of the Bank are replaced.</p></div>
 <div class="phone">
-<div class="screen-title">Enable Banking</div>
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
 <div class="sheet teal"><div class="grab"></div><h4>✓ Bank Consent granted · Vesta Sparbank</h4><p class="ctx">Valid until 2027-04-12, the expiry date the Bank reported.</p><div class="kv"><span class="k">Covers</span> <span class="v">Vesta Card · identified</span></div><span class="pair" style="margin-top:8px"><a class="cta-btn" href="budget.html#summer-house">Done</a></span></div>
@@ -338,7 +338,7 @@
 <div class="state" id="not-completed">
 <div class="step-label"><span class="n">UC-007 A1</span><p><b>Authentication not completed.</b></p></div>
 <div class="phone">
-<div class="screen-title">Enable Banking</div>
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
 <div class="sheet amber"><div class="grab"></div><h4>Bank Consent not granted · Vesta Sparbank</h4><p class="ctx">The Strong Customer Authentication was cancelled or refused.</p><p class="note">Any earlier Bank Consent of Vesta Sparbank is unchanged.</p><a class="cta" href="#grant">Try again</a></div>
@@ -349,7 +349,7 @@
 <div class="state" id="not-accepted">
 <div class="step-label"><span class="n">UC-007 A2</span><p><b>Result not accepted.</b></p></div>
 <div class="phone">
-<div class="screen-title">Enable Banking</div>
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
 <div class="sheet red"><div class="grab"></div><h4>Result not accepted</h4><p class="ctx">Vesta Sparbank</p><p class="note">Outdated, reused or unreadable · nothing stored</p><a class="cta" href="#grant">Start again</a></div>
@@ -360,7 +360,7 @@
 <div class="state" id="provider-refused">
 <div class="step-label"><span class="n">UC-007 A3, A4</span><p><b>The Data Provider refuses</b> to start or to confirm.</p></div>
 <div class="phone">
-<div class="screen-title">Enable Banking</div>
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
 <div class="card red"><div class="src-row"><span class="dot red"></span> <span class="nm">Vesta Sparbank</span> <span class="bad">Enable Banking refused</span></div><div class="src-note">Enable Banking refused · nothing stored · try again later</div></div>
@@ -371,7 +371,7 @@
 <div class="state" id="probably">
 <div class="step-label"><span class="n">UC-007 A5</span><p><b>A covered Bank Account only probably recognised</b>: its transactions wait until you confirm it (UC-009).</p></div>
 <div class="phone">
-<div class="screen-title">Enable Banking</div>
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
 <div class="sheet teal"><div class="grab"></div><h4>✓ Bank Consent granted · Aurora Bank</h4><p class="ctx">Valid until 2027-04-14.</p><div class="kv"><span class="k">Aurora Current</span> <span class="v">Identified</span></div><div class="kv"><span class="k">Aurora Savings</span> <span class="v">Identified</span></div><div class="kv"><span class="k">Aurora Joint</span> <span class="v"><span class="chip amber">Only a likely match</span> its transactions are not used until you confirm it</span></div><div class="kv"><span class="k">Aurora Dollar</span> <span class="v">Identified</span></div><a class="cta" href="account-mappings.html#confirm">Confirm Aurora Joint</a></div>
@@ -382,7 +382,7 @@
 <div class="state" id="unidentified">
 <div class="step-label"><span class="n">UC-007 A6</span><p><b>A covered Bank Account not identified</b>: the Blocked Reason unrecognised Bank Account.</p></div>
 <div class="phone">
-<div class="screen-title">Enable Banking</div>
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
 <div class="sheet teal"><div class="grab"></div><h4>✓ Bank Consent granted · Aurora Bank</h4><p class="ctx">Valid until 2027-04-14.</p><div class="kv"><span class="k">Aurora Joint</span> <span class="v"><span class="chip amber">Unrecognised Bank Account</span> two added Bank Accounts, Aurora Joint and Aurora Savings, are possible for one covered Bank Account. Slussen stops for it.</span></div><a class="cta" href="account-mappings.html#rejected">Account Mappings</a></div>
@@ -393,10 +393,10 @@
 <div class="state" id="revoke">
 <div class="step-label"><span class="n">UC-007 A7 1–2</span><p><b>Revoking</b>: confirmation first.</p></div>
 <div class="phone">
-<div class="screen-title">Enable Banking</div>
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
-<div class="ghost"><div class="sec-t">Bank Consents · 2</div><div class="card amber"><div class="src-row"><span class="dot amber"></span> <span class="nm">Aurora Bank</span> <span class="warn">Expires 2026-10-19</span></div><div class="src-note">Covers Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar</div><a class="btn primary" href="#grant">Renew</a> <a class="btn danger" href="#revoke">Revoke</a></div><div class="card"><div class="src-row"><span class="dot"></span> <span class="nm">Vesta Sparbank</span> <span class="ok">Valid until 2027-04-12</span></div><div class="src-note">Covers Vesta Card</div><a class="btn primary" href="#grant">Renew</a> <a class="btn danger" href="#revoke">Revoke</a></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:70px;margin:0"><h4>Revoke the Bank Consent of Aurora Bank?</h4><p>Aurora Current, Aurora Savings, Aurora Joint and Aurora Dollar will not be fetched until you grant a new Bank Consent.</p><p>Your Bank Accounts, Account Mappings, Bank Transactions and Sent Record are kept.</p><div class="actions"><span class="c">Cancel</span> <a class="x" href="#revoked">Revoke</a></div></div>
+<div class="ghost"><div class="sec-t">Bank Consents · 2</div><div class="card amber"><div class="src-row"><span class="dot amber"></span> <span class="nm">Aurora Bank</span> <span class="warn">Expires 2026-10-19</span></div><div class="src-note">Covers Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar</div><a class="btn primary" href="#grant">Renew</a> <a class="btn danger" href="#revoke">Revoke</a></div><div class="card"><div class="src-row"><span class="dot"></span> <span class="nm">Vesta Sparbank</span> <span class="ok">Valid until 2027-04-12</span></div><div class="src-note">Covers Vesta Card</div><a class="btn primary" href="#grant">Renew</a> <a class="btn danger" href="#revoke">Revoke</a></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:70px;margin:0"><h4>Revoke the Bank Consent of Aurora Bank?</h4><p>Aurora Current, Aurora Savings, Aurora Joint and Aurora Dollar will not be fetched until you grant a new Bank Consent.</p><p>Your Bank Accounts, Account Mappings, Bank Transactions and Sent Record are kept.</p><div class="actions"><a class="c" href="#list">Cancel</a> <a class="x" href="#revoked">Revoke</a></div></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
@@ -404,12 +404,39 @@
 <div class="state" id="revoked">
 <div class="step-label"><span class="n">UC-007 A7 3–6</span><p><b>Revoked</b>, also when the Data Provider does not confirm.</p></div>
 <div class="phone">
-<div class="screen-title">Enable Banking</div>
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
 <div class="card amber"><div class="src-row"><span class="dot amber"></span> <span class="nm">Aurora Bank</span> <span class="warn">Revoked</span></div><div class="src-note">Deleted · its Bank Accounts are not fetched</div><div class="src-note"><b>Not confirmed by Enable Banking</b> · end it at Aurora Bank too</div><a class="btn primary" href="#grant">Grant Bank Consent</a></div><div class="card"><div class="src-row"><span class="dot"></span> <span class="nm">Vesta Sparbank</span> <span class="ok">Valid until 2027-04-12</span></div><div class="src-note">Covers Vesta Card</div><a class="btn primary" href="#grant">Renew</a> <a class="btn danger" href="#revoke">Revoke</a></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
+</section><section>
+<h2>During first setup</h2>
+<p class="lede">Reached from Set up Slussen when a Bank must offer its Bank Accounts before they can be paired (UC-013 A3, UC-007 step 1).</p>
+<div class="flow">
+<div class="state" id="grant-first-run">
+<div class="step-label"><span class="n">UC-007 1–7 · UC-013 A3</span><p><b>Granting during first setup</b>, from <a href="setup.html#consent-first">Bank Consent first</a>: the same sheet, for a Bank none of whose Bank Accounts is added yet.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="setup.html#consent-first">‹</a> Set up Slussen</div>
+<p class="screen-sub">Pair Bank Accounts</p>
+<div class="body">
+<div class="ghost"><div class="sec-t">Enable Banking</div></div><div class="sheet blue"><div class="grab"></div><h4>Grant Bank Consent · Aurora Bank</h4><p class="ctx">Enable Banking · one sign-in for every Bank Account at the Bank</p><div class="stepn"><span class="i">1</span> <span><span class="t">Open Aurora Bank's Strong Customer Authentication</span> </span></div><span class="pair"><a class="cta-btn" href="#granted-first-run">Open my Bank</a></span><div class="stepn"><span class="i">2</span> <span><span class="t">Complete it with your Bank, for example with BankID</span></span></div><div class="stepn"><span class="i">3</span> <span><span class="t">Return to Slussen with the result</span> <span class="d">Until 09:24</span></span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="granted-first-run">
+<div class="step-label"><span class="n">UC-007 8–10 · UC-013 A3</span><p><b>Granted during first setup</b>: the Bank Accounts the Bank Consent covers are offered for pairing; Done returns to pairing (UC-013 step 5).</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="setup.html#consent-first">‹</a> Set up Slussen</div>
+<p class="screen-sub">Pair Bank Accounts</p>
+<div class="body">
+<div class="sheet teal"><div class="grab"></div><h4>✓ Bank Consent granted · Aurora Bank</h4><p class="ctx">Valid until 2027-04-14, the expiry date the Bank reported.</p><div class="kv"><span class="k">Bank Accounts offered</span> <span class="v">4 · none added yet</span></div><span class="pair" style="margin-top:8px"><a class="cta-btn" href="setup.html#pair">Done</a> <a class="cta-btn ghost" href="setup.html#consent-first">Another Bank</a></span></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 </div>

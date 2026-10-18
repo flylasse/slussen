@@ -184,9 +184,9 @@ An Upload Plan expires when the Upload Plan lifetime has passed after it was pre
 
 Immediately before writing, Slussen checks the Budget App, the Bank Transactions and the configuration again. When any of them changed since the plan was prepared, nothing is written, and Slussen shows why (A5). A change of date is not such a change (BR-018).
 
-### BR-005: Other Work Pauses While a Plan Awaits Confirmation
+### BR-005: Other Work Pauses While a Plan Awaits Confirmation or Is Being Written
 
-At most one Upload Plan awaits confirmation at a time. From the moment it is prepared until it is written, cancelled, discarded or expires, fetching (a Scheduled Fetch that falls due starts when the pause ends), file imports, reading the Budget App, granting, renewing or revoking a Bank Consent, Account Mapping changes and changes to Operator Settings are unavailable; only confirming, cancelling and changing Review Decisions or Transfer Decisions are allowed. Looking at the import status stays available.
+At most one Upload Plan awaits confirmation at a time. From the moment it is prepared until it is cancelled, discarded or expires, or, once confirmed, until its Upload is written, also after the Operator has left its screen (BR-019), fetching (a Scheduled Fetch that falls due starts when the pause ends), file imports, reading the Budget App and all setup are unavailable: entering, replacing or removing service credentials (UC-014), choosing Budgets and adding Bank Accounts (UC-013), Account Mapping changes (UC-009), granting, renewing or revoking a Bank Consent (UC-007) and changes to Operator Settings (UC-010). While the plan awaits confirmation, only confirming, cancelling and changing Review Decisions or Transfer Decisions are allowed; while its Upload is being written, Slussen shows that setup is paused until the Upload is written. Looking at the import status stays available.
 
 ### BR-006: Exactly Once Through the Sent Record
 

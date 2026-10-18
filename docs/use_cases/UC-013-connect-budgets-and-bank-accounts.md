@@ -14,7 +14,7 @@
 
 ## Preconditions
 
-- No Upload Plan is awaiting confirmation (UC-006 BR-005).
+- No Upload Plan is awaiting confirmation and no Upload is being written (UC-006 BR-005).
 
 ## Main Success Scenario
 

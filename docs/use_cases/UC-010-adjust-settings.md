@@ -13,7 +13,7 @@
 
 ## Preconditions
 
-- No Upload Plan is awaiting confirmation (UC-006 BR-005).
+- No Upload Plan is awaiting confirmation and no Upload is being written (UC-006 BR-005).
 
 ## Main Success Scenario
 
@@ -178,4 +178,4 @@ A change to either list, including a restore, applies only to Transfers none of 
 
 ### BR-010: Each Service's Settings Come From Its Part
 
-Settings keeps the Operator Settings that apply to everything. Its Connections section lists each service in use, each Data Provider whose credentials are entered and the Budget App, with its status, and below them the Data Providers of the build not yet set up, each with the action to set it up (UC-014). Each service in use has one page that holds its status, its credentials (UC-014) and everything else that belongs to it: for a Data Provider its Fetch Cooldown with the default its part declares, its Request Limit (shown, not changeable, UC-001 BR-007), the Bank Accounts that come from it (UC-009) and, when it needs a Bank Consent, its Bank Consents (UC-007); for the Budget App the Budgets in use (UC-013) and, when it supports the Cleared marker, Upload as Cleared. A service's page and its settings are generated from what its part declares: its name, the credentials it asks for, its default Fetch Cooldown, its Request Limit, whether it needs a Bank Consent and whether it supports the Cleared marker. Adding a Data Provider's part to a build brings its own page and settings; nothing per service is written into the screens, and the Adopting Developer configures nothing (UC-012 A2).
+Settings keeps the Operator Settings that apply to everything. Its Connections section lists each service in use, the Budget App and each Data Provider whose credentials are entered or that has a Bank Account, with its status, and below them the Data Providers of the build not set up, with neither credentials nor a Bank Account, each with the action to set it up (UC-014 BR-007). Each service in use has one page that holds its status, its credentials (UC-014) and everything else that belongs to it: for a Data Provider its Fetch Cooldown with the default its part declares, its Request Limit (shown, not changeable, UC-001 BR-007), the Bank Accounts that come from it (UC-009) and, when it needs a Bank Consent, its Bank Consents (UC-007); for the Budget App the Budgets in use (UC-013) and, when it supports the Cleared marker, Upload as Cleared. A service's page and its settings are generated from what its part declares: its name, the credentials it asks for, its default Fetch Cooldown, its Request Limit, whether it needs a Bank Consent and whether it supports the Cleared marker. Adding a Data Provider's part to a build brings its own page and settings; nothing per service is written into the screens, and the Adopting Developer configures nothing (UC-012 A2).

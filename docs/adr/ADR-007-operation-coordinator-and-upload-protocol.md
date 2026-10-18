@@ -18,8 +18,9 @@ Plan captures and what happens after the process dies (A-01, A-08). Spread over 
 
 - UC-006 BR-005, FR-036: at most one Upload Plan awaits confirmation; from its preparation until it is written,
   cancelled, discarded or expires, fetching (a Scheduled Fetch that falls due starts when the pause ends), file
-  imports, reading the Budget App, granting, renewing or revoking a Bank Consent, Account Mapping changes and changes
-  to Operator Settings are unavailable; only confirming, cancelling and changing Review Decisions or Transfer
+  imports, reading the Budget App, granting, renewing or revoking a Bank Consent, Account Mapping changes, service
+  credential changes, choosing Budgets, adding Bank Accounts and changes to Operator Settings are unavailable, also
+  after the Operator leaves the screen of a confirmed Upload (UC-006 BR-019); only confirming, cancelling and changing Review Decisions or Transfer
   Decisions are allowed; looking at the import status stays available.
 - UC-006 BR-003, BR-004, FR-035, NFR-003, step 5, A4, A5: an expired plan writes nothing; immediately before writing,
   Slussen checks the Budget App, the Bank Transactions and the configuration again and writes nothing when any of them

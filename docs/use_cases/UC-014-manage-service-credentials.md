@@ -14,11 +14,11 @@
 
 ## Preconditions
 
-- No Upload Plan is awaiting confirmation (UC-006 BR-005).
+- No Upload Plan is awaiting confirmation and no Upload is being written (UC-006 BR-005).
 
 ## Main Success Scenario
 
-1. Slussen shows Connections: the Budget App and each Data Provider whose service credentials are entered, each with its status, and the Data Providers of this build not yet set up (BR-007).
+1. Slussen shows Connections: the Budget App and each Data Provider in use, each with its status, and the Data Providers of this build not set up (BR-007).
 2. Operator chooses to set up a Data Provider, or opens the page of a service and chooses its credentials, and enters the credentials its part asks for, as Slussen describes them with where to get them (BR-002).
 3. Slussen checks the credentials with the service (BR-002).
 4. Slussen stores the accepted credentials on the device, encrypted with a key that never leaves the device, replacing earlier ones (BR-003), and keeps nothing it no longer needs.
@@ -50,7 +50,7 @@
 
 1. Slussen asks the Operator to confirm, stating that the service will not be contacted until new credentials are entered.
 2. Operator confirms, or cancels and the use case ends.
-3. Slussen deletes the credentials and shows the service's page with the Blocked Reason "credentials missing" for the Sources or Budgets concerned (BR-005).
+3. Slussen deletes the credentials and shows the service's page with the Blocked Reason "credentials missing" for the Sources or Budgets concerned (BR-005); a Data Provider that still has a Bank Account stays in use, with the status "credentials missing" (BR-007).
 4. Slussen records the removal in the Decision Journal.
 5. Use case ends.
 
@@ -102,4 +102,4 @@ When a phone with Slussen leaves the Operator's control, the Operator revokes ev
 
 ### BR-007: Connections Lists the Services
 
-Connections lists the Budget App and each Data Provider whose credentials are entered, each with one status line, such as connected with the time of its last Fetch, "credentials refused", or the nearest expiry of a Bank Consent within the consent warning lead time (UC-008 BR-002), and below them every Data Provider of this build whose credentials are not entered, also after they were removed, each with the action to set it up. Each listed service opens its own page (UC-010 BR-010). The Budget App is always listed, with "credentials missing" until its credentials are accepted.
+Connections lists, as in use, the Budget App and each Data Provider whose credentials are entered or that has at least one Bank Account, each with one status line, such as connected with the time of its last Fetch, "credentials refused", "credentials missing" for a Data Provider whose credentials were removed or lost while it has a Bank Account, or the nearest expiry of a Bank Consent within the consent warning lead time (UC-008 BR-002). Each service in use opens its own page (UC-010 BR-010), which stays reachable while its credentials are missing, with its Bank Accounts, its Fetch Cooldown and the action to enter the credentials. Below them, as not set up, Connections lists every Data Provider of this build that has neither credentials nor any Bank Account, each with the action to set it up. The Budget App is always listed, with "credentials missing" until its credentials are accepted.
