@@ -9,7 +9,7 @@
 **Trigger:** Operator asks to change an Operator Setting  
 **Status:** Approved  
 
-**Requirements:** [FR-001, FR-012, FR-014, FR-016, FR-017, FR-030, FR-046, FR-051, FR-062, FR-065, FR-066, FR-067, FR-069, FR-076, FR-081, FR-087, FR-088, FR-089, FR-090, FR-094, NFR-003, NFR-006, NFR-007, NFR-008, NFR-010, NFR-013, NFR-016, NFR-017, NFR-019](../requirements.md)
+**Requirements:** [FR-001, FR-012, FR-014, FR-016, FR-017, FR-030, FR-046, FR-051, FR-062, FR-065, FR-066, FR-067, FR-069, FR-076, FR-081, FR-087, FR-088, FR-089, FR-090, FR-094, FR-103, NFR-003, NFR-006, NFR-007, NFR-008, NFR-010, NFR-013, NFR-016, NFR-017, NFR-019](../requirements.md)
 
 ## Preconditions
 
@@ -17,7 +17,7 @@
 
 ## Main Success Scenario
 
-1. Slussen shows the current value of each Operator Setting: Upload Window, file upload window, fetch period, Fetch Cooldown of each Data Provider, Fetch Schedule, default wait, Request Limit warning pause, request timeout, Upload Plan lifetime, Consent Request lifetime, number of recent Fetches kept, Upload as Cleared (only when the Budget App supports the Cleared marker), Card Payment Descriptions, Bank Transfer Descriptions, transfer pairing days, Lonely Transfer grace period, outdated-balance limit, consent warning lead time, Decision Journal on or off with its size limit, warning threshold and current size, backup warning threshold, and Detailed Logging.
+1. Slussen shows the current value of each Operator Setting that applies to everything: Upload Window, file upload window, fetch period, Fetch Schedule, default wait, Request Limit warning pause, request timeout, Upload Plan lifetime, Consent Request lifetime, number of recent Fetches kept, Card Payment Descriptions, Bank Transfer Descriptions, transfer pairing days, Lonely Transfer grace period, outdated-balance limit, consent warning lead time, Decision Journal on or off with its size limit, warning threshold and current size, backup warning threshold, and Detailed Logging. The Operator Settings that belong to one service are shown on that service's page in Connections: the Fetch Cooldown of each Data Provider, with the default its part declares, on the Data Provider's page, and Upload as Cleared, only when the Budget App supports the Cleared marker, on the Budget App's page (BR-010).
 2. Operator changes the value of an Operator Setting.
 3. Slussen checks that the value lies within the allowed range of the Operator Setting (BR-002).
 4. Slussen stores the value and applies it from the next Fetch, Scheduled Fetch, Comparison, Upload or opening of the app on.
@@ -100,10 +100,18 @@
 
 ### A9: Switch Upload as Cleared
 
-**Trigger:** Operator switches Upload as Cleared on or off (step 2)
+**Trigger:** Operator switches Upload as Cleared on or off on the Budget App's page (step 2)
 **Flow:**
 
 1. Slussen states that the change applies only to Upload Plans prepared from now on, changes nothing already in the Budget App, and that while the setting is off Slussen marks nothing Cleared, including Transfer Counterparts, so that clearing is left to the Operator in the Budget App.
+2. Use case continues at step 4.
+
+### A10: Reset a Fetch Cooldown to Its Default
+
+**Trigger:** Operator chooses, on a Data Provider's page, to reset its Fetch Cooldown to the default its part declares (step 2)  
+**Flow:**
+
+1. Slussen takes the default the Data Provider's part declares as the new value.
 2. Use case continues at step 4.
 
 ## Postconditions
@@ -142,7 +150,7 @@ With Detailed Logging off, device logs contain no transaction amounts, payees, m
 
 ### BR-006: Settings Are Kept
 
-The Operator Settings are included in device backups, restored after a reinstall and kept on an upgrade of the same build. There is no action that resets them to their defaults, with one exception: the Card Payment Descriptions and the Bank Transfer Descriptions can each be restored to their default list (A8), and the list they replace is recorded in the Decision Journal first.
+The Operator Settings are included in device backups, restored after a reinstall and kept on an upgrade of the same build. There is no action that resets them to their defaults, with two exceptions: the Card Payment Descriptions and the Bank Transfer Descriptions can each be restored to their default list (A8), and the list they replace is recorded in the Decision Journal first; and the Fetch Cooldown of a Data Provider can be reset to the default its part declares (A10), recorded like any other change.
 
 ### BR-007: Default Description Lists
 
@@ -167,3 +175,7 @@ An entry is a non-empty text. Within one list, no two entries are equal when com
 ### BR-009: Description Changes Apply Only Before Upload
 
 A change to either list, including a restore, applies only to Transfers none of whose Transfer Legs has been uploaded. An uploaded Transfer keeps its outcome. A Transfer that has a Transfer Decision of the Operator keeps that decision; the changed lists only decide which Transfers Slussen proposes among the other Bank Transactions not yet uploaded.
+
+### BR-010: Each Service's Settings Come From Its Part
+
+Settings keeps the Operator Settings that apply to everything. Its Connections section lists each service in use, each Data Provider whose credentials are entered and the Budget App, with its status, and below them the Data Providers of the build not yet set up, each with the action to set it up (UC-014). Each service in use has one page that holds its status, its credentials (UC-014) and everything else that belongs to it: for a Data Provider its Fetch Cooldown with the default its part declares, its Request Limit (shown, not changeable, UC-001 BR-007), the Bank Accounts that come from it (UC-009) and, when it needs a Bank Consent, its Bank Consents (UC-007); for the Budget App the Budgets in use (UC-013) and, when it supports the Cleared marker, Upload as Cleared. A service's page and its settings are generated from what its part declares: its name, the credentials it asks for, its default Fetch Cooldown, its Request Limit, whether it needs a Bank Consent and whether it supports the Cleared marker. Adding a Data Provider's part to a build brings its own page and settings; nothing per service is written into the screens, and the Adopting Developer configures nothing (UC-012 A2).

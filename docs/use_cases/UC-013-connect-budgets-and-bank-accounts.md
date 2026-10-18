@@ -7,10 +7,10 @@
 **Primary Actor:** Operator  
 **Secondary Actors:** Budget App, Data Provider  
 **Goal:** Enter the service credentials, choose the Budgets Slussen serves and add Bank Accounts by pairing each with a Budget Account, so that their transactions are fetched, compared and proposed for Upload without rebuilding the app  
-**Trigger:** Operator asks to connect Budgets and Bank Accounts, or opens Slussen while no Bank Account is added yet  
+**Trigger:** Operator asks to connect Budgets and Bank Accounts, chooses the Budgets in use on the Budget App's page in Connections, or opens Slussen while no Bank Account is added yet  
 **Status:** Approved  
 
-**Requirements:** [FR-056, FR-058, FR-066, FR-075, FR-097, FR-098, FR-099, NFR-010, NFR-017, NFR-020, NFR-021, C-012](../requirements.md)
+**Requirements:** [FR-056, FR-058, FR-066, FR-075, FR-097, FR-098, FR-099, FR-103, NFR-010, NFR-017, NFR-020, NFR-021, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -135,4 +135,4 @@ The chosen Budgets and each added Bank Account with its identifier, name, Start 
 
 ### BR-008: First-Run Order
 
-Setting up Slussen goes in this order: enter the service credentials of the Budget App and of the Data Providers (UC-014); choose the Budgets; then add Bank Accounts by pairing them, granting a Bank Consent first where a Data Provider needs one to offer its Bank Accounts (UC-007, A3). Later, each of these can be done again on its own.
+Setting up Slussen goes in this order: enter the service credentials of the Budget App and of the Data Providers (UC-014); choose the Budgets; then add Bank Accounts by pairing them, granting a Bank Consent first where a Data Provider needs one to offer its Bank Accounts (UC-007, A3). Later, each of these can be done again on its own: the credentials on each service's page in Connections (UC-014), the Budgets from the Budget App's page, which shows the Budgets in use and leads to their choice (step 2), and the Bank Accounts from Settings.

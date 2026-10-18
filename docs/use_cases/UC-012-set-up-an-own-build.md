@@ -9,7 +9,7 @@
 **Trigger:** Adopting Developer decides to use Slussen for their own household  
 **Status:** Approved  
 
-**Requirements:** [FR-070, FR-071, FR-072, FR-073, FR-083, FR-084, FR-085, NFR-014, NFR-015, NFR-021, C-001, C-002, C-003, C-004, C-005, C-008, C-010, C-013](../requirements.md)
+**Requirements:** [FR-070, FR-071, FR-072, FR-073, FR-083, FR-084, FR-085, FR-103, NFR-014, NFR-015, NFR-021, C-001, C-002, C-003, C-004, C-005, C-008, C-010, C-013](../requirements.md)
 
 ## Preconditions
 
@@ -39,8 +39,8 @@
 **Trigger:** A Bank of the household is reached by no Data Provider of this build and offers no Transaction File (step 3)  
 **Flow:**
 
-1. Adopting Developer adds a Data Provider as its own part, declaring whether it gives every transaction a Stable Reference, the credentials the Operator enters for it, its Request Limit and its default Fetch Cooldown.
-2. Slussen applies its existing rules for comparing, reviewing and deciding to the new part's Bank Transactions.
+1. Adopting Developer adds a Data Provider as its own part, declaring its name, whether it gives every transaction a Stable Reference, the credentials the Operator enters for it, its Request Limit, its default Fetch Cooldown and whether it needs a Bank Consent.
+2. Slussen applies its existing rules for comparing, reviewing and deciding to the new part's Bank Transactions, and gives the new Data Provider its own page and settings in Connections, generated from what its part declares, with no screen written for it (UC-010 BR-010).
 3. Use case continues at step 3.
 
 ### A3: Bank Export Format Missing

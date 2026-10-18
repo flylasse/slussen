@@ -283,13 +283,13 @@
 </head>
 <body>
 <main>
-<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a> <a href="setup.html" class="here">Setup</a> <a href="icons.html">Icons</a></nav>
+<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="connections.html">Connections</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a> <a href="setup.html" class="here">Setup</a> <a href="icons.html">Icons</a></nav>
 <p class="eyebrow">Slussen · screen mockup · UC-013, UC-014</p>
 <h1>Set up Slussen</h1>
 <p class="sub">Service credentials, Budgets and Bank Accounts, entered in the app.</p>
 <section>
 <h2>First run</h2>
-<p class="lede">The order of UC-013 BR-008: service credentials, Budgets, then Bank Accounts. Each step can be done again later from Settings.</p>
+<p class="lede">The order of UC-013 BR-008: service credentials, Budgets, then Bank Accounts. Each step can be done again later: credentials and Budgets on each service's page in <a href="connections.html#list">Connections</a>, Bank Accounts from Settings.</p>
 <div class="flow">
 <div class="state" id="welcome">
 <div class="step-label"><span class="n">UC-013 1 · UC-014 1 · UC-012 6</span><p><b>First run</b>: the credentials list, in the order of UC-013 BR-008.</p></div>
@@ -518,25 +518,14 @@
 </div>
 </div>
 </section><section>
-<h2>Service credentials later</h2>
-<p class="lede"></p>
+<h2>Service credentials later, from Connections</h2>
+<p class="lede">Changed (S-26): credentials are replaced or removed on the service's page in <a href="connections.html#list">Connections</a>, and the use case ends there.</p>
 <div class="flow">
-<div class="state" id="credentials">
-<div class="step-label"><span class="n">UC-014 1</span><p><b>Service credentials</b> from Settings: change or remove.</p></div>
-<div class="phone">
-<div class="screen-title">Set up Slussen</div>
-<p class="screen-sub">Service credentials</p>
-<div class="body">
-<div class="card"><a class="cfg-row" href="#ynab-token"><span class="nm">YNAB <span class="hint">Budget App</span></span> <span class="chip green">Accepted</span></a> <a class="cfg-row" href="#simplefin-token"><span class="nm">SimpleFIN <span class="hint">Data Provider · US Banks</span></span> <span class="chip green">Accepted</span></a> <a class="cfg-row" href="#enable-banking"><span class="nm">Enable Banking <span class="hint">Data Provider · European Banks</span></span> <span class="chip red">Refused</span></a></div><div class="small muted" style="margin:0 4px">Tap one to change or remove it</div>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
-</div>
-</div>
 <div class="state" id="remove-credentials">
-<div class="step-label"><span class="n">UC-014 A3 1–2</span><p><b>Remove credentials</b>: confirmation first.</p></div>
+<div class="step-label"><span class="n">UC-014 A3 1–2</span><p><b>Remove credentials</b> on the SimpleFIN page: confirmation first.</p></div>
 <div class="phone">
-<div class="screen-title">Set up Slussen</div>
-<p class="screen-sub">Service credentials</p>
+<div class="screen-title"><a class="back" href="connections.html#list">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider</p>
 <div class="body">
 <div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">SimpleFIN</span></div></div><div style="height:160px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Remove SimpleFIN credentials?</h4><p>SimpleFIN is not contacted until you enter new ones.</p><div class="actions"><span class="c">Cancel</span> <a class="x" href="#removed">Remove</a></div></div><div style="height:100px"></div>
 </div>
@@ -544,12 +533,12 @@
 </div>
 </div>
 <div class="state" id="removed">
-<div class="step-label"><span class="n">UC-014 A3 3–5 · BR-005</span><p><b>Removed</b>: Blocked Reason credentials missing, with the remedy.</p></div>
+<div class="step-label"><span class="n">UC-014 A3 3–5 · BR-005 · BR-007</span><p><b>Removed</b>: the SimpleFIN page with the Blocked Reason credentials missing and the remedy; in Connections, SimpleFIN is listed under not set up.</p></div>
 <div class="phone">
-<div class="screen-title">Set up Slussen</div>
-<p class="screen-sub">Service credentials</p>
+<div class="screen-title"><a class="back" href="connections.html#list">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider</p>
 <div class="body">
-<div class="card"><a class="cfg-row" href="#ynab-token"><span class="nm">YNAB <span class="hint">Budget App</span></span> <span class="chip green">Accepted</span></a> <a class="cfg-row" href="#simplefin-token"><span class="nm">SimpleFIN <span class="hint">Data Provider · US Banks</span></span> <span class="chip grey">Not entered</span></a> <a class="cfg-row" href="#enable-banking"><span class="nm">Enable Banking <span class="hint">Data Provider · European Banks</span></span> <span class="chip green">Accepted</span></a></div><div class="banner"><span class="txt"><b>Blocked: credentials missing · SimpleFIN</b></span> <a class="cta-btn" href="#simplefin-token">Enter</a></div>
+<div class="card"><div class="src-row"><span class="dot amber"></span> <span class="nm">Credentials missing</span> <span class="warn">Not contacted</span></div></div><div class="banner"><span class="txt"><b>Blocked: credentials missing</b> <span class="d">Kestrel Checking, Pinecrest Rewards Visa, Reserve Saver</span></span> <a class="cta-btn" href="#simplefin-token">Enter</a></div><div class="small muted" style="margin:0 4px">Credentials removed · recorded in the Decision Journal</div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>

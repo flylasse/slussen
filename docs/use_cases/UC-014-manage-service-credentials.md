@@ -7,10 +7,10 @@
 **Primary Actor:** Operator  
 **Secondary Actors:** Budget App, Data Provider  
 **Goal:** Give Slussen valid service credentials for the Budget App and for each Data Provider the household uses, kept only on the phone, and change or remove them when needed  
-**Trigger:** Operator asks to enter, change or remove the service credentials of the Budget App or of a Data Provider, or Connect Budgets and Bank Accounts reaches its credentials step  
+**Trigger:** Operator asks in Connections to set up a Data Provider of this build, or on a service's page to enter, replace or remove its service credentials, or Connect Budgets and Bank Accounts reaches its credentials step  
 **Status:** Approved  
 
-**Requirements:** [FR-064, FR-066, FR-101, FR-102, NFR-008, NFR-009, NFR-012, NFR-021, C-004, C-008](../requirements.md)
+**Requirements:** [FR-064, FR-066, FR-101, FR-102, FR-103, NFR-008, NFR-009, NFR-012, NFR-021, C-004, C-008](../requirements.md)
 
 ## Preconditions
 
@@ -18,12 +18,12 @@
 
 ## Main Success Scenario
 
-1. Slussen shows the Budget App and each Data Provider of this build, with whether its service credentials are entered and accepted.
-2. Operator chooses the Budget App or a Data Provider and enters the credentials its part asks for, as Slussen describes them with where to get them (BR-002).
+1. Slussen shows Connections: the Budget App and each Data Provider whose service credentials are entered, each with its status, and the Data Providers of this build not yet set up (BR-007).
+2. Operator chooses to set up a Data Provider, or opens the page of a service and chooses its credentials, and enters the credentials its part asks for, as Slussen describes them with where to get them (BR-002).
 3. Slussen checks the credentials with the service (BR-002).
 4. Slussen stores the accepted credentials on the device, encrypted with a key that never leaves the device, replacing earlier ones (BR-003), and keeps nothing it no longer needs.
 5. Slussen records in the Decision Journal that the credentials of that service were changed, without any credential (UC-011 BR-003).
-6. Slussen shows the credentials as accepted.
+6. Slussen shows the credentials as accepted on the service's page, or returns to Connect Budgets and Bank Accounts when that started this use case.
 
 ## Alternative Flows
 
@@ -45,12 +45,12 @@
 
 ### A3: Remove Credentials
 
-**Trigger:** Operator chooses to remove the credentials of the Budget App or of a Data Provider (step 2)  
+**Trigger:** Operator chooses, on the page of the Budget App or of a Data Provider, to remove its credentials (step 2)  
 **Flow:**
 
 1. Slussen asks the Operator to confirm, stating that the service will not be contacted until new credentials are entered.
 2. Operator confirms, or cancels and the use case ends.
-3. Slussen deletes the credentials and shows the Blocked Reason "credentials missing" for the Sources or Budgets concerned (BR-005).
+3. Slussen deletes the credentials and shows the service's page with the Blocked Reason "credentials missing" for the Sources or Budgets concerned (BR-005).
 4. Slussen records the removal in the Decision Journal.
 5. Use case ends.
 
@@ -99,3 +99,7 @@ Whenever the Budget App or a Data Provider refuses Slussen's credentials, or non
 ### BR-006: Rotate Exposed Credentials
 
 When a phone with Slussen leaves the Operator's control, the Operator revokes every credential entered in it at its service and replaces it before Slussen is used again (C-004).
+
+### BR-007: Connections Lists the Services
+
+Connections lists the Budget App and each Data Provider whose credentials are entered, each with one status line, such as connected with the time of its last Fetch, "credentials refused", or the nearest expiry of a Bank Consent within the consent warning lead time (UC-008 BR-002), and below them every Data Provider of this build whose credentials are not entered, also after they were removed, each with the action to set it up. Each listed service opens its own page (UC-010 BR-010). The Budget App is always listed, with "credentials missing" until its credentials are accepted.
