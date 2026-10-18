@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slussen Upload Plan</title>
+<style>
+  :root {
+    --page-bg: #f4f5f7; --page-ink: #1d2430; --page-ink-2: #5a6472; --page-line: #d9dde3;
+    --page-card: #ffffff; --accent: #2f8f83; --amber: #b07f1e; --danger: #b04a3a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page-bg: #0e1117; --page-ink: #e6eaf0; --page-ink-2: #98a2b0; --page-line: #2a303a;
+      --page-card: #161a22; --accent: #5fd4c4; --amber: #d4a94f; --danger: #e07b6a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page-bg: #0e1117; --page-ink: #e6eaf0; --page-ink-2: #98a2b0; --page-line: #2a303a;
+    --page-card: #161a22; --accent: #5fd4c4; --amber: #d4a94f; --danger: #e07b6a;
+  }
+  /* App-mirror tokens: the phone frames show Slussen's own dark theme in both page themes. */
+  :root {
+    --app-bg: #0b0e13; --app-surface: #151a22; --app-surface2: #1d232e;
+    --app-line: #262c38; --app-line-soft: #202634;
+    --app-text: #e8ecf2; --app-text2: #9aa4b2; --app-text3: #6b7585;
+    --app-teal: #5fd4c4; --app-teal-bg: #12312e; --app-teal-line: #1f4a45;
+    --app-amber: #d4a94f; --app-amber-bg: #33270e; --app-amber-line: #57431a;
+    --app-green: #6fce8a; --app-green-bg: #12301c; --app-green-line: #1e4a2c;
+    --app-blue: #7aa7e8; --app-blue-bg: #16202f; --app-blue-line: #2b4468;
+    --app-red: #e8806e; --app-red-bg: #331713; --app-red-line: #5a2a22;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page-bg); color: var(--page-ink);
+    font: 15px/1.55 system-ui, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 72px; }
+  a { color: var(--accent); }
+  nav.site { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; padding: 8px 0 18px;
+    border-bottom: 1px solid var(--page-line); margin-bottom: 22px; }
+  nav.site a { text-decoration: none; }
+  nav.site a.here { font-weight: 700; color: var(--page-ink); }
+  h1 { font-size: 26px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+  .sub, .lede { color: var(--page-ink-2); margin: 6px 0 0; max-width: 78ch; }
+  .sub b, .lede b { color: var(--page-ink); }
+  section { margin-top: 40px; }
+  code { font-family: ui-monospace, "Cascadia Code", "Roboto Mono", Menlo, monospace; font-size: 0.92em; }
+  .footnote { font-size: 12.5px; color: var(--page-ink-2); margin-top: 14px; max-width: 80ch; }
+
+  .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr)); gap: 26px; margin-top: 20px; align-items: start; }
+  .state { scroll-margin-top: 16px; }
+  .state:target .phone { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .step-label { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .step-label .n { font-family: ui-monospace, monospace; font-size: 11.5px; font-weight: 700; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px; flex: none; white-space: nowrap; }
+  .step-label p { margin: 0; font-size: 13.5px; color: var(--page-ink-2); }
+  .step-label b { color: var(--page-ink); }
+
+  /* Phone frame: mirrors the app */
+  .phone { position: relative; background: var(--app-bg); border: 1px solid var(--page-line); border-radius: 18px;
+    padding: 14px 12px 8px; color: var(--app-text); font-size: 13px; line-height: 1.45; overflow: hidden;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.18); display: flex; flex-direction: column; max-width: 420px; }
+  .phone a { color: inherit; text-decoration: none; }
+  .dialog code { font-family: inherit; font-size: inherit; }
+  .phone .screen-title { font-size: 15px; font-weight: 700; margin: 2px 4px 1px; display: flex; align-items: center; gap: 8px; }
+  .phone .screen-title .back { color: var(--app-text2); font-weight: 400; }
+  .phone .screen-sub { font-size: 11px; color: var(--app-text2); margin: 0 4px 10px; }
+  .phone .body { flex: 1; }
+  .card { background: var(--app-surface); border: 1px solid var(--app-line); border-radius: 10px; padding: 11px 12px; margin: 0 0 9px; }
+  .card.amber { border-color: var(--app-amber-line); }
+  .card.red { border-color: var(--app-red-line); }
+  .card.blue { border-color: var(--app-blue-line); }
+  .card.teal { border-color: var(--app-teal-line); }
+  .hair { border-top: 1px solid var(--app-line-soft); margin: 9px -12px 9px; }
+  .muted { color: var(--app-text2); }
+  .dim { color: var(--app-text3); }
+  .small { font-size: 11px; }
+  .blk { display: block; }
+
+  .chip { display: inline-block; font-size: 10px; font-weight: 600; border-radius: 5px; padding: 2px 7px; vertical-align: 1px; white-space: nowrap; }
+  .chip.amber { background: var(--app-amber-bg); color: var(--app-amber); }
+  .chip.teal { background: var(--app-teal-bg); color: var(--app-teal); }
+  .chip.green { background: var(--app-green-bg); color: var(--app-green); }
+  .chip.blue { background: var(--app-blue-bg); color: var(--app-blue); }
+  .chip.red { background: var(--app-red-bg); color: var(--app-red); }
+  .chip.grey { background: var(--app-surface2); color: var(--app-text3); }
+  .amt { font-family: ui-monospace, "Roboto Mono", monospace; font-variant-numeric: tabular-nums; font-size: 12.5px; white-space: nowrap; }
+  .amt.in { color: var(--app-green); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--app-green); margin-right: 6px; vertical-align: 1px; flex: none; }
+  .dot.amber { background: var(--app-amber); } .dot.red { background: var(--app-red); } .dot.grey { background: var(--app-text3); }
+  .dot.blue { background: var(--app-blue); }
+
+  /* Budget header */
+  .bh { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .bh .nm { font-weight: 700; font-size: 14.5px; }
+  .bh .meta { font-size: 11px; color: var(--app-text2); }
+  .bh .r { margin-left: auto; }
+  .cta-btn { display: inline-block; background: var(--app-blue-bg); border: 1px solid var(--app-blue-line);
+    color: var(--app-blue) !important; border-radius: 9px; padding: 6px 12px; font-size: 12px; font-weight: 600; }
+  .cta-btn.big { display: block; text-align: center; margin-top: 9px; padding: 8px; }
+  .cta-btn.dim { opacity: 0.45; }
+  .cta-btn.danger { background: var(--app-red-bg); border-color: var(--app-red-line); color: var(--app-red) !important; }
+  .cta-btn.ghost { background: none; border-color: var(--app-line); color: var(--app-text2) !important; }
+
+  /* Source block */
+  .src-h { font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--app-text3); margin: 2px 2px 7px; display: flex; gap: 8px; }
+  .src-h .r { margin-left: auto; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--app-blue); }
+  .src-row { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+  .src-row .nm { font-weight: 600; font-size: 13px; }
+  .src-row .ok { color: var(--app-green); font-size: 11px; font-weight: 600; }
+  .src-row .warn { color: var(--app-amber); font-size: 11px; font-weight: 600; }
+  .src-row .bad { color: var(--app-red); font-size: 11px; font-weight: 600; }
+  .src-row .gran { margin-left: auto; font-size: 10.5px; color: var(--app-text3); }
+  .src-note { font-size: 10.5px; color: var(--app-text2); margin-top: 2px; }
+  .src-note b { color: var(--app-text); font-weight: 600; }
+  .acct-line { display: flex; gap: 6px; font-size: 11.5px; padding: 3px 0 0; color: var(--app-text2); }
+  .acct-line .amt { margin-left: auto; color: var(--app-text); }
+
+  /* Buttons (app) */
+  .btn { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600;
+    border: 1px solid var(--app-line); color: var(--app-text2) !important; background: var(--app-surface2);
+    border-radius: 8px; padding: 5px 11px; margin-top: 8px; }
+  .btn.busy { border-color: var(--app-blue-line); color: var(--app-blue) !important; background: var(--app-blue-bg); }
+  .btn.done { border-color: var(--app-teal-line); color: var(--app-teal) !important; background: var(--app-teal-bg); }
+  .btn.cool { border-color: var(--app-green-line); color: var(--app-green) !important; background: var(--app-green-bg); }
+  .btn.blocked { opacity: 0.4; }
+  .btn.warn { border-color: var(--app-amber-line); color: var(--app-amber) !important; background: var(--app-amber-bg); }
+  .btn.primary { border-color: var(--app-blue-line); color: var(--app-blue) !important; background: var(--app-blue-bg); }
+  .btn.danger { border-color: var(--app-red-line); color: var(--app-red) !important; background: var(--app-red-bg); }
+  .spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--app-blue); border-top-color: transparent; animation: sp 0.9s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+  /* Bank Account card and transaction rows */
+  .acct-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .acct-h .nm { font-weight: 700; font-size: 13.5px; }
+  .acct-h .r { margin-left: auto; }
+  .tagrow { margin-top: 5px; display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+  .balrow { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--app-text2); margin-top: 6px; }
+  .balrow b { color: var(--app-text); font-weight: 600; font-family: ui-monospace, monospace; }
+  .txrow { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-top: 1px solid var(--app-line-soft); font-size: 12px; }
+  .txrow .d { color: var(--app-text3); font-family: ui-monospace, monospace; font-size: 11px; flex: none; }
+  .txrow .p { flex: 1 1 auto; min-width: 0; }
+  .txrow .p .why { display: block; font-size: 10.5px; color: var(--app-text3); }
+  .txrow .amt { color: var(--app-text); }
+  .txrow .stc { flex: none; }
+  .grp { font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--app-text3); margin: 10px 0 2px; }
+  .grp.amber { color: var(--app-amber); } .grp.green { color: var(--app-green); }
+
+  /* Bottom navigation */
+  .nav { display: flex; border-top: 1px solid var(--app-line); margin: 10px -12px 0; padding: 7px 4px 4px; }
+  .nav .tab { flex: 1; text-align: center; font-size: 10px; color: var(--app-text3); position: relative; min-width: 0; }
+  .nav .tab .ic { display: block; font-size: 15px; line-height: 1.25; }
+  .nav .tab .cur { display: block; margin: 1px auto 2px; font-size: 8.5px; font-weight: 700; letter-spacing: .04em;
+    border: 1px solid var(--app-line); border-radius: 3px; width: 30px; color: var(--app-text2); }
+  .nav .tab.on { color: var(--app-blue); font-weight: 700; }
+  .nav .tab.on .cur { border-color: var(--app-blue-line); color: var(--app-blue); }
+  .nav .tab .bdg { position: absolute; top: -4px; left: 58%; background: var(--app-green-bg); color: var(--app-green);
+    border: 1px solid var(--app-green-line); font-size: 9px; font-weight: 700; border-radius: 999px; padding: 0 5px; }
+  .nav .tab .bdg.warn { background: var(--app-amber-bg); color: var(--app-amber); border-color: var(--app-amber-line); }
+
+  /* Banner and strip */
+  .banner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: var(--app-amber-bg);
+    border: 1px solid var(--app-amber-line); border-radius: 10px; padding: 10px 12px; margin: 0 0 9px; }
+  .banner.blue { background: var(--app-blue-bg); border-color: var(--app-blue-line); }
+  .banner.red { background: var(--app-red-bg); border-color: var(--app-red-line); }
+  .banner.grey { background: var(--app-surface); border-color: var(--app-line); }
+  .banner .txt { flex: 1 1 190px; font-size: 12.5px; }
+  .banner .txt b { color: var(--app-amber); }
+  .banner.blue .txt b { color: var(--app-blue); } .banner.red .txt b { color: var(--app-red); } .banner.grey .txt b { color: var(--app-text); }
+  .banner .txt .d { color: var(--app-text2); font-size: 11.5px; display: block; }
+
+  /* Pinned footer (plan) */
+  .foot { border-top: 1px solid var(--app-blue-line); margin: 8px -12px 0; padding: 10px 12px 4px; background: var(--app-surface); }
+  .foot .sum { font-size: 11px; color: var(--app-text2); margin-bottom: 7px; }
+  .foot .sum b { color: var(--app-text); }
+  .pair { display: flex; gap: 8px; }
+  .pair .cta-btn { flex: 1; text-align: center; margin: 0; }
+  .pair .cta-btn.ghost { flex: 0 0 auto; }
+  .kv { display: flex; gap: 8px; font-size: 11.5px; padding: 3px 0; border-top: 1px solid var(--app-line-soft); }
+  .kv:first-child { border-top: none; }
+  .kv .k { color: var(--app-text2); flex: 0 0 44%; }
+  .kv .v { color: var(--app-text); flex: 1; }
+  .sticky { position: sticky; top: 0; z-index: 2; background: var(--app-surface2); border: 1px solid var(--app-line);
+    border-radius: 8px; padding: 6px 10px; margin: 9px 0 0; }
+
+  /* Settings rows */
+  .cfg-row { display: flex; align-items: baseline; gap: 8px; padding: 7px 2px; border-top: 1px solid var(--app-line-soft); font-size: 12.5px; flex-wrap: wrap; }
+  .cfg-row:first-child { border-top: none; }
+  .cfg-row .nm { flex: 1 1 55%; }
+  .cfg-row .nm .hint { display: block; font-size: 10.5px; color: var(--app-text3); }
+  .cfg-row .val { font-family: ui-monospace, monospace; font-size: 12px; color: var(--app-teal); border: 1px solid var(--app-line); border-radius: 6px; padding: 1px 8px; margin-left: auto; }
+  .cfg-row .val.bad { color: var(--app-red); border-color: var(--app-red-line); }
+  .cfg-row .go { color: var(--app-text3); }
+  .sec-t { font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--app-text3); margin: 12px 4px 6px; }
+  .toggle { display: inline-block; width: 30px; height: 16px; border-radius: 999px; background: var(--app-teal-line); position: relative; margin-left: auto; }
+  .toggle::after { content: ""; position: absolute; right: 2px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--app-teal); }
+  .toggle.off { background: var(--app-line); } .toggle.off::after { right: auto; left: 2px; background: var(--app-text3); }
+
+  /* Sheet, dialog, scrim */
+  .scrim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+  .ghost { opacity: .35; pointer-events: none; }
+  .sheet { position: relative; background: var(--app-surface); border: 1px solid var(--app-line); border-radius: 14px 14px 10px 10px; padding: 12px 12px 10px; margin-top: 10px; }
+  .sheet.blue { border-color: var(--app-blue-line); } .sheet.teal { border-color: var(--app-teal-line); } .sheet.amber { border-color: var(--app-amber-line); }
+  .sheet.red { border-color: var(--app-red-line); }
+  .grab { width: 34px; height: 4px; border-radius: 2px; background: var(--app-line); margin: 0 auto 10px; }
+  .sheet h4, .dialog h4 { margin: 0; font-size: 14px; }
+  .sheet .ctx { font-size: 11px; color: var(--app-text2); margin: 1px 0 8px; }
+  .item { display: flex; gap: 11px; padding: 10px 4px; border-top: 1px solid var(--app-line-soft); }
+  .item .ic { width: 18px; text-align: center; color: var(--app-text2); flex: none; }
+  .item .t { font-size: 12.5px; font-weight: 600; display: block; }
+  .item .d { font-size: 10.5px; color: var(--app-text2); display: block; }
+  .item.off .t, .item.off .ic { color: var(--app-text3); }
+  .item.danger .t, .item.danger .ic { color: var(--app-red); }
+  .item.sep { border-top: 1px solid var(--app-line); margin-top: 4px; }
+  .dialog { position: relative; margin: 26px 8px; background: var(--app-surface2); border: 1px solid var(--app-line); border-radius: 18px; padding: 18px 18px 12px; }
+  .dialog h4 { font-size: 16px; margin-bottom: 8px; }
+  .dialog p { margin: 0 0 8px; font-size: 12.5px; color: var(--app-text2); }
+  .dialog b { color: var(--app-text); }
+  .actions { display: flex; justify-content: flex-end; gap: 18px; margin-top: 6px; font-size: 12.5px; font-weight: 600; }
+  .actions .c { color: var(--app-blue); } .actions .x { color: var(--app-red); } .actions .ok { color: var(--app-teal); }
+  .snack { display: flex; justify-content: space-between; gap: 10px; margin: 10px 4px 0; background: #e8ecf2; color: #151a22; border-radius: 6px; padding: 9px 12px; font-size: 12px; }
+  .snack b { color: #1f6fd1; }
+  .pick { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-top: 1px solid var(--app-line-soft); }
+  .pick .radio { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--app-text3); flex: none; }
+  .pick.sel .radio { border-color: var(--app-teal); box-shadow: inset 0 0 0 3px var(--app-surface), inset 0 0 0 8px var(--app-teal); }
+  .pick .nm { font-weight: 600; font-size: 12.5px; display: block; }
+  .pick .meta { font-size: 10.5px; color: var(--app-text3); display: block; }
+  .pick .badge { margin-left: auto; font-size: 9.5px; color: var(--app-text2); background: var(--app-surface2); border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+  .pick.off { opacity: .45; }
+  .cta { display: block; margin-top: 10px; text-align: center; background: var(--app-blue-bg); border: 1px solid var(--app-blue-line); color: var(--app-blue) !important; border-radius: 9px; padding: 8px; font-size: 12.5px; font-weight: 600; }
+  .cta.dim { opacity: .45; }
+  .choices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .choice { font-size: 11px; border: 1px solid var(--app-line); border-radius: 999px; padding: 3px 10px; color: var(--app-text2); }
+  .choice.on { border-color: var(--app-teal-line); color: var(--app-teal); background: var(--app-teal-bg); }
+  .choice.off { opacity: .4; }
+  .stepn { display: flex; gap: 9px; align-items: flex-start; padding: 8px 2px; border-top: 1px solid var(--app-line-soft); }
+  .stepn .i { font-family: ui-monospace, monospace; font-size: 10.5px; font-weight: 700; color: var(--app-blue);
+    border: 1px solid var(--app-blue-line); border-radius: 999px; padding: 0 6px; flex: none; margin-top: 2px; }
+  .stepn .t { font-size: 12px; font-weight: 600; display: block; }
+  .stepn .d { font-size: 11px; color: var(--app-text2); display: block; }
+  .note { color: var(--app-text2); font-size: 11.5px; margin: 8px 0 0; }
+  .note b { color: var(--app-text); font-weight: 600; }
+
+  /* Account Mapping map */
+  .group-h { display: flex; justify-content: space-between; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--app-text3); padding: 0 4px 4px; margin-top: 10px; }
+  .map { background: var(--app-surface); border: 1px solid var(--app-line); border-radius: 10px; }
+  .mrow { display: grid; grid-template-columns: minmax(0,1fr) 42px minmax(0,1fr) 22px; align-items: center; gap: 4px; padding: 9px 4px 9px 10px; border-top: 1px solid var(--app-line-soft); }
+  .map > .mrow:first-child { border-top: none; }
+  .mrow.hl { background: var(--app-surface2); }
+  .mrow .nm { font-weight: 600; font-size: 12px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mrow .meta { font-size: 10px; color: var(--app-text3); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mrow .meta.teal { color: var(--app-teal); } .mrow .meta.amber { color: var(--app-amber); } .mrow .meta.red { color: var(--app-red); }
+  .mrow .more { color: var(--app-text2); text-align: center; }
+  .mrel { padding: 0 10px 8px; margin-top: -4px; font-size: 10px; }
+  .relchip { display: inline-block; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--app-blue-line); color: var(--app-blue); background: var(--app-blue-bg); }
+  .relchip.unset { border-style: dashed; color: var(--app-text2); background: transparent; border-color: var(--app-line); }
+  .kind { display: inline-block; font-size: 8.5px; font-weight: 700; border-radius: 3px; padding: 0 4px; margin-right: 4px; background: var(--app-surface2); color: var(--app-text2); border: 1px solid var(--app-line); }
+  .conn svg { display: block; width: 42px; height: 14px; }
+  .retired .nm, .retired .meta { color: var(--app-text3) !important; }
+
+  /* Page-level legend, gallery and tables */
+  .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)); gap: 12px; margin-top: 16px; }
+  .gallery .st { background: var(--page-card); border: 1px solid var(--page-line); border-radius: 10px; padding: 12px 14px; }
+  .gallery .st h4 { margin: 0 0 2px; font-size: 13px; }
+  .gallery .st p { margin: 0 0 4px; font-size: 12px; color: var(--page-ink-2); }
+  .gallery .stage { background: var(--app-bg); color: var(--app-text); border-radius: 8px; padding: 4px 10px 10px; margin-top: 6px; font-size: 12px; }
+  .table-wrap { overflow-x: auto; margin-top: 16px; }
+  table { border-collapse: collapse; width: 100%; background: var(--page-card); border: 1px solid var(--page-line); font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-top: 1px solid var(--page-line); vertical-align: top; }
+  thead th { border-top: none; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--page-ink-2); }
+  td.mono { font-family: ui-monospace, monospace; font-size: 12px; white-space: nowrap; }
+  .legend-chips { display: flex; flex-wrap: wrap; gap: 6px; background: var(--app-bg); border-radius: 10px; padding: 10px; margin-top: 12px; }
+  .icons { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 16px; margin-top: 16px; }
+  .icons figure { margin: 0; background: var(--page-card); border: 1px solid var(--page-line); border-radius: 12px; padding: 16px; }
+  .icons img { width: 120px; height: 120px; display: block; }
+  .icons .row { display: flex; gap: 12px; align-items: end; }
+  .icons .row img.s { width: 48px; height: 48px; }
+  .icons figcaption { font-size: 13px; color: var(--page-ink-2); margin-top: 10px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .io { display: flex; gap: 10px; }
+  .io > div { flex: 1; background: var(--app-surface2); border-radius: 8px; padding: 8px 10px; }
+  .io .lbl { display: block; font-size: 10.5px; color: var(--app-text2); text-transform: uppercase; letter-spacing: .06em; }
+  .io .big { display: block; font-family: ui-monospace, monospace; font-size: 19px; font-weight: 700; color: var(--app-text); }
+  .io .big.in { color: var(--app-green); }
+  .netline { display: flex; justify-content: space-between; font-size: 12px; color: var(--app-text2); margin: 8px 2px 0; }
+  .netline b { font-family: ui-monospace, monospace; color: var(--app-text); }
+  .tiles { display: flex; gap: 6px; margin-top: 8px; }
+  .tile { flex: 1; text-align: center; border: 1px solid var(--app-line); border-radius: 8px; padding: 5px 2px; }
+  .tile .tn { font-size: 16px; font-weight: 700; font-family: ui-monospace, monospace; }
+  .tile .tl { font-size: 10px; color: var(--app-text2); }
+  .scope { font-size: 11px; color: var(--app-text2); margin-top: 8px; }
+  .steps .stepn { padding: 6px 2px; }
+</style>
+</head>
+<body>
+<main>
+<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html" class="here">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="connections.html">Connections</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a> <a href="setup.html">Setup</a> <a href="icons.html">Icons</a></nav>
+<p class="eyebrow">Slussen · screen mockup · UC-006</p>
+<h1>Upload Plan</h1>
+<p class="sub">What Slussen will write, money first. Confirming it is the only way anything is written to the Budget App.</p>
+<section>
+<h2>The Upload Plan</h2>
+<p class="lede">Adopted from the predecessor: one review per Budget, rows under sticky Budget Account headers, Confirm and Cancel in the footer. Changed: money first, facts only, inside the Budget's tab (UC-006 step 3, BR-002, BR-019).</p>
+<div class="flow">
+<div class="state" id="awaiting">
+<div class="step-label"><span class="n">UC-006 2–4</span><p><b>The Upload Plan</b>, a view inside the Household tab: money in and out first, then the rows per Budget Account. Leaving it by Back or a tab discards it (BR-019); tapping a row opens its decision.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#leave">‹</a> Upload Plan</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="card blue"><div class="io"><div><span class="lbl">In</span> <span class="big in">+2,705.00</span></div><div><span class="lbl">Out</span> <span class="big">−1,088.07</span></div></div><div class="netline"><span>Net</span> <b>+1,616.93 USD</b></div><div class="tiles"><div class="tile"><div class="tn">9</div><div class="tl">Transactions</div></div><div class="tile"><div class="tn">8</div><div class="tl">New</div></div><div class="tile"><div class="tn">1</div><div class="tl">Match a Typed Entry</div></div></div><div class="scope">Household · Checking, Rewards Card, Reserve Savings</div><div class="tagrow"><span class="chip teal">Arrive Cleared</span> <a class="chip teal" href="#counterparts">Counterparts Cleared: 2</a> <span class="chip amber">Expiry 14:42</span></div></div><div class="sticky"><span class="acct-h"><span class="nm">Checking</span> <span class="chip grey">5</span> <span class="amt r">+1,781.43</span></span></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div><div class="txrow"><span class="d">10-12</span> <span class="p">Northwind Power</span> <span class="amt">−88.40</span><div class="stc"><span class="chip blue">Match For Typed Entry</span></div></div><a class="txrow" href="#decide-transfer-in-plan"><span class="d">10-11</span> <span class="p">Internet Transfer to Reserve <span class="why">→ Reserve Savings · counterpart Cleared</span></span> <span class="amt">−500.00</span><div class="stc"><span class="chip teal">Linked Transfer</span></div></a><div class="txrow"><span class="d">10-10</span> <span class="p">Payroll Acme Tools <span class="why">Resend</span></span> <span class="amt">+2,450.00</span><div class="stc"><span class="chip red">Outcome Unknown</span></div></div><div class="txrow"><span class="d">10-09</span> <span class="p">Lumen Streaming</span> <span class="amt">−15.99</span><div class="stc"><span class="chip green">New</span></div></div><div class="sticky"><span class="acct-h"><span class="nm">Rewards Card</span> <span class="chip grey">2</span> <span class="amt r">+170.50</span></span></div><a class="txrow" href="#decide-transfer-in-plan"><span class="d">10-14</span> <span class="p">Autopay Received <span class="why">← Checking</span></span> <span class="amt">+180.00</span><div class="stc"><span class="chip teal">Linked Transfer</span></div></a><div class="txrow"><span class="d">10-11</span> <span class="p">Café Brisa</span> <span class="amt">−9.50</span><div class="stc"><span class="chip green">New</span></div></div><div class="sticky"><span class="acct-h"><span class="nm">Reserve Savings</span> <span class="chip grey">2</span> <span class="amt r">−335.00</span></span></div><div class="txrow"><span class="d">10-10</span> <span class="p">Pinecrest Payment</span> <span class="amt">−410.00</span><div class="stc"><span class="chip green">New</span></div></div><div class="txrow"><span class="d">10-08</span> <span class="p">Internet Transfer from Checking</span> <span class="amt">+75.00</span><div class="stc"><span class="chip green">New</span></div></div><div class="sec-t" id="counterparts">Counterparts marked Cleared</div><div class="txrow"><span class="p">Reserve Savings · Bank Transfer from Checking</span> <span class="amt">500.00</span></div><div class="txrow"><span class="p">Checking · Card Payment of 2026-10-09</span> <span class="amt">600.00</span></div><div class="sec-t">Waiting for your decision · 9</div><a class="txrow" href="#decide-in-plan"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></a> <a class="txrow" href="#decide-transfer-in-plan"><span class="d">10-13</span> <span class="p">Autopay Received</span> <span class="amt">+410.00</span><div class="stc"><span class="chip amber">Guessed Transfer</span></div></a><p class="note">And 7 more</p>
+</div>
+<div class="foot"><div class="sum">In <b>+2,705.00</b> · Out <b>−1,088.07</b></div><div class="pair"><a class="cta-btn" href="#writing">Confirm Upload Plan</a> <a class="cta-btn ghost" href="#cancelled">Cancel</a></div></div><div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="bank-account-scope">
+<div class="step-label"><span class="n">UC-006 1 · BR-002</span><p><b>An Upload Plan for one Bank Account.</b></p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#leave">‹</a> Upload Plan</div>
+<p class="screen-sub">Kestrel Checking</p>
+<div class="body">
+<div class="card blue"><div class="io"><div><span class="lbl">In</span> <span class="big in">+2,450.00</span></div><div><span class="lbl">Out</span> <span class="big">−668.57</span></div></div><div class="netline"><span>Net</span> <b>+1,781.43 USD</b></div><div class="tiles"><div class="tile"><div class="tn">5</div><div class="tl">Transactions</div></div><div class="tile"><div class="tn">4</div><div class="tl">New</div></div><div class="tile"><div class="tn">1</div><div class="tl">Match a Typed Entry</div></div></div><div class="scope">Household · Kestrel Checking → Checking</div><div class="tagrow"><span class="chip teal">Arrive Cleared</span> <a class="chip teal" href="#counterparts">Counterparts Cleared: 2</a> <span class="chip amber">Expiry 14:42</span></div></div><div class="sticky"><span class="acct-h"><span class="nm">Checking</span> <span class="chip grey">5</span> <span class="amt r">+1,781.43</span></span></div><div class="txrow"><span class="d">10-14</span> <span class="p">Corner Grocer</span> <span class="amt">−64.18</span><div class="stc"><span class="chip green">New</span></div></div><div class="txrow"><span class="d">10-12</span> <span class="p">Northwind Power</span> <span class="amt">−88.40</span><div class="stc"><span class="chip blue">Match For Typed Entry</span></div></div><a class="txrow" href="#decide-transfer-in-plan"><span class="d">10-11</span> <span class="p">Internet Transfer to Reserve <span class="why">→ Reserve Savings · counterpart Cleared</span></span> <span class="amt">−500.00</span><div class="stc"><span class="chip teal">Linked Transfer</span></div></a><div class="txrow"><span class="d">10-10</span> <span class="p">Payroll Acme Tools <span class="why">Resend</span></span> <span class="amt">+2,450.00</span><div class="stc"><span class="chip red">Outcome Unknown</span></div></div><div class="txrow"><span class="d">10-09</span> <span class="p">Lumen Streaming</span> <span class="amt">−15.99</span><div class="stc"><span class="chip green">New</span></div></div>
+</div>
+<div class="foot"><div class="sum">In <b>+2,450.00</b> · Out <b>−668.57</b></div><div class="pair"><a class="cta-btn" href="#writing">Confirm Upload Plan</a> <a class="cta-btn ghost" href="#cancelled">Cancel</a></div></div><div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="cleared-off">
+<div class="step-label"><span class="n">UC-006 BR-016</span><p><b>Upload as Cleared off</b> when the plan was prepared.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#leave">‹</a> Upload Plan</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="card blue"><div class="io"><div><span class="lbl">In</span> <span class="big in">+2,705.00</span></div><div><span class="lbl">Out</span> <span class="big">−1,088.07</span></div></div><div class="netline"><span>Net</span> <b>+1,616.93 USD</b></div><div class="tiles"><div class="tile"><div class="tn">9</div><div class="tl">Transactions</div></div><div class="tile"><div class="tn">8</div><div class="tl">New</div></div><div class="tile"><div class="tn">1</div><div class="tl">Match a Typed Entry</div></div></div><div class="scope">Household · Checking, Rewards Card, Reserve Savings</div><div class="tagrow"><span class="chip teal">Arrive uncleared</span> <a class="chip teal" href="#counterparts">Counterparts Cleared: none</a> <span class="chip amber">Expiry 14:42</span></div></div>
+</div>
+<div class="foot"><div class="sum">In <b>+2,705.00</b> · Out <b>−1,088.07</b></div><div class="pair"><a class="cta-btn" href="#writing">Confirm Upload Plan</a> <a class="cta-btn ghost" href="#cancelled">Cancel</a></div></div><div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
+</section><section>
+<h2>Deciding inside the plan</h2>
+<p class="lede">A row opens its Review Decision or Transfer Decision; the plan is rebuilt in place with a new expiry.</p>
+<div class="flow">
+<div class="state" id="decide-in-plan">
+<div class="step-label"><span class="n">UC-006 A3 · UC-004 A8</span><p><b>Review Decision inside the plan.</b> The sheet opens on top; the plan is rebuilt after the choice.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#leave">‹</a> Upload Plan</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="ghost"><div class="card blue"><div class="io"><div><span class="lbl">In</span> <span class="big in">+2,705.00</span></div><div><span class="lbl">Out</span> <span class="big">−1,088.07</span></div></div><div class="netline"><span>Net</span> <b>+1,616.93 USD</b></div><div class="tiles"><div class="tile"><div class="tn">9</div><div class="tl">Transactions</div></div><div class="tile"><div class="tn">8</div><div class="tl">New</div></div><div class="tile"><div class="tn">1</div><div class="tl">Match a Typed Entry</div></div></div><div class="scope">Household · Checking, Rewards Card, Reserve Savings</div><div class="tagrow"><span class="chip teal">Arrive Cleared</span> <a class="chip teal" href="#counterparts">Counterparts Cleared: 2</a> <span class="chip amber">Expiry 14:42</span></div></div></div><div class="sheet amber"><div class="grab"></div><h4>Card purchase · −12.00</h4><p class="ctx">Kestrel Checking · 2026-10-13 · Needs Review</p><a class="item" href="#rebuilt"><span class="ic">↑</span> <span><span class="t">Import Anyway</span> <span class="d">Joins this plan</span></span></a><div class="item "><span class="ic">⏸</span> <span><span class="t">Defer</span> <span class="d">Stays out</span></span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="decide-transfer-in-plan">
+<div class="step-label"><span class="n">UC-006 A3 · UC-005</span><p><b>Transfer Decision inside the plan.</b></p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#leave">‹</a> Upload Plan</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="ghost"><div class="card blue"><div class="io"><div><span class="lbl">In</span> <span class="big in">+2,705.00</span></div><div><span class="lbl">Out</span> <span class="big">−1,088.07</span></div></div><div class="netline"><span>Net</span> <b>+1,616.93 USD</b></div><div class="tiles"><div class="tile"><div class="tn">9</div><div class="tl">Transactions</div></div><div class="tile"><div class="tn">8</div><div class="tl">New</div></div><div class="tile"><div class="tn">1</div><div class="tl">Match a Typed Entry</div></div></div><div class="scope">Household · Checking, Rewards Card, Reserve Savings</div><div class="tagrow"><span class="chip teal">Arrive Cleared</span> <a class="chip teal" href="#counterparts">Counterparts Cleared: 2</a> <span class="chip amber">Expiry 14:42</span></div></div></div><div class="sheet amber"><div class="grab"></div><h4>Card Payment · 410.00</h4><p class="ctx">Home Card ← Checking? · Guessed Transfer</p><a class="item" href="#rebuilt"><span class="ic">✓</span> <span><span class="t">Confirm</span> <span class="d">Joins this plan as a linked transfer</span></span></a><div class="item "><span class="ic">⇹</span> <span><span class="t">Split</span> </span></div><div class="item "><span class="ic">⏸</span> <span><span class="t">Hold back</span> </span></div><a class="item" href="transfer-budget-account.html#choose-pair"><span class="ic">⇆</span> <span><span class="t">Choose another Budget Account…</span></span></a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="rebuilt">
+<div class="step-label"><span class="n">UC-006 A3</span><p><b>Rebuilt in place</b> after Import Anyway on Card purchase, with a new expiry.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#leave">‹</a> Upload Plan</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="banner blue"><span class="txt"><b>Rebuilt · expires 14:46</b></span></div><div class="card blue"><div class="io"><div><span class="lbl">In</span> <span class="big in">+2,705.00</span></div><div><span class="lbl">Out</span> <span class="big">−1,100.07</span></div></div><div class="netline"><span>Net</span> <b>+1,604.93 USD</b></div><div class="tiles"><div class="tile"><div class="tn">10</div><div class="tl">Transactions</div></div><div class="tile"><div class="tn">9</div><div class="tl">New</div></div><div class="tile"><div class="tn">1</div><div class="tl">Match a Typed Entry</div></div></div><div class="scope">Household · Checking, Rewards Card, Reserve Savings</div><div class="tagrow"><span class="chip teal">Arrive Cleared</span> <a class="chip teal" href="#counterparts">Counterparts Cleared: 2</a> <span class="chip amber">Expiry 14:46</span></div></div><div class="sec-t">Waiting for your decision · 8</div><a class="txrow" href="#decide-in-plan"><span class="d">10-13</span> <span class="p">Card purchase</span> <span class="amt">−12.00</span><div class="stc"><span class="chip amber">Needs Review</span></div></a> <a class="txrow" href="#decide-transfer-in-plan"><span class="d">10-13</span> <span class="p">Autopay Received</span> <span class="amt">+410.00</span><div class="stc"><span class="chip amber">Guessed Transfer</span></div></a><p class="note">And 6 more</p>
+</div>
+<div class="foot"><div class="sum">In <b>+2,705.00</b> · Out <b>−1,100.07</b></div><div class="pair"><a class="cta-btn" href="#writing">Confirm Upload Plan</a> <a class="cta-btn ghost" href="#cancelled">Cancel</a></div></div><div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
+</section><section>
+<h2>Confirming, leaving, and when nothing is written</h2>
+<p class="lede"></p>
+<div class="flow">
+<div class="state" id="writing">
+<div class="step-label"><span class="n">UC-006 5–12</span><p><b>Writing the confirmed plan</b>, the Upload. Leaving no longer cancels it (BR-019, S-21).</p></div>
+<div class="phone">
+<div class="screen-title">Upload</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="card blue steps"><div class="stepn"><span class="i">✓</span> <span><span class="t">Checked</span></span></div><div class="stepn"><span class="i">✓</span> <span><span class="t">Sent Record: 9</span></span></div><div class="stepn"><span class="i"><span class="spin" style="display:inline-block"></span></span> <span><span class="t">Writing</span></span></div><div class="stepn"><span class="i">·</span> <span><span class="t">Counterparts Cleared</span></span></div><div class="stepn"><span class="i">·</span> <span><span class="t">Compare</span></span></div></div><p class="note">You can leave this screen; the Upload finishes and its outcome is shown when you come back.</p>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="cancelled">
+<div class="step-label"><span class="n">UC-006 A2</span><p><b>Cancelled.</b></p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Plan</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="banner grey"><span class="txt"><b>Cancelled · nothing written</b></span></div><a class="cta" href="budget.html#household">Household</a>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="leave">
+<div class="step-label"><span class="n">UC-006 A2 · BR-019</span><p><b>Left by Back or a tab</b>, its own Budget's included: discarded like Cancel. No background plan, no banner elsewhere.</p></div>
+<div class="phone">
+<div class="screen-title">Household</div>
+<p class="screen-sub">Budget · USD</p>
+<div class="body">
+<div class="snack"><span>Upload Plan discarded · nothing written</span></div><div class="ghost"><div class="card"><div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span></div><span class="cta-btn big">Review Upload Plan · Eligible 9</span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="expired">
+<div class="step-label"><span class="n">UC-006 A4</span><p><b>Expired while shown.</b></p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Plan</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="banner "><span class="txt"><b>Expired 14:42 · nothing written</b></span></div><a class="cta" href="#awaiting">Review Upload Plan again</a>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="changed">
+<div class="step-label"><span class="n">UC-006 A5</span><p><b>Changed or expired at confirmation.</b></p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Plan</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="banner red"><span class="txt"><b>Not written · Budget App changed 14:40</b></span></div><div class="banner red"><span class="txt"><b>Or: not written · expired 14:42</b></span></div><a class="cta" href="budget.html#household">Review Household</a>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="budget-app-unreadable">
+<div class="step-label"><span class="n">UC-006 A6</span><p><b>Budget App unreadable or credentials refused</b> at confirmation.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Plan</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="banner red"><span class="txt"><b>Not written · Budget App unreachable</b></span></div><div class="banner red"><span class="txt"><b>Or: not written · credentials refused</b></span></div><a class="cta" href="connections.html#ynab">Enter credentials</a>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="sent-record-failed">
+<div class="step-label"><span class="n">UC-006 A7</span><p><b>Sent Record could not be stored.</b></p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Plan</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="banner red"><span class="txt"><b>Not started · Sent Record not stored · storage full</b></span></div><a class="cta" href="budget.html#household">Household</a>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="recovery">
+<div class="step-label"><span class="n">UC-006 A13</span><p><b>Recovery Check open.</b></p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Plan</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="banner red"><span class="txt"><b>No Upload Plan · Recovery Check open</b></span></div><a class="cta" href="recovery-check.html#open">Recovery Check</a>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
+</section>
+<p class="footnote">Mockup for the mockup gate of the construction kickoff plan. Every Budget, Bank, Bank Account,
+payee and amount is invented. The Approved use cases are normative; where this page and a use case disagree, the use
+case wins.</p>
+</main>
+</body>
+</html>

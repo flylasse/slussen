@@ -40,7 +40,7 @@ Two easy-to-miss rules, both from the skills (check the skill if in doubt):
 Three project rules for every specification, decided by the operator. The linter cannot check them, so check them by hand:
 
 - **Never a bare "account".** Always write Bank Account or Budget Account, or a glossary compound such as Retired Account.
-- **No fixed numbers Slussen chooses.** Every time, window, count or limit that Slussen itself chooses is an Operator Setting, with a default and a range, or a Build Configuration value, and every place that uses it says so ("8 hours by default, a number the operator can change"). Only numbers set by an outside party (law, bank, Data Provider, Budget App) are fixed, and each one names its source. The rule covers behaviour the operator experiences (times, windows, counts, limits), not storage sizes such as the field lengths in `docs/entity_model.md`.
+- **No fixed numbers Slussen chooses.** Every time, window, count or limit that Slussen itself chooses is an Operator Setting, with a default and a range, or a value a Data Provider's or Budget App's part declares, and every place that uses it says so ("8 hours by default, a number the operator can change"). Only numbers set by an outside party (law, bank, Data Provider, Budget App) are fixed, and each one names its source. The rule covers behaviour the operator experiences (times, windows, counts, limits), not storage sizes such as the field lengths in `docs/entity_model.md`.
 - **Defined terms in Title Case, identifiers in code notation.** A glossary term is written in Title Case wherever it is meant in its defined sense (Bank Transaction, Upload Plan, Funded By); everything else is ordinary lowercase English (payee, memo). Entity and attribute names keep their code-style spelling and are written in code notation whenever they appear in prose (`BANK_ACCOUNT`, `funded_by_budget_account_id`); the attribute tables of `docs/entity_model.md` keep the skill's own format. Attribute values such as Credit Card or Needs Review are written in Title Case without code notation.
 
 ## 3. Deterministic gate
@@ -57,3 +57,15 @@ Which mode a phase must pass is stated in the active plan. A phase is not comple
 - Branch + PR; never commit to `main`.
 - When executing a plan: one commit per phase, pushed before the next phase starts.
 - `scratch/` is git-ignored working material (PR dumps, inventories). It is never committed.
+
+## 5. Versioning
+
+`VERSION` (repo root, plain `major.minor.revision`) is the single source of truth for the app's version name; the build reads it directly. **Every PR includes a `VERSION` bump; single commits do not bump it.**
+
+| Tier | When |
+|---|---|
+| **revision** `+0.0.1` | **The default for every PR**, whatever it contains, including new capabilities. The agent applies it automatically. |
+| **minor** `+0.1.0`, revision reset to 0 | **Operator decision only**, given explicitly for that PR in the request itself. A tier named in a plan is a planning hint, not that instruction. |
+| **major** `+1.0.0`, minor and revision reset to 0 | **Operator decision only**, as for minor. |
+
+When in doubt, revision.

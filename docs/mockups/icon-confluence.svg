@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
+  <title>Slussen icon proposal C: Many Sources, one Budget</title>
+  <!-- Android adaptive icon: 108-unit canvas. Background layer full bleed, no corners: the launcher masks it. -->
+  <g id="background"><rect width="108" height="108" fill="#16202f"/></g>
+  <!-- Foreground layer: all artwork inside the central 66-unit safe zone (21 to 87), scaled to 0.8 around the centre for legibility. -->
+  <g id="foreground" transform="translate(54 54) scale(0.8) translate(-54 -54)"><path d="M27 34 C42 34 44 54 56 54" stroke="#7aa7e8" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M27 54 H56" stroke="#7aa7e8" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M27 74 C42 74 44 54 56 54" stroke="#7aa7e8" stroke-width="6" fill="none" stroke-linecap="round"/><rect x="54" y="40" width="7" height="28" rx="2" fill="#5fd4c4"/><path d="M62 54 H79" stroke="#5fd4c4" stroke-width="12" stroke-linecap="round"/></g>
+  <!-- Monochrome layer for themed icons (Android 13 and later), tinted by the launcher. -->
+  <g id="monochrome" display="none" color="#ffffff" transform="translate(54 54) scale(0.8) translate(-54 -54)"><path d="M27 34 C42 34 44 54 56 54 M27 54 H56 M27 74 C42 74 44 54 56 54" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round" opacity=".75"/><rect x="54" y="40" width="7" height="28" rx="2" fill="currentColor"/><path d="M62 54 H79" stroke="currentColor" stroke-width="12" stroke-linecap="round"/></g>
+</svg>

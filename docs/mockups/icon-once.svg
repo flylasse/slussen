@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
+  <title>Slussen icon proposal B: Once through the gate</title>
+  <!-- Android adaptive icon: 108-unit canvas. Background layer full bleed, no corners: the launcher masks it. -->
+  <g id="background"><rect width="108" height="108" fill="#151a22"/></g>
+  <!-- Foreground layer: all artwork inside the central 66-unit safe zone (21 to 87), scaled to 0.8 around the centre for legibility. -->
+  <g id="foreground" transform="translate(54 54) scale(0.8) translate(-54 -54)"><rect x="33" y="27" width="9" height="54" rx="3" fill="#5fd4c4"/><rect x="66" y="27" width="9" height="54" rx="3" fill="#5fd4c4"/><path d="M26 52 H76" stroke="#e8ecf2" stroke-width="8" stroke-linecap="round"/><path d="M68 43 L78 52 L68 61" stroke="#e8ecf2" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="74" cy="74" r="11" fill="#6fce8a"/><path d="M68.5 74 L72.5 78 L80 70" stroke="#0b0e13" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <!-- Monochrome layer for themed icons (Android 13 and later), tinted by the launcher. -->
+  <g id="monochrome" display="none" color="#ffffff" transform="translate(54 54) scale(0.8) translate(-54 -54)"><rect x="33" y="27" width="9" height="54" rx="3" fill="currentColor" opacity=".7"/><rect x="66" y="27" width="9" height="54" rx="3" fill="currentColor" opacity=".7"/><path d="M26 52 H76 M68 43 L78 52 L68 61" stroke="currentColor" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="74" cy="74" r="11" fill="currentColor"/></g>
+</svg>

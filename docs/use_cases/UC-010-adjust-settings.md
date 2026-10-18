@@ -9,15 +9,15 @@
 **Trigger:** Operator asks to change an Operator Setting  
 **Status:** Approved  
 
-**Requirements:** [FR-001, FR-012, FR-014, FR-016, FR-017, FR-030, FR-046, FR-051, FR-062, FR-065, FR-066, FR-067, FR-069, FR-076, FR-081, FR-087, FR-088, FR-089, FR-090, NFR-003, NFR-006, NFR-007, NFR-008, NFR-010, NFR-013, NFR-016, NFR-017](../requirements.md)
+**Requirements:** [FR-001, FR-012, FR-014, FR-016, FR-017, FR-030, FR-046, FR-051, FR-062, FR-065, FR-066, FR-067, FR-069, FR-076, FR-081, FR-087, FR-088, FR-089, FR-090, FR-094, FR-103, NFR-003, NFR-006, NFR-007, NFR-008, NFR-010, NFR-013, NFR-016, NFR-017, NFR-019](../requirements.md)
 
 ## Preconditions
 
-- No Upload Plan is awaiting confirmation (UC-006 BR-005).
+- No Upload Plan is awaiting confirmation and no Upload is being written (UC-006 BR-005).
 
 ## Main Success Scenario
 
-1. Slussen shows the current value of each Operator Setting: Upload Window, fetch period, Fetch Cooldown, Fetch Schedule, default wait, Request Limit warning pause, request timeout, Upload Plan lifetime, Consent Request lifetime, number of recent Fetches kept, Upload as Cleared (only when the Budget App supports the Cleared marker), Card Payment Descriptions, Bank Transfer Descriptions, transfer pairing days, Lonely Transfer grace period, outdated-balance limit, consent warning lead time, Decision Journal on or off with its size limit, warning threshold and current size, and Detailed Logging.
+1. Slussen shows the current value of each Operator Setting that applies to everything: Upload Window, file upload window, fetch period, Fetch Schedule, default wait, Request Limit warning pause, request timeout, Upload Plan lifetime, Consent Request lifetime, number of recent Fetches kept, Card Payment Descriptions, Bank Transfer Descriptions, transfer pairing days, Lonely Transfer grace period, outdated-balance limit, consent warning lead time, Decision Journal on or off with its size limit, warning threshold and current size, backup warning threshold, and Detailed Logging. The Operator Settings that belong to one service are shown on that service's page in Connections: the Fetch Cooldown of each Data Provider, with the default its part declares, on the Data Provider's page, and Upload as Cleared, only when the Budget App supports the Cleared marker, on the Budget App's page (BR-010).
 2. Operator changes the value of an Operator Setting.
 3. Slussen checks that the value lies within the allowed range of the Operator Setting (BR-002).
 4. Slussen stores the value and applies it from the next Fetch, Scheduled Fetch, Comparison, Upload or opening of the app on.
@@ -100,10 +100,18 @@
 
 ### A9: Switch Upload as Cleared
 
-**Trigger:** Operator switches Upload as Cleared on or off (step 2)
+**Trigger:** Operator switches Upload as Cleared on or off on the Budget App's page (step 2)
 **Flow:**
 
 1. Slussen states that the change applies only to Upload Plans prepared from now on, changes nothing already in the Budget App, and that while the setting is off Slussen marks nothing Cleared, including Transfer Counterparts, so that clearing is left to the Operator in the Budget App.
+2. Use case continues at step 4.
+
+### A10: Reset a Fetch Cooldown to Its Default
+
+**Trigger:** Operator chooses, on a Data Provider's page, to reset its Fetch Cooldown to the default its part declares (step 2)  
+**Flow:**
+
+1. Slussen takes the default the Data Provider's part declares as the new value.
 2. Use case continues at step 4.
 
 ## Postconditions
@@ -122,11 +130,11 @@
 
 ### BR-001: Operator Settings and Defaults
 
-By default the Upload Window is 7 days, the fetch period 60 days, the Fetch Cooldown 60 minutes, the Fetch Schedule 2 Scheduled Fetches in any 24 hours, the default wait 8 hours, the Request Limit warning pause 24 hours, the request timeout 30 seconds, the Upload Plan lifetime 10 minutes, the Consent Request lifetime 15 minutes, the number of recent Fetches kept 60, Upload as Cleared on, the transfer pairing days 5, the Lonely Transfer grace period 6 days, the outdated-balance limit 36 hours, the consent warning lead time 7 days, the Decision Journal on with a size limit of 50 MB and a warning threshold of 80%, and Detailed Logging off. Transfer detection is always on and is not an Operator Setting (UC-005 BR-001). The default Card Payment and Bank Transfer Descriptions are listed in BR-007. The Request Limit of each Data Provider, the Upload Window of each File Format and the Start Dates are set in the Build Configuration and are not Operator Settings. Numbers fixed by an outside party are not Operator Settings either: the PSD2 access limit (C-006), the consent length the Bank or Data Provider reports (C-007) and the Budget App's own rules (C-009).
+By default the Upload Window is 7 days, the file upload window 60 days, the fetch period 60 days, the Fetch Cooldown of each Data Provider the default its Data Provider's part declares, the Fetch Schedule 2 Scheduled Fetches in any 24 hours, the default wait 8 hours, the Request Limit warning pause 24 hours, the request timeout 30 seconds, the Upload Plan lifetime 10 minutes, the Consent Request lifetime 15 minutes, the number of recent Fetches kept 60, Upload as Cleared on, the transfer pairing days 5, the Lonely Transfer grace period 6 days, the outdated-balance limit 36 hours, the consent warning lead time 7 days, the Decision Journal on with a size limit of 50 MB and a warning threshold of 80%, the backup warning threshold 80% of the backup size limit Android sets (C-015), and Detailed Logging off. Transfer detection is always on and is not an Operator Setting (UC-005 BR-001). The default Card Payment and Bank Transfer Descriptions are listed in BR-007. The Request Limit of each Data Provider is declared by its part and is not an Operator Setting, because it protects the Data Provider's own limit; the chosen Budgets, the Bank Accounts with their names and Start Dates and the Account Mappings are set in the app (UC-013, UC-009), not here. Numbers fixed by an outside party are not Operator Settings either: the PSD2 access limit (C-006), the consent length the Bank or Data Provider reports (C-007), the Budget App's own rules (C-009) and the backup size limit Android sets (C-015).
 
 ### BR-002: Allowed Ranges
 
-The Upload Window lies between 1 and 60 days, the fetch period between 7 and 180 days, the Fetch Cooldown between 0 and 1440 minutes (0 switches it off), the default wait between 1 and 48 hours, the Request Limit warning pause between 1 and 72 hours, the request timeout between 10 and 120 seconds, the Upload Plan lifetime between 1 and 60 minutes, the Consent Request lifetime between 5 and 30 minutes, the number of recent Fetches kept between 10 and 500, the Fetch Schedule between 0 and 2 Scheduled Fetches in any 24 hours (0 switches them off), the transfer pairing days and the Lonely Transfer grace period between 0 and 30 days, the outdated-balance limit between 1 and 720 hours, the consent warning lead time between 1 and 60 days, the Decision Journal size limit between 10 and 500 MB, and its warning threshold between 50% and 95% of the size limit. Every value is a whole number.
+The Upload Window lies between 1 and 60 days, the file upload window between 7 and 365 days, the fetch period between 7 and 180 days, the Fetch Cooldown of each Data Provider between 0 and 1440 minutes (0 switches it off), the default wait between 1 and 48 hours, the Request Limit warning pause between 1 and 72 hours, the request timeout between 10 and 120 seconds, the Upload Plan lifetime between 1 and 60 minutes, the Consent Request lifetime between 5 and 30 minutes, the number of recent Fetches kept between 10 and 500, the Fetch Schedule between 0 and 2 Scheduled Fetches in any 24 hours (0 switches them off), the transfer pairing days and the Lonely Transfer grace period between 0 and 30 days, the outdated-balance limit between 1 and 720 hours, the consent warning lead time between 1 and 60 days, the Decision Journal size limit between 10 and 500 MB, its warning threshold between 50% and 95% of the size limit, and the backup warning threshold between 50% and 95% of the backup size limit. Every value is a whole number.
 
 ### BR-003: Journal Size Limit
 
@@ -134,19 +142,19 @@ The Decision Journal stays within its size limit by removing its oldest entries,
 
 ### BR-004: Journal Never Affects Decisions
 
-Switching off, clearing, filling or losing the Decision Journal changes no Transaction Status, Upload Plan or Upload, and a failure to record an entry never fails or delays an Operator action.
+Switching off, clearing, filling, losing or damaging the Decision Journal changes no Transaction Status, Upload Plan or Upload and opens no Recovery Check, because the Decision Journal is not Decision-Critical Data; and a failure to record an entry never fails or delays an Operator action.
 
 ### BR-005: Detailed Logging Boundaries
 
-With Detailed Logging off, device logs contain no transaction amounts, payees, memos or Bank Account numbers. In every mode, device logs contain no credentials, Bank Consent data, authentication codes or one-time values.
+With Detailed Logging off, device logs contain no transaction amounts, payees, memos or Bank Account numbers. In every mode, device logs contain no credentials, Bank Consent data, Bank Sessions, authentication codes or one-time values.
 
 ### BR-006: Settings Are Kept
 
-The Operator Settings are included in device backups, restored after a reinstall and kept on an upgrade of the same build. There is no action that resets them to their defaults, with one exception: the Card Payment Descriptions and the Bank Transfer Descriptions can each be restored to their default list (A8), and the list they replace is recorded in the Decision Journal first.
+The Operator Settings are included in device backups, restored after a reinstall and kept on an upgrade of the same build. There is no action that resets them to their defaults, with two exceptions: the Card Payment Descriptions and the Bank Transfer Descriptions can each be restored to their default list (A8), and the list they replace is recorded in the Decision Journal first; and the Fetch Cooldown of a Data Provider can be reset to the default its part declares (A10), recorded like any other change.
 
 ### BR-007: Default Description Lists
 
-The default lists ship with the build from the repository, not from the Build Configuration.
+The default lists ship with the build from the repository.
 
 | Card Payment Descriptions | Bank Transfer Descriptions |
 |---|---|
@@ -167,3 +175,7 @@ An entry is a non-empty text. Within one list, no two entries are equal when com
 ### BR-009: Description Changes Apply Only Before Upload
 
 A change to either list, including a restore, applies only to Transfers none of whose Transfer Legs has been uploaded. An uploaded Transfer keeps its outcome. A Transfer that has a Transfer Decision of the Operator keeps that decision; the changed lists only decide which Transfers Slussen proposes among the other Bank Transactions not yet uploaded.
+
+### BR-010: Each Service's Settings Come From Its Part
+
+Settings keeps the Operator Settings that apply to everything. Its Connections section lists each service in use, the Budget App and each Data Provider whose credentials are entered or that has a Bank Account, with its status, and below them the Data Providers of the build not set up, with neither credentials nor a Bank Account, each with the action to set it up (UC-014 BR-007). Each service in use has one page that holds its status, its credentials (UC-014) and everything else that belongs to it: for a Data Provider its Fetch Cooldown with the default its part declares, its Request Limit (shown, not changeable, UC-001 BR-007), the Bank Accounts that come from it (UC-009) and, when it needs a Bank Consent, its Bank Consents (UC-007); for the Budget App the Budgets in use (UC-013) and, when it supports the Cleared marker, Upload as Cleared. A service's page and its settings are generated from what its part declares: its name, the credentials it asks for, its default Fetch Cooldown, its Request Limit, whether it needs a Bank Consent and whether it supports the Cleared marker. Adding a Data Provider's part to a build brings its own page and settings; nothing per service is written into the screens, and the Adopting Developer configures nothing (UC-012 A2).

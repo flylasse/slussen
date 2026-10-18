@@ -5,22 +5,22 @@
 **Use Case ID:** UC-009  
 **Use Case Name:** Manage Account Mappings  
 **Primary Actor:** Operator  
-**Goal:** Have every Bank Account identified with certainty and sending its transactions to exactly one Budget Account, and pause or resume a Bank Account without losing anything  
-**Trigger:** Operator asks to confirm, identify again, retire or restore a Bank Account, to set its Funded By or Transfer Partner, or to check how the Bank Accounts are mapped  
+**Goal:** Have every added Bank Account identified with certainty and sending its transactions to exactly one Budget Account, change a mapping only deliberately, and pause or resume a Bank Account without losing anything  
+**Trigger:** Operator asks to confirm, identify again, rename, retire or restore a Bank Account, to move or remove its Account Mapping or map it again, to set its Start Date, Funded By or Transfer Partner, or to check how the Bank Accounts are mapped  
 **Status:** Approved  
 
-**Requirements:** [FR-042, FR-056, FR-057, FR-058, FR-059, FR-066, FR-075, FR-091, NFR-010, NFR-017, C-012](../requirements.md)
+**Requirements:** [FR-042, FR-056, FR-058, FR-059, FR-066, FR-075, FR-091, FR-099, FR-100, NFR-009, NFR-010, NFR-017, NFR-020, C-009, C-012](../requirements.md)
 
 ## Preconditions
 
-- The Build Configuration holds the Bank Accounts and their Account Mappings.
-- No Upload Plan is awaiting confirmation (UC-006 BR-005).
+- The Operator has added at least one Bank Account (UC-013).
+- No Upload Plan is awaiting confirmation and no Upload is being written (UC-006 BR-005).
 
 ## Main Success Scenario
 
-1. Slussen shows each Bank Account with its Bank, its Source, the Budget and Budget Account it is mapped to, its Funded By when it is a credit card or its Transfer Partner otherwise, its Start Date, whether its Account Mapping is locked and why, whether it is identified, and whether it is a Retired Account.
+1. Slussen shows each Bank Account with its name, its Bank, its Source, the Budget and Budget Account it is mapped to, its Funded By when it is a credit card or its Transfer Partner otherwise, and whether that value no longer applies (UC-005 BR-014), its Start Date, whether transactions were sent through its Account Mapping, whether it is identified, and whether it is a Retired Account.
 2. Operator selects a Bank Account that waits for confirmation of a proposed match.
-3. Slussen shows the proposed Bank Account as the Source describes it, with its name, kind, currency and the last four digits of its number, and the other Bank Accounts the Source offers.
+3. Slussen shows, from the Offered Bank Accounts the Source last delivered and without contacting it (BR-009), the proposed Bank Account with its Bank, name, kind, currency and the last four digits of its number, and the other Offered Bank Accounts of the Source.
 4. Operator confirms the proposed Bank Account.
 5. Slussen checks that no other Account Mapping already uses the confirmed Bank Account.
 6. Slussen records how the Source identifies the Bank Account, so that its transactions are used from the next Fetch on.
@@ -30,7 +30,7 @@
 
 ### A1: Operator Chooses Another Offered Bank Account
 
-**Trigger:** Operator chooses another of the offered Bank Accounts instead of the proposed one (step 4)  
+**Trigger:** Operator chooses another of the Offered Bank Accounts instead of the proposed one (step 4)  
 **Flow:**
 
 1. Use case continues at step 5 with the chosen Bank Account.
@@ -74,39 +74,79 @@
 
 ### A6: Identify a Bank Account Again
 
-**Trigger:** Operator asks to identify again a Bank Account whose Account Mapping is not locked (step 2)  
+**Trigger:** Operator asks to identify again a Bank Account through whose Account Mapping no transaction was sent, or every transaction sent was rejected by the Budget App (step 2)  
 **Flow:**
 
 1. Slussen keeps the current identification in use until the Operator confirms another one.
-2. Slussen proposes a match from what the Source last delivered, without contacting the Source.
+2. Slussen proposes a match from the Offered Bank Accounts the Source last delivered, without contacting the Source (BR-009).
 3. Use case continues at step 3.
 
-### A7: Account Mapping Locked
+### A7: Identify Again After Transactions Were Sent
 
-**Trigger:** Operator asks to identify again a Bank Account whose Account Mapping is locked (step 2)  
+**Trigger:** Operator asks to identify again a Bank Account through whose Account Mapping a transaction was sent that was written, already present or has an unknown outcome (step 2)  
 **Flow:**
 
-1. Slussen refuses and shows that transactions were already sent through this Account Mapping.
-2. Use case ends.
+1. Slussen asks the Operator to confirm, stating how many of these transactions were sent through the Account Mapping, that they stay as they are and that Slussen never sends them again, and, when the Budget App rejected some, their number and that they are sent again at their next Upload (BR-007, UC-006 BR-020).
+2. Operator confirms, or cancels and the use case ends.
+3. Use case continues at step 1 of A6.
 
-### A8: Build Configuration Changes a Locked Account Mapping
+### A8: Move an Account Mapping or Map a Bank Account Again
 
-**Trigger:** The Build Configuration maps a Bank Account with a locked Account Mapping to another Budget Account (step 1)  
+**Trigger:** Operator chooses to map a Bank Account to another Budget Account, or to map a Bank Account that has no Account Mapping (A11) (step 2)  
 **Flow:**
 
-1. Slussen keeps the locked Account Mapping, uploads nothing to the other Budget Account, and shows the reason that transactions were already sent through it.
-2. Use case continues at step 2.
+1. Slussen shows the Budget Accounts of the Budgets it serves that receive through no Account Mapping and are in the Bank Account's currency.
+2. Operator chooses one.
+3. When the Bank Account has an Account Mapping and a transaction sent through it was written, already present or has an unknown outcome, Slussen asks the Operator to confirm, stating their number, that they stay in the current Budget Account, that Slussen never sends them again, and that the Operator moves or deletes them in the Budget App, and, when the Budget App rejected some of them, their number and that they go to the new Budget Account at their next Upload (BR-003). When the Bank Account has no Account Mapping, no transaction was sent through it, or the Budget App rejected every one, Slussen asks nothing and continues at step 5.
+4. Operator confirms, or cancels and the use case ends.
+5. Slussen moves the Account Mapping, or stores the new Account Mapping of a Bank Account that had none, records the change with that number in the Decision Journal, and gives the Bank Transactions their Transaction Status again (UC-003).
+6. Use case ends.
 
 ### A9: Set, Change or Clear Funded By or Transfer Partner
 
 **Trigger:** Operator chooses to set, change or clear the Funded By of a credit card Bank Account or the Transfer Partner of another Bank Account (step 2)
 **Flow:**
 
-1. Slussen shows the Budget Accounts of the same Budget other than the Bank Account's own, including those Slussen does not fetch.
+1. Slussen shows the Budget Accounts of the same Budget, other than the Bank Account's own, that Slussen fetches (UC-005 BR-014).
 2. Operator chooses one, or clears the value.
 3. Slussen stores the Funded By or the Transfer Partner and detects the Transfers among the Bank Transactions not yet uploaded again (UC-005 BR-006).
 4. Slussen records the old and the new value in the Decision Journal.
 5. Use case ends.
+
+### A10: No Offered Bank Accounts Stored
+
+**Trigger:** No Offered Bank Account of the Source is stored, for example after a reinstall (step 3)  
+**Flow:**
+
+1. Slussen shows that the Bank Account can be identified after the next Fetch of its Data Provider or the next grant of its Bank Consent, and keeps the current identification in use.
+2. Use case ends.
+
+### A11: Remove an Account Mapping
+
+**Trigger:** Operator chooses to remove the Account Mapping of a Bank Account (step 2)  
+**Flow:**
+
+1. When a transaction sent through it was written, already present or has an unknown outcome, Slussen asks the Operator to confirm as in step 3 of A8, stating for the rejected ones that they wait until the Bank Account is mapped again. When no transaction was sent through it, or the Budget App rejected every one, Slussen asks nothing and continues at step 3 (BR-003).
+2. Operator confirms, or cancels and the use case ends.
+3. Slussen removes the Account Mapping and keeps the Bank Account with its identification and history, neither compared nor offered for Upload until the Operator maps it again (A8).
+4. Slussen records the change in the Decision Journal.
+5. Use case ends.
+
+### A12: Rename a Bank Account
+
+**Trigger:** Operator edits the name of a Bank Account (step 2)  
+**Flow:**
+
+1. Slussen stores the new name, changes nothing else, and records the change in the Decision Journal (BR-011).
+2. Use case ends.
+
+### A13: Set, Change or Clear the Start Date
+
+**Trigger:** Operator sets, changes or clears the Start Date of a Bank Account (step 2)  
+**Flow:**
+
+1. Slussen stores the Start Date, records the change in the Decision Journal, and gives the Bank Transactions of the Bank Account their Transaction Status again (UC-003 BR-018).
+2. Use case ends.
 
 ## Postconditions
 
@@ -119,25 +159,26 @@
 ### Failure Postconditions
 
 - No Bank Account's transactions are used under an identification the Operator did not confirm or Slussen did not establish with certainty.
-- No locked Account Mapping changes its Budget Account.
+- No Account Mapping through which a transaction was written, found already present or sent with an unknown outcome is moved or removed, and its Bank Account is not identified again, without the Operator's confirmation.
+- No transaction Slussen sent becomes eligible again because of a change made here.
 
 ## Business Rules
 
 ### BR-001: One to One
 
-A Bank Account has at most one Account Mapping, and a Budget Account receives the transactions of at most one Bank Account. A Manually Kept Account has no Account Mapping.
+A Bank Account has at most one Account Mapping, and a Budget Account receives the transactions of at most one Bank Account. A Manually Kept Account has no Account Mapping. To swap the Budget Accounts of two Bank Accounts, the Operator first removes one Account Mapping (A11).
 
-### BR-002: Mappings Come From the Build Configuration
+### BR-002: Mappings Are Set in the App
 
-Bank Accounts with their Start Dates, Budgets and Account Mappings are set in the Build Configuration. Slussen offers no way to add a Bank Account, to choose the Budget Account of an Account Mapping or to move a locked Account Mapping to another Budget Account inside the app. The Funded By and the Transfer Partner are not part of the Build Configuration; they are set in the app (BR-008).
+Bank Accounts are added and mapped in the app (UC-013) and changed here. No build is given any of them (UC-012 BR-011).
 
-### BR-003: Lock at the First Send
+### BR-003: Moving a Mapping After a Send Is Deliberate
 
-As soon as a transaction is recorded as sent through an Account Mapping (UC-006 BR-006), whatever the Budget App later answers, the Account Mapping is locked: its Budget Account never changes, and the reason is shown wherever a change is refused.
+Slussen records the time of the first send through an Account Mapping (UC-006 BR-006), whatever the Budget App answers. Once a transaction sent through it has the outcome Written, Already Present, Not Yet Known or Unknown, the Account Mapping is moved or removed only by an action the Operator confirms, after Slussen has stated how many transactions were sent through it; Slussen never does it on its own. While the Budget App has rejected every transaction sent through it, nothing was written, and the Account Mapping is moved or removed without that confirmation, as before any send; the rejected transactions follow the current Account Mapping (UC-006 BR-020) and, after a removal, wait until the Bank Account is mapped again. The transactions already sent stay where they are in the Budget App, keep their Sent Records and are never sent again; the Operator moves or deletes them in the Budget App. Later Comparisons treat them by the existing rules (UC-003 BR-021): found by their Import Identifier, they are Already In Budget App; deleted there, they go to the Re-upload decision (UC-004 BR-003), which sends them under a new Import Identifier, so that the Budget App's refusal of a reused Import Identifier (C-009) does not stop them; a resemblance goes to review. A Sent Record whose outcome is unknown at the move keeps its Budget Account, and any later send of it goes there (UC-006 BR-007). A transaction the Budget App rejected was not written: it is not counted among the transactions that stay, Slussen states their number separately, and its next send goes to the Budget Account of the current Account Mapping (UC-006 BR-020). A transaction counts as sent through the Account Mapping when it was sent from the Bank Account to the Budget Account the Account Mapping now names, also through an earlier Account Mapping of the Bank Account to that Budget Account, for example one removed (A11) and mapped again (A8); the time of the first send records when sending began and does not decide whether Slussen asks.
 
 ### BR-004: Never Guess a Bank Account
 
-Slussen uses a Bank Account's transactions only when it identifies the Bank Account with certainty. When it can only propose a likely Bank Account, it asks the Operator to confirm. When two Bank Accounts are possible, or two Account Mappings would point to the same Bank Account, it stops for that Bank Account and shows why.
+Slussen uses a Bank Account's transactions only when it identifies the Bank Account with certainty. When it can only propose a likely Bank Account, it asks the Operator to confirm. When two Bank Accounts are possible, or two Account Mappings would point to the same Bank Account, it stops for that Bank Account and shows why. This holds also when a Source later delivers a changed list of Bank Accounts.
 
 ### BR-005: Retire and Restore
 
@@ -145,12 +186,24 @@ A Retired Account is neither fetched, compared, matched nor uploaded. It keeps i
 
 ### BR-006: Identifications Survive a Reinstall, Restore or Upgrade
 
-How the Source identifies each Bank Account, and the Account Mappings with their locks, are included in device backups, restored after a reinstall and kept on an upgrade of the same build.
+The chosen Budgets, each Bank Account with its generated identifier, name and Start Date, how the Source identifies it, and the Account Mappings with the time of their first send are included in device backups, restored after a reinstall and kept on an upgrade of the same build.
 
-### BR-007: Identify Again Only Before the Lock
+### BR-007: Identify Again Deliberately
 
-A Bank Account can be identified again only while its Account Mapping is not locked. Until the Operator confirms a new identification, the current one stays in use.
+A Bank Account can be identified again at any time. Once a transaction sent through its Account Mapping has the outcome Written, Already Present, Not Yet Known or Unknown, Slussen first asks the Operator to confirm, stating their number (A7), counted as BR-003 describes. While the Budget App has rejected every transaction sent through it, nothing was written and Slussen asks nothing, as before any send (A6); the rejected transactions are sent again at their next Upload (UC-006 BR-020). Until the Operator confirms a new identification, the current one stays in use.
 
 ### BR-008: Funded By and Transfer Partner Are Set in the App
 
-A credit card Bank Account can have a Funded By and every other Bank Account a Transfer Partner (UC-005 BR-006). Both start empty, have no default in the build or the Build Configuration, and are set, changed or cleared here or kept from the Operator's answer when reviewing Transfers (UC-005). They are included in device backups and kept across a reinstall, a restore and an upgrade with the Account Mappings (BR-006).
+A credit card Bank Account can have a Funded By and every other Bank Account a Transfer Partner (UC-005 BR-006). Both are always a Budget Account that Slussen fetches (UC-005 BR-014). Both start empty, have no default, and are set, changed or cleared here or kept from the Operator's answer when reviewing Transfers (UC-005). They are included in device backups and kept across a reinstall, a restore and an upgrade with the Account Mappings (BR-006).
+
+### BR-009: Offered Bank Accounts Are Kept Until the Next Delivery
+
+The Bank Accounts a Data Provider offered in a Fetch (UC-001) or with a Bank Consent (UC-007) are kept as Offered Bank Accounts until the Data Provider next delivers its Bank Accounts, so that a Bank Account can be added (UC-013), confirmed or identified again from stored data without contacting the Data Provider. Of each Bank Account number, only the last four digits are kept for display, the part of a Bank Account or card number that banks and card issuers conventionally show; the full number is never stored. Offered Bank Accounts are never included in device backups or transfers and are not restored after a reinstall.
+
+### BR-010: A Generated Identifier Ties Everything to a Bank Account
+
+Every Bank Account has an identifier that Slussen generates when the Bank Account is added (UC-013 BR-003), as unlikely to collide as a random UUID (NFR-020), and that never changes. Its history, Account Mapping, Sent Records and decisions are tied to this identifier, so that renaming the Bank Account or moving its Account Mapping keeps them.
+
+### BR-011: A Name Never Identifies a Bank Account
+
+The name of a Bank Account is proposed from what its Source delivers (UC-013 BR-004), and the Operator can edit it at any time. Slussen never uses the name to identify a Bank Account or to match its transactions.
