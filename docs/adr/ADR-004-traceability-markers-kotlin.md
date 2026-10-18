@@ -26,8 +26,11 @@ back to the specification:
 - **Coverage**: `aiup-vaadin-jooq` and `aiup-angular-jpa` ship a `uc-coverage` agent with a marker table for their
   stack; other stacks run the same check by hand "with the markers of the stack in question".
 
-The `aiup-vaadin-jooq` `implement` skill (used as the pattern for Phase 7) adds: place the marker while implementing
-the rule; a business rule without a marker is one still to implement.
+The `aiup-vaadin-jooq` `implement` skill (first chosen as the pattern for Phase 7) adds: place the marker while
+implementing the rule; a business rule without a marker is one still to implement. `aiup-core` 3.0.0 (Marketplace
+PR #38, open on 2026-10-18; O-P2-38) deprecates that plugin and moves the same rule into `use-case-implement`; its
+`use-case-coverage` agent `uc-coverage-layered` also counts a requirement marker in `@UseCase`
+(`requirements = {"NFR-002"}`) and reads the project's markers from `docs/architecture/development.md`.
 
 There is no Android or Kotlin stack plugin. Slussen's tests run on JUnit 5 (Jupiter), as in the Predecessor App
 (5.11.4), on the JVM for every module and on the device for instrumented tests (ADR-005).
@@ -68,6 +71,7 @@ annotation class UseCase(
     val id: String,                         // "UC-001"
     val scenario: String = "",              // "Main Success Scenario" or "A1: Data Provider Asked Slussen to Wait"
     val businessRules: Array<String> = [],  // bare ids: ["BR-004"]
+    val requirements: Array<String> = [],   // linked NFR and C ids: ["NFR-016"]
 )
 ```
 
@@ -100,8 +104,10 @@ Rules:
   `"Main Success Scenario"` or the alternative flow as `"A<n>: <its title>"`; `businessRules` lists the bare ids the
   test proves. A plug-in test may carry `@UseCase` when it proves a rule that lives in the plug-in.
 - A test of a requirement that the use case links (an NFR or a C on its `**Requirements:**` line) carries the
-  use case's `@UseCase` and names the requirement first in its `@DisplayName`, for example
-  `@DisplayName("NFR-016: a request gives up after the request timeout")`.
+  use case's `@UseCase` with the requirement in `requirements`, the form `aiup-core` 3.0.0's coverage agent counts,
+  for example `@UseCase(id = "UC-001", requirements = ["NFR-016"])`. Naming the requirement first in the
+  `@DisplayName` instead, as in `@DisplayName("NFR-016: a request gives up after the request timeout")`, stays
+  accepted; new tests use `requirements` and may do both.
 - Method names are camelCase without spaces or backticks, because Android before version 11 (API 30) does not allow
   spaces in names and `minSdk` is 26 (ADR-005); the readable text goes into `@DisplayName`.
 - Journey tests (`TC-*`) do not exist yet: the project has no `docs/test_cases/` or `docs/processes/`. When one is
@@ -124,7 +130,7 @@ Rules:
 | ID | Check |
 |---|---|
 | T-01 | Every class whose name matches `UC\d{3}\w+(Test\|IT)` has `@UseCase` on each `@Test` method (or on the class), and every `id` equals the class's prefix written `UC-XXX`. |
-| T-02 | Every `@UseCase.id` names an existing `docs/use_cases/UC-XXX-*.md`; every `businessRules` entry exists as a `### BR-YYY:` heading in that file; every `scenario` other than `Main Success Scenario` matches a `### A<n>: <title>` heading in that file. |
+| T-02 | Every `@UseCase.id` names an existing `docs/use_cases/UC-XXX-*.md`; every `businessRules` entry exists as a `### BR-YYY:` heading in that file; every `scenario` other than `Main Success Scenario` matches a `### A<n>: <title>` heading in that file; every `requirements` entry is an `NFR-` or `C-` id on that file's `**Requirements:**` line. |
 | T-03 | Every comment in production code that starts with `// UC-` has the form `// UC-\d{3} BR-\d{3}: .+` and names a rule heading that exists in the named use case file. A comment `// BR-\d{3}` without its use case fails. |
 | T-04 | The next non-blank line after an implementation marker is code or a KDoc block, never another comment or a blank file end. |
 | T-05 | No class, function, property or parameter name declared in `slussen..` uses a word from the Avoid column of `docs/glossary.md` as one of its camel-case words (for example `Sync`, `Binding`, `Resolution`, `Destination`). The test reads the glossary at run time. Every exception is listed in the test with its reason. |
@@ -134,9 +140,11 @@ until the tests and markers follow, which is AIUP's "change the specification fi
 
 ### 4. Coverage and requirement status
 
-There is no `uc-coverage` agent for this stack. The coverage check of a use case is run by hand, or by an agent
-given the `aiup-vaadin-jooq` agent definition (`agents/uc-coverage.md`) together with this ADR's marker table, as
-`workflow.md` allows. The use case's `**Status:**` and the derived requirement statuses follow `workflow.md`
+There is no coverage agent written for this stack. The coverage check of a use case is run by an agent given the
+`aiup-core` agent definition `agents/uc-coverage-layered.md` together with `docs/architecture/development.md`, whose
+Markers table restates this ADR's markers; while Marketplace PR #38 is open, the definition is read from its branch
+`feat/layer-plugins` (O-P2-38). This replaces the `aiup-vaadin-jooq` `agents/uc-coverage.md` and `workflow.md`
+(`05af816`) route, which `aiup-core` 3.0.0 deprecates. The use case's `**Status:**` and the derived requirement statuses follow `workflow.md`
 *Requirement status*; nothing in the build changes a status.
 
 ## Consequences
@@ -168,11 +176,13 @@ given the `aiup-vaadin-jooq` agent definition (`agents/uc-coverage.md`) together
   it exists. It is defined here.
 - AIUP names no test class suffix for instrumented tests on a device; `IT` is borrowed from the Playwright and
   integration tests of the JVM stacks.
-- AIUP has no marker for an NFR or a constraint in a test, although the coverage audit counts each linked NFR and C
-  as a unit; the `@DisplayName` convention of §2 fills that gap.
+- `workflow.md` (`05af816`) has no marker for an NFR or a constraint in a test, although the coverage audit counts
+  each linked NFR and C as a unit; the `@DisplayName` convention of §2 filled that gap. `aiup-core` 3.0.0 (PR #38)
+  adds `requirements` to `@UseCase`; §2 now uses it and keeps the `@DisplayName` form accepted.
 - AIUP has no marker for a rule of the entity model (its constraints), as opposed to a use case's business rule;
   such code gets no marker unless a business rule states the same constraint.
-- There is no coverage agent for this stack; §4 follows `workflow.md`'s instruction for stacks without one.
+- There is no coverage agent written for this stack; §4 uses `aiup-core`'s stack-neutral `uc-coverage-layered` with
+  the Markers table of `docs/architecture/development.md`.
 - AIUP has no notion of a test that only the Operator may run (live tests against a real Budget App with private
   credentials); §2 defines it.
 
@@ -188,3 +198,7 @@ given the `aiup-vaadin-jooq` agent definition (`agents/uc-coverage.md`) together
 - S-25 (2026-10-18, re-checked externally 2026-10-18): §2 (the live-test credentials moved from
   `build-config/local/live-test.properties` to Gradle properties outside the repository, ADR-003 §4; read only by the
   live-test task).
+- Phase 7 prep (2026-10-18): O-P2-38, Marketplace PR #38 (`aiup-core` 3.0.0, layered construction) still open and
+  read from its branch: §2 (`requirements` added to `@UseCase` as the NFR and C marker, `@DisplayName("NFR-…")`
+  still accepted), §3 (T-02 checks `requirements` against the use case's `**Requirements:**` line), §4 (coverage by
+  `agents/uc-coverage-layered.md` with `docs/architecture/development.md`), Context and AIUP guidance aligned.

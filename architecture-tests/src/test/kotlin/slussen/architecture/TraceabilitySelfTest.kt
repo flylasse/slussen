@@ -22,6 +22,7 @@ class TraceabilitySelfTest {
         assertTrue(useCases.values.all { it.businessRules.isNotEmpty() })
         assertTrue("A1: Signing Values Missing" in useCases.getValue("UC-012").flows)
         assertTrue("BR-002" in useCases.getValue("UC-012").businessRules)
+        assertTrue("NFR-014" in useCases.getValue("UC-012").requirements)
     }
 
     @Test
@@ -54,7 +55,7 @@ class TraceabilitySelfTest {
     }
 
     @Test
-    @DisplayName("T-02 finds an unknown use case, business rule and flow")
+    @DisplayName("T-02 finds an unknown use case, business rule, flow and requirement")
     fun t02FindsPlantedViolations() {
         val planted = source(
             "core/src/test/kotlin/slussen/core/UC012PlantedTest.kt",
@@ -62,10 +63,12 @@ class TraceabilitySelfTest {
             @UseCase(id = "UC-012", scenario = "A1: Signing Values Missing", businessRules = ["BR-002", "BR-099"])
             @UseCase(id = "UC-012", scenario = "A9: No Such Flow")
             @UseCase(id = "UC-999")
+            @UseCase(id = "UC-012", requirements = ["NFR-014", "C-001", "NFR-001", "FR-070"])
             """.trimIndent(),
         )
         val found = Traceability.t02(listOf(planted), useCases)
-        assertEquals(3, found.size, found.joinToString("\n"))
+        assertEquals(5, found.size, found.joinToString("\n"))
+        assertTrue(found.any { "NFR-001" in it } && found.any { "FR-070" in it }, found.joinToString("\n"))
     }
 
     @Test

@@ -7,11 +7,24 @@ import java.io.File
  * the repository root, so a renamed rule or flow in the specification fails the build until tests and markers follow.
  */
 object Traceability {
-    /** The headings of one use case file: its `### BR-YYY:` rules and its `### A<n>: <title>` flows. */
-    data class UseCaseHeadings(val businessRules: Set<String>, val flows: Set<String>)
+    /**
+     * The headings of one use case file: its `### BR-YYY:` rules, its `### A<n>: <title>` flows and the ids on its
+     * `**Requirements:**` line.
+     */
+    data class UseCaseHeadings(
+        val businessRules: Set<String>,
+        val flows: Set<String>,
+        val requirements: Set<String> = emptySet(),
+    )
 
     /** One `@UseCase(...)` marker as written in a test. */
-    data class Marker(val id: String?, val scenario: String?, val businessRules: List<String>, val location: String)
+    data class Marker(
+        val id: String?,
+        val scenario: String?,
+        val businessRules: List<String>,
+        val location: String,
+        val requirements: List<String> = emptyList(),
+    )
 
     fun useCaseFiles(root: File = Sources.repositoryRoot): Map<String, File> =
         File(root, "docs/use_cases").listFiles { f -> f.name.matches(Regex("UC-\\d{3}-.*\\.md")) }.orEmpty()
@@ -21,7 +34,10 @@ object Traceability {
         val lines = file.readLines()
         val rules = lines.mapNotNull { Regex("""^### (BR-\d{3}):""").find(it)?.groupValues?.get(1) }.toSet()
         val flows = lines.mapNotNull { Regex("""^### (A\d+: .+?)\s*$""").find(it)?.groupValues?.get(1) }.toSet()
-        return UseCaseHeadings(rules, flows)
+        val requirements = lines.firstOrNull { it.startsWith("**Requirements:**") }
+            ?.let { line -> requirementOnLine.findAll(line).map { it.value }.toSet() }
+            .orEmpty()
+        return UseCaseHeadings(rules, flows, requirements)
     }
 
     fun violations(tests: List<SourceFile>, production: List<SourceFile>): List<String> {
@@ -31,6 +47,8 @@ object Traceability {
     }
 
     private val useCaseClass = Regex("""UC(\d{3})\w+(Test|IT)""")
+    private val requirementOnLine = Regex("""\b(?:FR|NFR|C)-\d{3}\b""")
+    private val requirementMarker = Regex("""(?:NFR|C)-\d{3}""")
 
     /** Every `@UseCase(...)` in [text], with its arguments read from the Kotlin source. */
     fun markers(text: String, location: String): List<Marker> {
@@ -39,10 +57,10 @@ object Traceability {
             val arguments = KotlinText.balanced(code, found.range.last)
             fun named(name: String) = Regex("""\b$name\s*=\s*"([^"]*)"""").find(arguments)?.groupValues?.get(1)
             val id = named("id") ?: Regex("""^\(\s*"([^"]*)"""").find(arguments)?.groupValues?.get(1)
-            val rules = Regex("""\bbusinessRules\s*=\s*\[([^\]]*)]""").find(arguments)?.groupValues?.get(1)
+            fun list(name: String) = Regex("""\b$name\s*=\s*\[([^\]]*)]""").find(arguments)?.groupValues?.get(1)
                 ?.let { list -> Regex(""""([^"]*)"""").findAll(list).map { it.groupValues[1] }.toList() }
                 .orEmpty()
-            Marker(id, named("scenario"), rules, location)
+            Marker(id, named("scenario"), list("businessRules"), location, list("requirements"))
         }.toList()
     }
 
@@ -76,7 +94,8 @@ object Traceability {
 
     /**
      * T-02: every `@UseCase.id` names an existing use case file; every `businessRules` entry is a `### BR-YYY:` heading
-     * in it; every `scenario` other than `Main Success Scenario` matches a `### A<n>: <title>` heading in it.
+     * in it; every `scenario` other than `Main Success Scenario` matches a `### A<n>: <title>` heading in it; every
+     * `requirements` entry is an `NFR-` or `C-` id on its `**Requirements:**` line.
      */
     fun t02(tests: List<SourceFile>, useCases: Map<String, UseCaseHeadings>): List<String> =
         tests.flatMap { file -> markers(file.text, "$file") }.flatMap { marker ->
@@ -85,6 +104,9 @@ object Traceability {
             val problems = mutableListOf<String>()
             marker.businessRules.filterNot { it in headings.businessRules }.forEach {
                 problems += "T-02 ${marker.location}: ${marker.id} has no business rule $it"
+            }
+            marker.requirements.filterNot { requirementMarker.matches(it) && it in headings.requirements }.forEach {
+                problems += "T-02 ${marker.location}: ${marker.id} does not link the NFR or C $it"
             }
             val scenario = marker.scenario
             if (!scenario.isNullOrEmpty() && scenario != "Main Success Scenario" && scenario !in headings.flows) {

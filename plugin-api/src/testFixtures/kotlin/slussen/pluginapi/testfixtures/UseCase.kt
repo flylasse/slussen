@@ -1,7 +1,8 @@
 package slussen.pluginapi.testfixtures
 
 /**
- * The test marker of ADR-004 §2: names the use case, the scenario and the business rules a test proves. Checked by
+ * The test marker of ADR-004 §2: names the use case, the scenario, the business rules and the linked requirements a
+ * test proves. Checked by
  * the traceability rules T-01 and T-02 of `:architecture-tests`.
  */
 @Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
@@ -13,4 +14,6 @@ public annotation class UseCase(
     val scenario: String = "",
     /** Bare ids: ["BR-004"]. */
     val businessRules: Array<String> = [],
+    /** The linked NFR and C ids the test proves, from the use case's Requirements line: ["NFR-016"]. */
+    val requirements: Array<String> = [],
 )
