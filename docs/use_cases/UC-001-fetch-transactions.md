@@ -55,11 +55,11 @@
 
 ### A3: Request Limit Reached
 
-**Trigger:** The Data Provider's Request Limit (declared by its part) is reached in the preceding 24 hours, the window of the Data Provider's own limit (step 2)  
+**Trigger:** The Data Provider's Request Limit (BR-007) is reached (step 2)  
 **Flow:**
 
 1. Slussen does not contact the Data Provider.
-2. Slussen shows the Blocked Reason "Request Limit reached" with the time the oldest counted Provider Request leaves the 24-hour window of the Data Provider's own limit.
+2. Slussen shows the Blocked Reason "Request Limit reached" with the time the oldest counted Provider Request leaves the 24-hour window.
 3. Slussen records the Fetch with outcome Request Limit Reached.
 4. Use case ends.
 
@@ -252,7 +252,7 @@ Each Data Provider has its own Fetch Cooldown, whose default comes with the Data
 
 ### BR-007: Request Limit
 
-Slussen keeps every request it sends to a Data Provider as a Provider Request with its time, and sends a Data Provider at most its Request Limit of requests in the preceding 24 hours, the window of the Data Provider's own limit (declared by each Data Provider's part from the Data Provider's own limit, UC-012 BR-011). The count survives a restart of the app, does not depend on calendar day or time zone, and is not lifted by a Fetch the Operator starts. Times are shown in the device's local time.
+Slussen keeps every request it sends to a Data Provider as a Provider Request with its time, and sends a Data Provider at most its Request Limit of requests in the preceding 24 hours, the window of a Data Provider's own limit and of PSD2 (C-006). Each Data Provider's part declares its Request Limit (UC-012 BR-011): the limit the Data Provider publishes, fixed and named with its source, which the Operator cannot change because it protects the Data Provider's own limit; or, when the Data Provider publishes none, a cautious default that is an Operator Setting the Operator can change on the Data Provider's page in Connections within the range the part declares (UC-010 BR-002), shown as not published by the Data Provider. The count survives a restart of the app, does not depend on calendar day or time zone, and is not lifted by a Fetch the Operator starts. Times are shown in the device's local time.
 
 ### BR-008: No Contact Without Bank Consent
 

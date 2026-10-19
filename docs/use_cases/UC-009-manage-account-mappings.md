@@ -6,7 +6,7 @@
 **Use Case Name:** Manage Account Mappings  
 **Primary Actor:** Operator  
 **Goal:** Have every added Bank Account identified with certainty and sending its transactions to exactly one Budget Account, change a mapping only deliberately, and pause or resume a Bank Account without losing anything  
-**Trigger:** Operator asks to confirm, identify again, rename, retire or restore a Bank Account, to move or remove its Account Mapping or map it again, to set its Start Date, Funded By or Transfer Partner, or to check how the Bank Accounts are mapped  
+**Trigger:** Operator asks to confirm, identify again, rename, retire or restore a Bank Account, to change its Bank Account type or its Bank, to move or remove its Account Mapping or map it again, to set its Start Date, Funded By or Transfer Partner, or to check how the Bank Accounts are mapped  
 **Status:** Approved  
 
 **Requirements:** [FR-042, FR-056, FR-058, FR-059, FR-066, FR-075, FR-091, FR-099, FR-100, NFR-009, NFR-010, NFR-017, NFR-020, C-009, C-012](../requirements.md)
@@ -18,7 +18,7 @@
 
 ## Main Success Scenario
 
-1. Slussen shows each Bank Account with its name, its Bank, its Source, the Budget and Budget Account it is mapped to, its Funded By when it is a credit card or its Transfer Partner otherwise, and whether that value no longer applies (UC-005 BR-014), its Start Date, whether transactions were sent through its Account Mapping, whether it is identified, and whether it is a Retired Account.
+1. Slussen shows each Bank Account with its name, its Bank, its Bank Account type, its Source, the Budget and Budget Account it is mapped to, its Funded By when it is a credit card or its Transfer Partner otherwise, and whether that value no longer applies (UC-005 BR-014), its Start Date, whether transactions were sent through its Account Mapping, whether it is identified, and whether it is a Retired Account.
 2. Operator selects a Bank Account that waits for confirmation of a proposed match.
 3. Slussen shows, from the Offered Bank Accounts the Source last delivered and without contacting it (BR-009), the proposed Bank Account with its Bank, name, kind, currency and the last four digits of its number, and the other Offered Bank Accounts of the Source.
 4. Operator confirms the proposed Bank Account.
@@ -148,6 +148,17 @@
 1. Slussen stores the Start Date, records the change in the Decision Journal, and gives the Bank Transactions of the Bank Account their Transaction Status again (UC-003 BR-018).
 2. Use case ends.
 
+### A14: Change the Bank Account Type or the Bank
+
+**Trigger:** Operator chooses to change the Bank Account type or the Bank of a Bank Account (step 2)  
+**Flow:**
+
+1. Slussen shows the current Bank Account type and Bank, the four Bank Account types and the Banks it already knows (BR-012).
+2. Operator chooses another Bank Account type, chooses another known Bank or names a new one, or cancels and the use case ends.
+3. When the new Bank Account type turns a credit card into another Bank Account, or another Bank Account into a credit card, and the Bank Account has a Funded By or a Transfer Partner, Slussen states that this value will be cleared, because a Funded By belongs only to a credit card and a Transfer Partner only to another Bank Account (UC-005 BR-006); the Operator saves, or cancels and the use case ends.
+4. Slussen stores the Bank Account type and the Bank, clears a Funded By or Transfer Partner that the new Bank Account type does not allow, records the old and the new values in the Decision Journal, and detects the Transfers among the Bank Transactions not yet uploaded again (UC-005 BR-006).
+5. Use case ends.
+
 ## Postconditions
 
 ### Success Postconditions
@@ -207,3 +218,7 @@ Every Bank Account has an identifier that Slussen generates when the Bank Accoun
 ### BR-011: A Name Never Identifies a Bank Account
 
 The name of a Bank Account is proposed from what its Source delivers (UC-013 BR-004), and the Operator can edit it at any time. Slussen never uses the name to identify a Bank Account or to match its transactions.
+
+### BR-012: Bank Account Type and Bank Can Be Changed
+
+The Operator can change the Bank Account type of a Bank Account, one of Checking, Savings, Credit Card or Other, and its Bank, by choosing a Bank Slussen already knows or naming a new one, with the same values and choice as when adding it (UC-013 BR-009). The change touches no Account Mapping, no identification, no Import Identifier and no Sent Record, so Slussen asks for none of the confirmations of BR-003 and BR-007, whatever was sent through the Account Mapping. A change of the Bank Account type applies only to Transfers none of whose Transfer Legs has been uploaded (UC-005 BR-006); an uploaded transaction keeps its outcome. Like every change here, it is not possible while an Upload Plan is awaiting confirmation or an Upload is being written (UC-006 BR-005).

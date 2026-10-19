@@ -20,7 +20,7 @@
 
 1. Slussen shows Connections: the Budget App and each Data Provider in use, each with its status, and the Data Providers of this build not set up (BR-007).
 2. Operator chooses to set up a Data Provider, or opens the page of a service and chooses its credentials, and enters the credentials its part asks for, as Slussen describes them with where to get them (BR-002).
-3. Slussen checks the credentials with the service (BR-002).
+3. Slussen checks the credentials with the service (BR-002), for a Data Provider only while its Request Limit is not reached (A5).
 4. Slussen stores the accepted credentials on the device, encrypted with a key that never leaves the device, replacing earlier ones (BR-003), and keeps nothing it no longer needs.
 5. Slussen records in the Decision Journal that the credentials of that service were changed, without any credential (UC-011 BR-003).
 6. Slussen shows the credentials as accepted on the service's page, or returns to Connect Budgets and Bank Accounts when that started this use case.
@@ -62,6 +62,15 @@
 1. Slussen keeps any earlier credentials unchanged.
 2. Use case ends.
 
+### A5: Request Limit Reached
+
+**Trigger:** The Data Provider's Request Limit (UC-001 BR-007) is reached, so the check would exceed it (step 3)  
+**Flow:**
+
+1. Slussen does not send the check, stores nothing and keeps any earlier credentials unchanged.
+2. Slussen shows the Blocked Reason "Request Limit reached" with the time the oldest counted Provider Request leaves the 24-hour window (UC-001 A3), after which the Operator can enter the credentials again.
+3. Use case ends.
+
 ## Postconditions
 
 ### Success Postconditions
@@ -82,7 +91,7 @@ The service credentials of the Budget App and of each Data Provider are entered 
 
 ### BR-002: What Each Part Asks For
 
-Each part declares the credentials it needs and how Slussen checks them. In this build: for YNAB, a personal access token, checked by listing the Budgets; for SimpleFIN, a setup token, which Slussen exchanges once for its access credential and then discards; for Enable Banking, the application id and the private key file of the household's own registered Enable Banking application, the key file chosen with the device's file picker. Each household registers its own Enable Banking application, as Enable Banking requires (C-008).
+Each part declares the credentials it needs and how Slussen checks them. In this build: for YNAB, a personal access token, checked by listing the Budgets; for SimpleFIN, a setup token, which Slussen exchanges once for its access credential and then discards; for Enable Banking, the application id and the private key file of the household's own registered Enable Banking application, the key file chosen with the device's file picker. Each household registers its own Enable Banking application, as Enable Banking requires (C-008). A check of a Data Provider's credentials is a Provider Request and counts against its Request Limit (UC-001 BR-007); when the Request Limit is reached, the check is not sent (A5).
 
 ### BR-003: Stored Only on the Device, Encrypted
 

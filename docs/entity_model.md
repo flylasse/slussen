@@ -134,11 +134,14 @@ An external online service from which Slussen fetches transactions and balances 
 | stable_reference      | True when the Data Provider gives every Bank Transaction a Stable Reference                          | Boolean   | 1                | Not Null              |
 | bank_consent_required | True when each Bank must grant a Bank Consent before the Data Provider can read it                   | Boolean   | 1                | Not Null              |
 | fetch_cooldown_minutes | Fetch Cooldown of the Data Provider in minutes, an Operator Setting whose default the Data Provider's part declares; 0 switches it off | Integer   | 10               | Not Null, Min: 0, Max: 1440 |
-| request_limit         | Request Limit: number of requests Slussen sends to the Data Provider at most in any 24 hours, declared by the Data Provider's part from the Data Provider's own limit; not an Operator Setting | Integer   | 10               | Not Null, Min: 1, Max: 1000 |
+| request_limit         | Request Limit: number of requests Slussen sends to the Data Provider at most in any 24 hours; the limit the Data Provider publishes, declared by its part, when there is one, otherwise an Operator Setting whose default and range the Data Provider's part declares | Integer   | 10               | Not Null, Min: 1, Max: 1000 |
+| request_limit_published | True when the Request Limit is the limit the Data Provider publishes, declared by its part with its source and not changeable by the Operator; false when the Data Provider publishes none | Boolean   | 1                | Not Null |
 
 #### Constraints
 
-- The number of Provider Requests of the Data Provider sent in the preceding 24 hours, the window of the Data Provider's own limit, never exceeds `request_limit`, the Request Limit set by the Data Provider's part; the count does not depend on calendar day or time zone.
+- The number of Provider Requests of the Data Provider sent in the preceding 24 hours, the window of a Data Provider's own limit and of PSD2 (C-006), never exceeds `request_limit`; the count does not depend on calendar day or time zone.
+- When `request_limit_published` is true, `request_limit` is the limit the Data Provider's part declares as published and is set from it at every start.
+- When `request_limit_published` is false, `request_limit` lies within the range the Data Provider's part declares, starts at the default the part declares and keeps the Operator's value like the other Operator Settings.
 
 ### FILE_FORMAT
 
@@ -697,7 +700,7 @@ The values the Operator can change inside the app, each with its allowed range a
 - Exactly one `OPERATOR_SETTINGS` record exists; it starts with every default and is kept across a reinstall with restore from a device backup and across an upgrade.
 - Transfer detection is always on and has no setting.
 - `upload_as_cleared` is offered only when the Budget App supports the Cleared marker; otherwise it counts as false. A change applies only to what is written afterwards and changes nothing already in the Budget App.
-- The Request Limit of each Data Provider is declared by its part and is not an Operator Setting, because it protects the Data Provider's own limit. The chosen Budgets (`BUDGET.served`), the Bank Accounts with their names and Start Dates, and the Account Mappings are set in the app (UC-013, UC-009) and are kept like the Operator Settings.
+- A Request Limit that the Data Provider publishes is declared by its part and is not an Operator Setting, because it protects the Data Provider's own limit; the Request Limit of a Data Provider that publishes none is an Operator Setting per Data Provider, kept as `DATA_PROVIDER.request_limit` like the Fetch Cooldown. The chosen Budgets (`BUDGET.served`), the Bank Accounts with their names and Start Dates, and the Account Mappings are set in the app (UC-013, UC-009) and are kept like the Operator Settings.
 - `upload_window_days` applies to Bank Transactions from a Data Provider and `file_upload_window_days` to Bank Transactions from a Transaction File, whatever its File Format.
 - The Fetch Cooldown is an Operator Setting per Data Provider, kept as `DATA_PROVIDER.fetch_cooldown_minutes`; it starts at the default the Data Provider's part declares and is kept like the other Operator Settings.
 - The Card Payment and Bank Transfer Descriptions are Operator Settings too; because each is a list, they are kept as `TRANSFER_DESCRIPTION` records rather than as attributes here.

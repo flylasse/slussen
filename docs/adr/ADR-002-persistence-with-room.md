@@ -58,8 +58,8 @@ What the specification requires of storage:
   each Data Provider, an Operator Setting kept per Data Provider instead of in `OPERATOR_SETTINGS`.
 - **The Decision Journal never affects decisions.** NFR-006, UC-010 BR-004, UC-011 BR-002; size limit by dropping
   the oldest entries (`DECISION_JOURNAL_ENTRY` constraints, UC-010 BR-003).
-- **Counters that survive a restart.** `PROVIDER_REQUEST` is kept for at least 24 hours, the window set by the Data
-  Provider's own limit, over which the Request Limit is counted (glossary: Request Limit), and survives a restart of the app
+- **Counters that survive a restart.** `PROVIDER_REQUEST` is kept for at least 24 hours, the rolling window over which
+  the Request Limit is counted, the window of a Data Provider's own limit and of PSD2 (C-006) (glossary: Request Limit), and survives a restart of the app
   (UC-001 BR-007, BR-012).
 - The Operator decided (bootstrap plan O-09) that storage is Room, and (O-P1-03) that the Budget App read cursor stays
   technical, outside the entity model.
@@ -171,8 +171,11 @@ Configuration of them and no reconciliation by key:
   Sent Records keep their `budget_account_id` (UC-003 BR-021), except that a later retry of a Rejected send moves its
   record to the Budget Account of the current Account Mapping (§4 step 2; UC-006 BR-020, O-P2-34 (1)).
 - `offered_bank_account.balance` holds the balance the Data Provider reported with the delivery (UC-013 step 5).
-- `data_provider.request_limit` is not an Operator Setting: O-11 sets it at every start from the value the Data
-  Provider's part declares (`DataProviderProfile.requestLimit`, ADR-001 §4.1; FR-017).
+- `data_provider.request_limit` with `request_limit_published` (S-31): when the Data Provider's part declares a
+  published limit (`RequestLimitDeclaration.Published`, ADR-001 §4.1; FR-017), it is not an Operator Setting and O-11
+  sets it at every start from the part; when the part declares none published (`NotPublished`), it is an Operator
+  Setting kept per Data Provider beside `fetch_cooldown_minutes`, changed through O-13 within the range the part
+  declares (UC-010 BR-002, A11).
 - `fetch.outcome` has the value Credentials Refused (UC-001 A7); the Phase 1-2 value Configuration Error is gone.
 - A `funded_by_budget_account_id` or `transfer_partner_budget_account_id` whose Budget Account no longer receives
   through any Account Mapping of a Bank Account that is not a Retired Account is kept unchanged; the core treats it as
@@ -183,7 +186,11 @@ Configuration of them and no reconciliation by key:
 per Data Provider of the build and one `file_format` row per File Pre-processor, matched by `source_key`, in one
 transaction: a new `data_provider` row gets `fetch_cooldown_minutes` from the default its plug-in declares
 (`DataProviderProfile.defaultFetchCooldownMinutes`), an existing row keeps the value the Operator set, which is backed
-up and restored with the other Operator Settings (S-22, UC-001 BR-006); `request_limit` is always set from the part.
+up and restored with the other Operator Settings (S-22, UC-001 BR-006). For the Request Limit, a `Published`
+declaration always sets `request_limit` from the part with `request_limit_published` true; a `NotPublished` one gives
+a new row, or a row whose limit was published until now, the part's default with `request_limit_published` false, and
+an existing row keeps the Operator's value, backed up and restored like the Fetch Cooldown, while it lies in the
+declared range, and otherwise takes the default (S-31, UC-001 BR-007).
 Nothing is ever deleted by it.
 
 ### 2a. Service credentials, encrypted on the device (S-24)
@@ -227,7 +234,7 @@ a step from two calls. Each operation that changes something an Upload Plan depe
 | O-8 | `UploadStore.recordOutcomes` | The reported outcomes of one Budget Account's transaction sends | UC-006 steps 8-9, A8, A9, BR-012 |
 | O-9 | `UploadStore.finishUpload` | The end of the Upload and the mode Normal | UC-006 step 12 |
 | O-10 | `ConsentStore.startRequest`, `consumeAnswer`, `replaceConsent`, `revoke` (`device.db`) | Start: a new Consent Request with its correlation, making earlier ones of the Bank unanswerable. Consume: the most-recent, lifetime and not-answered checks and `answered` set, together. Replace: the Bank Consent and its Bank Session in place of the earlier ones, refused when a newer Consent Request exists. Revoke: delete the Bank Consent, its Bank Session and every Consent Request of the Bank | UC-007 BR-002, BR-003, BR-004, BR-007; NFR-013 |
-| O-11 | `PluginRegistryStore.reconcile` | §2, the Data Providers and File Formats of the build, with the Request Limit and the default Fetch Cooldown their parts declare | FR-017, UC-001 BR-006, BR-007 |
+| O-11 | `PluginRegistryStore.reconcile` | §2, the Data Providers and File Formats of the build, with the Request Limit (published, or a default and range) and the default Fetch Cooldown their parts declare | FR-017, UC-001 BR-006, BR-007 |
 | O-12 | `RecoveryStore.openCheck`, `confirmChecks` | Open a Recovery Check with its cause; confirm every open check whose `compared_at` is filled, together with its Decision Journal record request | UC-006 BR-017, UC-008 A9, BR-009 |
 | O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses; setting a Funded By or Transfer Partner (also from a Transfer Decision) is refused unless the Budget Account is in the same Budget, differs from the Bank Account's own, and receives through an Account Mapping of a Bank Account that is not a Retired Account, never a Manually Kept Account (UC-005 BR-014, `BANK_ACCOUNT` constraints); `MappingStore.move`, `MappingStore.remove` and `MappingStore.identifyAgain` change or delete an Account Mapping or record a new identification of its Bank Account (with `identified_at`), refused while a `sent_record` of the Bank Account's transactions with the mapping's `budget_account_id` (also one sent through an earlier mapping to that Budget Account; `first_sent_at` does not decide) has an `outcome` other than Rejected, unless the call carries the Operator's confirmation of the stated number of those sent transactions and, separately, of the Rejected ones; each records the change, and a move resets `first_sent_at` (UC-009 A6-A8, A11, BR-003, BR-007); `MappingStore.mapAgain` stores, without confirmation, a new Account Mapping with `first_sent_at` empty for a Bank Account that has none, refused unless the Budget Account belongs to a served Budget in the Bank Account's currency and receives through no Account Mapping (UC-009 A8); confirming a proposed match records the identification with `identified_at` (UC-009 steps 4-6, A1); renaming and Start Date are single updates (UC-009 A12, A13); a Review Decision on a Transfer Leg also sets the statuses of the other Transfer Legs of its Transfer (Deferred, or Already In Budget App while an Already Present decision holds) in the same transaction | UC-004 BR-006, BR-009; UC-005 BR-013, BR-014; UC-009 BR-003, BR-007, BR-008, A6-A13, UC-010 |
 | O-14 | `UploadStore.recordClearing` | The result of one clearing (ADR-007 §6 step 8): a new `transfer_counterpart` with the leg's `sent_record_id`, its `budget_app_reference` and `state` Cleared (with `cleared_at`) or Uncleared; or an existing one set to Cleared with `cleared_at`. It never inserts, resets or changes a `sent_record` | UC-006 steps 10, BR-009, BR-010, BR-011, A11 |
@@ -408,7 +415,7 @@ is closed:
    ADR-008 §7 says, and the rename never overwrites an existing file; `slussen.lastgood.db` is copied to
    `slussen.db`, or, without one, an empty database with the default content (one `operator_settings` record with
    every default, the default Transfer Descriptions of UC-010 BR-007, and, through O-11 at the same start, one
-   `data_provider` row per Data Provider with its declared default Fetch Cooldown) is created; the part is reported to the core,
+   `data_provider` row per Data Provider with its declared default Fetch Cooldown and Request Limit) is created; the part is reported to the core,
    which shows the notice of UC-008 A1; a Recovery Check is opened (§6).
 4. **Unreadable while running.** A `TypeConverter` that meets an unknown text, or a failed foreign key, throws
    `UnreadableStoredData`. The app does not continue on that data: for `slussen.db` it writes the start intent with
@@ -565,3 +572,4 @@ run with JUnit 5 (ADR-004, ADR-005).
     keep theirs), §4 "What this guarantees"; ADR-007 §4, UC-006 BR-020.
 - Mockup gate follow-up (2026-10-18): §2 and §3 O-13 (no confirmation to move or remove an Account Mapping whose Sent Records are all Rejected; `first_sent_at` keeps its meaning; UC-009 A8, A11, BR-003).
 - Pre-Phase-6 review follow-up (2026-10-18): §2 and §3 O-13, O-15 (`bank_account.identified_at`, so the Fetch Cooldown never serves a Bank Account added or identified again, UC-001 BR-006; the confirmation to move, remove or identify again rests on the non-Rejected `sent_record`s alone, not on `first_sent_at`, and states the Rejected ones separately; mapping a Bank Account again; the balance Data Provider's reference stored on adding; UC-009 A6-A8, A11, BR-003, BR-007; UC-013 A4).
+- Phase 7 (2026-10-18): S-31 (O-P2-42; FR-017, UC-001 BR-007, UC-010 A11, BR-002): Context and §2 (`data_provider.request_limit_published`; a Request Limit the Data Provider does not publish is an Operator Setting kept per Data Provider like the Fetch Cooldown; O-11 sets a published one from the part and keeps the Operator's value otherwise), §3 O-11, §8 step 3 (default content).

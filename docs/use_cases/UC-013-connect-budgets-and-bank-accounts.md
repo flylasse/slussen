@@ -25,9 +25,9 @@
 5. Slussen shows, for each Source, the Offered Bank Accounts that are not yet added, each with its name or product, kind, currency, last four digits and balance, next to the Budget Accounts of the chosen Budgets that receive through no Account Mapping, each with its name and balance (BR-002).
 6. Operator pairs an Offered Bank Account with a Budget Account.
 7. Slussen checks that the Budget Account receives through no other Account Mapping and that its Budget has the Bank Account's currency.
-8. Slussen adds the Bank Account with an identifier it generates (BR-003), records how the Source identifies it, proposes its name (BR-004) and stores its Account Mapping.
-9. Operator accepts or edits the name and optionally sets a Start Date (BR-005).
-10. Slussen stores them and records the addition in the Decision Journal.
+8. Slussen proposes the name of the Bank Account (BR-004), its Bank Account type and its Bank (BR-009).
+9. Operator accepts or edits the name, confirms or changes the Bank Account type and the Bank, and optionally sets a Start Date (BR-005).
+10. Slussen adds the Bank Account with an identifier it generates (BR-003), records how the Source identifies it, stores its name, Bank Account type, Bank, Start Date and Account Mapping, and records the addition in the Decision Journal.
 11. Slussen shows the Bank Account as added; its transactions are fetched and compared from the next Fetch on (UC-001).
 
 ## Alternative Flows
@@ -61,7 +61,7 @@
 **Trigger:** Operator adds a Bank Account whose transactions come from Transaction Files (step 6)  
 **Flow:**
 
-1. Operator chooses its File Format and Bank, optionally the Offered Bank Account of a Data Provider that reports its balance (BR-006), and the Budget Account.
+1. Operator chooses its File Format, its Bank Account type and its Bank, optionally the Offered Bank Account of a Data Provider that reports its balance (BR-006, BR-009), and the Budget Account.
 2. Use case continues at step 7.
 
 ### A5: Budget Account Already Mapped or in Another Currency
@@ -94,12 +94,12 @@
 
 - The Budget App and the Data Providers the Operator uses have accepted credentials, stored only on the device.
 - Slussen serves the Budgets the Operator chose.
-- Each paired Bank Account is added with its generated identifier, its name, its optional Start Date and its Account Mapping, and its transactions are fetched and compared from the next Fetch on.
+- Each paired Bank Account is added with its generated identifier, its name, its Bank Account type, its Bank, its optional Start Date and its Account Mapping, and its transactions are fetched and compared from the next Fetch on.
 - Every change is recorded in the Decision Journal, unless the Decision Journal is switched off.
 
 ### Failure Postconditions
 
-- No Bank Account is added without the Operator's pairing.
+- No Bank Account is added without the Operator's pairing, or without a Bank Account type and a Bank the Operator confirmed or chose.
 - No Budget Account receives through two Account Mappings, and no Bank Account is mapped into a Budget of another currency.
 - Nothing is written to the Budget App.
 
@@ -127,7 +127,7 @@ The Start Date of a Bank Account is optional and is set or changed in the app (U
 
 ### BR-006: Bank Accounts of a File Format
 
-A Bank Account whose transactions come from Transaction Files is added by choosing its File Format, its Bank and, when a Data Provider reports its balance, that Data Provider's Offered Bank Account (UC-001 BR-011), or when its first Transaction File is imported (UC-002 A7). Slussen proposes no name from a file; the Operator enters it.
+A Bank Account whose transactions come from Transaction Files is added by choosing its File Format, its Bank Account type, its Bank and, when a Data Provider reports its balance, that Data Provider's Offered Bank Account (UC-001 BR-011), or when its first Transaction File is imported (UC-002 A7). Slussen proposes no name, Bank Account type or Bank from a file; the Operator enters the name and chooses the others (BR-009).
 
 ### BR-007: Kept Across a Reinstall, Restore or Upgrade
 
@@ -136,3 +136,7 @@ The chosen Budgets and each added Bank Account with its identifier, name, Start 
 ### BR-008: First-Run Order
 
 Setting up Slussen goes in this order: enter the service credentials of the Budget App and of the Data Providers (UC-014); choose the Budgets; then add Bank Accounts by pairing them, granting a Bank Consent first where a Data Provider needs one to offer its Bank Accounts (UC-007, A3). Later, each of these can be done again on its own: the credentials on each service's page in Connections (UC-014), the Budgets from the Budget App's page, which shows the Budgets in use and leads to their choice (step 2), and the Bank Accounts from Settings.
+
+### BR-009: Proposed Bank Account Type and Bank
+
+Before a Bank Account is added, Slussen proposes its Bank Account type, one of Checking, Savings, Credit Card or Other, from the kind the Data Provider gives the Offered Bank Account, Other when that kind matches none of the first three, and its Bank, the Bank the Data Provider names for it. The Operator confirms or changes both: the Bank Account type from these four values, the Bank by choosing one Slussen already knows or naming a new one. When the Data Provider names no Bank, Slussen proposes none and the Operator chooses or names it. For a Bank Account of a File Format, Slussen proposes neither, and the Operator chooses the Bank Account type and chooses or names the Bank (A4, BR-006). No Bank Account is added without a Bank Account type and a Bank. The Bank Account type decides whether the Bank Account is a credit card, with a Funded By, or has a Transfer Partner (UC-005 BR-006).

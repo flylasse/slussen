@@ -230,7 +230,7 @@ enum class RefusalScope { BankAccount, Bank, Source }  // Source = the whole Dat
 
 - The plug-in calls `gate.admit` before **every** request it sends, including each page of a paged read and every
   request of a Bank Consent operation (A-12). On `Refused` it sends nothing in that scope and goes on with what is
-  outside it (§4.1). It never counts, waits or retries on its own.
+  outside it (§4.1); a credential check returns `StoppedByGate` (§4.5). It never counts, waits or retries on its own.
 - For a Data Provider, the core's gate stores the Provider Request (`PROVIDER_REQUEST`, UC-001 BR-007) durably before
   it answers `Allowed`, so a crash after admission counts the request rather than losing it. It refuses with scope
   Source for a reached Request Limit or a Back-off of the Data Provider, scope Bank for a Back-off of one Bank, and
@@ -261,10 +261,27 @@ data class DataProviderProfile(
     val needsBankConsent: Boolean,     // DATA_PROVIDER.bank_consent_required; its page shows its Bank Consents (UC-007 BR-008)
     val defaultFetchCooldownMinutes: Int, // default of DATA_PROVIDER.fetch_cooldown_minutes, 0 to 1440, 0 switches it off;
                                           // an Operator Setting the Operator can change (FR-016, UC-001 BR-006, UC-010)
-    val requestLimit: Int,             // DATA_PROVIDER.request_limit, 1 to 1000: the Data Provider's own limit, KDoc names
-                                       // its source; not an Operator Setting (FR-017, UC-001 BR-007, UC-012 BR-011)
+    val requestLimit: RequestLimitDeclaration, // DATA_PROVIDER.request_limit and request_limit_published
+                                       // (FR-017, UC-001 BR-007, UC-010 BR-002, UC-012 BR-011)
 )
+
+sealed interface RequestLimitDeclaration {   // requests in any rolling 24 hours, counted from PROVIDER_REQUEST
+    data class Published(val requests: Int, val source: String) : RequestLimitDeclaration
+        // the limit the Data Provider publishes, 1 to 1000, fixed: not an Operator Setting; source names where it is
+        // published and is shown on its page (§4.6)
+    data class NotPublished(val defaultRequests: Int, val range: IntRange) : RequestLimitDeclaration
+        // the Data Provider publishes none: a cautious default inside range, range inside 1 to 1000; an Operator
+        // Setting the Operator can change within range and reset to the default (UC-010 A11), shown as not published
+}
 ```
+
+The parts of this build declare the values below (O-P2-42, S-31). A number the Data Provider publishes names its
+source; the others are defaults of Operator Settings that the Operator decided and can change (UC-010 BR-002):
+
+| Part | `name` | `sourceKey` | Request Limit | Default Fetch Cooldown | Source |
+|---|---|---|---|---|---|
+| `:provider-simplefin` | SimpleFIN | `simplefin` | `Published(24, …)`: 24 requests in any 24 hours, the limit SimpleFIN publishes, fixed | 60 minutes by default, an Operator Setting | SimpleFIN Bridge Developer Guide, https://beta-bridge.simplefin.org/info/developers: "you are expected to make 24 requests or fewer per day"; beyond its warnings, Access Tokens are disabled (UC-001 BR-015) |
+| `:provider-enablebanking` | Enable Banking | `enable-banking` | `NotPublished(50, 10..500)`: 50 requests in any 24 hours by default, an Operator Setting between 10 and 500, shown as not published by Enable Banking. The Banks' PSD2 cap of 4 Unattended Accesses per Bank Account in 24 hours is the Unattended Access limit (C-006), counted separately (UC-001 BR-012) | 360 minutes by default, an Operator Setting | Enable Banking FAQ, https://enablebanking.com/docs/faq/: it publishes no quota of its own, quotas are set by contract; it advises continuing after 6 hours once a Bank answers `ASPSP_RATE_LIMIT_EXCEEDED`, the basis of the default Fetch Cooldown |
 
 - `FetchRequest` holds: the Bank Accounts to read (by `provider_reference`, by `balance_provider_reference` for a
   Bank Account read for its balance only, UC-001 BR-011, or "all the Data Provider exposes" for identification;
@@ -491,6 +508,9 @@ sealed interface ConversionResult {
 }
 ```
 
+The File Pre-processor of this build, `:fileformat-hsa-csv`, declares `name` "HSA CSV export" and `sourceKey`
+`hsa-csv` (O-P2-42, S-31).
+
 A File Pre-processor declares no Upload Window: the file upload window is one Operator Setting for every File Format
 (S-01, FR-094, UC-002 BR-004, `OPERATOR_SETTINGS.file_upload_window_days`; A-26).
 
@@ -519,8 +539,10 @@ invented recorded answers served by a local test server. They check at least:
   transfer carry each other's references; two look-alike Transfers stay apart; `importIdentifierMaxLength` is at
   least the protocol's length;
 - for a Data Provider and the Budget App: `check` admits every request through the gate, answers `Accepted`,
-  `Refused` or `TransientFailure` for recorded answers, never reveals the input in a result or a `toString()`, and the
-  declared `requestLimit` and `defaultFetchCooldownMinutes` lie in their ranges (§4.1, §4.5);
+  `Refused` or `TransientFailure` for recorded answers and `StoppedByGate` without sending anything when the gate
+  refuses, never reveals the input in a result or a `toString()`, and the
+  declared `requestLimit` and `defaultFetchCooldownMinutes` lie in their ranges: a `Published` limit within 1 to 1000
+  with a non-empty `source`, a `NotPublished` range within 1 to 1000 that holds its default (§4.1, §4.5);
 - for a File Pre-processor: a file with one unreadable line is `Rejected`; converting the same bytes twice gives equal
   results; every declared number lies in its range.
 
@@ -541,6 +563,7 @@ sealed interface CredentialCheck {
     data class Accepted(val credential: Secret) : CredentialCheck  // what the core stores, encrypted
     data object Refused : CredentialCheck                         // UC-014 A1
     data class TransientFailure(val kind: FailureKind) : CredentialCheck  // UC-014 A2
+    data class StoppedByGate(val reason: RefusalReason) : CredentialCheck // UC-014 A5: the gate refused, nothing sent
 }
 ```
 
@@ -550,6 +573,9 @@ sealed interface CredentialCheck {
   access token, checked by listing the Budgets; SimpleFIN, a setup token, which `check` exchanges once for the access
   credential, returns that credential and discards the setup token; Enable Banking, the application id and the private
   key file of the household's own registered application, checked with a signed request (UC-014 BR-002, C-008).
+- When the gate answers `Refused`, `check` sends nothing and returns `StoppedByGate` with the gate's reason, never
+  `TransientFailure`: a reached Request Limit is UC-014 A5, shown as "Request Limit reached" with the time it frees
+  up, not a service that cannot be reached (UC-014 A2).
 - The core never interprets a credential. `RequestContext.credential` carries the stored one to every other call; a
   service that answers that it refuses it gives `CredentialsRefused` (§4.1, F-8), and the core then shows the Blocked
   Reason "credentials refused"; without stored credentials the core contacts no service and shows "credentials
@@ -562,15 +588,15 @@ sealed interface CredentialCheck {
 The Connections section of Settings and the page of each service are generated from what the registered plug-ins
 declare (FR-103, UC-010 BR-010); no screen names a service. `:core` `settings` reads, for each `DataProvider` and the
 `BudgetApp` registered in the composition root (§5), the declarations below and joins them with the stored state
-(credential status, last Fetch, Bank Accounts, Bank Consents, Budgets in use, the current Fetch Cooldown and Upload as
-Cleared); `:app` renders that read model.
+(credential status, last Fetch, Bank Accounts, Bank Consents, Budgets in use, the current Fetch Cooldown and Request
+Limit, and Upload as Cleared); `:app` renders that read model.
 
 | The page shows | Declared by |
 |---|---|
 | The service's name | `DataProviderProfile.name`, `BudgetAppProfile.name` |
 | The credentials to enter, with what each is and where to get it | `CredentialCapability.form` (§4.5): each field's `kind` (Text, Secret, File) and `description` |
 | The Fetch Cooldown with its default, and the reset to that default (UC-010 A10) | `DataProviderProfile.defaultFetchCooldownMinutes` |
-| The Request Limit, read-only | `DataProviderProfile.requestLimit` |
+| The Request Limit: when published, read-only with its source; when not, the Operator's value with the default, the range, "not published by the Data Provider" and the reset to the default (UC-010 A11) | `DataProviderProfile.requestLimit` (`Published` or `NotPublished`) |
 | The Bank Consents section, only when needed | `DataProviderProfile.needsBankConsent` (with `DataProvider.bankConsent`) |
 | Upload as Cleared, only when supported | `BudgetAppProfile.supportsClearedMarker` |
 
@@ -736,12 +762,12 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
 | UC-006 Upload to the Budget App | `:app`, `:core`, `:plugin-api`, `:budgetapp-ynab`, `:persistence` | `:core` `operation` and `upload`: the coordinator, the Upload Plan and its write set, the pause, the check before writing, the Sent Record before sending, retries, the write permit, outcomes, the Recovery Check gate (A13) (ADR-007); `:core` `identity`: Re-upload identifiers. `:budgetapp-ynab`: the write and marking Cleared. `:persistence`: O-6 to O-9, O-14 (clearing results). |
 | UC-007 Grant Bank Consent | `:app`, `:core`, `:plugin-api`, `:provider-enablebanking`, `:persistence` | `:app`: the Bank Consents on the Data Provider's page (BR-008, §4.6), opening the Bank's Strong Customer Authentication and receiving the return. `:core` `consent`: the `state` value and its digest, one-time, most recent, lifetime, revocation, Offered Bank Accounts. `:provider-enablebanking`: the only Data Provider of this build that needs a Bank Consent. `:persistence`: O-10 in `device.db` (Bank Consents, Bank Sessions, Consent Requests and their correlation), excluded from backups. |
 | UC-008 Check Import Status | `:app`, `:core`, `:persistence` | `:core` `status`: counts, Source Health, Freshness, Blocked Reasons (with "Recovery Check open", "credentials refused", "credentials missing" and, for a currency mismatch, moving the Account Mapping, BR-006), outdated balances, the expiry warning, the backup size warning (A7, BR-010); `:core` `recovery`: the Recovery Check (A8, A9, BR-009), opened only for damage to Decision-Critical Data, a notice only for other parts (A1). `:persistence`: `StartState` with the start intent, `BackupSizeMonitor`, O-12. No plug-in and no network in its own flow (K-08); A9 starts UC-003, which reads the Budget App through `:budgetapp-ynab`. |
-| UC-009 Manage Account Mappings | `:app`, `:core`, `:persistence` | `:core` `mapping`: identification from stored Offered Bank Accounts (BR-009, A6, A7, A10), identifying again after a send that was not Rejected only with the Operator's confirmation (BR-007), moving or removing an Account Mapping, after a send that was not Rejected only with the Operator's confirmation of the stated number (A8, A11, BR-003), renaming (A12, BR-011), the Start Date (A13), retire and restore, the generated identifier (BR-010), Funded By and Transfer Partner, offered only from Budget Accounts that Slussen fetches and shown as no longer applying when that Budget Account loses its last such Account Mapping (BR-008, UC-005 BR-014). `:persistence`: O-13, Offered Bank Accounts in `device.db`. No plug-in. |
-| UC-010 Adjust Settings | `:app`, `:core`, `:plugin-api`, `:persistence` | `:core` `settings`: ranges, defaults (file upload window, backup warning threshold included), Transfer Descriptions, re-status, the Connections read model from the plug-ins' declarations and the reset of a Fetch Cooldown to its declared default (A10, BR-010, §4.6); `:core` `journal`: size limit and clearing. `:app`: the general Settings, Connections and one page per service, generated (BR-010, §4.6), Detailed Logging read by the log adapter (ADR-006), and the Scheduled Fetch worker rescheduled when the Fetch Schedule changes (A6). |
+| UC-009 Manage Account Mappings | `:app`, `:core`, `:persistence` | `:core` `mapping`: identification from stored Offered Bank Accounts (BR-009, A6, A7, A10), identifying again after a send that was not Rejected only with the Operator's confirmation (BR-007), moving or removing an Account Mapping, after a send that was not Rejected only with the Operator's confirmation of the stated number (A8, A11, BR-003), renaming (A12, BR-011), the Start Date (A13), changing the Bank Account type and the Bank, clearing a Funded By or Transfer Partner the new type does not allow, without the confirmation of moves (A14, BR-012), retire and restore, the generated identifier (BR-010), Funded By and Transfer Partner, offered only from Budget Accounts that Slussen fetches and shown as no longer applying when that Budget Account loses its last such Account Mapping (BR-008, UC-005 BR-014). `:persistence`: O-13, Offered Bank Accounts in `device.db`. No plug-in. |
+| UC-010 Adjust Settings | `:app`, `:core`, `:plugin-api`, `:persistence` | `:core` `settings`: ranges, defaults (file upload window, backup warning threshold included), Transfer Descriptions, re-status, the Connections read model from the plug-ins' declarations and the reset of a Fetch Cooldown, and of a Request Limit the Data Provider does not publish, to its declared default (A10, A11, BR-010, §4.6); `:core` `journal`: size limit and clearing. `:app`: the general Settings, Connections and one page per service, generated (BR-010, §4.6), Detailed Logging read by the log adapter (ADR-006), and the Scheduled Fetch worker rescheduled when the Fetch Schedule changes (A6). |
 | UC-011 Export the Decision Journal | `:app`, `:core`, `:plugin-api`, `:budgetapp-ynab`, `:persistence` | `:app`: choosing where to save. `:core` `journal`: the export with date, payee, memo, amount and Budget Account of each Budget App Transaction, codes for payee and memo. `:budgetapp-ynab`: reading current transactions (A2 falls back to the stored copy, which holds the memo). `:persistence`: the journal database. |
 | UC-012 Set Up an Own Build | `build-logic/`, `:app`, `:plugin-api`, every plug-in module, `.gitignore`, `README.md` | `build-logic/`: the release signing values from Gradle properties and the clear failure without them (BR-001, BR-002, A1, ADR-003 §1, §2), the rule and test that no credential enters a built app (BR-012, ADR-003 §3), the version name and signing (ADR-005); a `debug` build needs no signing values (A5). `:app`: the composition root. `:plugin-api` and plug-in modules: A2-A4, each part with its credential form, Request Limit and default Fetch Cooldown. `README.md`: the how-to, naming the signing values and where they go (FR-070, Phase 8). |
 | UC-013 Connect Budgets and Bank Accounts | `:app`, `:core`, `:plugin-api`, Data Provider modules, `:budgetapp-ynab`, `:persistence` | `:app`: the first-run order (BR-008) and the pairing screen. `:core` `connection`: served Budgets (BR-001, A2), pairing an Offered Bank Account with an unmapped Budget Account of the same currency (BR-002, A5), the generated identifier (BR-003, ADR-008 §7), the proposed name (BR-004), the Start Date (BR-005), Bank Accounts of a File Format (BR-006, A4). `:budgetapp-ynab`: listing Budgets and Budget Accounts. Data Provider modules: Offered Bank Accounts through UC-001 or UC-007 (A3). `:persistence`: O-15, Offered Bank Accounts in `device.db`. |
-| UC-014 Manage Service Credentials | `:app`, `:core`, `:plugin-api`, Data Provider modules, `:budgetapp-ynab`, `:persistence` | `:app`: Connections with each service's status (BR-007, §4.6), the credential form of each part, the file picker for a key file. `:core` `credential`: entering, checking, replacing and removing (A1-A4), the Blocked Reasons "credentials refused" and "credentials missing" (BR-005). Plug-in modules: `CredentialCapability` (§4.5), the SimpleFIN setup-token exchange. `:persistence`: `CredentialVault` and O-16, `service_credential` encrypted in `device.db` (ADR-002 §2a). |
+| UC-014 Manage Service Credentials | `:app`, `:core`, `:plugin-api`, Data Provider modules, `:budgetapp-ynab`, `:persistence` | `:app`: Connections with each service's status (BR-007, §4.6), the credential form of each part, the file picker for a key file. `:core` `credential`: entering, checking, replacing and removing (A1-A5), the Blocked Reasons "credentials refused" and "credentials missing" (BR-005). Plug-in modules: `CredentialCapability` (§4.5), the SimpleFIN setup-token exchange. `:persistence`: `CredentialVault` and O-16, `service_credential` encrypted in `device.db` (ADR-002 §2a). |
 
 ## Consequences
 
@@ -866,3 +892,10 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
 - Phase 6 (2026-10-18): O-P2-39: §4.0 `RequestDescriptor` renamed `RequestSummary`, §4.1 `ConsentStart.Started`'s
   `authorizationAddress` renamed `consentAddress`; both old names used glossary Avoid words ("descriptor",
   "authorization").
+- Phase 7 (2026-10-18): S-30 (O-P2-44, UC-014 A5): §4.5 `CredentialCheck.StoppedByGate`, so that a credential check
+  the gate refuses is told apart from a service that cannot be reached; §4.0 and §4.4 refer to it; §7 UC-014 row (A1-A5).
+- Phase 7 (2026-10-18): S-31 (O-P2-42; FR-017, UC-001 BR-007, UC-010 A11, BR-002): §4.1
+  `DataProviderProfile.requestLimit` becomes `RequestLimitDeclaration` (`Published` with its source, or `NotPublished`
+  with a default and range the Operator changes within), and the values the SimpleFIN and Enable Banking parts declare,
+  each with its source; §4.3 the HSA File Format's `name` and `sourceKey`; §4.4 the declared-number checks; §4.6 the
+  Request Limit row; §7 UC-010 row (A11). S-32 (O-P2-47, UC-009 A14, BR-012): §7 UC-009 row.
