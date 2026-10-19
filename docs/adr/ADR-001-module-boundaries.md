@@ -243,6 +243,13 @@ enum class RefusalScope { BankAccount, Bank, Source }  // Source = the whole Dat
   (`suspendCancellableCoroutine` with `invokeOnCancellation { call.cancel() }`). A request that times out or is
   cancelled ends as `TransientFailure(Timeout)` for a read and as `Unknown` for every item of a write (UC-006 A8). The
   contract tests of §4.4 prove both against a test server that never answers.
+- **A request the device cannot send (S-36, NFR-004).** A request that fails before or while it is sent for a reason
+  the device gives (no connection, an address that does not resolve, network access the device refuses) ends as a
+  lost connection: `TransientFailure(ConnectionLost)` for a read and a credential check, `Unknown` for every item of a
+  write. The plug-in turns every exception of the request into that outcome, also one that is not an I/O failure
+  (a `SecurityException`), and no exception ends the thread the request ran on: OkHttp rethrows a non-I/O exception
+  on its own dispatcher thread, which ends the app, so each plug-in turns it into an I/O failure inside the call
+  (an OkHttp interceptor). No text of the exception leaves the plug-in (NFR-012).
 
 #### 4.1 Data Provider (`slussen.pluginapi.provider`)
 
@@ -539,6 +546,8 @@ invented recorded answers served by a local test server. They check at least:
   each scope stops exactly that scope and the others continue (mixed results, a refusal in the middle of a paged read);
 - a server that never answers ends in `TransientFailure(Timeout)` or `Unknown` within the timeout, and cancelling the
   caller cancels the underlying call;
+- a request the device refuses (an address lookup that throws a `SecurityException`) ends as a lost connection (§4.0,
+  S-36) for `check` and for a read, and leaves no uncaught exception on any thread;
 - every item of a recorded answer appears in the response, pending and zero-amount items included (no filtering), and
   an item without a readable date or amount comes back as `Uninterpretable`;
 - no `toString()` of a result reveals a `Secret`, a `ConsentSession` or a `BankAccountNumber`;
@@ -642,6 +651,12 @@ of its own module (§4.5); there is no template to add (UC-012 A2-A4). It touche
 export receive only the reader; `slussen.core.upload` receives the writer and wraps it at once in
 `AdmittedBudgetAppWriter` (ADR-007 §7).
 
+**Device permissions (S-36, NFR-022).** `app/src/main/AndroidManifest.xml` declares `android.permission.INTERNET`
+and no other permission. The merged manifest of every variant may hold only that one and the signature-level
+permission AndroidX declares for the app's own receivers (`<applicationId>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`),
+which asks the device for nothing; the permission check of §6.4 fails on any other, so a library that brings a
+permission is seen before it ships. A use case that needs another permission adds it to NFR-022 and to this list.
+
 UI: one ViewModel per screen in `slussen.app.ui.<screen>`; composables receive state and callbacks only. Background
 work: the Scheduled Fetch runs as a WorkManager periodic worker in `slussen.app.schedule`, which asks the coordinator
 for admission with origin `Schedule` (ADR-007 §2).
@@ -722,6 +737,9 @@ Wiring a task into `check` alone does not run it for `:app:assembleDebug` or a t
 - `check` of the included build `build-logic/` (its unit tests and the Gradle TestKit tests of ADR-003 §6, among them
   `NoCredentialInAppTest`) is a dependency of the root `check`.
 - The release signing check runs before every packaging task of the `release` variant, as ADR-003 §2 says.
+- The permission check (S-36, §5) reads each variant's merged manifest and fails, naming each one, on a
+  `uses-permission` that §5 does not allow; it runs before every packaging task of `:app` and is a dependency of
+  `:app:check`.
 - The supported entry points are `gradlew check`, `gradlew :<module>:check` and every packaging or install task. A
   module's `test` task run alone gets the module graph check but not the Konsist and bytecode rules; it is a
   developer's shortcut, never a gate.
@@ -756,6 +774,8 @@ Phase 6 proves each layer by planting a violation, seeing the named entry point 
 | A Scheduled Fetch that calls an upload facade | the `:core` test of ADR-007 §9 (the wrapper refuses) |
 | A plug-in that drops a pending transaction | its contract test (§4.4) |
 | `log.event("…")` with a string | compilation (ADR-006 §1) |
+| A `uses-permission` that §5 does not allow (`android.permission.READ_CONTACTS`) in the app manifest | `gradlew :app:assembleDebug` (§6.4, S-36) |
+| A plug-in request whose address lookup throws a `SecurityException` | its contract test (§4.4, S-36) |
 
 ### 7. Use cases and the modules they touch
 
@@ -916,3 +936,6 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
   for a Back-off of the Data Provider (UC-014 A5).
 - Phase 8a (2026-10-19): S-35 (O-P2-56, UC-013 step 5, BR-002): §4.1 `NotRead(NotSelected)` carries the balance the
   Data Provider gave with the list, so Offered Bank Accounts not yet added keep their balance.
+- Phase 9, first attempt (2026-10-19): S-36 (NFR-004 widened, new NFR-022): §4.0 a request the device cannot send
+  ends as a lost connection and no exception ends a request thread; §4.4 its contract test; §5 the device
+  permissions of `:app`; §6.4 the permission check; §6.6 two planted violations.

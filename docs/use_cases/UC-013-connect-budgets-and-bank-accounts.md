@@ -10,7 +10,7 @@
 **Trigger:** Operator asks to connect Budgets and Bank Accounts, chooses the Budgets in use on the Budget App's page in Connections, or opens Slussen while no Bank Account is added yet  
 **Status:** Approved  
 
-**Requirements:** [FR-056, FR-058, FR-066, FR-075, FR-097, FR-098, FR-099, FR-103, NFR-010, NFR-017, NFR-020, NFR-021, C-012](../requirements.md)
+**Requirements:** [FR-056, FR-058, FR-066, FR-075, FR-097, FR-098, FR-099, FR-103, NFR-004, NFR-010, NFR-017, NFR-020, NFR-021, NFR-022, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -34,7 +34,7 @@
 
 ### A1: Budget App Cannot Be Read or Refuses Slussen's Credentials
 
-**Trigger:** The Budget App does not answer, is unavailable, or answers that the service credentials the Operator entered are not valid or not allowed (step 2)  
+**Trigger:** The Budget App does not answer, is unavailable or cannot be reached from the device (NFR-004), or answers that the service credentials the Operator entered are not valid or not allowed (step 2)  
 **Flow:**
 
 1. Slussen keeps the Budgets it serves unchanged and shows that the Budget App could not be read, or the Blocked Reason "credentials refused" with the action that removes it (UC-014).

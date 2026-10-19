@@ -97,7 +97,9 @@ and `:app` must never pass by not running.
 - `versionName` = the content of `VERSION`.
 - `versionCode` = major × 1,000,000 + minor × 1,000 + revision. So `0.1.0` is `1000`, and every bump of
   `VERSION` gives a higher `versionCode`, which Android needs to install an upgrade in place (NFR-017).
-- `VERSION` is read nowhere else. The app shows `versionName` from Android's package information.
+- `VERSION` is read nowhere else. The app shows `versionName` from Android's package information, on Settings
+  (S-37, UC-010 BR-011), and says "debug build" when its package is the `debug` variant (§5), told by the
+  `applicationIdSuffix` `.debug` of its package name; nothing else is generated or written for it.
 
 ### 5. Application identity
 
@@ -217,3 +219,5 @@ fails on the device is changed by amending ADR-002, not worked around.
   naming each; why a debug build does not hold the Operator's data); Consequences.
 - Phase 6 (2026-10-18): O-P2-40: §5 (a `release` package holds `arm64-v8a` native code only, a `debug` package every
   ABI, for the `x86_64` emulator of §7).
+- Phase 9, first attempt (2026-10-19): S-37 (FR-104, UC-010 BR-011): §4 the app shows `versionName` and, for the
+  `debug` variant, that it is a debug build, on Settings.

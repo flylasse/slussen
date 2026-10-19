@@ -10,7 +10,7 @@
 **Trigger:** Operator asks to grant, renew or revoke the Bank Consent of a Bank, on the Data Provider's page in Connections or wherever Slussen shows the Bank Consent as missing, expiring or expired  
 **Status:** Approved  
 
-**Requirements:** [FR-010, FR-011, FR-042, FR-058, FR-082, FR-098, FR-103, NFR-008, NFR-009, NFR-013, C-006, C-007](../requirements.md)
+**Requirements:** [FR-010, FR-011, FR-042, FR-058, FR-082, FR-098, FR-103, NFR-004, NFR-008, NFR-009, NFR-013, NFR-022, C-006, C-007](../requirements.md)
 
 ## Preconditions
 

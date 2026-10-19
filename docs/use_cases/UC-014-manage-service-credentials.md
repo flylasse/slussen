@@ -10,7 +10,7 @@
 **Trigger:** Operator asks in Connections to set up a Data Provider of this build, or on a service's page to enter, replace or remove its service credentials, or Connect Budgets and Bank Accounts reaches its credentials step  
 **Status:** Approved  
 
-**Requirements:** [FR-064, FR-066, FR-101, FR-102, FR-103, NFR-008, NFR-009, NFR-012, NFR-021, C-004, C-008](../requirements.md)
+**Requirements:** [FR-064, FR-066, FR-101, FR-102, FR-103, NFR-004, NFR-008, NFR-009, NFR-012, NFR-021, NFR-022, C-004, C-008](../requirements.md)
 
 ## Preconditions
 
@@ -37,7 +37,7 @@
 
 ### A2: Service Cannot Be Reached
 
-**Trigger:** The service does not answer within the time limit of NFR-016 or is unavailable (step 3)  
+**Trigger:** The service does not answer within the time limit of NFR-016, is unavailable, or cannot be reached from the device (NFR-004) (step 3)  
 **Flow:**
 
 1. Slussen stores nothing, keeps any earlier credentials unchanged and shows that the service could not be reached.
