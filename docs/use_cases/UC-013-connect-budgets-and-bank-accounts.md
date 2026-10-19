@@ -24,10 +24,10 @@
 4. Slussen stores the choice and reads the Budget Accounts of each chosen Budget with their balances.
 5. Slussen shows, for each Source, the Offered Bank Accounts that are not yet added, each with its name or product, kind, currency, last four digits and balance, next to the Budget Accounts of the chosen Budgets that receive through no Account Mapping, each with its name and balance (BR-002).
 6. Operator pairs an Offered Bank Account with a Budget Account.
-7. Slussen checks that the Budget Account receives through no other Account Mapping and that its Budget has the Bank Account's currency.
+7. Slussen checks that the Budget Account receives through no other Account Mapping and, when the Offered Bank Account states its currency, that the Budget Account's Budget has that currency (BR-010).
 8. Slussen proposes the name of the Bank Account (BR-004), its Bank Account type and its Bank (BR-009).
-9. Operator accepts or edits the name, confirms or changes the Bank Account type and the Bank, and optionally sets a Start Date (BR-005).
-10. Slussen adds the Bank Account with an identifier it generates (BR-003), records how the Source identifies it, stores its name, Bank Account type, Bank, Start Date and Account Mapping, and records the addition in the Decision Journal.
+9. Operator accepts or edits the name, confirms or changes the Bank Account type and the Bank, states the currency when the Offered Bank Account states none (BR-010), and optionally sets a Start Date (BR-005).
+10. Slussen adds the Bank Account with an identifier it generates (BR-003), records how the Source identifies it, stores its name, currency, Bank Account type, Bank, Start Date and Account Mapping, and records the addition in the Decision Journal.
 11. Slussen shows the Bank Account as added; its transactions are fetched and compared from the next Fetch on (UC-001).
 
 ## Alternative Flows
@@ -66,7 +66,7 @@
 
 ### A5: Budget Account Already Mapped or in Another Currency
 
-**Trigger:** The chosen Budget Account receives through another Account Mapping, or its Budget has another currency than the Bank Account (step 7)  
+**Trigger:** The chosen Budget Account receives through another Account Mapping, or its Budget has another currency than the Bank Account (step 7, or step 9 for a currency the Operator states, BR-010)  
 **Flow:**
 
 1. Slussen refuses the pairing and shows why; no amount is ever converted (UC-003 BR-013).
@@ -140,3 +140,7 @@ Setting up Slussen goes in this order: enter the service credentials of the Budg
 ### BR-009: Proposed Bank Account Type and Bank
 
 Before a Bank Account is added, Slussen proposes its Bank Account type, one of Checking, Savings, Credit Card or Other, from the kind the Data Provider gives the Offered Bank Account, Other when that kind matches none of the first three, and its Bank, the Bank the Data Provider names for it. The Operator confirms or changes both: the Bank Account type from these four values, the Bank by choosing one Slussen already knows or naming a new one. When the Data Provider names no Bank, Slussen proposes none and the Operator chooses or names it. For a Bank Account of a File Format, Slussen proposes neither, and the Operator chooses the Bank Account type and chooses or names the Bank (A4, BR-006). No Bank Account is added without a Bank Account type and a Bank. The Bank Account type decides whether the Bank Account is a credit card, with a Funded By, or has a Transfer Partner (UC-005 BR-006). For a Data Provider that needs a Bank Consent, the Bank Account is always covered by the Bank Consent of the Bank the Data Provider names for it, whatever Bank the Operator confirms or chooses here, which is only how the Bank Account is named and grouped in Slussen (UC-007 BR-009).
+
+### BR-010: Currency Stated by the Operator
+
+When an Offered Bank Account states no currency, the Operator states the currency of the Bank Account at step 9; Slussen proposes the currency of the chosen Budget Account, which is that of its Budget. The pairing is then checked as for a currency the Data Provider states (step 7, A5): a Budget of another currency is refused, and no amount is ever converted (UC-003 BR-013). No Bank Account is added without a currency.

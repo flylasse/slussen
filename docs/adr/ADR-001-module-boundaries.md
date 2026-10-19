@@ -275,13 +275,14 @@ sealed interface RequestLimitDeclaration {   // requests in any rolling 24 hours
 }
 ```
 
-The parts of this build declare the values below (O-P2-42, S-31). A number the Data Provider publishes names its
-source; the others are defaults of Operator Settings that the Operator decided and can change (UC-010 BR-002):
+The parts of this build declare the values below (O-P2-42, S-31; O-P2-49, S-34). A number the Data Provider
+publishes names its source; the others are defaults of Operator Settings that the Operator decided and can change
+(UC-010 BR-002). Whether a part gives a Stable Reference names its source too:
 
-| Part | `name` | `sourceKey` | Request Limit | Default Fetch Cooldown | Source |
-|---|---|---|---|---|---|
-| `:provider-simplefin` | SimpleFIN | `simplefin` | `Published(24, …)`: 24 requests in any 24 hours, the limit SimpleFIN publishes, fixed | 60 minutes by default, an Operator Setting | SimpleFIN Bridge Developer Guide, https://beta-bridge.simplefin.org/info/developers: "you are expected to make 24 requests or fewer per day"; beyond its warnings, Access Tokens are disabled (UC-001 BR-015) |
-| `:provider-enablebanking` | Enable Banking | `enable-banking` | `NotPublished(50, 10..500)`: 50 requests in any 24 hours by default, an Operator Setting between 10 and 500, shown as not published by Enable Banking. The Banks' PSD2 cap of 4 Unattended Accesses per Bank Account in 24 hours is the Unattended Access limit (C-006), counted separately (UC-001 BR-012) | 360 minutes by default, an Operator Setting | Enable Banking FAQ, https://enablebanking.com/docs/faq/: it publishes no quota of its own, quotas are set by contract; it advises continuing after 6 hours once a Bank answers `ASPSP_RATE_LIMIT_EXCEEDED`, the basis of the default Fetch Cooldown |
+| Part | `name` | `sourceKey` | Stable Reference (`givesStableReference`) | Request Limit | Default Fetch Cooldown | Source |
+|---|---|---|---|---|---|---|
+| `:provider-simplefin` | SimpleFIN | `simplefin` | `true`: each transaction's `id` is its Stable Reference, Import Identifiers of kind `R` (ADR-008 §2) | `Published(24, …)`: 24 requests in any 24 hours, the limit SimpleFIN publishes, fixed | 60 minutes by default, an Operator Setting | SimpleFIN Bridge Developer Guide, https://beta-bridge.simplefin.org/info/developers: "you are expected to make 24 requests or fewer per day"; beyond its warnings, Access Tokens are disabled (UC-001 BR-015). SimpleFIN protocol, https://www.simplefin.org/protocol.html: a transaction `id` "uniquely describes a transaction" within its Bank Account, and an organization "may never reuse a transaction id" within the same Bank Account |
+| `:provider-enablebanking` | Enable Banking | `enable-banking` | `false`: every transaction is delivered with `stableReference` null, so its Import Identifier is of kind `F`, the fingerprint of its own fields (ADR-008 §2), and it is Needs Review (UC-003 BR-012) | `NotPublished(50, 10..500)`: 50 requests in any 24 hours by default, an Operator Setting between 10 and 500, shown as not published by Enable Banking. The Banks' PSD2 cap of 4 Unattended Accesses per Bank Account in 24 hours is the Unattended Access limit (C-006), counted separately (UC-001 BR-012) | 360 minutes by default, an Operator Setting | Enable Banking FAQ, https://enablebanking.com/docs/faq/: it publishes no quota of its own, quotas are set by contract; it advises continuing after 6 hours once a Bank answers `ASPSP_RATE_LIMIT_EXCEEDED`, the basis of the default Fetch Cooldown. The same FAQ: not all Banks (ASPSPs) provide unique transaction references, and some duplicate them, so no reference Enable Banking passes on is unique within its Bank Account |
 
 - `FetchRequest` holds: the Bank Accounts to read (by `provider_reference`, by `balance_provider_reference` for a
   Bank Account read for its balance only, UC-001 BR-011, or "all the Data Provider exposes" for identification;
@@ -539,8 +540,8 @@ invented recorded answers served by a local test server. They check at least:
   transfer carry each other's references; two look-alike Transfers stay apart; `importIdentifierMaxLength` is at
   least the protocol's length;
 - for a Data Provider and the Budget App: `check` admits every request through the gate, answers `Accepted`,
-  `Refused` or `TransientFailure` for recorded answers and `StoppedByGate` without sending anything when the gate
-  refuses, never reveals the input in a result or a `toString()`, and the
+  `Refused` or `TransientFailure` for recorded answers, `StoppedByGate` without sending anything when the gate
+  refuses, `Refused` without calling the gate for an input that cannot be valid, never reveals the input in a result or a `toString()`, and the
   declared `requestLimit` and `defaultFetchCooldownMinutes` lie in their ranges: a `Published` limit within 1 to 1000
   with a non-empty `source`, a `NotPublished` range within 1 to 1000 that holds its default (§4.1, §4.5);
 - for a File Pre-processor: a file with one unreadable line is `Rejected`; converting the same bytes twice gives equal
@@ -573,9 +574,13 @@ sealed interface CredentialCheck {
   access token, checked by listing the Budgets; SimpleFIN, a setup token, which `check` exchanges once for the access
   credential, returns that credential and discards the setup token; Enable Banking, the application id and the private
   key file of the household's own registered application, checked with a signed request (UC-014 BR-002, C-008).
+- Before it calls the gate, `check` tests what it can test without the service: an input that cannot be valid, such
+  as a malformed setup token or a key file that holds no private key, is answered `Refused` without calling the gate,
+  so nothing is sent, no Provider Request is counted and nothing is stored (UC-014 A1, BR-002).
 - When the gate answers `Refused`, `check` sends nothing and returns `StoppedByGate` with the gate's reason, never
-  `TransientFailure`: a reached Request Limit is UC-014 A5, shown as "Request Limit reached" with the time it frees
-  up, not a service that cannot be reached (UC-014 A2).
+  `TransientFailure`: a reached Request Limit, or a Back-off of the whole Data Provider after it asked Slussen to
+  wait, is UC-014 A5, shown as "Request Limit reached" or "waiting for the provider" with the time it ends, not a
+  service that cannot be reached (UC-014 A2).
 - The core never interprets a credential. `RequestContext.credential` carries the stored one to every other call; a
   service that answers that it refuses it gives `CredentialsRefused` (§4.1, F-8), and the core then shows the Blocked
   Reason "credentials refused"; without stored credentials the core contacts no service and shows "credentials
@@ -899,3 +904,7 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
   with a default and range the Operator changes within), and the values the SimpleFIN and Enable Banking parts declare,
   each with its source; §4.3 the HSA File Format's `name` and `sourceKey`; §4.4 the declared-number checks; §4.6 the
   Request Limit row; §7 UC-010 row (A11). S-32 (O-P2-47, UC-009 A14, BR-012): §7 UC-009 row.
+- Phase 7a (2026-10-18): S-34 (O-P2-49..O-P2-51): §4.1 the table of declared values gives each Data Provider's
+  `givesStableReference` with its source (SimpleFIN `true`, Enable Banking `false`, kind `F` of ADR-008 §2); §4.4 and
+  §4.5 an input that cannot be valid is `Refused` without calling the gate (UC-014 A1); §4.5 `StoppedByGate` also
+  for a Back-off of the Data Provider (UC-014 A5).
