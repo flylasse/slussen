@@ -7,7 +7,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import slussen.app.ui.Texts
 import slussen.app.ui.UiServices
+import slussen.app.ui.setup.FreeBudgetAccountLine
+import slussen.app.ui.setup.LeftOutLine
 import slussen.core.connection.AddedBankAccount
+import slussen.core.connection.BroughtBack
+import slussen.core.connection.KeepOutcome
 import slussen.core.connection.KnownBank
 import slussen.core.mapping.ClearedLink
 import slussen.core.mapping.LinkedBudgetAccount
@@ -44,11 +48,32 @@ data class TypeAndBankUi(
     val clearingQuestion: String?,
 )
 
-data class BankAccountsUi(val groups: List<BudgetGroup>, val typeAndBank: TypeAndBankUi?, val message: String?)
+/** A Manually Kept Account under Kept by hand (`account-mappings.html#kept-by-hand`, UC-009 BR-013). */
+data class KeptLine(val budgetAccountId: Long, val title: String, val detail: String)
+
+/** UC-009 A16: the question before a Manually Kept Account is unmarked (`account-mappings.html#unmark-kept`). */
+data class UnmarkQuestion(val budgetAccountId: Long, val question: String, val detail: String)
+
+/**
+ * UC-009 step 1, BR-013 (`account-mappings.html#map`, `#not-imported`, `#kept-by-hand`): apart from the Bank Accounts,
+ * Not imported (the Left-Out Bank Accounts) and Kept by hand (the Manually Kept Accounts), with the free Budget
+ * Accounts that can be marked.
+ */
+data class ApartUi(
+    val leftOutTitle: String,
+    val leftOut: List<LeftOutLine>,
+    val keptTitle: String,
+    val manuallyKept: List<KeptLine>,
+    val markable: List<FreeBudgetAccountLine>,
+    val unmarkQuestion: UnmarkQuestion?,
+)
+
+data class BankAccountsUi(val groups: List<BudgetGroup>, val typeAndBank: TypeAndBankUi?, val message: String?, val apart: ApartUi)
 
 /**
  * Bank Accounts and Account Mappings, from Settings (UC-013 BR-008: Bank Accounts are added from here later), with the
- * Bank Account type and Bank of each one changed here (UC-009 A14).
+ * Bank Account type and Bank of each one changed here (UC-009 A14), and Not imported and Kept by hand apart from them
+ * (UC-009 A15, A16, BR-013).
  */
 class BankAccountsViewModel(private val services: UiServices) : ViewModel() {
     private val mutableState = MutableStateFlow<BankAccountsUi?>(null)
@@ -77,7 +102,97 @@ class BankAccountsViewModel(private val services: UiServices) : ViewModel() {
             ),
             typeAndBank = typeAndBank,
             message = message,
+            apart = apartUi(),
         )
+    }
+
+    /** UC-009 step 1, BR-013: Not imported and Kept by hand, apart from the Bank Accounts. */
+    private suspend fun apartUi(): ApartUi {
+        val apart = services.mappings.apart()
+        return ApartUi(
+            leftOutTitle = "Not imported · ${apart.leftOut.size}",
+            leftOut = apart.leftOut.map { LeftOutLine(it.leftOutBankAccountId, it.name, "${it.sourceName} · left out ${services.formats.date(it.leftOutAt)}") },
+            keptTitle = "Kept by hand · ${apart.manuallyKept.size}",
+            manuallyKept = apart.manuallyKept.map {
+                KeptLine(it.budgetAccountId, it.name, "${it.budgetName} · ${it.budgetCurrency.code} · kept by hand · not offered for pairing")
+            },
+            markable = apart.markable.map {
+                FreeBudgetAccountLine(
+                    it.budgetAccountId,
+                    it.name,
+                    "${it.budgetName} · ${it.budgetCurrency.code}",
+                    it.balance?.let { balance -> services.formats.amount(balance) }.orEmpty(),
+                )
+            },
+            unmarkQuestion = null,
+        )
+    }
+
+    private fun keptName(budgetAccountId: Long): String = mutableState.value?.apart?.let { apart ->
+        apart.manuallyKept.firstOrNull { it.budgetAccountId == budgetAccountId }?.title
+            ?: apart.markable.firstOrNull { it.budgetAccountId == budgetAccountId }?.title
+    }.orEmpty()
+
+    /** UC-009 A15: the Operator brings a Left-Out Bank Account back, without any confirmation (BR-013). */
+    fun bringBack(leftOutBankAccountId: Long) {
+        viewModelScope.launch {
+            val message = when (val outcome = services.mappings.bringBack(leftOutBankAccountId)) {
+                is BroughtBack.Offered -> if (outcome.offeredNow) {
+                    "${outcome.name} brought back · offered for pairing again"
+                } else {
+                    "${outcome.name} brought back · offered for pairing from the next delivery that holds it"
+                }
+                BroughtBack.NotFound -> null
+                is BroughtBack.Unavailable -> Texts.refusal(outcome.reason)
+            }
+            show(typeAndBank = null, message = message)
+        }
+    }
+
+    /** UC-009 A16: the Operator marks a free Budget Account as kept by hand, without any confirmation (BR-013). */
+    fun markManuallyKept(budgetAccountId: Long) {
+        viewModelScope.launch {
+            val name = keptName(budgetAccountId)
+            val message = when (val outcome = services.mappings.setManuallyKept(budgetAccountId, manuallyKept = true)) {
+                KeepOutcome.Marked -> "$name kept by hand · not offered for pairing"
+                is KeepOutcome.StillReceives -> "$name receives ${outcome.bankAccountName} · not kept by hand"
+                KeepOutcome.NotFree, KeepOutcome.NotManuallyKept, KeepOutcome.Unmarked -> "$name is not a free Budget Account · not kept by hand"
+                is KeepOutcome.Unavailable -> Texts.refusal(outcome.reason)
+            }
+            show(typeAndBank = null, message = message)
+        }
+    }
+
+    /** UC-009 A16: the Operator asks to unmark a Manually Kept Account; it is unmarked once confirmed. */
+    fun askUnmark(budgetAccountId: Long) {
+        viewModelScope.launch {
+            val name = keptName(budgetAccountId)
+            val budgetApp = services.connect.credentialSteps().firstOrNull { it.isBudgetApp }?.name ?: "the Budget App"
+            mutableState.value = mutableState.value?.let {
+                it.copy(
+                    apart = it.apart.copy(
+                        unmarkQuestion = UnmarkQuestion(budgetAccountId, "Unmark $name?", "$name is offered for pairing again. Nothing in $budgetApp changes."),
+                    ),
+                )
+            }
+        }
+    }
+
+    fun cancelUnmark() {
+        mutableState.value = mutableState.value?.let { it.copy(apart = it.apart.copy(unmarkQuestion = null)) }
+    }
+
+    fun confirmUnmark() {
+        val question = mutableState.value?.apart?.unmarkQuestion ?: return
+        viewModelScope.launch {
+            val name = keptName(question.budgetAccountId)
+            val message = when (val outcome = services.mappings.setManuallyKept(question.budgetAccountId, manuallyKept = false)) {
+                KeepOutcome.Unmarked -> "$name unmarked · offered for pairing again"
+                is KeepOutcome.Unavailable -> Texts.refusal(outcome.reason)
+                else -> "$name is not kept by hand"
+            }
+            show(typeAndBank = null, message = message)
+        }
     }
 
     /** UC-009 step 1: each Bank Account with its name, its Bank, its Bank Account type and its Source. */

@@ -1,6 +1,11 @@
 package slussen.persistence
 
 import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNull
+import slussen.pluginapi.provider.RequestLimitDeclaration
+import slussen.core.port.NewLeftOutBankAccount
+import slussen.core.port.KeptOutcome
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -158,5 +163,59 @@ class UC013ConnectBudgetsAndBankAccountsPersistenceIT {
 
         assertTrue(duplicate.isFailure)
         assertEquals(1, connections.bankAccounts().size)
+    }
+
+    /** A Data Provider stored by O-11, for the Left-Out Bank Accounts that name it. */
+    private suspend fun feeds(): Long = RoomPluginRegistryStore(main.registry()).reconcile(
+        listOf(DataProviderRegistration("Kestrel Feeds", "example-feeds", true, false, 60, RequestLimitDeclaration.Published(20, "an invented source"))),
+        emptyList(),
+    ).dataProviders.single().id
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-011", "BR-012"])
+    @DisplayName("Steps 8-9, A10: O-15 leaves out every shown Offered Bank Account not chosen, all or none, refuses one left out twice or already added, and brings one back")
+    fun leaveOutAndBringBack() = runBlocking {
+        val feeds = feeds()
+        connections.serveBudgets(listed, setOf("budget-household"), now)
+        val checking = connections.budgets().single().budgetAccounts.single().id
+        connections.addBankAccount(newBankAccount(checking, usd, "6f1c2a4e-0b7d-4c1e-9a55-2f8e3b1c0d4a").copy(dataProviderId = feeds, providerReference = "acct-4410"))
+        val kids = NewLeftOutBankAccount(feeds, "acct-2290", "Kids Saver ••2290", now)
+
+        assertTrue(connections.leaveOut(listOf(kids, NewLeftOutBankAccount(feeds, "acct-9034", "Pinecrest Business Visa ••9034", now))))
+        assertFalse(connections.leaveOut(listOf(NewLeftOutBankAccount(feeds, "acct-7731", null, now), kids)))
+        assertFalse(connections.leaveOut(listOf(NewLeftOutBankAccount(feeds, "acct-4410", null, now))))
+        assertEquals(listOf("acct-2290", "acct-9034"), connections.leftOutBankAccounts().map { it.providerReference })
+
+        val back = connections.bringBack(connections.leftOutBankAccounts().first().id)
+        assertEquals("Kids Saver ••2290", back?.name)
+        assertEquals(listOf("acct-9034"), connections.leftOutBankAccounts().map { it.providerReference })
+        assertNull(connections.bringBack(back!!.id))
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-006", "BR-011", "BR-014"])
+    @DisplayName("A4, A9, BR-011, BR-014: O-15 brings back a Left-Out balance source in the same transaction, refuses a Bank Account whose reference is left out and a Manually Kept Account, and marks only a Budget Account without an Account Mapping")
+    fun addRespectsLeftOutAndManuallyKept() = runBlocking {
+        val feeds = feeds()
+        val two = listed.first().copy(budgetAccounts = listed.first().budgetAccounts + BudgetAccountToStore("ba-reserve", "Reserve Savings", Amount(12_000_000)))
+        connections.serveBudgets(listOf(two), setOf("budget-household"), now)
+        val (checking, reserve) = connections.budgets().single().budgetAccounts.map { it.id }
+        connections.leaveOut(listOf(NewLeftOutBankAccount(feeds, "acct-0907", "HSA ••0907", now), NewLeftOutBankAccount(feeds, "acct-2290", null, now)))
+
+        val leftOut = connections.addBankAccount(newBankAccount(checking, usd, "6f1c2a4e-0b7d-4c1e-9a55-2f8e3b1c0d4a").copy(dataProviderId = feeds, providerReference = "acct-2290"))
+        assertEquals(AddOutcome.LeftOut, leftOut)
+        val file = connections.addBankAccount(
+            newBankAccount(checking, usd, "7a2d3b5f-1c8e-4d2f-8b66-3f9f4c2d1e5b").copy(balanceDataProviderId = feeds, balanceProviderReference = "acct-0907"),
+        )
+        assertInstanceOf(AddOutcome.Added::class.java, file)
+        assertEquals(listOf("acct-2290"), connections.leftOutBankAccounts().map { it.providerReference })
+
+        assertEquals(KeptOutcome.StillReceives("Kestrel Checking"), connections.setManuallyKept(checking, true))
+        assertEquals(KeptOutcome.Stored, connections.setManuallyKept(reserve, true))
+        assertTrue(connections.budgets().single().budgetAccounts.single { it.id == reserve }.manuallyKept)
+        assertEquals(AddOutcome.ManuallyKept, connections.addBankAccount(newBankAccount(reserve, usd, "8b3e4c6a-2d9f-4e3a-9c77-4a0a5d3e2f6c")))
+        connections.serveBudgets(listOf(two), setOf("budget-household"), now.plus(Duration.ofMinutes(1)))
+        assertTrue(connections.budgets().single().budgetAccounts.single { it.id == reserve }.manuallyKept)
+        assertEquals(KeptOutcome.NotFound, connections.setManuallyKept(-1, true))
     }
 }

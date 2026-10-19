@@ -56,14 +56,41 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
 
     private fun freeId(name: String) = ui().freeBudgetAccounts.single { it.title == name }.budgetAccountId
 
+    private fun budgetAccountId(name: String) = runBlocking { slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == name }.id }
+
     private fun kestrel() = runBlocking { BankChoice.Known(slice.connectionStore.bankNamed("Kestrel Bank").id) }
 
-    /** Steps 6-10 with the proposed type and Bank, the [name] and [startDate] given. */
+    private fun card() = ui().card!!
+
+    private fun leftOutReferences() = runBlocking { slice.connectionStore.leftOutBankAccounts().map { it.providerReference } }
+
+    /** Steps 5-9: switches on the Offered Bank Accounts of [references], continues and confirms the stated numbers. */
+    private fun bringIn(vararg references: String) {
+        setup.goTo(SetupStep.BankAccounts)
+        references.forEach { setup.toggleBringIn(offeredId(it)) }
+        setup.continueBringIn()
+        setup.confirmBringIn()
+    }
+
+    /** Steps 10-13 on the current card: [budgetAccount] chosen, the proposed type and Bank, the [name] and [startDate] given. */
+    private fun addOnCard(budgetAccount: String, name: String, startDate: String = "") {
+        setup.chooseBudgetAccount(budgetAccountId(budgetAccount))
+        val card = card()
+        setup.addAndContinue(name, card.proposedType, card.proposedBank?.let { BankChoice.Known(it.bankId) }, startDate)
+    }
+
+    /** Steps 5-13 for one Offered Bank Account. */
     private fun pairAndSave(reference: String, budgetAccount: String, name: String, startDate: String = "") {
-        setup.selectOffered(offeredId(reference))
-        setup.pairWith(freeId(budgetAccount))
-        val naming = ui().naming!!
-        setup.saveNaming(name, naming.proposedType, naming.proposedBank?.let { BankChoice.Known(it.bankId) }, startDate)
+        bringIn(reference)
+        addOnCard(budgetAccount, name, startDate)
+    }
+
+    private fun offerWithoutCurrency() = runBlocking {
+        slice.offeredStore.replaceOffered(
+            slice.feedsId,
+            null,
+            listOf(ExampleData.offered("acct-9001", "Harbor Joint", "checking", null, "9001", amount(310), null, slice.clock.instant())),
+        )
     }
 
     @Test
@@ -162,7 +189,6 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
     fun stopServingAMappedBudgetIsRefused() {
         throughBudgets()
         offer()
-        setup.goTo(SetupStep.BankAccounts)
         pairAndSave("acct-4410", "Checking", "CHK ••4410")
         setup.goTo(SetupStep.Budgets)
 
@@ -174,62 +200,200 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-002"])
-    @DisplayName("Step 5: each Offered Bank Account is shown with name, kind, currency, last four digits and balance next to the free Budget Accounts")
-    fun pairingShowsBothSides() {
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-012"])
+    @DisplayName("Step 5: the Offered Bank Accounts are grouped by Source and by Bank, each with name, kind, currency, last four digits and balance, none switched on")
+    fun stepFiveGroupsBySourceAndBankWithNoneChosen() {
         throughBudgets()
         offer()
 
         setup.goTo(SetupStep.BankAccounts)
 
+        assertEquals(PairingStage.Choose, ui().stage)
         val feeds = ui().sources.single { it.name == "Kestrel Feeds" }
-        assertEquals(OfferedLine(offeredId("acct-4410"), "CHK", "checking · USD · ••••4410", "4,140.05"), feeds.offered.first())
+        assertEquals(listOf("Kestrel Bank"), feeds.banks.map { it.name })
+        assertEquals(OfferedLine(offeredId("acct-4410"), "CHK", "checking · USD · ••••4410", "4,140.05", chosen = false), feeds.offered.first())
+        assertTrue(feeds.offered.none { it.chosen })
         assertNull(feeds.remedy)
-        val checking = ui().freeBudgetAccounts.first()
-        assertEquals("Checking", checking.title)
-        assertEquals("Household · USD", checking.detail)
-        assertEquals("4,140.05", checking.balance)
+        assertEquals("Bring in 0 · leave out 2", ui().bringInAction)
+        assertTrue(ui().leftOut.isEmpty())
+        assertFalse(ui().leftOutOpen)
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-004", "BR-009"])
-    @DisplayName("Steps 6-8: pairing shows the proposed name, Bank Account type and Bank, from what the Data Provider states, and adds nothing yet")
-    fun pairingShowsTheProposal() {
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-012"])
+    @DisplayName("Step 6: switching an Offered Bank Account on or off updates the action, which states both numbers")
+    fun stepSixUpdatesBothNumbers() {
         throughBudgets()
         offer()
         setup.goTo(SetupStep.BankAccounts)
 
-        setup.selectOffered(offeredId("acct-4410"))
-        setup.pairWith(freeId("Checking"))
+        setup.toggleBringIn(offeredId("acct-4410"))
+        assertEquals("Bring in 1 · leave out 1", ui().bringInAction)
+        assertTrue(ui().sources.single { it.name == "Kestrel Feeds" }.offered.first().chosen)
+        setup.toggleBringIn(offeredId("acct-4410"))
 
-        val naming = ui().naming!!
-        assertEquals("CHK ••4410", naming.proposedName)
-        assertEquals("CHK · ••••4410 → Checking", naming.title)
-        assertEquals(BankAccountType.Checking, naming.proposedType)
-        assertEquals("Kestrel Bank", naming.proposedBank?.name)
-        assertEquals(listOf("Checking", "Savings", "Credit Card", "Other"), naming.types.map { it.text })
-        assertEquals(listOf("Kestrel Bank"), naming.knownBanks.map { it.name })
-        assertEquals("Type and Bank proposed from what Kestrel Feeds states · change them if they are wrong", naming.note)
+        assertEquals("Bring in 0 · leave out 2", ui().bringInAction)
+        assertTrue(leftOutReferences().isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-011", "BR-012"])
+    @DisplayName("Steps 7-9: continuing states both numbers by name and leaves nothing out; confirming leaves the rest out and opens the first card")
+    fun stepsSevenToNineStateConfirmAndStart() {
+        throughBudgets()
+        offer()
+        setup.goTo(SetupStep.BankAccounts)
+        setup.toggleBringIn(offeredId("acct-4410"))
+
+        setup.continueBringIn()
+
+        assertEquals(PairingStage.Confirm, ui().stage)
+        assertEquals(
+            StatementUi(
+                question = "Bring in 1, leave out 1?",
+                broughtIn = "Brought in, one at a time: CHK.",
+                leftOut = "Left out: Aurora Dollar. Not imported and never read; bring them back any time under Not imported or in Account Mappings.",
+                confirmAction = "Bring in 1",
+            ),
+            ui().statement,
+        )
+        assertTrue(leftOutReferences().isEmpty())
+        setup.confirmBringIn()
+        assertEquals(PairingStage.Card, ui().stage)
+        assertEquals("1 of 1", card().progress)
+        assertEquals(listOf("acct-5520"), leftOutReferences())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A13: Go Back Before Confirming", businessRules = ["BR-012"])
+    @DisplayName("A13: Back from the stated numbers leaves nothing out and keeps the choice as it was")
+    fun backKeepsTheChoice() {
+        throughBudgets()
+        offer()
+        setup.goTo(SetupStep.BankAccounts)
+        setup.toggleBringIn(offeredId("acct-4410"))
+        setup.continueBringIn()
+
+        setup.backToChoice()
+
+        assertEquals(PairingStage.Choose, ui().stage)
+        assertNull(ui().statement)
+        assertTrue(ui().sources.single { it.name == "Kestrel Feeds" }.offered.first().chosen)
+        assertEquals("Bring in 1 · leave out 1", ui().bringInAction)
+        assertTrue(leftOutReferences().isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A12: Nothing Brought In", businessRules = ["BR-011", "BR-012"])
+    @DisplayName("A12: continuing with every switch off states that none is brought in and how many are left out; confirming leaves them all out and shows the summary")
+    fun nothingChosenLeavesAllOut() {
+        throughBudgets()
+        offer()
+        setup.goTo(SetupStep.BankAccounts)
+
+        setup.continueBringIn()
+        assertEquals(
+            StatementUi(
+                question = "Bring in none, leave out 2?",
+                broughtIn = "Nothing is added.",
+                leftOut = "Every Offered Bank Account shown becomes Not imported and is never read; bring any of them back later.",
+                confirmAction = "Leave out 2",
+            ),
+            ui().statement,
+        )
+        setup.confirmBringIn()
+
+        assertEquals(PairingStage.Summary, ui().stage)
+        assertEquals(SummaryUi(added = emptyList(), skipped = emptyList(), leftOut = listOf("CHK ••4410", "Aurora Dollar ••5520")), ui().summary)
+        assertEquals(listOf("acct-4410", "acct-5520"), leftOutReferences())
         assertTrue(runBlocking { slice.connectionStore.bankAccounts().isEmpty() })
     }
 
     @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-004", "BR-009", "BR-013"])
+    @DisplayName("Step 10: the card shows the Bank Account with its progress, the free Budget Accounts of its currency with name and balance, no proposal while more than one is free, and the proposed name, type and Bank")
+    fun theCardShowsTheBankAccountAndItsBudgetAccounts() {
+        throughBudgets()
+        offer()
+
+        bringIn("acct-4410")
+
+        val card = card()
+        assertEquals("1 of 1", card.progress)
+        assertEquals("CHK", card.title)
+        assertEquals("4,140.05", card.balance)
+        assertEquals("Kestrel Feeds · Kestrel Bank · checking · USD · ••••4410", card.detail)
+        assertEquals("Free Budget Accounts in USD", card.listedHeading)
+        assertEquals(listOf("Checking", "Rewards Card", "Reserve Savings"), card.listed.map { it.title })
+        assertEquals(FreeBudgetAccountLine(budgetAccountId("Checking"), "Checking", "Household · USD", "4,140.05"), card.listed.first())
+        assertEquals("No proposal: more than one Budget Account in USD is free; choose one", card.proposalNote)
+        assertNull(card.chosenBudgetAccountId)
+        assertEquals("CHK ••4410", card.proposedName)
+        assertEquals(BankAccountType.Checking, card.proposedType)
+        assertEquals("Kestrel Bank", card.proposedBank?.name)
+        assertEquals(listOf("Checking", "Savings", "Credit Card", "Other"), card.types.map { it.text })
+        assertEquals(listOf("Kestrel Bank"), card.knownBanks.map { it.name })
+        assertEquals("Type and Bank proposed from what Kestrel Feeds states · change them if they are wrong", card.note)
+        assertTrue(runBlocking { slice.connectionStore.bankAccounts().isEmpty() })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-013"])
+    @DisplayName("BR-013: the only free Budget Account of the currency is proposed and chosen on the card, and the card says why")
+    fun theOnlyFreeOneIsProposed() {
+        throughBudgets()
+        offer()
+        runBlocking {
+            slice.connect.markManuallyKept(budgetAccountId("Rewards Card"))
+            slice.connect.markManuallyKept(budgetAccountId("Reserve Savings"))
+        }
+
+        bringIn("acct-4410")
+
+        assertEquals(listOf("Checking"), card().listed.map { it.title })
+        assertEquals(budgetAccountId("Checking"), card().chosenBudgetAccountId)
+        assertEquals("Proposed: the only free Budget Account in USD", card().proposalNote)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-013"])
+    @DisplayName("Step 10: the full picker shows every free Budget Account of each served Budget; those of another currency are shown but cannot be chosen")
+    fun theFullPickerShowsEveryFreeBudgetAccount() {
+        throughBudgets()
+        offer()
+        bringIn("acct-4410")
+
+        setup.openPicker()
+
+        assertTrue(card().pickerOpen)
+        assertEquals(listOf("Household · USD", "Summer House · EUR"), card().picker.map { it.title })
+        assertEquals(listOf(true, true, true), card().picker[0].budgetAccounts.map { it.choosable })
+        assertEquals(
+            FreeBudgetAccountLine(budgetAccountId("Current"), "Current", "EUR · not for a USD Bank Account", "3,402.30", choosable = false),
+            card().picker[1].budgetAccounts.first(),
+        )
+        setup.chooseBudgetAccount(budgetAccountId("Reserve Savings"))
+        assertFalse(card().pickerOpen)
+        assertEquals(budgetAccountId("Reserve Savings"), card().chosenBudgetAccountId)
+    }
+
+    @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-004", "BR-005", "BR-009"])
-    @DisplayName("Steps 9-11: the accepted name, type, Bank and Start Date are stored and the Bank Account is listed as added")
+    @DisplayName("Steps 11-13, 15: the chosen Budget Account, the edited name, type, Bank and Start Date are stored, and the summary lists the Bank Account as added")
     fun pairingNamingAndStartDate() {
         throughBudgets()
         offer()
-        setup.goTo(SetupStep.BankAccounts)
 
         pairAndSave("acct-4410", "Checking", "Kestrel Checking", "2026-09-01")
 
-        assertNull(ui().naming)
-        assertEquals("Bank Account Kestrel Checking added · fetched from the next Fetch", ui().message)
+        assertEquals(PairingStage.Summary, ui().stage)
+        assertEquals(listOf("Kestrel Checking → Checking ••••4410"), ui().summary!!.added)
+        assertEquals(listOf("Aurora Dollar ••5520"), ui().summary!!.leftOut)
         val stored = runBlocking { slice.connectionStore.bankAccounts().single() }
         assertEquals("Kestrel Checking", stored.name)
         assertEquals(BankAccountType.Checking, stored.type)
         assertEquals(LocalDate.parse("2026-09-01"), stored.startDate)
-        assertTrue(ui().sources.single { it.name == "Kestrel Feeds" }.offered.none { it.title == "CHK" })
+        assertEquals(budgetAccountId("Checking"), stored.mapping?.budgetAccountId)
         val list = BankAccountsViewModel(fixture.services).also { it.load() }.state.value!!.groups
         assertEquals("Household · USD", list.single().title)
         assertEquals("Kestrel Checking", list.single().lines.single().bankAccount)
@@ -238,22 +402,39 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
     }
 
     @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario")
+    @DisplayName("Step 14: after Add and continue the next chosen Offered Bank Account follows, with what was added on top")
+    fun theNextCardFollows() {
+        throughBudgets()
+        offer()
+        bringIn("acct-4410", "acct-5520")
+
+        addOnCard("Checking", "Kestrel Checking")
+
+        assertEquals(PairingStage.Card, ui().stage)
+        assertEquals("2 of 2", card().progress)
+        assertEquals("Aurora Dollar", card().title)
+        assertEquals("Kestrel Checking added → Checking", ui().message)
+        assertEquals(listOf("Rewards Card", "Reserve Savings"), card().listed.map { it.title })
+    }
+
+    @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-009"])
-    @DisplayName("BR-009: the Operator changes the type and names a new Bank; without a Bank the Bank Account is not added and the screen says why")
+    @DisplayName("BR-009: the Operator changes the type and names a new Bank; without a Bank or a type the Bank Account is not added and the card says why")
     fun typeAndBankAreConfirmedOrChanged() {
         throughBudgets()
         offer()
-        setup.goTo(SetupStep.BankAccounts)
-        setup.selectOffered(offeredId("acct-4410"))
-        setup.pairWith(freeId("Checking"))
+        bringIn("acct-4410")
+        setup.chooseBudgetAccount(budgetAccountId("Checking"))
 
-        setup.saveNaming("Kestrel Checking", BankAccountType.Savings, null, "")
+        setup.addAndContinue("Kestrel Checking", BankAccountType.Savings, null, "")
         assertEquals("Choose a Bank or name a new one · not added", ui().message)
         assertTrue(runBlocking { slice.connectionStore.bankAccounts().isEmpty() })
-        setup.saveNaming("Kestrel Checking", null, kestrel(), "")
+        setup.addAndContinue("Kestrel Checking", null, kestrel(), "")
         assertEquals("Choose the Bank Account type · not added", ui().message)
+        assertEquals(PairingStage.Card, ui().stage)
 
-        setup.saveNaming("Kestrel Checking", BankAccountType.Savings, BankChoice.Named("Kestrel Savings Bank"), "")
+        setup.addAndContinue("Kestrel Checking", BankAccountType.Savings, BankChoice.Named("Kestrel Savings Bank"), "")
 
         val stored = runBlocking { slice.connectionStore.bankAccounts().single() }
         assertEquals(BankAccountType.Savings, stored.type)
@@ -262,7 +443,7 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-009"])
-    @DisplayName("BR-009: when the Data Provider names no Bank, none is proposed and the screen asks to choose or name one")
+    @DisplayName("BR-009: when the Data Provider names no Bank, none is proposed and the card asks to choose or name one")
     fun noBankNamedIsShown() {
         throughBudgets()
         runBlocking {
@@ -272,42 +453,151 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
                 listOf(ExampleData.offered("acct-2209", "Old Savings", "savings", USD, "2209", null, bankId = null, offeredAt = slice.clock.instant())),
             )
         }
-        setup.goTo(SetupStep.BankAccounts)
 
-        setup.selectOffered(offeredId("acct-2209"))
-        setup.pairWith(freeId("Reserve Savings"))
+        bringIn("acct-2209")
 
-        assertNull(ui().naming!!.proposedBank)
-        assertEquals("Kestrel Feeds names no Bank · choose one or name a new one", ui().naming!!.note)
+        assertNull(card().proposedBank)
+        assertEquals("Kestrel Feeds names no Bank · choose one or name a new one", card().note)
     }
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-005"])
-    @DisplayName("Step 9: a Start Date that is not a date is refused and nothing is stored")
+    @DisplayName("Step 11: a Start Date that is not a date is refused, nothing is stored and the card stays open")
     fun startDateMustBeADate() {
         throughBudgets()
         offer()
-        setup.goTo(SetupStep.BankAccounts)
 
         pairAndSave("acct-4410", "Checking", "Kestrel Checking", "first of September")
 
         assertEquals("The Start Date is a date like 2026-09-01, or empty.", ui().message)
         assertTrue(runBlocking { slice.connectionStore.bankAccounts().isEmpty() })
-        assertEquals("CHK ••4410", ui().naming?.proposedName)
+        assertEquals("CHK ••4410", card().proposedName)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-013"])
+    @DisplayName("Step 11: without a Budget Account chosen nothing is added; the proposal is never applied without the Operator")
+    fun aBudgetAccountMustBeChosen() {
+        throughBudgets()
+        offer()
+        bringIn("acct-4410")
+
+        setup.addAndContinue("Kestrel Checking", BankAccountType.Checking, kestrel(), "")
+
+        assertEquals("Choose a Budget Account · not added", ui().message)
+        assertTrue(runBlocking { slice.connectionStore.bankAccounts().isEmpty() })
     }
 
     @Test
     @UseCase(id = "UC-013", scenario = "A5: Budget Account Already Mapped or in Another Currency")
-    @DisplayName("A5: a refused pairing says why: the Budget Account already receives a Bank Account, or another currency")
+    @DisplayName("A5: a Budget Account that meanwhile receives another Bank Account, or one of another currency, is refused with why and the card stays open to choose again")
     fun refusedPairingSaysWhy() {
         throughBudgets()
         offer()
-        setup.goTo(SetupStep.BankAccounts)
+        bringIn("acct-4410", "acct-5520")
+        setup.chooseBudgetAccount(budgetAccountId("Checking"))
+        runBlocking {
+            slice.connect.addFromTransactionFiles(
+                slice.connect.fileFormats().single().fileFormatId, BankAccountType.Checking, BankChoice.Named("Harbor Bank"), null,
+                budgetAccountId("Checking"), "Harbor Joint", null,
+            )
+        }
+        val card = card()
 
-        setup.selectOffered(offeredId("acct-5520"))
-        setup.pairWith(freeId("Current"))
+        setup.addAndContinue("Kestrel Checking", card.proposedType, kestrel(), "")
+        assertEquals("Checking already receives Harbor Joint · not added", ui().message)
+        assertEquals("1 of 2", card().progress)
+        setup.openPicker()
+        setup.chooseBudgetAccount(budgetAccountId("Current"))
+        setup.addAndContinue("Kestrel Checking", card.proposedType, kestrel(), "")
 
-        assertEquals("Current is in EUR, Aurora Dollar in USD · not paired", ui().message)
+        assertEquals("Current is in EUR, Kestrel Checking in USD · not added", ui().message)
+        assertEquals(PairingStage.Card, ui().stage)
+        assertEquals(1, runBlocking { slice.connectionStore.bankAccounts().size })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A9: Mark a Budget Account Manually Kept", businessRules = ["BR-014"])
+    @DisplayName("A9: Kept by hand asks first; Cancel changes nothing, Keep by hand marks it, and it leaves the list of the card")
+    fun aBudgetAccountIsKeptByHandFromTheCard() {
+        throughBudgets()
+        offer()
+        bringIn("acct-4410")
+
+        setup.askKeepByHand(budgetAccountId("Reserve Savings"))
+        assertEquals(
+            KeepQuestion(
+                budgetAccountId("Reserve Savings"),
+                "Keep Reserve Savings by hand?",
+                "Reserve Savings (Household · USD) becomes a Manually Kept Account: you keep it in ${ExampleData.BUDGET_APP_NAME} yourself, " +
+                    "Slussen never writes to it and no longer offers it for pairing. Unmark it any time in Account Mappings. " +
+                    "Recorded in the Decision Journal.",
+            ),
+            card().keepQuestion,
+        )
+        setup.cancelKeepByHand()
+        assertNull(card().keepQuestion)
+        assertEquals(3, card().listed.size)
+        setup.askKeepByHand(budgetAccountId("Reserve Savings"))
+        setup.confirmKeepByHand()
+
+        assertEquals(listOf("Checking", "Rewards Card"), card().listed.map { it.title })
+        assertNull(card().keepQuestion)
+        assertTrue(runBlocking { slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Reserve Savings" }.manuallyKept })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A8: Skip for Now", businessRules = ["BR-012"])
+    @DisplayName("A8: Skip for now adds nothing and leaves nothing out; the summary lists it as skipped and it is offered again at step 5")
+    fun skipForNow() {
+        throughBudgets()
+        offer()
+        bringIn("acct-4410", "acct-5520")
+
+        setup.skipForNow()
+        assertEquals("2 of 2", card().progress)
+        addOnCard("Reserve Savings", "Aurora Dollar")
+
+        assertEquals(SummaryUi(added = listOf("Aurora Dollar → Reserve Savings ••••5520"), skipped = listOf("CHK ••••4410 · offered again next time"), leftOut = emptyList()), ui().summary)
+        setup.done()
+        assertEquals(PairingStage.Choose, ui().stage)
+        assertEquals(listOf("CHK"), ui().sources.single { it.name == "Kestrel Feeds" }.offered.map { it.title })
+        assertTrue(leftOutReferences().isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A10: Bring Back a Left-Out Bank Account", businessRules = ["BR-011"])
+    @DisplayName("A10: Not imported, opened, lists the Left-Out Bank Accounts with their Source and date; Bring back offers one again, switched off")
+    fun bringBackFromNotImported() {
+        throughBudgets()
+        offer()
+        bringIn()
+        setup.done()
+        assertEquals(2, ui().leftOut.size)
+
+        setup.toggleLeftOut()
+        assertTrue(ui().leftOutOpen)
+        assertEquals(LeftOutLine(ui().leftOut[1].leftOutBankAccountId, "Aurora Dollar ••5520", "Kestrel Feeds · left out 2026-10-15"), ui().leftOut[1])
+        setup.bringBack(ui().leftOut[1].leftOutBankAccountId)
+
+        assertEquals("Aurora Dollar ••5520 brought back · switch it on to bring it in", ui().message)
+        assertEquals(listOf("Aurora Dollar"), ui().sources.single { it.name == "Kestrel Feeds" }.offered.map { it.title })
+        assertFalse(ui().sources.single { it.name == "Kestrel Feeds" }.offered.single().chosen)
+        assertEquals(listOf("CHK ••4410"), ui().leftOut.map { it.title })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A11: No Offered Bank Account Left to Decide")
+    @DisplayName("A11: when every Offered Bank Account is added or left out, the step says there is nothing new to bring in")
+    fun nothingNewToBringIn() {
+        throughBudgets()
+        offer()
+
+        pairAndSave("acct-4410", "Checking", "Kestrel Checking")
+        setup.done()
+
+        assertEquals("Nothing new to bring in · every Bank Account Kestrel Feeds offers is added or left out", ui().nothingLeft)
+        assertEquals(listOf("Aurora Dollar ••5520"), ui().leftOut.map { it.title })
     }
 
     @Test
@@ -331,11 +621,10 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
 
     @Test
     @UseCase(id = "UC-013", scenario = "A6: Offered Bank Account Probably Already Added")
-    @DisplayName("A6: an Offered Bank Account that is probably an added one is shown as its proposed match, to confirm in Account Mappings")
+    @DisplayName("A6: an Offered Bank Account that is probably an added one is shown apart, without a switch, to confirm in Account Mappings and never left out")
     fun probablyAddedBankAccountIsAProposedMatch() {
         throughBudgets()
         offer()
-        setup.goTo(SetupStep.BankAccounts)
         pairAndSave("acct-4410", "Checking", "Kestrel Checking")
         runBlocking {
             val bank = slice.connectionStore.bankNamed("Kestrel Bank").id
@@ -349,10 +638,9 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
 
         setup.goTo(SetupStep.BankAccounts)
 
-        assertEquals(
-            listOf("CHK ••••4410 · probably Kestrel Checking · confirm in Account Mappings"),
-            ui().sources.single { it.name == "Kestrel Feeds" }.proposedMatches,
-        )
+        val feeds = ui().sources.single { it.name == "Kestrel Feeds" }
+        assertEquals(listOf("CHK ••••4410 · probably Kestrel Checking · confirm in Account Mappings · not left out"), feeds.proposedMatches)
+        assertTrue(feeds.offered.isEmpty())
     }
 
     @Test
@@ -374,6 +662,24 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
         val stored = runBlocking { slice.connectionStore.bankAccounts().single() }
         assertEquals("Harbor Health Savings", stored.name)
         assertEquals(BankAccountType.Savings, stored.type)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-006", "BR-011"])
+    @DisplayName("A4, BR-006: the balance can come from any Offered Bank Account, also a Left-Out one, which is then brought back")
+    fun aLeftOutBalanceSourceIsBroughtBack() {
+        throughBudgets()
+        offer()
+        bringIn("acct-4410")
+        setup.done()
+        val format = ui().fileFormats.single()
+
+        assertEquals(listOf("Kestrel Feeds · CHK ••••4410", "Kestrel Feeds · Aurora Dollar ••••5520 · not imported"), ui().balanceSources.map { it.title })
+        setup.addFromTransactionFiles(format.first, BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), offeredId("acct-5520"), freeId("Reserve Savings"), "Harbor Health Savings", "")
+
+        assertEquals("Bank Account Harbor Health Savings added · fetched from the next Fetch", ui().message)
+        assertTrue(leftOutReferences().isEmpty())
+        assertTrue(ui().leftOut.isEmpty())
     }
 
     @Test
@@ -418,29 +724,23 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-010"])
-    @DisplayName("BR-010: when the Offered Bank Account states no currency, step 9 asks for it with the Budget Account's currency proposed, and the Bank Account is added with it")
-    fun currencyIsStatedAtStep9() {
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-010", "BR-013"])
+    @DisplayName("BR-010: when the Offered Bank Account states no currency, every free Budget Account is listed and step 11 asks for the currency, the chosen Budget Account's proposed, and the Bank Account is added with it")
+    fun currencyIsStatedAtStep11() {
         throughBudgets()
-        runBlocking {
-            slice.offeredStore.replaceOffered(
-                slice.feedsId,
-                null,
-                listOf(ExampleData.offered("acct-9001", "Harbor Joint", "checking", null, "9001", amount(310), null, slice.clock.instant())),
-            )
-        }
-        setup.goTo(SetupStep.BankAccounts)
-        setup.selectOffered(offeredId("acct-9001"))
-        setup.pairWith(freeId("Checking"))
+        offerWithoutCurrency()
+        bringIn("acct-9001")
+        assertEquals("Free Budget Accounts", card().listedHeading)
+        assertEquals(6, card().listed.size)
 
-        val naming = ui().naming!!
-        assertEquals("USD", naming.currency)
-        assertFalse(naming.currencyStatedBySource)
-        assertEquals("Kestrel Feeds states no currency · state it, the Budget Account's by default", naming.currencyNote)
+        setup.chooseBudgetAccount(budgetAccountId("Checking"))
 
-        setup.saveNaming("Harbor Joint", naming.proposedType, BankChoice.Named("Harbor Bank"), "", "USD")
-
-        assertEquals("Bank Account Harbor Joint added · fetched from the next Fetch", ui().message)
+        val card = card()
+        assertEquals("USD", card.currency)
+        assertFalse(card.currencyStatedBySource)
+        assertEquals("Kestrel Feeds states no currency · state it, the Budget Account's by default", card.currencyNote)
+        setup.addAndContinue("Harbor Joint", card.proposedType, BankChoice.Named("Harbor Bank"), "", "USD")
+        assertEquals(listOf("Harbor Joint → Checking ••••9001"), ui().summary!!.added)
         assertEquals(USD, runBlocking { slice.connectionStore.bankAccounts().single().currency })
     }
 
@@ -449,22 +749,15 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
     @DisplayName("A5, BR-010: a stated currency other than the Budget's is refused with why; a currency that is no ISO code is not accepted")
     fun statedCurrencyIsChecked() {
         throughBudgets()
-        runBlocking {
-            slice.offeredStore.replaceOffered(
-                slice.feedsId,
-                null,
-                listOf(ExampleData.offered("acct-9001", "Harbor Joint", "checking", null, "9001", amount(310), null, slice.clock.instant())),
-            )
-        }
-        setup.goTo(SetupStep.BankAccounts)
-        setup.selectOffered(offeredId("acct-9001"))
-        setup.pairWith(freeId("Checking"))
-        val naming = ui().naming!!
+        offerWithoutCurrency()
+        bringIn("acct-9001")
+        setup.chooseBudgetAccount(budgetAccountId("Checking"))
+        val card = card()
 
-        setup.saveNaming("Harbor Joint", naming.proposedType, BankChoice.Named("Harbor Bank"), "", "EUR")
-        assertEquals("Checking is in USD, Harbor Joint in EUR · not paired", ui().message)
+        setup.addAndContinue("Harbor Joint", card.proposedType, BankChoice.Named("Harbor Bank"), "", "EUR")
+        assertEquals("Checking is in USD, Harbor Joint in EUR · not added", ui().message)
 
-        setup.saveNaming("Harbor Joint", naming.proposedType, BankChoice.Named("Harbor Bank"), "", "dollars")
+        setup.addAndContinue("Harbor Joint", card.proposedType, BankChoice.Named("Harbor Bank"), "", "dollars")
         assertEquals("The currency is an ISO 4217 code of three capital letters, like USD · not added", ui().message)
         assertTrue(runBlocking { slice.connectionStore.bankAccounts().isEmpty() })
     }
@@ -475,13 +768,27 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
     fun currencyStatedBySourceIsShown() {
         throughBudgets()
         offer()
-        setup.goTo(SetupStep.BankAccounts)
-        setup.selectOffered(offeredId("acct-4410"))
-        setup.pairWith(freeId("Checking"))
+        bringIn("acct-4410")
 
-        val naming = ui().naming!!
-        assertEquals("USD", naming.currency)
-        assertTrue(naming.currencyStatedBySource)
-        assertEquals("Stated by Kestrel Feeds", naming.currencyNote)
+        assertEquals("USD", card().currency)
+        assertTrue(card().currencyStatedBySource)
+        assertEquals("Stated by Kestrel Feeds", card().currencyNote)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", businessRules = ["BR-012"])
+    @DisplayName("Precondition: while an Upload Plan awaits confirmation, confirming the stated numbers shows why it is unavailable and leaves nothing out")
+    fun leavingOutIsUnavailableWhileAPlanAwaitsConfirmation() {
+        throughBudgets()
+        offer()
+        setup.goTo(SetupStep.BankAccounts)
+        setup.continueBringIn()
+        slice.coordinatorStore.mode = CoordinatorMode.PlanOpen
+
+        setup.confirmBringIn()
+
+        assertEquals("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", ui().message)
+        assertEquals(PairingStage.Choose, ui().stage)
+        assertTrue(leftOutReferences().isEmpty())
     }
 }

@@ -67,7 +67,7 @@ class TestSlice(
         plugins, credentials, connectionStore, offeredStore, coordinator, journal, random, clock,
     )
     val providerSettings = DataProviderSettings(plugins, registry, coordinator, journal)
-    val mappings = AccountMappings(plugins, connectionStore, connectionStore, coordinator, journal)
+    val mappings = AccountMappings(plugins, connectionStore, connectionStore, offeredStore, coordinator, journal)
     val status = ImportStatus(
         budgetAppName = plugins.budgetApp.profile.name,
         currentDataProviders = { plugins.dataProviders.map { it.stored } },

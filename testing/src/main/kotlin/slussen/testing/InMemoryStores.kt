@@ -15,10 +15,12 @@ import slussen.core.port.FetchStore
 import slussen.core.port.FileFormatRegistration
 import slussen.core.port.ImportStatusStore
 import slussen.core.port.JournalEntry
+import slussen.core.port.KeptOutcome
 import slussen.core.port.MappingStore
 import slussen.core.port.NewBackOff
 import slussen.core.port.NewBankAccount
 import slussen.core.port.NewFetch
+import slussen.core.port.NewLeftOutBankAccount
 import slussen.core.port.NewOfferedBankAccount
 import slussen.core.port.NewProviderRequest
 import slussen.core.port.OfferedBankAccountStore
@@ -43,6 +45,7 @@ import slussen.core.port.StoredBudgetAccount
 import slussen.core.port.StoredDataProvider
 import slussen.core.port.StoredFetch
 import slussen.core.port.StoredFileFormat
+import slussen.core.port.StoredLeftOutBankAccount
 import slussen.core.port.StoredOfferedBankAccount
 import slussen.core.port.StoredProviderRequest
 import slussen.core.port.StoredRecoveryCheck
@@ -173,11 +176,15 @@ class InMemoryOfferedBankAccountStore : OfferedBankAccountStore {
     }
 }
 
-/** In-memory fake of [ConnectionStore] with the refusals of O-15, all or nothing like the real one, and of [MappingStore]. */
+/**
+ * In-memory fake of [ConnectionStore] with the refusals of O-15, all or nothing like the real one, and of [MappingStore]
+ * (O-13), with the Left-Out Bank Accounts and Manually Kept Accounts of S-38.
+ */
 class InMemoryConnectionStore : ConnectionStore, MappingStore {
     val budgetList = mutableListOf<StoredBudget>()
     val bankList = mutableListOf<StoredBank>()
     val bankAccountList = mutableListOf<StoredBankAccount>()
+    val leftOutList = mutableListOf<StoredLeftOutBankAccount>()
     private var nextId = 100L
 
     override suspend fun budgets(): List<StoredBudget> = budgetList.toList()
@@ -234,6 +241,10 @@ class InMemoryConnectionStore : ConnectionStore, MappingStore {
         if (mappedBy != null) return AddOutcome.BudgetAccountAlreadyMapped(mappedBy.name)
         val budget = budgetList.first { b -> b.budgetAccounts.any { it.id == bankAccount.budgetAccountId } }
         if (budget.currency != bankAccount.currency) return AddOutcome.CurrencyDiffers(budget.currency)
+        if (budget.budgetAccounts.single { it.id == bankAccount.budgetAccountId }.manuallyKept) return AddOutcome.ManuallyKept
+        val own = bankAccount.dataProviderId to bankAccount.providerReference
+        if (leftOutList.any { it.dataProviderId to it.providerReference == own }) return AddOutcome.LeftOut
+        leftOutList.removeAll { it.dataProviderId == bankAccount.balanceDataProviderId && it.providerReference == bankAccount.balanceProviderReference }
         val bankId = bankIdOf(bankAccount.bank)
         val id = nextId++
         bankAccountList += StoredBankAccount(
@@ -296,6 +307,31 @@ class InMemoryConnectionStore : ConnectionStore, MappingStore {
 
     override suspend fun bankNamed(name: String): StoredBank =
         bankList.firstOrNull { it.name == name } ?: StoredBank(nextId++, name, country = null).also { bankList += it }
+
+    override suspend fun leftOutBankAccounts(): List<StoredLeftOutBankAccount> = leftOutList.toList()
+
+    override suspend fun leaveOut(leftOut: List<NewLeftOutBankAccount>): Boolean {
+        val taken = leftOutList.map { it.dataProviderId to it.providerReference } + bankAccountList.flatMap {
+            listOf(it.dataProviderId to it.providerReference, it.balanceDataProviderId to it.balanceProviderReference)
+        }
+        val asked = leftOut.map { it.dataProviderId to it.providerReference }
+        if (asked.any { it in taken } || asked.distinct().size != asked.size) return false
+        leftOut.forEach { leftOutList += StoredLeftOutBankAccount(nextId++, it.dataProviderId, it.providerReference, it.name, it.leftOutAt) }
+        return true
+    }
+
+    override suspend fun bringBack(leftOutBankAccountId: Long): StoredLeftOutBankAccount? =
+        leftOutList.firstOrNull { it.id == leftOutBankAccountId }?.also { leftOutList.remove(it) }
+
+    override suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome {
+        if (budgetList.none { budget -> budget.budgetAccounts.any { it.id == budgetAccountId } }) return KeptOutcome.NotFound
+        val mappedBy = bankAccountList.firstOrNull { it.mapping?.budgetAccountId == budgetAccountId }
+        if (manuallyKept && mappedBy != null) return KeptOutcome.StillReceives(mappedBy.name)
+        budgetList.replaceAll { budget ->
+            budget.copy(budgetAccounts = budget.budgetAccounts.map { if (it.id == budgetAccountId) it.copy(manuallyKept = manuallyKept) else it })
+        }
+        return KeptOutcome.Stored
+    }
 }
 
 /** In-memory fake of [RecoveryStore]. */

@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import slussen.persistence.device.DeviceDatabase
 import slussen.persistence.journal.JournalDatabase
 import slussen.persistence.main.SlussenDatabase
+import slussen.persistence.main.SlussenMigrations
 import java.io.File
 
 /**
@@ -25,9 +26,14 @@ object SlussenDatabases {
 
     fun journalFile(context: Context): File = File(context.noBackupFilesDir, JOURNAL_FILE)
 
-    /** `JournalMode.TRUNCATE` and `PRAGMA synchronous = FULL` (ADR-002 §4). */
+    /**
+     * `JournalMode.TRUNCATE` and `PRAGMA synchronous = FULL` (ADR-002 §4), with the Migration from every committed schema
+     * version, so an installed `slussen.db` is upgraded and never cleared (ADR-002 §7, NFR-017).
+     */
     fun openMain(context: Context): SlussenDatabase =
         Room.databaseBuilder(context, SlussenDatabase::class.java, mainFile(context).path)
+            // UC-009 BR-013: The Left-Out Bank Accounts and the Manually Kept Accounts, like all stored data, are kept on an upgrade.
+            .addMigrations(*SlussenMigrations.ALL)
             .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
             .addCallback(SynchronousFull)
             .build()

@@ -97,7 +97,7 @@ sealed interface BankChoice {
     data class Named(val name: String) : BankChoice
 }
 
-/** How the Source identifies a Bank Account that is added, and the rest of its row (UC-013 steps 8-10, A4). */
+/** How the Source identifies a Bank Account that is added, and the rest of its row (UC-013 steps 11-13, A4). */
 data class NewBankAccount(
     val generatedIdentifier: String,
     val bank: BankChoice,
@@ -126,6 +126,36 @@ sealed interface AddOutcome {
 
     /** UC-013 A5: the Budget Account's Budget has another currency than the Bank Account. */
     data class CurrencyDiffers(val budgetCurrency: CurrencyCode) : AddOutcome
+
+    /** UC-013 BR-011: the Data Provider's reference of the Bank Account is left out; a Left-Out one is never added. */
+    data object LeftOut : AddOutcome
+
+    /** UC-013 BR-014: the Budget Account is a Manually Kept Account, never paired. */
+    data object ManuallyKept : AddOutcome
+}
+
+/** `LEFT_OUT_BANK_ACCOUNT` (entity model) as stored in `slussen.db` (UC-013 BR-011). */
+data class StoredLeftOutBankAccount(
+    val id: Long,
+    val dataProviderId: Long,
+    val providerReference: String,
+    /** The Offered Bank Account's name or product with its last four digits, taken when it was left out. */
+    val name: String?,
+    val leftOutAt: Instant,
+)
+
+/** One Offered Bank Account the Operator did not choose, to remember as a Left-Out Bank Account (UC-013 steps 8-9). */
+data class NewLeftOutBankAccount(val dataProviderId: Long, val providerReference: String, val name: String?, val leftOutAt: Instant)
+
+/** The outcome of marking or unmarking a Manually Kept Account in storage (O-15, O-13). */
+sealed interface KeptOutcome {
+    data object Stored : KeptOutcome
+
+    /** UC-009 BR-001: refused; the Budget Account receives through the Account Mapping of [bankAccountName]. */
+    data class StillReceives(val bankAccountName: String) : KeptOutcome
+
+    /** No Budget Account has this id. */
+    data object NotFound : KeptOutcome
 }
 
 /**
@@ -147,13 +177,34 @@ interface ConnectionStore {
 
     /**
      * O-15 Add: the new `bank_account` with its name, Bank Account type, Bank (stored first when it is a new one) and
-     * Start Date, and its `account_mapping`, in one transaction; refused, storing nothing, when the Budget Account
-     * already receives through an Account Mapping or its Budget has another currency (UC-013 step 10, A5).
+     * Start Date, and its `account_mapping`, in one transaction, deleting the `left_out_bank_account` of the Offered Bank
+     * Account chosen for a File Format's balance (UC-013 BR-006); refused, storing nothing, when the Budget Account
+     * already receives through an Account Mapping, its Budget has another currency (UC-013 step 12, A5) or it is a
+     * Manually Kept Account (BR-014), and when the Bank Account's own reference is left out (BR-011).
      */
     suspend fun addBankAccount(bankAccount: NewBankAccount): AddOutcome
 
     /** The Bank named [name], stored when it is new (`BANK.name` is unique). */
     suspend fun bankNamed(name: String): StoredBank
+
+    /** The Left-Out Bank Accounts of every Data Provider (UC-013 BR-011). */
+    suspend fun leftOutBankAccounts(): List<StoredLeftOutBankAccount>
+
+    /**
+     * O-15 Leave out: one `left_out_bank_account` for each of [leftOut], all or none (UC-013 steps 8-9, A12). Refused,
+     * storing nothing, when one is already left out or is the reference, or the balance reference, of a Bank Account of
+     * that Data Provider (entity model `LEFT_OUT_BANK_ACCOUNT` constraints); returns whether they were stored.
+     */
+    suspend fun leaveOut(leftOut: List<NewLeftOutBankAccount>): Boolean
+
+    /** O-15 Bring back: deletes one `left_out_bank_account` and returns it, or null when there is none (UC-013 A10). */
+    suspend fun bringBack(leftOutBankAccountId: Long): StoredLeftOutBankAccount?
+
+    /**
+     * O-15 Mark (UC-013 A9) and O-13 (UC-009 A16): sets or clears `budget_account.manually_kept`; setting it is refused
+     * while the Budget Account receives through an Account Mapping.
+     */
+    suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome
 }
 
 /** O-13 `MappingStore` (ADR-002 §3): the changes of UC-009, each one transaction on `slussen.db`. */
@@ -170,4 +221,13 @@ interface MappingStore {
         clearFundedBy: Boolean,
         clearTransferPartner: Boolean,
     )
+
+    /** UC-009 A15: deletes one `left_out_bank_account` and returns it, or null when there is none (`MappingStore.bringBack`). */
+    suspend fun bringBack(leftOutBankAccountId: Long): StoredLeftOutBankAccount?
+
+    /**
+     * UC-009 A16: sets or clears `budget_account.manually_kept`, refused while it receives through an Account Mapping
+     * (`MappingStore.setManuallyKept`).
+     */
+    suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome
 }

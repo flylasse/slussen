@@ -14,10 +14,12 @@ import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchStore
 import slussen.core.port.FileFormatRegistration
 import slussen.core.port.ImportStatusStore
+import slussen.core.port.KeptOutcome
 import slussen.core.port.MappingStore
 import slussen.core.port.NewBackOff
 import slussen.core.port.NewBankAccount
 import slussen.core.port.NewFetch
+import slussen.core.port.NewLeftOutBankAccount
 import slussen.core.port.NewOfferedBankAccount
 import slussen.core.port.NewProviderRequest
 import slussen.core.port.OfferedBankAccountStore
@@ -42,6 +44,7 @@ import slussen.core.port.StoredBudgetAccount
 import slussen.core.port.StoredDataProvider
 import slussen.core.port.StoredFetch
 import slussen.core.port.StoredFileFormat
+import slussen.core.port.StoredLeftOutBankAccount
 import slussen.core.port.StoredOfferedBankAccount
 import slussen.core.port.StoredProviderRequest
 import slussen.core.port.StoredRecoveryCheck
@@ -58,6 +61,7 @@ import slussen.persistence.main.CoordinatorDao
 import slussen.persistence.main.FetchDao
 import slussen.persistence.main.FetchEntity
 import slussen.persistence.main.FileFormatEntity
+import slussen.persistence.main.LeftOutBankAccountEntity
 import slussen.persistence.main.OperatorSettingsDao
 import slussen.persistence.main.OperatorSettingsEntity
 import slussen.persistence.main.PluginRegistryDao
@@ -276,14 +280,40 @@ class RoomConnectionStore(private val dao: ConnectionDao) : ConnectionStore {
             is ConnectionDao.Added.Stored -> AddOutcome.Added(added.bankAccountId)
             is ConnectionDao.Added.AlreadyMapped -> AddOutcome.BudgetAccountAlreadyMapped(added.bankAccountName)
             is ConnectionDao.Added.CurrencyDiffers -> AddOutcome.CurrencyDiffers(currencyOf(added.budgetCurrency, MAIN_PART))
+            ConnectionDao.Added.LeftOut -> AddOutcome.LeftOut
+            ConnectionDao.Added.ManuallyKept -> AddOutcome.ManuallyKept
         }
     }
 
     override suspend fun bankNamed(name: String): StoredBank = dao.bankNamed(name).let { StoredBank(it.id, it.name, it.country) }
+
+    override suspend fun leftOutBankAccounts(): List<StoredLeftOutBankAccount> = dao.leftOut().map { it.stored() }
+
+    override suspend fun leaveOut(leftOut: List<NewLeftOutBankAccount>): Boolean = dao.leaveOut(
+        leftOut.map { LeftOutBankAccountEntity(dataProviderId = it.dataProviderId, providerReference = it.providerReference, name = it.name, leftOutAt = it.leftOutAt) },
+    )
+
+    override suspend fun bringBack(leftOutBankAccountId: Long): StoredLeftOutBankAccount? = dao.bringBack(leftOutBankAccountId)?.stored()
+
+    override suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome =
+        dao.setManuallyKept(budgetAccountId, manuallyKept).outcome()
+}
+
+private fun LeftOutBankAccountEntity.stored() = StoredLeftOutBankAccount(id, dataProviderId, providerReference, name, leftOutAt)
+
+private fun ConnectionDao.Kept.outcome(): KeptOutcome = when (this) {
+    ConnectionDao.Kept.Stored -> KeptOutcome.Stored
+    is ConnectionDao.Kept.StillReceives -> KeptOutcome.StillReceives(bankAccountName)
+    ConnectionDao.Kept.NotFound -> KeptOutcome.NotFound
 }
 
 /** O-13 `MappingStore` in `slussen.db`: the changes of UC-009 that this build makes. */
 class RoomMappingStore(private val dao: ConnectionDao) : MappingStore {
+    override suspend fun bringBack(leftOutBankAccountId: Long): StoredLeftOutBankAccount? = dao.bringBack(leftOutBankAccountId)?.stored()
+
+    override suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome =
+        dao.setManuallyKept(budgetAccountId, manuallyKept).outcome()
+
     override suspend fun changeTypeAndBank(
         bankAccountId: Long,
         type: BankAccountType,

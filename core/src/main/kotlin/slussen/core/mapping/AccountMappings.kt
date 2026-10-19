@@ -1,6 +1,12 @@
 package slussen.core.mapping
 
+import slussen.core.connection.ApartFromBankAccounts
+import slussen.core.connection.BroughtBack
+import slussen.core.connection.FreeBudgetAccount
+import slussen.core.connection.KeepOutcome
+import slussen.core.connection.KeptBudgetAccount
 import slussen.core.connection.KnownBank
+import slussen.core.connection.LeftOutAndKept
 import slussen.core.journal.DecisionJournal
 import slussen.core.operation.OperationCoordinator
 import slussen.core.operation.OperationKind
@@ -12,6 +18,7 @@ import slussen.core.port.BankChoice
 import slussen.core.port.ConnectionStore
 import slussen.core.port.JournalEventKind
 import slussen.core.port.MappingStore
+import slussen.core.port.OfferedBankAccountStore
 import slussen.core.port.StartedBy
 import slussen.core.port.StoredBankAccount
 
@@ -53,16 +60,65 @@ sealed interface TypeAndBankOutcome {
 }
 
 /**
- * Manage Account Mappings (UC-009), `:core` `mapping` (ADR-001 §7). This slice builds A14: changing the Bank Account type
- * or the Bank of a Bank Account (BR-012).
+ * Manage Account Mappings (UC-009), `:core` `mapping` (ADR-001 §7). Built so far: A14, changing the Bank Account type
+ * or the Bank of a Bank Account (BR-012); A15 and A16, bringing back a Left-Out Bank Account and marking or unmarking a
+ * Manually Kept Account, shown apart from the Bank Accounts (BR-013, S-38).
  */
 class AccountMappings(
     private val plugins: RegisteredPlugins,
     private val connections: ConnectionStore,
     private val store: MappingStore,
+    private val offered: OfferedBankAccountStore,
     private val coordinator: OperationCoordinator,
     private val journal: DecisionJournal,
 ) {
+    private val apart = LeftOutAndKept(plugins, offered, journal)
+
+    /**
+     * Step 1, BR-013: apart from the Bank Accounts, the Left-Out Bank Accounts of each Data Provider by the name they had
+     * when left out, the Manually Kept Accounts of each served Budget, and the free Budget Accounts that can be marked.
+     */
+    suspend fun apart(): ApartFromBankAccounts {
+        val budgets = connections.budgets().filter { it.served }
+        val mapped = connections.bankAccounts().mapNotNull { it.mapping?.budgetAccountId }.toSet()
+        // UC-009 BR-013: The Left-Out Bank Accounts and the Manually Kept Accounts are listed apart from the Bank Accounts.
+        return ApartFromBankAccounts(
+            leftOut = connections.leftOutBankAccounts().sortedBy { it.dataProviderId }.map(apart::view),
+            manuallyKept = budgets.flatMap { budget ->
+                budget.budgetAccounts.filter { it.manuallyKept }.map { KeptBudgetAccount(it.id, it.name, budget.name, budget.currency) }
+            },
+            markable = budgets.flatMap { budget ->
+                budget.budgetAccounts.filter { !it.manuallyKept && it.id !in mapped }.map {
+                    FreeBudgetAccount(it.id, budget.name, budget.currency, it.name, it.balance)
+                }
+            },
+        )
+    }
+
+    /** A15: brings a Left-Out Bank Account back, without any confirmation (BR-013), recorded in the Decision Journal. */
+    suspend fun bringBack(leftOutBankAccountId: Long): BroughtBack {
+        // UC-009 BR-013: Bringing back changes no Bank Account, Account Mapping or Sent Record, so no confirmation is asked; not while an Upload Plan awaits confirmation.
+        val result = coordinator.run(OperationKind.AccountMappingChange, StartedBy.Operator) {
+            apart.bringBack(leftOutBankAccountId, store::bringBack)
+        }
+        return when (result) {
+            is OperationResult.Ran -> result.value
+            is OperationResult.Refused -> BroughtBack.Unavailable(result.reason)
+        }
+    }
+
+    /** A16: marks a free Budget Account of a served Budget as a Manually Kept Account, or unmarks one (BR-001, BR-013). */
+    suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeepOutcome {
+        // UC-009 BR-013: Marking or unmarking asks for no confirmation and is not possible while an Upload Plan awaits confirmation.
+        val result = coordinator.run(OperationKind.AccountMappingChange, StartedBy.Operator) {
+            apart.setManuallyKept(connections.budgets(), budgetAccountId, manuallyKept, store::setManuallyKept)
+        }
+        return when (result) {
+            is OperationResult.Ran -> result.value
+            is OperationResult.Refused -> KeepOutcome.Unavailable(result.reason)
+        }
+    }
+
     /** A14 step 1, or null when no Bank Account has this id. */
     suspend fun typeAndBank(bankAccountId: Long): TypeAndBank? {
         val bankAccount = connections.bankAccounts().firstOrNull { it.id == bankAccountId } ?: return null

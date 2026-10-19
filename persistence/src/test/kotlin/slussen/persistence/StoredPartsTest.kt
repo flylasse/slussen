@@ -13,8 +13,10 @@ import java.io.File
  * and the tables of `device.db` are not.
  */
 class StoredPartsTest {
+    /** The tables of the newest committed schema version of [database] (ADR-002 §7). */
     private fun tables(database: String): Set<String> {
-        val schema = File("schemas/slussen.persistence.$database/1.json").readText()
+        val versions = File("schemas/slussen.persistence.$database").listFiles().orEmpty().mapNotNull { it.name.removeSuffix(".json").toIntOrNull() }
+        val schema = File("schemas/slussen.persistence.$database/${versions.max()}.json").readText()
         return Regex(""""tableName"\s*:\s*"([a-z_]+)"""").findAll(schema).map { it.groupValues[1] }.toSet()
     }
 
@@ -27,6 +29,17 @@ class StoredPartsTest {
     fun connectionDataIsDecisionCritical() {
         assertTrue(main.containsAll(listOf("budget", "budget_account", "bank_account", "account_mapping", "bank")), "$main")
         assertTrue(device.none { it in setOf("budget", "bank_account", "account_mapping") })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", businessRules = ["BR-007", "BR-011", "BR-014"], requirements = ["NFR-017"])
+    @DisplayName("BR-007, BR-011: the Left-Out Bank Accounts and the Manually Kept Accounts are in the backed-up slussen.db, kept like the Bank Accounts, not in device.db")
+    fun leftOutAndManuallyKeptAreKeptWithTheBankAccounts() {
+        assertTrue("left_out_bank_account" in main, "$main")
+        assertTrue("left_out_bank_account" !in device)
+        val budgetAccount = File("schemas/slussen.persistence.main.SlussenDatabase/2.json").readText()
+            .substringAfter("\"tableName\": \"budget_account\"").substringBefore("\"tableName\"")
+        assertTrue("`manually_kept` INTEGER NOT NULL" in budgetAccount, budgetAccount)
     }
 
     @Test

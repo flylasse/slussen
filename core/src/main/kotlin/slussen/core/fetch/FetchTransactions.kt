@@ -283,8 +283,9 @@ class FetchTransactions(
     ): FetchReport.Fetched {
         val stored = provider.stored
         val offeredAt = clock.instant()
+        val leftOut = connections.leftOutBankAccounts().filter { it.dataProviderId == stored.id }.map { it.providerReference }.toSet()
         // UC-009 BR-009: The Offered Bank Accounts of a Data Provider are replaced by those of its latest delivery, of the number only the last four digits and the fingerprint.
-        offered.replaceOffered(stored.id, null, delivered.map { offeredOf(stored, it, offeredAt) })
+        offered.replaceOffered(stored.id, null, delivered.map { offeredOf(stored, it, offeredAt, it.providerReference in leftOut) })
         val references = delivered.map { it.providerReference }.toSet()
         // UC-001 BR-011: A Bank Account is identified with certainty by the identifier its Data Provider gives it, a file-imported one by the identifier its balance Data Provider gives it.
         val identified = toRead.filter { it.read.providerReference in references }.map { it.bankAccount.name }
@@ -307,7 +308,12 @@ class FetchTransactions(
         )
     }
 
-    private suspend fun offeredOf(stored: StoredDataProvider, delivered: DeliveredBankAccount, offeredAt: Instant): NewOfferedBankAccount {
+    private suspend fun offeredOf(
+        stored: StoredDataProvider,
+        delivered: DeliveredBankAccount,
+        offeredAt: Instant,
+        leftOut: Boolean,
+    ): NewOfferedBankAccount {
         val bankName = delivered.bankReference?.trim()?.take(BANK_NAME_MAX_LENGTH)?.takeIf { it.isNotEmpty() }
         return NewOfferedBankAccount(
             bankId = bankName?.let { connections.bankNamed(it).id },
@@ -316,7 +322,8 @@ class FetchTransactions(
             name = delivered.name?.take(NAME_MAX_LENGTH),
             bankAccountKind = delivered.kind?.take(KIND_MAX_LENGTH),
             currency = delivered.currency,
-            balance = balanceOf(delivered.result),
+            // UC-013 BR-011: A Left-Out Bank Account is never read: no balance of it is stored, though it stays in the delivered list.
+            balance = if (leftOut) null else balanceOf(delivered.result),
             lastFourDigits = delivered.number?.let { BankAccountFingerprint.lastFourDigits(it) },
             proposedBankAccountId = null,
             offeredAt = offeredAt,

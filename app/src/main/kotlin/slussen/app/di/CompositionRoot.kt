@@ -66,7 +66,7 @@ class CompositionRoot(log: SlussenLog) {
                 RandomSource { random.nextBytes(it) }, clock,
             ),
             providerSettings = DataProviderSettings(registered, storage.registry, coordinator, journal),
-            mappings = AccountMappings(registered, storage.connections, storage.mappings, coordinator, journal),
+            mappings = AccountMappings(registered, storage.connections, storage.mappings, storage.offered, coordinator, journal),
             status = ImportStatus(
                 budgetAppName = registered.budgetApp.profile.name,
                 currentDataProviders = { registered.dataProviders.map { it.stored } },

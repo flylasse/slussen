@@ -14,9 +14,10 @@ import java.time.LocalDate
 
 /**
  * `slussen.db` (ADR-002 §1): the only database that is backed up and transferred, holding all Decision-Critical
- * Data. Phase 7 holds the tables of UC-008, UC-013 and UC-014, Phase 7a adds `data_provider.request_limit_published`
- * (S-31) and `bank_account.provider_bank_id` (S-33), Phase 8a adds `fetch` and `back_off` (UC-001); the other tables of ADR-002 §1 come with the slices that use them, within schema version 1 until the first
- * release: a migration is written only from a released schema version (ADR-002 §7).
+ * Data. Version 1, as committed at `96712aa`, holds the tables of UC-008, UC-013, UC-014 and the Fetch of UC-001; it is
+ * final, because the Operator's phone holds it (ADR-002 §7, S-39). Version 2 adds `left_out_bank_account` (S-38) with
+ * the hand-written [SlussenMigrations.MIGRATION_1_2]. Every later schema change, also a table a later slice adds,
+ * raises the version by one, commits its schema file and adds a Migration from the version before.
  */
 @Database(
     entities = [
@@ -28,13 +29,14 @@ import java.time.LocalDate
         BudgetAccountEntity::class,
         BankAccountEntity::class,
         AccountMappingEntity::class,
+        LeftOutBankAccountEntity::class,
         ProviderRequestEntity::class,
         FetchEntity::class,
         BackOffEntity::class,
         RecoveryCheckEntity::class,
         CoordinatorStateEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(StorageConverters::class)
@@ -204,6 +206,25 @@ data class AccountMappingEntity(
     @ColumnInfo(name = "bank_account_id") val bankAccountId: Long,
     @ColumnInfo(name = "budget_account_id") val budgetAccountId: Long,
     @ColumnInfo(name = "first_sent_at") val firstSentAt: Instant?,
+)
+
+// UC-013 BR-007: The Left-Out Bank Accounts are kept in the backed-up slussen.db, like the Bank Accounts, across a reinstall, restore or upgrade.
+/**
+ * `LEFT_OUT_BANK_ACCOUNT` (entity model, S-38): an Offered Bank Account the Operator chose not to import, remembered by
+ * its Data Provider and the Data Provider's reference in the backed-up `slussen.db` (ADR-002 §2), while the Offered Bank
+ * Accounts it filters live in `device.db`. Within one Data Provider a reference is left out at most once.
+ */
+@Entity(
+    tableName = "left_out_bank_account",
+    indices = [Index(value = ["data_provider_id", "provider_reference"], unique = true)],
+    foreignKeys = [ForeignKey(entity = DataProviderEntity::class, parentColumns = ["id"], childColumns = ["data_provider_id"])],
+)
+data class LeftOutBankAccountEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "data_provider_id") val dataProviderId: Long,
+    @ColumnInfo(name = "provider_reference") val providerReference: String,
+    @ColumnInfo(name = "name") val name: String?,
+    @ColumnInfo(name = "left_out_at") val leftOutAt: Instant,
 )
 
 /** `PROVIDER_REQUEST` (entity model). */

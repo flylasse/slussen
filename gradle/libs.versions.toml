@@ -67,6 +67,11 @@ asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
 asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
 androidx-test-core = { module = "androidx.test:core", version.ref = "androidx-test-core" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-runner" }
+# Phase 8d (S-39, ADR-002 §7): the migration tests of :persistence. room-testing's MigrationTestHelper for the instrumented
+# tests, and the JVM build of SQLite bundled with androidx.sqlite (allowed for :persistence by ADR-001 §2) for the JVM
+# migration tests in the gate.
+room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+androidx-sqlite-bundled-jvm = { module = "androidx.sqlite:sqlite-bundled-jvm", version.ref = "androidx-sqlite" }
 junit5-android-test-core = { module = "de.mannodermaus.junit5:android-test-core", version.ref = "junit5-android-test" }
 junit5-android-test-runner = { module = "de.mannodermaus.junit5:android-test-runner", version.ref = "junit5-android-test" }
 junit5-android-test-compose = { module = "de.mannodermaus.junit5:android-test-compose", version.ref = "junit5-android-test" }

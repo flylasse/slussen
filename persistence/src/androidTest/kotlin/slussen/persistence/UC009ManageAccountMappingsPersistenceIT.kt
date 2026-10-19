@@ -1,6 +1,11 @@
 package slussen.persistence
 
 import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Assertions.assertTrue
+import slussen.pluginapi.provider.RequestLimitDeclaration
+import slussen.core.port.DataProviderRegistration
+import slussen.core.port.NewLeftOutBankAccount
+import slussen.core.port.KeptOutcome
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
@@ -80,5 +85,27 @@ class UC009ManageAccountMappingsPersistenceIT {
         assertEquals("Pinecrest Card Co.", connections.banks().single { it.id == after.bankId }.name)
         assertEquals(null, after.transferPartnerBudgetAccountId)
         assertEquals(before.copy(type = after.type, bankId = after.bankId, transferPartnerBudgetAccountId = null), after)
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A16: Mark or Unmark a Manually Kept Account", businessRules = ["BR-001", "BR-013"])
+    @DisplayName("A15, A16: O-13 brings back a Left-Out Bank Account and marks or unmarks a Manually Kept Account, refusing to mark one that receives through an Account Mapping")
+    fun bringBackAndManuallyKept() = runBlocking {
+        val feeds = RoomPluginRegistryStore(main.registry()).reconcile(
+            listOf(DataProviderRegistration("Kestrel Feeds", "example-feeds", true, false, 60, RequestLimitDeclaration.Published(20, "an invented source"))),
+            emptyList(),
+        ).dataProviders.single().id
+        connections.serveBudgets(listed, setOf("budget-household"), now)
+        val checking = connections.budgets().single().budgetAccounts.single().id
+        val mappings = RoomMappingStore(main.connections())
+        connections.leaveOut(listOf(NewLeftOutBankAccount(feeds, "acct-2290", "Kids Saver ••2290", now)))
+
+        assertEquals("Kids Saver ••2290", mappings.bringBack(connections.leftOutBankAccounts().single().id)?.name)
+        assertTrue(connections.leftOutBankAccounts().isEmpty())
+        assertEquals(KeptOutcome.Stored, mappings.setManuallyKept(checking, true))
+        assertEquals(KeptOutcome.Stored, mappings.setManuallyKept(checking, false))
+        connections.addBankAccount(newBankAccount(checking))
+        assertEquals(KeptOutcome.StillReceives("Kestrel Checking"), mappings.setManuallyKept(checking, true))
+        assertEquals(false, connections.budgets().single().budgetAccounts.single().manuallyKept)
     }
 }

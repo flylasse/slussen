@@ -232,12 +232,18 @@ abstract class ConnectionDao {
         data class AlreadyMapped(val bankAccountName: String) : Added
 
         data class CurrencyDiffers(val budgetCurrency: String) : Added
+
+        data object LeftOut : Added
+
+        data object ManuallyKept : Added
     }
 
     /**
      * O-15 Add (ADR-002 §3): the new `bank_account` with its Bank, stored first when it is new, and its
-     * `account_mapping`, in one transaction; refused, storing nothing, when the Budget Account already receives through an
-     * Account Mapping or its Budget has another currency. [bankAccount]'s `bank_id` is replaced by the one of [bank].
+     * `account_mapping`, in one transaction, deleting the `left_out_bank_account` of the Offered Bank Account chosen for
+     * its balance; refused, storing nothing, when the Budget Account already receives through an Account Mapping, is a
+     * Manually Kept Account or its Budget has another currency, and when the Bank Account's own reference is left out.
+     * [bankAccount]'s `bank_id` is replaced by the one of [bank].
      */
     @Transaction
     open suspend fun add(bankAccount: BankAccountEntity, bank: BankChoice, budgetAccountId: Long): Added {
@@ -245,12 +251,91 @@ abstract class ConnectionDao {
         mappingInto(budgetAccountId)?.let { mapping ->
             return Added.AlreadyMapped(bankAccount(mapping.bankAccountId)?.name.orEmpty())
         }
-        val budget = budget(checkNotNull(budgetAccount(budgetAccountId)).budgetId)!!
+        val budgetAccount = checkNotNull(budgetAccount(budgetAccountId))
+        val budget = budget(budgetAccount.budgetId)!!
         // UC-003 BR-013: No amount is ever converted; the Budget has the Bank Account's currency.
         if (budget.currency != bankAccount.currency) return Added.CurrencyDiffers(budget.currency)
+        // UC-013 BR-014: A Manually Kept Account is never paired.
+        if (budgetAccount.manuallyKept) return Added.ManuallyKept
+        val ownProvider = bankAccount.dataProviderId
+        val ownReference = bankAccount.providerReference
+        // UC-013 BR-011: A Bank Account whose reference is left out is never added; it is brought back first.
+        if (ownProvider != null && ownReference != null && leftOutOf(ownProvider, ownReference) != null) return Added.LeftOut
         val id = insert(bankAccount.copy(bankId = bankIdOf(bank)))
         insert(AccountMappingEntity(bankAccountId = id, budgetAccountId = budgetAccountId, firstSentAt = null))
+        val balanceProvider = bankAccount.balanceDataProviderId
+        val balanceReference = bankAccount.balanceProviderReference
+        // UC-013 BR-006: Choosing a Left-Out Bank Account for a File Format's balance brings it back.
+        if (balanceProvider != null && balanceReference != null) deleteLeftOut(balanceProvider, balanceReference)
         return Added.Stored(id)
+    }
+
+    @Query("SELECT * FROM left_out_bank_account ORDER BY id")
+    abstract suspend fun leftOut(): List<LeftOutBankAccountEntity>
+
+    @Query("SELECT * FROM left_out_bank_account WHERE id = :id")
+    abstract suspend fun leftOut(id: Long): LeftOutBankAccountEntity?
+
+    @Query("SELECT * FROM left_out_bank_account WHERE data_provider_id = :dataProviderId AND provider_reference = :providerReference")
+    abstract suspend fun leftOutOf(dataProviderId: Long, providerReference: String): LeftOutBankAccountEntity?
+
+    @Query(
+        "SELECT COUNT(*) FROM bank_account WHERE (data_provider_id = :dataProviderId AND provider_reference = :providerReference) " +
+            "OR (balance_data_provider_id = :dataProviderId AND balance_provider_reference = :providerReference)",
+    )
+    abstract suspend fun bankAccountsWith(dataProviderId: Long, providerReference: String): Int
+
+    @Insert
+    abstract suspend fun insertLeftOut(rows: List<LeftOutBankAccountEntity>)
+
+    @Query("DELETE FROM left_out_bank_account WHERE id = :id")
+    abstract suspend fun deleteLeftOut(id: Long)
+
+    @Query("DELETE FROM left_out_bank_account WHERE data_provider_id = :dataProviderId AND provider_reference = :providerReference")
+    abstract suspend fun deleteLeftOut(dataProviderId: Long, providerReference: String)
+
+    @Query("UPDATE budget_account SET manually_kept = :manuallyKept WHERE id = :id")
+    abstract suspend fun storeManuallyKept(id: Long, manuallyKept: Boolean)
+
+    /**
+     * O-15 Leave out (ADR-002 §3): one `left_out_bank_account` for each of [rows], all or none, in one transaction;
+     * refused, storing nothing, when one is already left out or is the reference or balance reference of a Bank Account.
+     */
+    @Transaction
+    open suspend fun leaveOut(rows: List<LeftOutBankAccountEntity>): Boolean {
+        if (rows.map { it.dataProviderId to it.providerReference }.distinct().size != rows.size) return false
+        // UC-013 BR-011: A Bank Account that is added is never left out, and a reference is left out at most once.
+        if (rows.any { leftOutOf(it.dataProviderId, it.providerReference) != null || bankAccountsWith(it.dataProviderId, it.providerReference) > 0 }) {
+            return false
+        }
+        insertLeftOut(rows)
+        return true
+    }
+
+    /** O-15 Bring back (UC-013 A10) and O-13 (UC-009 A15): deletes one `left_out_bank_account` and returns it. */
+    @Transaction
+    open suspend fun bringBack(id: Long): LeftOutBankAccountEntity? = leftOut(id)?.also { deleteLeftOut(id) }
+
+    /** The outcome of [setManuallyKept]. */
+    sealed interface Kept {
+        data object Stored : Kept
+
+        data class StillReceives(val bankAccountName: String) : Kept
+
+        data object NotFound : Kept
+    }
+
+    /**
+     * O-15 Mark (UC-013 A9) and O-13 (UC-009 A16): sets or clears `budget_account.manually_kept` in one transaction;
+     * setting it is refused while the Budget Account receives through an Account Mapping.
+     */
+    @Transaction
+    open suspend fun setManuallyKept(id: Long, manuallyKept: Boolean): Kept {
+        budgetAccount(id) ?: return Kept.NotFound
+        // UC-009 BR-001: A Manually Kept Account has no Account Mapping.
+        if (manuallyKept) mappingInto(id)?.let { return Kept.StillReceives(bankAccount(it.bankAccountId)?.name.orEmpty()) }
+        storeManuallyKept(id, manuallyKept)
+        return Kept.Stored
     }
 
     /** The Bank named [name], stored when it is new. */

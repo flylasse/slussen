@@ -15,6 +15,7 @@ import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
 import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
 
 /** UC-013 step 1: one service with whether its credentials are entered and accepted (BR-008). */
@@ -90,7 +91,10 @@ data class SourcePairing(
     val remedy: OfferRemedy?,
 )
 
-/** A Budget Account of a served Budget that receives through no Account Mapping (UC-013 BR-002). */
+/**
+ * A free Budget Account: of a served Budget, receiving through no Account Mapping and not a Manually Kept Account
+ * (UC-013 BR-002, BR-013).
+ */
 data class FreeBudgetAccount(
     val budgetAccountId: Long,
     val budgetName: String,
@@ -99,15 +103,113 @@ data class FreeBudgetAccount(
     val balance: Amount?,
 )
 
-/** UC-013 step 5: both sides of the pairing. */
-data class Pairing(val sources: List<SourcePairing>, val freeBudgetAccounts: List<FreeBudgetAccount>)
+/** A Left-Out Bank Account, shown apart by its name and Source (UC-013 step 5, BR-011; UC-009 step 1, BR-013). */
+data class LeftOutBankAccount(
+    val leftOutBankAccountId: Long,
+    val dataProviderId: Long,
+    val sourceName: String,
+    /** The name it had when it was left out: its name or product with its last four digits. */
+    val name: String,
+    val leftOutAt: Instant,
+)
+
+/**
+ * UC-013 step 5: the Offered Bank Accounts of each Source that are neither added nor left out (BR-002, BR-012), the
+ * free Budget Accounts, and the Left-Out Bank Accounts, collapsed below (BR-011).
+ */
+data class Pairing(
+    val sources: List<SourcePairing>,
+    val freeBudgetAccounts: List<FreeBudgetAccount>,
+    val leftOut: List<LeftOutBankAccount>,
+    /** A11: every stored Offered Bank Account is added, left out or a proposed match of an added Bank Account. */
+    val nothingToBringIn: Boolean,
+)
+
+/** UC-013 step 7, A12: how many of the shown Offered Bank Accounts are brought in and how many are left out (BR-012). */
+data class BringInStatement(val broughtIn: List<OfferedForPairing>, val leftOut: List<OfferedForPairing>)
+
+/** The outcome of confirming the stated numbers (UC-013 steps 8-9, A12). */
+sealed interface BringIn {
+    /** Step 9: the shown ones not chosen are left out; [queue] holds the chosen ones in the order shown, taken one at a time. */
+    data class Confirmed(val queue: List<Long>, val leftOut: Int) : BringIn
+
+    /** BR-012: the Offered Bank Accounts changed after they were shown; nothing is left out and the Operator chooses again. */
+    data object ShownChanged : BringIn
+
+    data class Unavailable(val reason: OperationRefusal) : BringIn
+}
+
+/**
+ * Step 10: the card of the current Offered Bank Account: the free Budget Accounts of its currency, or every free one
+ * when it states none, with the only one proposed (BR-013); every free Budget Account of each served Budget on request;
+ * the proposed name (BR-004), Bank Account type and Bank (BR-009), and the currency it states (BR-010).
+ */
+data class PairingCard(
+    val offered: OfferedForPairing,
+    val sourceName: String,
+    val listed: List<FreeBudgetAccount>,
+    /** BR-013: set only when exactly one Budget Account is listed, the only free one of that currency. */
+    val proposedBudgetAccountId: Long?,
+    val allFree: List<FreeBudgetAccount>,
+    val proposedName: String,
+    val proposedType: BankAccountType,
+    val proposedBank: KnownBank?,
+    val types: List<BankAccountType>,
+    val knownBanks: List<KnownBank>,
+    /** BR-010: the currency the Offered Bank Account states, or null when the Operator states it. */
+    val currency: CurrencyCode?,
+)
+
+/** An Offered Bank Account that can report the balance of a Bank Account of a File Format, also a Left-Out one (BR-006). */
+data class BalanceSource(val offered: OfferedForPairing, val sourceName: String, val leftOut: Boolean)
+
+/** The outcome of bringing back a Left-Out Bank Account (UC-013 A10, UC-009 A15). */
+sealed interface BroughtBack {
+    /** It is no longer left out; [offeredNow] when the Data Provider's latest delivery holds it, else from the next one. */
+    data class Offered(val name: String, val offeredNow: Boolean) : BroughtBack
+
+    data object NotFound : BroughtBack
+
+    data class Unavailable(val reason: OperationRefusal) : BroughtBack
+}
+
+/** The outcome of marking or unmarking a Manually Kept Account (UC-013 A9, UC-009 A16). */
+sealed interface KeepOutcome {
+    data object Marked : KeepOutcome
+
+    data object Unmarked : KeepOutcome
+
+    /** UC-009 BR-001: the Budget Account receives through the Account Mapping of [bankAccountName]; it is not marked. */
+    data class StillReceives(val bankAccountName: String) : KeepOutcome
+
+    /** Only a free Budget Account of a served Budget is marked (UC-013 BR-014, UC-009 A16). */
+    data object NotFree : KeepOutcome
+
+    /** The Budget Account is not a Manually Kept Account, so there is nothing to unmark. */
+    data object NotManuallyKept : KeepOutcome
+
+    data class Unavailable(val reason: OperationRefusal) : KeepOutcome
+}
+
+/** A Manually Kept Account of a served Budget, shown apart from the Bank Accounts (UC-009 step 1, BR-013). */
+data class KeptBudgetAccount(val budgetAccountId: Long, val name: String, val budgetName: String, val budgetCurrency: CurrencyCode)
+
+/**
+ * UC-009 step 1, BR-013: apart from the Bank Accounts, the Left-Out Bank Accounts of each Data Provider, the Manually
+ * Kept Accounts of each served Budget, and the free Budget Accounts that can be marked (A16).
+ */
+data class ApartFromBankAccounts(
+    val leftOut: List<LeftOutBankAccount>,
+    val manuallyKept: List<KeptBudgetAccount>,
+    val markable: List<FreeBudgetAccount>,
+)
 
 /** A Bank Slussen already knows (`BANK`), to choose for a Bank Account (UC-013 BR-009). */
 data class KnownBank(val bankId: Long, val name: String)
 
 /**
- * Step 8: what Slussen proposes for a paired Offered Bank Account before adding it: its name (BR-004), its Bank Account
- * type and its Bank (BR-009), with the Bank Account types and the known Banks the Operator chooses from at step 9.
+ * Step 10: what Slussen proposes for a paired Offered Bank Account before adding it: its name (BR-004), its Bank Account
+ * type and its Bank (BR-009), with the Bank Account types and the known Banks the Operator chooses from at step 11.
  */
 data class AdditionProposal(
     val offeredBankAccountId: Long,
@@ -120,16 +222,16 @@ data class AdditionProposal(
     val knownBanks: List<KnownBank>,
     /** BR-010: the currency the Offered Bank Account states, or, when it states none, the chosen Budget Account's. */
     val proposedCurrency: CurrencyCode,
-    /** BR-010: false when the Operator states the currency at step 9. */
+    /** BR-010: false when the Operator states the currency at step 11. */
     val currencyStatedBySource: Boolean,
 )
 
-/** The outcome of pairing (UC-013 steps 6-10, A4, A5). */
+/** The outcome of pairing (UC-013 steps 10-13, A4, A5). */
 sealed interface PairOutcome {
-    /** Step 8: the pairing passed step 7; nothing is stored yet. */
+    /** Step 10: the pairing passed the check of step 12; nothing is stored yet. */
     data class Proposed(val proposal: AdditionProposal) : PairOutcome
 
-    /** Step 10: added with its generated identifier, its name, Bank Account type, Bank, Start Date and Account Mapping. */
+    /** Step 13: added with its generated identifier, its name, Bank Account type, Bank, Start Date and Account Mapping. */
     data class Added(val bankAccountId: Long, val generatedIdentifier: String, val name: String) : PairOutcome
 
     /** A5: the Budget Account already receives through the Account Mapping of [bankAccountName]. */
@@ -146,10 +248,10 @@ sealed interface PairOutcome {
     /** BR-010: the Offered Bank Account states no currency and the Operator stated none; no Bank Account is added without one. */
     data object CurrencyNotStated : PairOutcome
 
-    /** The Offered Bank Account or the Budget Account is not offered for pairing (BR-002). */
+    /** The Offered Bank Account or the Budget Account is not offered for pairing (BR-002, BR-011, BR-014). */
     data object NotOffered : PairOutcome
 
-    /** Step 9: the name is empty or longer than `BANK_ACCOUNT.name` allows (100). */
+    /** Step 11: the name is empty or longer than `BANK_ACCOUNT.name` allows (100). */
     data object NameNotValid : PairOutcome
 
     /** BR-009: no Bank Account is added without a Bank Account type. */

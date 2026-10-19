@@ -74,7 +74,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     private suspend fun proposal(providerReference: String, budgetAccount: String): AdditionProposal =
         (slice.connect.propose(offeredId(providerReference), budgetAccountId(budgetAccount)) as PairOutcome.Proposed).proposal
 
-    /** Steps 6-10 with everything the Operator accepts as proposed, or the [name] and [startDate] given. */
+    /** Steps 10-13 with everything the Operator accepts as proposed, or the [name] and [startDate] given. */
     private suspend fun pairAndAdd(
         providerReference: String,
         budgetAccount: String,
@@ -224,7 +224,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-004", "BR-009"])
-    @DisplayName("Steps 6-8: pairing proposes the name, the Bank Account type from the kind and the Bank the Data Provider names, and adds nothing yet")
+    @DisplayName("Step 10: pairing proposes the name, the Bank Account type from the kind and the Bank the Data Provider names, and adds nothing yet")
     fun pairingProposesNameTypeAndBank() = runTest {
         readyToPair()
 
@@ -241,7 +241,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-004", "BR-005", "BR-009"])
-    @DisplayName("Steps 9-10: the Bank Account is added with a generated identifier, how its Source identifies it, the accepted or edited name, type, Bank, Start Date and its Account Mapping, and recorded in the Decision Journal")
+    @DisplayName("Steps 11-13: the Bank Account is added with a generated identifier, how its Source identifies it, the accepted or edited name, type, Bank, Start Date and its Account Mapping, and recorded in the Decision Journal")
     fun confirmedPairingAddsTheBankAccount() = runTest {
         readyToPair()
         slice.clock.advance(Duration.ofMinutes(3))
@@ -274,7 +274,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-004", "BR-005"])
-    @DisplayName("Step 9: the proposed name is accepted and the Start Date left empty")
+    @DisplayName("Step 11: the proposed name is accepted and the Start Date left empty")
     fun proposedNameAcceptedWithoutStartDate() = runTest {
         readyToPair()
 
@@ -288,7 +288,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-004"])
-    @DisplayName("Step 9: an empty or too long name is refused and nothing is added; the name never identifies the Bank Account")
+    @DisplayName("Step 11: an empty or too long name is refused and nothing is added; the name never identifies the Bank Account")
     fun emptyNameIsNotStored() = runTest {
         readyToPair()
         val p = proposal("acct-4410", "Checking")
@@ -417,7 +417,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", requirements = ["C-012"])
-    @DisplayName("Step 11: the added Bank Account is shown as added and is no longer offered, so each Bank Account comes in through one path")
+    @DisplayName("Steps 13, 15: the added Bank Account is shown as added and is no longer offered, so each Bank Account comes in through one path")
     fun addedBankAccountIsShownAndNoLongerOffered() = runTest {
         readyToPair()
         pairAndAdd("acct-4410", "Checking", name = "Kestrel Checking")
@@ -738,7 +738,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-010"])
-    @DisplayName("BR-010: the Bank Account is added with the currency the Operator states at step 9")
+    @DisplayName("BR-010: the Bank Account is added with the currency the Operator states at step 11")
     fun bankAccountIsAddedWithTheStatedCurrency() = runTest {
         slice.enterCredentials()
         chooseHouseholdAndSummerHouse()
@@ -760,7 +760,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
         scenario = "A5: Budget Account Already Mapped or in Another Currency",
         businessRules = ["BR-010"],
     )
-    @DisplayName("A5, BR-010: a stated currency other than the Budget's is refused at step 9 and nothing is added; no amount is converted")
+    @DisplayName("A5, BR-010: a stated currency other than the Budget's is refused at step 12 and nothing is added; no amount is converted")
     fun statedCurrencyOfAnotherBudgetIsRefused() = runTest {
         slice.enterCredentials()
         chooseHouseholdAndSummerHouse()
@@ -809,5 +809,457 @@ class UC013ConnectBudgetsAndBankAccountsTest {
         )
 
         assertEquals(USD, slice.connectionStore.bankAccounts().single().currency)
+    }
+
+    // S-38: the two pairing steps (steps 5-15), Left-Out Bank Accounts and Manually Kept Accounts (BR-011..BR-014).
+
+    private suspend fun shownIds(): List<Long> = slice.connect.pairing().sources.flatMap { it.offered }.map { it.offeredBankAccountId }
+
+    /** Steps 5-9: the Operator brings in the Offered Bank Accounts of [references] and confirms the stated numbers. */
+    private suspend fun bringIn(vararg references: String): BringIn.Confirmed {
+        val chosen = references.map { offeredId(it) }.toSet()
+        return slice.connect.bringIn(shownIds(), chosen) as BringIn.Confirmed
+    }
+
+    private suspend fun leftOutReferences(): List<String> = slice.connectionStore.leftOutBankAccounts().map { it.providerReference }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-011", "BR-012"])
+    @DisplayName("Step 5: the Offered Bank Accounts that are neither added nor left out are shown with their Bank, and the Left-Out Bank Accounts apart, by their name and Source")
+    fun stepFiveShowsTheUndecidedAndTheLeftOutApart() = runTest {
+        readyToPair()
+        bringIn("acct-4410", "acct-1182")
+
+        val pairing = slice.connect.pairing()
+
+        val feeds = pairing.sources.single { it.name == "Kestrel Feeds" }
+        assertEquals(listOf("CHK", "Pinecrest Rewards Visa"), feeds.offered.map { it.nameOrProduct })
+        assertTrue(feeds.offered.all { it.bankName == "Kestrel Bank" })
+        assertEquals(listOf("Reserve Saver ••7731", "Aurora Dollar ••5520"), pairing.leftOut.map { it.name })
+        assertTrue(pairing.leftOut.all { it.sourceName == "Kestrel Feeds" && it.dataProviderId == slice.feedsId })
+        assertFalse(pairing.nothingToBringIn)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-012"])
+    @DisplayName("Step 7: Slussen states how many of the shown Offered Bank Accounts are brought in and how many are left out, and leaves nothing out yet")
+    fun stepSevenStatesBothNumbers() = runTest {
+        readyToPair()
+
+        val statement = slice.connect.bringInStatement(setOf(offeredId("acct-4410"), offeredId("acct-7731")))
+
+        assertEquals(listOf("CHK", "Reserve Saver"), statement.broughtIn.map { it.nameOrProduct })
+        assertEquals(listOf("Pinecrest Rewards Visa", "Aurora Dollar"), statement.leftOut.map { it.nameOrProduct })
+        assertTrue(slice.connectionStore.leftOutBankAccounts().isEmpty())
+        assertTrue(slice.journalRecorder.entries.none { it.eventKind == JournalEventKind.AccountMappingChange })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-011", "BR-012"])
+    @DisplayName("Steps 8-9: once confirmed, each shown Offered Bank Account not chosen is a Left-Out Bank Account, remembered by its Data Provider and reference, recorded by name, and the chosen ones are taken one at a time in the order shown")
+    fun stepsEightAndNineLeaveOutTheRest() = runTest {
+        readyToPair()
+        slice.clock.advance(Duration.ofMinutes(5))
+
+        val confirmed = slice.connect.bringIn(shownIds(), setOf(offeredId("acct-7731"), offeredId("acct-4410")))
+
+        assertEquals(BringIn.Confirmed(queue = listOf(offeredId("acct-4410"), offeredId("acct-7731")), leftOut = 2), confirmed)
+        val leftOut = slice.connectionStore.leftOutBankAccounts()
+        assertEquals(listOf("acct-1182", "acct-5520"), leftOut.map { it.providerReference })
+        assertTrue(leftOut.all { it.dataProviderId == slice.feedsId && it.leftOutAt == slice.clock.instant() })
+        assertEquals(listOf("Pinecrest Rewards Visa ••1182", "Aurora Dollar ••5520"), leftOut.map { it.name })
+        val recorded = slice.journalRecorder.entries.filter { it.eventKind == JournalEventKind.AccountMappingChange }
+        assertEquals(2, recorded.size)
+        assertTrue("Pinecrest Rewards Visa ••1182" in recorded[0].details, recorded[0].details)
+        assertTrue(recorded.none { "acct-" in it.details }, recorded.toString())
+        assertTrue(slice.connectionStore.bankAccounts().isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A12: Nothing Brought In", businessRules = ["BR-011", "BR-012"])
+    @DisplayName("A12: with nothing chosen, Slussen states that none is brought in and how many are left out, and on confirmation leaves every shown one out")
+    fun nothingBroughtInLeavesEveryShownOneOut() = runTest {
+        readyToPair()
+
+        val statement = slice.connect.bringInStatement(emptySet())
+        assertTrue(statement.broughtIn.isEmpty())
+        assertEquals(4, statement.leftOut.size)
+        val confirmed = slice.connect.bringIn(shownIds(), emptySet())
+
+        assertEquals(BringIn.Confirmed(queue = emptyList(), leftOut = 4), confirmed)
+        assertEquals(listOf("acct-4410", "acct-1182", "acct-7731", "acct-5520"), leftOutReferences())
+        assertTrue(slice.connect.pairing().sources.single { it.name == "Kestrel Feeds" }.offered.isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A13: Go Back Before Confirming", businessRules = ["BR-012"])
+    @DisplayName("A13: going back after the statement leaves nothing out, and the choice made afterwards is the one confirmed")
+    fun goingBackLeavesNothingOut() = runTest {
+        readyToPair()
+        slice.connect.bringInStatement(setOf(offeredId("acct-4410")))
+
+        assertTrue(slice.connectionStore.leftOutBankAccounts().isEmpty())
+        slice.connect.bringIn(shownIds(), setOf(offeredId("acct-4410"), offeredId("acct-1182"), offeredId("acct-7731")))
+        assertEquals(listOf("acct-5520"), leftOutReferences())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-012"])
+    @DisplayName("BR-012: when the Offered Bank Accounts changed after they were shown, nothing is left out and the Operator chooses again")
+    fun nothingIsLeftOutWhenTheShownOnesChanged() = runTest {
+        readyToPair()
+        val shown = shownIds()
+        slice.offeredStore.replaceOffered(
+            slice.feedsId,
+            null,
+            listOf(ExampleData.offered("acct-3300", "Kestrel Auto Loan", "loan", USD, "3300", amount(-9000), kestrelBankId(), slice.clock.instant())),
+        )
+
+        val outcome = slice.connect.bringIn(shown, emptySet())
+
+        assertEquals(BringIn.ShownChanged, outcome)
+        assertTrue(slice.connectionStore.leftOutBankAccounts().isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A8: Skip for Now", businessRules = ["BR-012"])
+    @DisplayName("A8, BR-012: a chosen Offered Bank Account skipped for now, or not reached, is neither added nor left out and is offered again at step 5")
+    fun skippedOnesAreOfferedAgain() = runTest {
+        readyToPair()
+        bringIn("acct-4410", "acct-1182", "acct-7731")
+        pairAndAdd("acct-4410", "Checking")
+
+        val offered = slice.connect.pairing().sources.single { it.name == "Kestrel Feeds" }.offered
+
+        assertEquals(listOf("Pinecrest Rewards Visa", "Reserve Saver"), offered.map { it.nameOrProduct })
+        assertEquals(listOf("acct-5520"), leftOutReferences())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-012"])
+    @DisplayName("BR-012: an Offered Bank Account that a later Fetch delivers is neither added nor left out and is offered at step 5, while the Left-Out ones stay left out")
+    fun aLaterDeliveryIsOfferedAndTheLeftOutStayLeftOut() = runTest {
+        readyToPair()
+        bringIn("acct-4410")
+        slice.feeds.fetchAnswer = {
+            FetchResponse(
+                SourceOutcome.Completed,
+                emptyList(),
+                listOf("acct-4410", "acct-1182", "acct-7731", "acct-5520", "acct-3300").map { reference ->
+                    DeliveredBankAccount(reference, "Kestrel Bank", "Account $reference", "savings", USD, null, BankAccountResult.NotRead(NotReadCause.NotSelected, amount(10)))
+                },
+            )
+        }
+
+        slice.fetch.fetch(slice.feedsKey)
+
+        val offered = slice.connect.pairing().sources.single { it.name == "Kestrel Feeds" }.offered
+        assertEquals(listOf("Account acct-4410", "Account acct-3300"), offered.map { it.nameOrProduct })
+        assertEquals(listOf("acct-1182", "acct-7731", "acct-5520"), leftOutReferences())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-011"])
+    @DisplayName("BR-011: a Left-Out Bank Account is never read: a Fetch never selects it and its balance is not stored, though it is still in the delivered list")
+    fun aLeftOutBankAccountIsNeverRead() = runTest {
+        readyToPair()
+        bringIn("acct-4410")
+        pairAndAdd("acct-4410", "Checking")
+        slice.feeds.fetchAnswer = { request ->
+            val asked = (request.bankAccounts as BankAccountSelection.Selected).bankAccounts.map { it.providerReference }.toSet()
+            FetchResponse(
+                SourceOutcome.Completed,
+                emptyList(),
+                listOf("acct-4410", "acct-1182").map { reference ->
+                    val result = if (reference in asked) {
+                        BankAccountResult.Read(emptyList(), amount(4140, 50))
+                    } else {
+                        BankAccountResult.NotRead(NotReadCause.NotSelected, amount(-1268, 400))
+                    }
+                    DeliveredBankAccount(reference, "Kestrel Bank", "Account $reference", "checking", USD, null, result)
+                },
+            )
+        }
+
+        slice.fetch.fetch(slice.feedsKey)
+
+        val selected = (slice.feeds.fetchRequests.single().bankAccounts as BankAccountSelection.Selected).bankAccounts.map { it.providerReference }
+        assertEquals(listOf("acct-4410"), selected)
+        val leftOutOffer = slice.offeredStore.offered().single { it.providerReference == "acct-1182" }
+        assertNull(leftOutOffer.balance)
+        assertEquals(listOf("acct-1182", "acct-7731", "acct-5520"), leftOutReferences())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A6: Offered Bank Account Probably Already Added", businessRules = ["BR-011", "BR-012"])
+    @DisplayName("A6, BR-011, BR-012: a proposed match is never left out, and a Left-Out Bank Account is never shown as the proposed match of an added Bank Account")
+    fun proposedMatchesAndLeftOutStayApart() = runTest {
+        readyToPair()
+        bringIn("acct-4410")
+        val added = pairAndAdd("acct-4410", "Checking") as PairOutcome.Added
+        val bank = kestrelBankId()
+        slice.offeredStore.replaceOffered(
+            slice.feedsId,
+            null,
+            listOf(
+                ExampleData.offered("acct-4410-new", "CHK", "checking", USD, "4410", null, bank, slice.clock.instant(), proposedBankAccountId = added.bankAccountId),
+                ExampleData.offered("acct-1182", "Pinecrest Rewards Visa", "credit card", USD, "1182", null, bank, slice.clock.instant(), proposedBankAccountId = added.bankAccountId),
+                ExampleData.offered("acct-3300", "Kestrel Auto Loan", "loan", USD, "3300", null, bank, slice.clock.instant()),
+            ),
+        )
+
+        val feeds = slice.connect.pairing().sources.single { it.name == "Kestrel Feeds" }
+        slice.connect.bringIn(shownIds(), emptySet())
+
+        assertEquals(listOf("CHK"), feeds.proposedMatches.map { it.offered.nameOrProduct })
+        assertEquals(listOf("Kestrel Auto Loan"), feeds.offered.map { it.nameOrProduct })
+        assertFalse("acct-4410-new" in leftOutReferences())
+        assertTrue("acct-3300" in leftOutReferences())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A10: Bring Back a Left-Out Bank Account", businessRules = ["BR-011"])
+    @DisplayName("A10: a Left-Out Bank Account brought back is no longer left out, is recorded by name, and is offered again from the latest delivery that holds it")
+    fun aLeftOutBankAccountIsBroughtBack() = runTest {
+        readyToPair()
+        bringIn("acct-4410")
+        val reserve = slice.connectionStore.leftOutBankAccounts().single { it.providerReference == "acct-7731" }
+
+        val outcome = slice.connect.bringBack(reserve.id)
+
+        assertEquals(BroughtBack.Offered("Reserve Saver ••7731", offeredNow = true), outcome)
+        assertEquals(listOf("acct-1182", "acct-5520"), leftOutReferences())
+        assertTrue("Reserve Saver" in slice.connect.pairing().sources.single { it.name == "Kestrel Feeds" }.offered.map { it.nameOrProduct })
+        val recorded = slice.journalRecorder.entries.last()
+        assertEquals(JournalEventKind.AccountMappingChange, recorded.eventKind)
+        assertTrue("Reserve Saver ••7731" in recorded.details && "brought back" in recorded.details, recorded.details)
+        assertFalse("acct-7731" in recorded.details)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A10: Bring Back a Left-Out Bank Account", businessRules = ["BR-011"])
+    @DisplayName("A10 step 2: a Left-Out Bank Account that the latest delivery no longer holds is offered from the next delivery that holds it")
+    fun broughtBackFromTheNextDelivery() = runTest {
+        readyToPair()
+        bringIn("acct-4410")
+        slice.offeredStore.replaceOffered(
+            slice.feedsId,
+            null,
+            listOf(ExampleData.offered("acct-4410", "CHK", "checking", USD, "4410", amount(4140, 50), kestrelBankId(), slice.clock.instant())),
+        )
+        val dollar = slice.connectionStore.leftOutBankAccounts().single { it.providerReference == "acct-5520" }
+
+        assertEquals(BroughtBack.Offered("Aurora Dollar ••5520", offeredNow = false), slice.connect.bringBack(dollar.id))
+        assertEquals(BroughtBack.NotFound, slice.connect.bringBack(dollar.id))
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-013"])
+    @DisplayName("Step 10, BR-013: the card lists the free Budget Accounts of the Offered Bank Account's currency and proposes none when more than one is free; every free Budget Account of each served Budget is reachable")
+    fun theCardListsTheFreeBudgetAccountsOfItsCurrency() = runTest {
+        readyToPair()
+
+        val card = slice.connect.card(offeredId("acct-4410"))!!
+
+        assertEquals(listOf("Checking", "Rewards Card", "Reserve Savings"), card.listed.map { it.name })
+        assertNull(card.proposedBudgetAccountId)
+        assertEquals(listOf("Checking", "Rewards Card", "Reserve Savings", "Current", "Savings", "Card"), card.allFree.map { it.name })
+        assertEquals("CHK ••4410", card.proposedName)
+        assertEquals(BankAccountType.Checking, card.proposedType)
+        assertEquals(KnownBank(kestrelBankId(), "Kestrel Bank"), card.proposedBank)
+        assertEquals(USD, card.currency)
+        assertEquals("Kestrel Feeds", card.sourceName)
+        assertTrue(slice.connectionStore.bankAccounts().isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-013"])
+    @DisplayName("BR-013: when exactly one free Budget Account is of the currency, it is proposed; the proposal is applied only when the Operator adds the Bank Account with it")
+    fun theOnlyFreeBudgetAccountOfTheCurrencyIsProposed() = runTest {
+        readyToPair()
+        bringIn("acct-4410", "acct-1182", "acct-7731")
+        pairAndAdd("acct-1182", "Rewards Card")
+        pairAndAdd("acct-7731", "Reserve Savings")
+
+        val card = slice.connect.card(offeredId("acct-4410"))!!
+
+        assertEquals(listOf("Checking"), card.listed.map { it.name })
+        assertEquals(budgetAccountId("Checking"), card.proposedBudgetAccountId)
+        assertEquals(2, slice.connectionStore.bankAccounts().size)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-013"])
+    @DisplayName("BR-013: no balance or name is compared to propose one: two free Budget Accounts of the currency, one with the same balance and name, give no proposal")
+    fun noBalanceOrNameMatching() = runTest {
+        slice.enterCredentials()
+        chooseHouseholdAndSummerHouse()
+        slice.offeredStore.replaceOffered(
+            slice.feedsId,
+            null,
+            listOf(ExampleData.offered("acct-0001", "Current", "current", EUR, "0001", amount(3402, 300), kestrelBankId(), slice.clock.instant())),
+        )
+
+        val card = slice.connect.card(offeredId("acct-0001"))!!
+
+        assertEquals(listOf("Current", "Savings", "Card"), card.listed.map { it.name })
+        assertNull(card.proposedBudgetAccountId)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-010", "BR-013"])
+    @DisplayName("BR-013, BR-010: for an Offered Bank Account that states no currency, every free Budget Account is listed, and none is proposed while more than one is free")
+    fun withoutACurrencyEveryFreeBudgetAccountIsListed() = runTest {
+        slice.enterCredentials()
+        chooseHouseholdAndSummerHouse()
+        offerWithoutCurrency()
+
+        val card = slice.connect.card(offeredId("acct-9001"))!!
+
+        assertEquals(listOf("Checking", "Rewards Card", "Reserve Savings", "Current", "Savings", "Card"), card.listed.map { it.name })
+        assertNull(card.proposedBudgetAccountId)
+        assertNull(card.currency)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-011", "BR-013"])
+    @DisplayName("Step 10: an Offered Bank Account that is left out, added or no longer stored has no card")
+    fun noCardForOneNotOffered() = runTest {
+        readyToPair()
+        bringIn("acct-4410")
+        pairAndAdd("acct-4410", "Checking")
+
+        assertNull(slice.connect.card(offeredId("acct-4410")))
+        assertNull(slice.connect.card(offeredId("acct-1182")))
+        assertNull(slice.connect.card(-1))
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A9: Mark a Budget Account Manually Kept", businessRules = ["BR-002", "BR-013", "BR-014"])
+    @DisplayName("A9: a free Budget Account marked as kept by hand is a Manually Kept Account, recorded in the Decision Journal, and no longer offered for pairing or proposed")
+    fun aBudgetAccountIsMarkedManuallyKept() = runTest {
+        readyToPair()
+
+        val outcome = slice.connect.markManuallyKept(budgetAccountId("Reserve Savings"))
+
+        assertEquals(KeepOutcome.Marked, outcome)
+        assertTrue(slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Reserve Savings" }.manuallyKept)
+        assertTrue(slice.connect.pairing().freeBudgetAccounts.none { it.name == "Reserve Savings" })
+        assertEquals(listOf("Checking", "Rewards Card"), slice.connect.card(offeredId("acct-7731"))!!.listed.map { it.name })
+        val recorded = slice.journalRecorder.entries.last()
+        assertTrue("Reserve Savings" in recorded.details && "Manually Kept" in recorded.details, recorded.details)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A9: Mark a Budget Account Manually Kept", businessRules = ["BR-014"])
+    @DisplayName("BR-014: a Manually Kept Account is never paired, and only a free Budget Account can be marked: not one that receives through an Account Mapping")
+    fun aManuallyKeptAccountIsNeverPaired() = runTest {
+        readyToPair()
+        pairAndAdd("acct-4410", "Checking")
+        slice.connect.markManuallyKept(budgetAccountId("Rewards Card"))
+
+        val mapped = slice.connect.markManuallyKept(budgetAccountId("Checking"))
+        val p = slice.connect.card(offeredId("acct-1182"))!!
+        val paired = slice.connect.add(
+            p.offered.offeredBankAccountId, budgetAccountId("Rewards Card"), p.proposedName, p.proposedType,
+            p.proposedBank?.let { BankChoice.Known(it.bankId) }, null,
+        )
+
+        assertEquals(KeepOutcome.StillReceives("CHK ••4410"), mapped)
+        assertFalse(slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Checking" }.manuallyKept)
+        assertEquals(PairOutcome.NotOffered, paired)
+        assertEquals(KeepOutcome.NotFree, slice.connect.markManuallyKept(budgetAccountId("Rewards Card")))
+        assertEquals(1, slice.connectionStore.bankAccounts().size)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A11: No Offered Bank Account Left to Decide")
+    @DisplayName("A11: when every stored Offered Bank Account is added, left out or a proposed match, there is nothing new to bring in; with none stored it is A3 instead")
+    fun nothingLeftToDecide() = runTest {
+        readyToPair()
+        assertFalse(slice.connect.pairing().nothingToBringIn)
+        bringIn("acct-4410")
+        pairAndAdd("acct-4410", "Checking")
+
+        val pairing = slice.connect.pairing()
+
+        assertTrue(pairing.nothingToBringIn)
+        assertEquals(3, pairing.leftOut.size)
+        val empty = TestSlice()
+        empty.enterCredentials()
+        assertFalse(empty.connect.pairing().nothingToBringIn)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-006", "BR-011"])
+    @DisplayName("A4, BR-006: the Offered Bank Accounts offered for a File Format's balance include the Left-Out ones; choosing one brings it back, recorded by name")
+    fun aLeftOutBalanceSourceIsBroughtBack() = runTest {
+        readyToPair()
+        bringIn("acct-4410")
+        val format = slice.connect.fileFormats().single()
+
+        val sources = slice.connect.balanceSources()
+        val outcome = slice.connect.addFromTransactionFiles(
+            format.fileFormatId, BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), offeredId("acct-7731"),
+            budgetAccountId("Reserve Savings"), "Harbor Health Savings", null,
+        )
+
+        assertEquals(listOf("CHK", "Pinecrest Rewards Visa", "Reserve Saver", "Aurora Dollar"), sources.map { it.offered.nameOrProduct })
+        assertEquals(listOf(false, true, true, true), sources.map { it.leftOut })
+        assertInstanceOf(PairOutcome.Added::class.java, outcome)
+        assertEquals(listOf("acct-1182", "acct-5520"), leftOutReferences())
+        assertTrue(slice.journalRecorder.entries.any { "Reserve Saver ••7731" in it.details && "brought back" in it.details })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-011", "BR-012"])
+    @DisplayName("BR-011: an Offered Bank Account that reports the balance of an added Bank Account is not shown to bring in, so it is never left out")
+    fun aBalanceSourceIsNotShownToBringIn() = runTest {
+        readyToPair()
+        val format = slice.connect.fileFormats().single()
+        slice.connect.addFromTransactionFiles(
+            format.fileFormatId, BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), offeredId("acct-7731"),
+            budgetAccountId("Reserve Savings"), "Harbor Health Savings", null,
+        )
+
+        slice.connect.bringIn(shownIds(), emptySet())
+
+        assertFalse("acct-7731" in leftOutReferences())
+        assertEquals(listOf("acct-4410", "acct-1182", "acct-5520"), leftOutReferences())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", businessRules = ["BR-011", "BR-014"])
+    @DisplayName("Precondition: while an Upload Plan awaits confirmation, nothing is left out, brought back or marked as kept by hand")
+    fun leavingOutWaitsForTheUpload() = runTest {
+        readyToPair()
+        bringIn("acct-4410", "acct-1182", "acct-7731")
+        val dollar = slice.connectionStore.leftOutBankAccounts().single()
+        slice.coordinatorStore.mode = CoordinatorMode.PlanOpen
+        val refusal = OperationRefusal.UploadPlanAwaitingConfirmation
+
+        assertEquals(BringIn.Unavailable(refusal), slice.connect.bringIn(shownIds(), emptySet()))
+        assertEquals(BroughtBack.Unavailable(refusal), slice.connect.bringBack(dollar.id))
+        assertEquals(KeepOutcome.Unavailable(refusal), slice.connect.markManuallyKept(budgetAccountId("Checking")))
+        assertEquals(listOf("acct-5520"), leftOutReferences())
+        assertTrue(slice.connectionStore.budgets().flatMap { it.budgetAccounts }.none { it.manuallyKept })
+    }
+
+    @Test
+    @UseCase(id = "UC-013")
+    @DisplayName("Success postconditions: the added Bank Accounts, the Left-Out Bank Accounts not offered and never read, the skipped ones offered again, the Manually Kept Accounts not offered")
+    fun successPostconditionsOfTheTwoSteps() = runTest {
+        readyToPair()
+        bringIn("acct-4410", "acct-1182")
+        pairAndAdd("acct-4410", "Checking")
+        slice.connect.markManuallyKept(budgetAccountId("Reserve Savings"))
+
+        val pairing = slice.connect.pairing()
+
+        assertEquals(listOf("CHK ••4410"), slice.connectionStore.bankAccounts().map { it.name })
+        assertEquals(listOf("Pinecrest Rewards Visa"), pairing.sources.single { it.name == "Kestrel Feeds" }.offered.map { it.nameOrProduct })
+        assertEquals(listOf("Reserve Saver ••7731", "Aurora Dollar ••5520"), pairing.leftOut.map { it.name })
+        assertEquals(listOf("Rewards Card", "Current", "Savings", "Card"), pairing.freeBudgetAccounts.map { it.name })
+        assertEquals(0, slice.budgetApp.writer.calls)
     }
 }

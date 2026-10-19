@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import slussen.app.SlussenApplication
+import slussen.app.ui.bankaccounts.apartActionsOf
 import slussen.app.ui.bankaccounts.BankAccountsScreen
 import slussen.app.ui.bankaccounts.BankAccountsViewModel
 import slussen.app.ui.budget.BudgetScreen
@@ -37,6 +38,7 @@ import slussen.app.ui.overview.OverviewScreen
 import slussen.app.ui.overview.OverviewViewModel
 import slussen.app.ui.service.ServicePageScreen
 import slussen.app.ui.service.ServicePageViewModel
+import slussen.app.ui.setup.pairingActionsOf
 import slussen.app.ui.setup.SetupScreen
 import slussen.app.ui.setup.SetupViewModel
 import slussen.app.ui.theme.SlussenColors
@@ -191,17 +193,7 @@ fun SlussenScreens(services: UiServices) {
                             onCredentials = { go(Screen.Service(it, fromSetup = true)) },
                             onToggleBudget = vm::toggleBudget,
                             onSaveBudgets = vm::saveBudgets,
-                            onSelectOffered = vm::selectOffered,
-                            onPair = vm::pairWith,
-                            onSaveNaming = vm::saveNaming,
-                            onCancelNaming = vm::cancelNaming,
-                            onFetch = vm::fetch,
-                            onAddFromFiles = { entry ->
-                                vm.addFromTransactionFiles(
-                                    entry.fileFormatId, entry.type, entry.bank, entry.balanceOfferedBankAccountId, entry.budgetAccountId, entry.name,
-                                    entry.startDate,
-                                )
-                            },
+                            pairing = pairingActionsOf(vm),
                         )
                     }
                 }
@@ -218,6 +210,7 @@ fun SlussenScreens(services: UiServices) {
                             onConfirmClearing = vm::confirmClearing,
                             onCancelClearing = vm::cancelClearing,
                             onCancelTypeAndBank = vm::cancelTypeAndBank,
+                            apartActions = apartActionsOf(vm),
                         )
                     }
                 }
