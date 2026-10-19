@@ -255,7 +255,8 @@ A Bank Account that a Data Provider delivered in its latest list of Bank Account
 - Within one Data Provider, two Offered Bank Accounts never have the same `provider_reference`.
 - For a Data Provider that needs a Bank Consent, `bank_id` is always filled: the Bank of the Bank Consent through which the Bank Account was delivered.
 - An Offered Bank Account never appears in the Decision Journal, is never included in device backups or transfers, and is not restored after a reinstall.
-- An Offered Bank Account whose `data_provider_id` and `provider_reference` match a `LEFT_OUT_BANK_ACCOUNT` is not offered for pairing and never proposed as a likely match (`proposed_bank_account_id` stays empty) until the Operator brings it back (UC-013 BR-011).
+- An Offered Bank Account whose `data_provider_id` and `provider_reference` match a `LEFT_OUT_BANK_ACCOUNT` is not offered for pairing and never proposed as a likely match (`proposed_bank_account_id` stays empty) until the Operator brings it back by switching its import on again (UC-013 BR-011, A10).
+- An Offered Bank Account that matches no `LEFT_OUT_BANK_ACCOUNT`, is not the Bank Account of a `BANK_ACCOUNT` of the same Data Provider, does not report the balance of one (`balance_provider_reference`) and has no `proposed_bank_account_id` is imported, to map: it waits in Account Mappings to be added, and nothing is fetched, stored or uploaded for it until then (UC-013 BR-012, UC-001 step 3).
 
 ### LEFT_OUT_BANK_ACCOUNT
 
@@ -266,8 +267,8 @@ An Offered Bank Account that the Operator chose not to import, remembered by its
 | id                 | Unique identifier                                                                                   | Long      | 19               | Primary Key, Sequence                    |
 | data_provider_id   | Data Provider that offered the Bank Account                                                         | Long      | 19               | Not Null, Foreign Key (DATA_PROVIDER.id) |
 | provider_reference | Identifier the Data Provider gives the Bank Account, as in `OFFERED_BANK_ACCOUNT.provider_reference` | String    | 200              | Not Null                                 |
-| name               | Name shown among the Bank Accounts not imported: the Offered Bank Account's name or product with its last four digits, taken when it was left out | String    | 100              | Optional                                 |
-| left_out_at        | Time the Operator left the Bank Account out                                                         | DateTime  | -                | Not Null                                 |
+| name               | Name shown among the Bank Accounts not imported: the Offered Bank Account's name or product, with its last four digits when it does not already end with them (UC-013 BR-004), taken when it was left out | String    | 100              | Optional                                 |
+| left_out_at        | Time the Operator switched off the import of the Bank Account                                       | DateTime  | -                | Not Null                                 |
 
 #### Constraints
 

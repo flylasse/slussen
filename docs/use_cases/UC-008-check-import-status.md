@@ -9,11 +9,11 @@
 **Trigger:** Operator opens Slussen  
 **Status:** Approved  
 
-**Requirements:** [FR-003, FR-011, FR-012, FR-032, FR-060, FR-061, FR-062, FR-063, FR-064, FR-065, FR-066, FR-095, NFR-005, NFR-018, NFR-019, C-015](../requirements.md)
+**Requirements:** [FR-003, FR-011, FR-012, FR-032, FR-060, FR-061, FR-062, FR-063, FR-064, FR-065, FR-066, FR-095, FR-103, NFR-005, NFR-018, NFR-019, C-015](../requirements.md)
 
 ## Preconditions
 
-- Slussen serves at least one Budget with a mapped Bank Account (UC-013).
+_None — opening Slussen before any Bank Account is added is handled by A10._
 
 ## Main Success Scenario
 
@@ -105,6 +105,15 @@
 4. Slussen closes the Recovery Check, so that Uploads are available again, and records the confirmation in the Decision Journal.
 5. Use case ends.
 
+### A10: No Bank Account Added Yet
+
+**Trigger:** No Bank Account is added yet, for example on the first opening after a new installation (step 1)  
+**Flow:**
+
+1. Slussen shows, instead of the overview, only one card that leads to Settings and names what comes next in setting up Slussen, for example entering the Budget App's credentials (BR-011, UC-013 BR-008).
+2. Slussen records the start of the session in the Decision Journal (UC-011 BR-001).
+3. Use case ends.
+
 ## Postconditions
 
 ### Success Postconditions
@@ -158,3 +167,7 @@ After Slussen starts from Decision-Critical Data that may lack what it last reco
 ### BR-010: Backup Size Warning
 
 Android backs up at most 25 MB of an app's data and makes no backup at all when the data is larger, a limit Android sets (C-015). When the data Slussen includes in device backups reaches the backup warning threshold of that limit (80% by default, a number the Operator can change, UC-010), every opening of Slussen shows a warning with the current size and the limit. The Decision Journal, logs, Bank Consents, Bank Sessions and other data that are never backed up do not count.
+
+### BR-011: First Opening Leads to Settings
+
+While no Bank Account is added, opening Slussen shows nothing but one card that leads to Settings, where setting up Slussen starts (UC-013 BR-008), and names the next thing to do there, the first one UC-013 BR-008 recommends that is not yet done: for example entering the Budget App's credentials, choosing the Budgets, fetching a Data Provider or granting a Bank Consent, or mapping the imported Bank Accounts. Nothing else is shown, not even a Recovery Check that a new installation opens (A8, UC-006 BR-017), since nothing can be prepared for Upload before a Bank Account is added. From the first added Bank Account on, opening Slussen shows the overview of the main success scenario.

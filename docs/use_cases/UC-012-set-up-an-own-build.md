@@ -40,7 +40,7 @@
 **Flow:**
 
 1. Adopting Developer adds a Data Provider as its own part, declaring its name, whether it gives every transaction a Stable Reference, the credentials the Operator enters for it, its Request Limit (the limit the Data Provider publishes, with its source, or, when it publishes none, a cautious default with the range within which the Operator can change it), its default Fetch Cooldown and whether it needs a Bank Consent.
-2. Slussen applies its existing rules for comparing, reviewing and deciding to the new part's Bank Transactions, and gives the new Data Provider its own page and settings in Connections, generated from what its part declares, with no screen written for it (UC-010 BR-010).
+2. Slussen applies its existing rules for comparing, reviewing and deciding to the new part's Bank Transactions, and gives the new Data Provider its own entry in Settings, its own page and its settings, generated from what its part declares, with no screen written for it (UC-010 BR-010).
 3. Use case continues at step 3.
 
 ### A3: Bank Export Format Missing
