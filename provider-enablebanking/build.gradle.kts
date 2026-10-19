@@ -5,6 +5,10 @@ plugins {
 
 dependencies {
     implementation(project(":plugin-api"))
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.okhttp)
+    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(testFixtures(project(":plugin-api")))
+    testImplementation(libs.okhttp.mockwebserver)
 }

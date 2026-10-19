@@ -1,6 +1,9 @@
 package slussen.persistence.journal
 
 import androidx.room.ColumnInfo
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.Query
 import androidx.room.Database
 import androidx.room.Entity
 import androidx.room.PrimaryKey
@@ -14,7 +17,19 @@ import java.time.Instant
 /** `journal.db` (ADR-002 §1): the Decision Journal, never backed up or transferred. */
 @Database(entities = [DecisionJournalEntryEntity::class], version = 1, exportSchema = true)
 @TypeConverters(StorageConverters::class, JournalConverters::class)
-abstract class JournalDatabase : RoomDatabase()
+abstract class JournalDatabase : RoomDatabase() {
+    abstract fun entries(): DecisionJournalDao
+}
+
+/** Writes Decision Journal entries; nothing in the core reads them except the export (Konsist K-07). */
+@Dao
+abstract class DecisionJournalDao {
+    @Insert
+    abstract suspend fun insert(entry: DecisionJournalEntryEntity)
+
+    @Query("SELECT COUNT(*) FROM decision_journal_entry")
+    abstract suspend fun count(): Int
+}
 
 /** `DECISION_JOURNAL_ENTRY` (entity model). */
 @Entity(tableName = "decision_journal_entry")

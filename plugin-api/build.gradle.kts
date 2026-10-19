@@ -13,4 +13,7 @@ kotlin {
 dependencies {
     testFixturesApi(platform(libs.junit.bom))
     testFixturesApi(libs.junit.jupiter.api)
+    // The contract tests of ADR-001 §4.4 call the suspending contract methods with real time (the plug-ins' HTTP calls
+    // run on their own threads), through runBlocking.
+    testFixturesImplementation(libs.kotlinx.coroutines.core)
 }

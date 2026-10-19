@@ -31,7 +31,7 @@ class NoCredentialInAppTest {
         planted.values.toList() + File(planted.getValue(ReleaseSigning.STORE_FILE)).name + planted.keys
 
     @Test
-    @DisplayName("UC-012 BR-012, NFR-021: no planted credential or signing value enters a built app or the build output")
+    @DisplayName("UC-012 A6, BR-003, BR-012, NFR-021: no planted credential or signing value enters a built app or the build output")
     fun noPlantedValueInTheDebugPackageOrTheOutput() {
         val environment = planted.mapKeys { "ORG_GRADLE_PROJECT_${it.key}" }
         val result = fixture.runner(":app:assembleDebug", "--debug", environment = environment).build()

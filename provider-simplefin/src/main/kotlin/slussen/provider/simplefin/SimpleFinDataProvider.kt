@@ -1,5 +1,6 @@
 package slussen.provider.simplefin
 
+import okhttp3.OkHttpClient
 import slussen.pluginapi.credential.CredentialCapability
 import slussen.pluginapi.diagnostic.SlussenLog
 import slussen.pluginapi.provider.BankConsentCapability
@@ -10,16 +11,24 @@ import slussen.pluginapi.provider.FetchResponse
 import slussen.pluginapi.request.RequestContext
 
 /**
- * The SimpleFIN Data Provider (ADR-001 §1, §4.1). Module skeleton: the class the composition root registers, without
- * behaviour. Its profile, with the Request Limit and its source, its credential form with the setup-token exchange
- * (ADR-001 §4.5) and its requests come with the slices that build UC-014 and UC-001.
+ * The SimpleFIN Data Provider (ADR-001 §1, §4.1). This slice builds its credentials (UC-014 BR-002, ADR-001 §4.5): a
+ * setup token, exchanged once for the access credential. Its profile and its requests come with the slice that builds
+ * UC-001, once the Operator has decided the declared values.
  */
-class SimpleFinDataProvider(private val log: SlussenLog) : DataProvider {
-    override val profile: DataProviderProfile
-        get() = TODO("Declared by the slice that builds UC-001 (ADR-001 §4.1).")
+class SimpleFinDataProvider internal constructor(
+    private val log: SlussenLog,
+    http: OkHttpClient,
+    allowPlainHttp: Boolean,
+) : DataProvider {
+    constructor(log: SlussenLog) : this(log, OkHttpClient(), allowPlainHttp = false)
 
-    override val credentials: CredentialCapability
-        get() = TODO("Built by the slice that builds UC-014 (ADR-001 §4.5).")
+    override val profile: DataProviderProfile
+        get() = TODO(
+            "Operator decision owed (Phase 7, Open): source_key, Request Limit with its source and default Fetch " +
+                "Cooldown are not stated in the specification or the ADRs.",
+        )
+
+    override val credentials: CredentialCapability = SimpleFinCredentials(http, allowPlainHttp)
 
     /** SimpleFIN needs no Bank Consent. */
     override val bankConsent: BankConsentCapability? = null

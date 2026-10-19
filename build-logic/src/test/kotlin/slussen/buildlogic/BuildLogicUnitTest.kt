@@ -98,7 +98,7 @@ class BuildLogicUnitTest {
     }
 
     @Test
-    @DisplayName("ADR-003 section 2: each missing signing value is named with where it goes, never its value")
+    @DisplayName("UC-012 BR-001, BR-002, ADR-003 section 2: each missing signing value is named with where it goes, never its value")
     fun missingSigningValues(@TempDir outside: File) {
         val repository = File(outside, "repository").apply { mkdirs() }
         val problems = ReleaseSigning.problems(emptyMap(), repository)
@@ -109,7 +109,7 @@ class BuildLogicUnitTest {
     }
 
     @Test
-    @DisplayName("ADR-003 section 2: the keystore must be an absolute, readable file outside the repository")
+    @DisplayName("UC-012 BR-001, BR-010, ADR-003 section 2: the keystore must be an absolute, readable file outside the repository")
     fun keystoreRules(@TempDir outside: File) {
         val repository = File(outside, "repository").apply { mkdirs() }
         val inside = File(repository, "release.jks").apply { writeText("invented") }
@@ -129,7 +129,7 @@ class BuildLogicUnitTest {
     }
 
     @Test
-    @DisplayName("ADR-001 section 6.4: only the packaging and signing tasks of the release variant need the signing values")
+    @DisplayName("UC-012 A5, BR-001, ADR-001 section 6.4: only the packaging and signing tasks of the release variant need the signing values")
     fun releasePackagingTasks() {
         listOf("packageRelease", "bundleRelease", "validateSigningRelease").forEach {
             assertTrue(AndroidApplicationConventionPlugin.isReleasePackagingTask(it), it)

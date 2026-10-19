@@ -16,7 +16,7 @@ class ReleaseAbiBuildTest {
     private val abis = listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
 
     @Test
-    @DisplayName("ADR-005 §5: the release package holds arm64-v8a native code only, the debug package every ABI")
+    @DisplayName("UC-012 steps 3-4, ADR-005 §5: the release package, signed with values from outside the repository, holds arm64-v8a native code only, the debug package every ABI")
     fun releaseHoldsArm64OnlyAndDebugEveryAbi() {
         val fixture = GradleFixture("release-abi")
         abis.forEach { abi ->
