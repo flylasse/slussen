@@ -118,6 +118,10 @@ data class AdditionProposal(
     val proposedBank: KnownBank?,
     val types: List<BankAccountType>,
     val knownBanks: List<KnownBank>,
+    /** BR-010: the currency the Offered Bank Account states, or, when it states none, the chosen Budget Account's. */
+    val proposedCurrency: CurrencyCode,
+    /** BR-010: false when the Operator states the currency at step 9. */
+    val currencyStatedBySource: Boolean,
 )
 
 /** The outcome of pairing (UC-013 steps 6-10, A4, A5). */
@@ -139,8 +143,8 @@ sealed interface PairOutcome {
         val bankAccountCurrency: CurrencyCode,
     ) : PairOutcome
 
-    /** The Offered Bank Account delivered no currency, so the currency rule of step 7 cannot be checked. */
-    data object CurrencyNotKnown : PairOutcome
+    /** BR-010: the Offered Bank Account states no currency and the Operator stated none; no Bank Account is added without one. */
+    data object CurrencyNotStated : PairOutcome
 
     /** The Offered Bank Account or the Budget Account is not offered for pairing (BR-002). */
     data object NotOffered : PairOutcome

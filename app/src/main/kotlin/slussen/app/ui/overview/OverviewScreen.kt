@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -25,7 +27,8 @@ import slussen.app.ui.theme.SlussenColors
 
 /**
  * The Overview tab (UC-008 steps 1-3, A1, A7, A8; `docs/mockups/overview.html`): every Budget with its counts and blocked
- * states, the expiring Bank Consents, and the notices that appear at every opening.
+ * states, the expiring Bank Consents, the notices that appear at every opening, and the Fetch of all Data Providers
+ * (UC-001 A11, with the confirmation of a warning, A16).
  */
 @Composable
 fun OverviewScreen(
@@ -34,6 +37,9 @@ fun OverviewScreen(
     onSetUp: () -> Unit,
     onConfirmRecoveryCheck: () -> Unit,
     onRecentFetches: () -> Unit,
+    onFetchAll: () -> Unit,
+    onConfirmFetch: () -> Unit,
+    onCancelFetch: () -> Unit,
 ) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
@@ -75,10 +81,25 @@ fun OverviewScreen(
         }
         item {
             Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                OutlinedButton(onClick = {}, enabled = false) { Text("Fetch all Data Providers") }
-                Muted("Fetching comes with Fetch Transactions")
+                OutlinedButton(onClick = onFetchAll, enabled = ui.canFetch) { Text("Fetch all Data Providers") }
+                ui.fetchMessages.forEach { Muted(it) }
                 OutlinedButton(onClick = onRecentFetches) { Text("Recent Fetches") }
             }
         }
+    }
+    val warning = ui.fetchWarning
+    if (warning != null) {
+        AlertDialog(
+            onDismissRequest = onCancelFetch,
+            title = { Text(warning.title) },
+            text = {
+                Column {
+                    Text(warning.text)
+                    Muted(warning.risk)
+                }
+            },
+            confirmButton = { TextButton(onClick = onConfirmFetch) { Text("Fetch") } },
+            dismissButton = { TextButton(onClick = onCancelFetch) { Text("Cancel") } },
+        )
     }
 }

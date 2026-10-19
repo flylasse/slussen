@@ -16,9 +16,11 @@ import slussen.core.connection.OfferRemedy
 import slussen.core.connection.OfferedForPairing
 import slussen.core.connection.PairOutcome
 import slussen.core.credential.CredentialStatus
+import slussen.core.fetch.FetchStart
 import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
 import slussen.core.port.ServiceKey
+import slussen.pluginapi.value.CurrencyCode
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
@@ -43,6 +45,9 @@ data class SourceSection(
     val offered: List<OfferedLine>,
     val proposedMatches: List<String>,
     val remedy: String?,
+    /** A3: the Fetch of this Data Provider that offers its Bank Accounts (UC-001), or null. */
+    val fetchAction: String?,
+    val service: ServiceKey,
 )
 
 /** A free Budget Account of a chosen Budget (UC-013 step 5, BR-002). */
@@ -62,6 +67,10 @@ data class NamingUi(
     val types: List<BankAccountType>,
     val knownBanks: List<KnownBank>,
     val note: String,
+    /** BR-010: the currency, stated by the Source, or proposed from the Budget Account when the Source states none. */
+    val currency: String,
+    val currencyStatedBySource: Boolean,
+    val currencyNote: String,
 )
 
 data class SetupUi(
@@ -189,8 +198,11 @@ class SetupViewModel(private val services: UiServices) : ViewModel() {
                         "${line.title} ${it.offered.lastFourDigits?.let { digits -> "••••$digits" }.orEmpty()} · " +
                             "probably ${it.bankAccountName} · confirm in Account Mappings"
                     },
+                    service = ServiceKey.dataProvider(source.dataProviderId),
+                    // A3: a Source with nothing offered yet offers the Fetch that brings its Bank Accounts (UC-001).
+                    fetchAction = if (source.remedy == OfferRemedy.StartFetch) "Fetch ${source.name}" else null,
                     remedy = when (source.remedy) {
-                        OfferRemedy.StartFetch -> "No Bank Accounts offered yet · Fetch ${source.name} (comes with Fetch Transactions)"
+                        OfferRemedy.StartFetch -> "No Bank Accounts offered yet"
                         OfferRemedy.GrantBankConsent ->
                             "No Bank Accounts offered yet · Grant Bank Consent (comes with Grant Bank Consent)"
                         null -> null
@@ -250,6 +262,13 @@ class SetupViewModel(private val services: UiServices) : ViewModel() {
             } else {
                 "$sourceName names no Bank · choose one or name a new one"
             },
+            currency = proposal.proposedCurrency.code,
+            currencyStatedBySource = proposal.currencyStatedBySource,
+            currencyNote = if (proposal.currencyStatedBySource) {
+                "Stated by $sourceName"
+            } else {
+                "$sourceName states no currency · state it, the Budget Account's by default"
+            },
         )
     }
 
@@ -259,7 +278,7 @@ class SetupViewModel(private val services: UiServices) : ViewModel() {
         is PairOutcome.CurrencyDiffers ->
             "${outcome.budgetAccountName} is in ${outcome.budgetCurrency.code}, ${outcome.bankAccountName} in " +
                 "${outcome.bankAccountCurrency.code} · not paired"
-        PairOutcome.CurrencyNotKnown -> "The Data Provider delivered no currency for this Bank Account · not paired"
+        PairOutcome.CurrencyNotStated -> "State the currency of the Bank Account · not added"
         PairOutcome.NotOffered -> "Not offered for pairing"
         PairOutcome.NameNotValid -> "A name is needed, at most 100 characters · not added"
         PairOutcome.TypeNotChosen -> "Choose the Bank Account type · not added"
@@ -282,15 +301,38 @@ class SetupViewModel(private val services: UiServices) : ViewModel() {
         }
     }
 
-    /** Steps 9-10: [startDate] is empty or `yyyy-MM-dd`; [type] and [bank] as the Operator confirmed or changed them. */
-    fun saveNaming(name: String, type: BankAccountType?, bank: BankChoice?, startDate: String) {
+    /** UC-013 A3: the Operator starts the Fetch of a Data Provider that offers nothing yet (UC-001); pairing continues at step 5. */
+    fun fetch(service: ServiceKey) {
+        viewModelScope.launch {
+            val message = when (val start = services.fetch.fetch(service)) {
+                is FetchStart.Unavailable -> Texts.refusal(start.reason)
+                is FetchStart.Ran -> start.reports.joinToString(" · ") { Texts.fetchReport(it, services.formats) }
+            }
+            showPairing(message = message)
+        }
+    }
+
+    /**
+     * Steps 9-10: [startDate] is empty or `yyyy-MM-dd`; [type] and [bank] as the Operator confirmed or changed them;
+     * [currency] as the Operator states it when the Source states none (BR-010).
+     */
+    fun saveNaming(name: String, type: BankAccountType?, bank: BankChoice?, startDate: String, currency: String = "") {
         val naming = current().naming ?: return
         val date = startDateOf(startDate).getOrElse {
             mutableState.value = current().copy(message = "The Start Date is a date like 2026-09-01, or empty.")
             return
         }
+        val stated = if (naming.currencyStatedBySource) null else currency.trim().uppercase().takeIf { it.isNotEmpty() }
+        if (stated != null && !(stated.length == 3 && stated.all { it in 'A'..'Z' })) {
+            mutableState.value = current().copy(message = "The currency is an ISO 4217 code of three capital letters, like USD · not added")
+            return
+        }
         viewModelScope.launch {
-            showAdded(services.connect.add(naming.offeredBankAccountId, naming.budgetAccountId, name, type, bank, date))
+            showAdded(
+                services.connect.add(
+                    naming.offeredBankAccountId, naming.budgetAccountId, name, type, bank, date, stated?.let(::CurrencyCode),
+                ),
+            )
         }
     }
 

@@ -13,6 +13,7 @@ class ScreenFixture {
         providerSettings = slice.providerSettings,
         mappings = slice.mappings,
         status = slice.status,
+        fetch = slice.fetch,
         formats = Formats(ZoneId.of("Europe/Stockholm")),
         clock = slice.clock,
     )

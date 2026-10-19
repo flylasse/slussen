@@ -22,6 +22,9 @@ enum class OperationKind {
 
     /** Changing a Bank Account or its Account Mapping (UC-009). */
     AccountMappingChange,
+
+    /** A Fetch the Operator starts, of one Data Provider or of several (UC-001). */
+    Fetch,
 }
 
 /** Why the coordinator refused an operation (ADR-007 §2): a typed reason the screen shows. */
@@ -62,7 +65,7 @@ class OperationCoordinator(private val store: CoordinatorStore) {
         startedBy: StartedBy,
         block: suspend (OperationPermit) -> T,
     ): OperationResult<T> = lane.withLock {
-        // UC-006 BR-005: While an Upload Plan awaits confirmation or an Upload is written, credential changes, choosing Budgets, adding or changing Bank Accounts, changing Operator Settings and confirming a Recovery Check are unavailable.
+        // UC-006 BR-005: While an Upload Plan awaits confirmation or an Upload is written, credential changes, choosing Budgets, adding or changing Bank Accounts, changing Operator Settings, a Fetch the Operator starts and confirming a Recovery Check are unavailable.
         when (store.mode()) {
             CoordinatorMode.PlanOpen -> return OperationResult.Refused(OperationRefusal.UploadPlanAwaitingConfirmation)
             CoordinatorMode.Uploading -> return OperationResult.Refused(OperationRefusal.UploadBeingWritten)

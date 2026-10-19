@@ -24,6 +24,7 @@ class UiFixture(startKind: StartKind = StartKind.Normal, unreadableParts: List<U
         providerSettings = slice.providerSettings,
         mappings = slice.mappings,
         status = slice.status,
+        fetch = slice.fetch,
         formats = Formats(zone),
         clock = slice.clock,
     )

@@ -21,7 +21,12 @@ import slussen.pluginapi.credential.CredentialCheck
 import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.diagnostic.SlussenLog
 import slussen.pluginapi.fileformat.FilePreprocessor
+import slussen.pluginapi.provider.BankAccountResult
 import slussen.pluginapi.provider.DataProvider
+import slussen.pluginapi.provider.FetchRequest
+import slussen.pluginapi.provider.FetchResponse
+import slussen.pluginapi.provider.ProviderTransaction
+import slussen.pluginapi.provider.SourceOutcome
 import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.request.RefusalReason
@@ -65,6 +70,9 @@ public abstract class CredentialContractTest {
 
     /** The service accepts the connection and never answers. */
     protected abstract fun credentialServiceNeverAnswering(): CredentialScenario
+
+    /** An entry the part can see cannot be valid before sending anything, such as a malformed token (UC-014 A1). */
+    protected abstract fun credentialsThatCannotBeValid(): CredentialScenario
 
     /** How many requests the test server has received in this test. */
     protected abstract fun requestsReceived(): Int
@@ -116,6 +124,16 @@ public abstract class CredentialContractTest {
     }
 
     @Test
+    @DisplayName("ADR-001 §4.4, §4.5: an entry that cannot be valid is Refused without calling the gate, so nothing is sent and no Provider Request is counted")
+    public fun entryThatCannotBeValidIsRefusedWithoutTheGate() {
+        val gate = RecordingRequestGate()
+        val result = check(credentialsThatCannotBeValid(), TestRequestContext(gate))
+        assertEquals(CredentialCheck.Refused, result)
+        assertTrue(gate.requests.isEmpty(), "the gate was asked: ${gate.requests}")
+        assertEquals(0, requestsReceived(), "nothing is sent")
+    }
+
+    @Test
     @DisplayName("ADR-001 §4.0: a service that never answers ends in TransientFailure(Timeout) within the request timeout")
     public fun neverAnsweringServiceTimesOut() {
         val started = System.nanoTime()
@@ -160,8 +178,8 @@ public abstract class CredentialContractTest {
 
 /**
  * The Data Provider contract test of ADR-001 §4.4. Each plug-in module's tests extend it with invented recorded answers
- * served by a local test server. This slice holds the credential checks of §4.5 and the declared-number checks; the
- * Fetch checks come with the slice that builds UC-001.
+ * served by a local test server: the credential checks of §4.5 and the declared-number checks. A Data Provider whose
+ * Fetch is built also extends [DataProviderFetchContractTest].
  */
 public abstract class DataProviderContractTest : CredentialContractTest() {
     /** The Data Provider under test, constructed with [log] as the composition root constructs it (ADR-001 §5). */
@@ -198,6 +216,129 @@ public abstract class DataProviderContractTest : CredentialContractTest() {
 
         /** `DATA_PROVIDER.request_limit` (entity model): Min 1, Max 1000. */
         val REQUEST_LIMIT_RANGE = 1..1000
+    }
+}
+
+/** One Fetch the contract tests run: the Data Provider under test, the request and the stored credential it is handed. */
+public class FetchScenario(
+    public val dataProvider: DataProvider,
+    public val request: FetchRequest,
+    public val credential: Secret,
+)
+
+/** What a recorded answer holds: every Bank Account it lists, and how many items each read Bank Account delivers. */
+public class RecordedFetch(
+    /** The `providerReference` of every Bank Account the answer lists, in order. */
+    public val bankAccounts: List<String>,
+    /** Every item of each read Bank Account, pending and zero-amount ones included, by `providerReference`. */
+    public val itemsPerBankAccount: Map<String, Int>,
+    /** How many of those items have no readable date or amount. */
+    public val uninterpretable: Int,
+)
+
+/**
+ * The Fetch checks of the Data Provider contract test (ADR-001 §4.0, §4.1, §4.4), for a Data Provider whose Fetch is
+ * built. The subclass serves invented recorded answers from its own local test server through the hooks.
+ */
+public abstract class DataProviderFetchContractTest : DataProviderContractTest() {
+    /** The Data Provider answers with the recorded answer of [recordedFetch], which holds pending, zero-amount and unreadable items. */
+    protected abstract fun fetchAnswered(): FetchScenario
+
+    protected abstract fun recordedFetch(): RecordedFetch
+
+    /** The Data Provider answers that the stored credential is not valid or not allowed. */
+    protected abstract fun fetchCredentialRefused(): FetchScenario
+
+    /** The Data Provider answers that it is unavailable. */
+    protected abstract fun fetchUnavailable(): FetchScenario
+
+    /** The Data Provider accepts the connection and never answers. */
+    protected abstract fun fetchNeverAnswering(): FetchScenario
+
+    /** Every credential, Bank Account number or Bank Session planted in this test's recorded answers and credential. */
+    protected abstract fun plantedFetchValues(): List<String>
+
+    private fun fetch(scenario: FetchScenario, context: TestRequestContext): FetchResponse =
+        runBlocking(Dispatchers.Default) { scenario.dataProvider.fetch(scenario.request, context) }
+
+    @Test
+    @DisplayName("ADR-001 §4.4: every request is admitted by the gate first, and every item of a recorded answer appears in the response, pending and zero-amount ones included")
+    public fun everyItemIsPassedOn() {
+        val gate = RecordingRequestGate()
+        val scenario = fetchAnswered()
+        val response = fetch(scenario, TestRequestContext(gate, credential = scenario.credential))
+        val recorded = recordedFetch()
+        assertEquals(SourceOutcome.Completed, response.sourceOutcome)
+        assertTrue(requestsReceived() >= 1, "the Data Provider was not asked")
+        assertEquals(requestsReceived(), gate.requests.size, "every request is admitted by the gate first")
+        assertEquals(recorded.bankAccounts, response.bankAccounts.map { it.providerReference })
+        recorded.itemsPerBankAccount.forEach { (reference, items) ->
+            val result = response.bankAccounts.single { it.providerReference == reference }.result
+            assertTrue(result is BankAccountResult.Read, "$reference was not read: $result")
+            assertEquals(items, (result as BankAccountResult.Read).transactions.size, "items of $reference")
+        }
+        val unreadable = response.bankAccounts.flatMap { (it.result as? BankAccountResult.Read)?.transactions.orEmpty() }
+            .count { it is ProviderTransaction.Uninterpretable }
+        assertEquals(recorded.uninterpretable, unreadable, "items without a readable date or amount are Uninterpretable")
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.0: a Fetch the gate refuses for the whole Data Provider sends nothing and comes back as StoppedByGate")
+    public fun gateRefusedFetchSendsNothing() {
+        val scenario = fetchAnswered()
+        val response = fetch(scenario, TestRequestContext(RecordingRequestGate.refusing(), credential = scenario.credential))
+        assertEquals(SourceOutcome.StoppedByGate(RefusalReason.RequestLimitReached), response.sourceOutcome)
+        assertEquals(0, requestsReceived())
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.1, §4.5: a refused stored credential is CredentialsRefused, a typed result")
+    public fun refusedCredentialIsTyped() {
+        val scenario = fetchCredentialRefused()
+        val response = fetch(scenario, TestRequestContext(credential = scenario.credential))
+        assertEquals(SourceOutcome.CredentialsRefused, response.sourceOutcome)
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.1: an unavailable Data Provider is a TransientFailure")
+    public fun unavailableDataProviderIsATransientFailure() {
+        val scenario = fetchUnavailable()
+        val response = fetch(scenario, TestRequestContext(credential = scenario.credential))
+        assertTrue(response.sourceOutcome is SourceOutcome.TransientFailure, "was ${response.sourceOutcome}")
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.0: a Fetch the Data Provider never answers ends in TransientFailure(Timeout) within the request timeout")
+    public fun neverAnsweredFetchTimesOut() {
+        val scenario = fetchNeverAnswering()
+        val started = System.nanoTime()
+        val response = fetch(scenario, TestRequestContext(timeout = shortTimeout, credential = scenario.credential))
+        val elapsed = Duration.ofNanos(System.nanoTime() - started)
+        assertEquals(SourceOutcome.TransientFailure(FailureKind.Timeout), response.sourceOutcome)
+        assertTrue(elapsed < shortTimeout.plus(slack), "took $elapsed")
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.0: cancelling the caller of a Fetch cancels the underlying call")
+    public fun cancellingTheFetchCancelsTheCall() {
+        val scenario = fetchNeverAnswering()
+        runBlocking(Dispatchers.Default) {
+            val running = async {
+                scenario.dataProvider.fetch(scenario.request, TestRequestContext(timeout = longTimeout, credential = scenario.credential))
+            }
+            withTimeout(slack.toMillis()) { while (requestsReceived() < 1) delay(10) }
+            running.cancelAndJoin()
+            withTimeout(slack.toMillis()) { while (runningCalls() > 0) delay(10) }
+        }
+        assertEquals(0, runningCalls())
+    }
+
+    @Test
+    @DisplayName("ADR-006 §2: no toString() of a Fetch result reveals the credential, a Bank Account number or a Bank Session")
+    public fun noFetchResultRevealsASecret() {
+        val scenario = fetchAnswered()
+        val shown = fetch(scenario, TestRequestContext(credential = scenario.credential)).toString()
+        plantedFetchValues().forEach { planted -> assertFalse(planted in shown, "a toString() reveals $planted") }
     }
 }
 

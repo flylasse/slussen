@@ -2,6 +2,7 @@ package slussen.app.ui
 
 import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.ServiceCredentials
+import slussen.core.fetch.FetchTransactions
 import slussen.core.mapping.AccountMappings
 import slussen.core.settings.ConnectionsOverview
 import slussen.core.settings.DataProviderSettings
@@ -15,6 +16,7 @@ class UiServices(
     val providerSettings: DataProviderSettings,
     val mappings: AccountMappings,
     val status: ImportStatus,
+    val fetch: FetchTransactions,
     val formats: Formats,
     val clock: java.time.Clock,
 )

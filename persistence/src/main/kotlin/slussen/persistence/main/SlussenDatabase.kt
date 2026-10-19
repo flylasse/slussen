@@ -15,7 +15,7 @@ import java.time.LocalDate
 /**
  * `slussen.db` (ADR-002 §1): the only database that is backed up and transferred, holding all Decision-Critical
  * Data. Phase 7 holds the tables of UC-008, UC-013 and UC-014, Phase 7a adds `data_provider.request_limit_published`
- * (S-31) and `bank_account.provider_bank_id` (S-33); the other tables of ADR-002 §1 come with the slices that use them, within schema version 1 until the first
+ * (S-31) and `bank_account.provider_bank_id` (S-33), Phase 8a adds `fetch` and `back_off` (UC-001); the other tables of ADR-002 §1 come with the slices that use them, within schema version 1 until the first
  * release: a migration is written only from a released schema version (ADR-002 §7).
  */
 @Database(
@@ -29,6 +29,8 @@ import java.time.LocalDate
         BankAccountEntity::class,
         AccountMappingEntity::class,
         ProviderRequestEntity::class,
+        FetchEntity::class,
+        BackOffEntity::class,
         RecoveryCheckEntity::class,
         CoordinatorStateEntity::class,
     ],
@@ -44,6 +46,8 @@ abstract class SlussenDatabase : RoomDatabase() {
     abstract fun connections(): ConnectionDao
 
     abstract fun providerRequests(): ProviderRequestDao
+
+    abstract fun fetches(): FetchDao
 
     abstract fun recovery(): RecoveryDao
 
@@ -218,6 +222,38 @@ data class ProviderRequestEntity(
     @ColumnInfo(name = "request_kind") val requestKind: String,
     @ColumnInfo(name = "unattended") val unattended: Boolean,
     @ColumnInfo(name = "sent_at") val sentAt: Instant,
+)
+
+/** `FETCH` (entity model). Its `fetch_result` rows come with O-1, in the slice that builds the Comparison (UC-003). */
+@Entity(
+    tableName = "fetch",
+    indices = [Index(value = ["data_provider_id", "started_at"])],
+    foreignKeys = [ForeignKey(entity = DataProviderEntity::class, parentColumns = ["id"], childColumns = ["data_provider_id"])],
+)
+data class FetchEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "data_provider_id") val dataProviderId: Long,
+    @ColumnInfo(name = "started_at") val startedAt: Instant,
+    @ColumnInfo(name = "started_by") val startedBy: String,
+    @ColumnInfo(name = "outcome") val outcome: String,
+)
+
+/** `BACK_OFF` (entity model); `bank_id` empty when the whole Data Provider waits. */
+@Entity(
+    tableName = "back_off",
+    indices = [Index(value = ["data_provider_id"]), Index(value = ["bank_id"])],
+    foreignKeys = [
+        ForeignKey(entity = DataProviderEntity::class, parentColumns = ["id"], childColumns = ["data_provider_id"]),
+        ForeignKey(entity = BankEntity::class, parentColumns = ["id"], childColumns = ["bank_id"]),
+    ],
+)
+data class BackOffEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "data_provider_id") val dataProviderId: Long,
+    @ColumnInfo(name = "bank_id") val bankId: Long?,
+    @ColumnInfo(name = "cause") val cause: String,
+    @ColumnInfo(name = "starts_at") val startsAt: Instant,
+    @ColumnInfo(name = "ends_at") val endsAt: Instant,
 )
 
 /** `RECOVERY_CHECK` (entity model). */

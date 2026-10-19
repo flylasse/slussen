@@ -42,7 +42,7 @@ class UC012SetUpAnOwnBuildTest {
         val registered = plugins.dataProviders.single { it.plugin === added }
         val credentials = slussen.core.credential.ServiceCredentials(
             plugins, slice.vault, slice.coordinator, slice.journal, slice.settings, slice.providerRequests,
-            slussen.core.credential.CredentialRefusals(), slice.clock,
+            slice.importStatusStore, slussen.core.credential.CredentialRefusals(), slice.clock,
         )
         val connections = ConnectionsOverview(
             plugins, credentials, slice.connectionStore, slice.importStatusStore, slice.settings, slice.clock,

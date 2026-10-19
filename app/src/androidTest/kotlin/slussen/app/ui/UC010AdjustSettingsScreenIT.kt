@@ -39,6 +39,7 @@ class UC010AdjustSettingsScreenIT {
                         onConfirmRemoval = viewModel::confirmRemoval, onChooseBudgets = {},
                         onEditRequestLimit = viewModel::startEditingRequestLimit, onSaveRequestLimit = viewModel::saveRequestLimit,
                         onResetRequestLimit = viewModel::resetRequestLimit, onCancelRequestLimit = viewModel::cancelRequestLimit,
+                        onFetch = viewModel::fetch, onConfirmFetch = viewModel::confirmFetch, onCancelFetch = viewModel::cancelFetch,
                     )
                 }
             }

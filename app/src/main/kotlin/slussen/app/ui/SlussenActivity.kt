@@ -122,6 +122,9 @@ fun SlussenScreens(services: UiServices) {
                             onSetUp = { go(Screen.Setup) },
                             onConfirmRecoveryCheck = { overview.confirmRecoveryCheck() },
                             onRecentFetches = { go(Screen.RecentFetches) },
+                            onFetchAll = overview::fetchAll,
+                            onConfirmFetch = overview::confirmFetch,
+                            onCancelFetch = overview::cancelFetch,
                         )
                     }
                 }
@@ -171,6 +174,9 @@ fun SlussenScreens(services: UiServices) {
                             onSaveRequestLimit = vm::saveRequestLimit,
                             onResetRequestLimit = vm::resetRequestLimit,
                             onCancelRequestLimit = vm::cancelRequestLimit,
+                            onFetch = vm::fetch,
+                            onConfirmFetch = vm::confirmFetch,
+                            onCancelFetch = vm::cancelFetch,
                         )
                     }
                 }
@@ -189,6 +195,7 @@ fun SlussenScreens(services: UiServices) {
                             onPair = vm::pairWith,
                             onSaveNaming = vm::saveNaming,
                             onCancelNaming = vm::cancelNaming,
+                            onFetch = vm::fetch,
                             onAddFromFiles = { entry ->
                                 vm.addFromTransactionFiles(
                                     entry.fileFormatId, entry.type, entry.bank, entry.balanceOfferedBankAccountId, entry.budgetAccountId, entry.name,

@@ -208,6 +208,9 @@ class BudgetsAndBankAccounts(
                     proposedBank = banks.firstOrNull { it.bankId == offer.bankId },
                     types = BankAccountType.entries,
                     knownBanks = banks,
+                    // UC-013 BR-010: When the Offered Bank Account states no currency, the currency of the chosen Budget Account is proposed for the Operator to state.
+                    proposedCurrency = offer.currency ?: mappedInto.first.currency,
+                    currencyStatedBySource = offer.currency != null,
                 ),
             )
         }
@@ -217,7 +220,10 @@ class BudgetsAndBankAccounts(
         }
     }
 
-    /** Steps 9-10: adds the Bank Account with the name, Bank Account type, Bank and optional Start Date the Operator confirmed. */
+    /**
+     * Steps 9-10: adds the Bank Account with the name, Bank Account type, Bank and optional Start Date the Operator
+     * confirmed, and the [currency] the Operator states when the Offered Bank Account states none (BR-010).
+     */
     suspend fun add(
         offeredBankAccountId: Long,
         budgetAccountId: Long,
@@ -225,13 +231,16 @@ class BudgetsAndBankAccounts(
         type: BankAccountType?,
         bank: BankChoice?,
         startDate: LocalDate?,
+        currency: CurrencyCode? = null,
     ): PairOutcome {
         val result = coordinator.run(OperationKind.BudgetAndBankAccountChange, StartedBy.Operator) {
             // UC-013 BR-004: The Operator accepts or edits the proposed name; the name never identifies the Bank Account.
             val accepted = validName(name) ?: return@run PairOutcome.NameNotValid
             confirmedTypeAndBank(type, bank)?.let { return@run it }
             val (offer, mappedInto) = paired(offeredBankAccountId, budgetAccountId) ?: return@run PairOutcome.NotOffered
-            refusal(mappedInto, offer.currency, accepted)?.let { return@run it }
+            // UC-013 BR-010: The currency is the one the Offered Bank Account states, or else the one the Operator states; no Bank Account is added without one.
+            val bankAccountCurrency = offer.currency ?: currency ?: return@run PairOutcome.CurrencyNotStated
+            refusal(mappedInto, bankAccountCurrency, accepted)?.let { return@run it }
             add(
                 NewBankAccount(
                     generatedIdentifier = GeneratedIdentifiers.bankAccountIdentifier(random),
@@ -243,7 +252,7 @@ class BudgetsAndBankAccounts(
                     balanceDataProviderId = null,
                     balanceProviderReference = null,
                     name = accepted,
-                    currency = requireNotNull(offer.currency),
+                    currency = bankAccountCurrency,
                     type = requireNotNull(type),
                     // UC-013 BR-003: Slussen records how the Source identifies the Bank Account.
                     providerReference = offer.providerReference,
@@ -295,7 +304,8 @@ class BudgetsAndBankAccounts(
         // UC-013 BR-002: A Budget Account that receives through an Account Mapping is not offered for pairing.
         val mappedBy = store.bankAccounts().firstOrNull { it.mapping?.budgetAccountId == account.id }
         if (mappedBy != null) return PairOutcome.BudgetAccountAlreadyMapped(account.name, mappedBy.name)
-        if (currency == null) return PairOutcome.CurrencyNotKnown
+        // UC-013 BR-010: A currency the Offered Bank Account does not state is checked once the Operator states it at step 9.
+        if (currency == null) return null
         // UC-003 BR-013: No amount is ever converted; a Bank Account is paired only with a Budget Account of its own currency.
         if (currency != budget.currency) {
             return PairOutcome.CurrencyDiffers(account.name, budget.currency, bankAccountName, currency)

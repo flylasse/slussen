@@ -35,8 +35,8 @@ import slussen.pluginapi.credential.FieldKind
 /**
  * The page of one service (UC-014, UC-010 BR-010; `docs/mockups/connections.html`, `setup.html`): status, credentials
  * with the form its part declares, and what else belongs to it. The Request Limit of a Data Provider that publishes none
- * is changed here (UC-010 A11); the Fetch Cooldown is shown read-only until the slice that builds UC-010, the Bank
- * Consents come with UC-007.
+ * is changed here (UC-010 A11); a Data Provider is fetched from here (UC-001, A16 with its confirmation of a warning);
+ * the Fetch Cooldown is shown read-only until the slice that builds UC-010, the Bank Consents come with UC-007.
  */
 @Composable
 fun ServicePageScreen(
@@ -53,6 +53,9 @@ fun ServicePageScreen(
     onSaveRequestLimit: (String) -> Unit,
     onResetRequestLimit: () -> Unit,
     onCancelRequestLimit: () -> Unit,
+    onFetch: () -> Unit,
+    onConfirmFetch: () -> Unit,
+    onCancelFetch: () -> Unit,
 ) {
     val values = remember { mutableStateMapOf<String, String>() }
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
@@ -88,6 +91,10 @@ fun ServicePageScreen(
                     Text("Request Limit")
                     Muted(ui.requestLimit.orEmpty())
                     if (ui.requestLimitEditable) OutlinedButton(onClick = onEditRequestLimit) { Text("Change") }
+                    if (ui.canFetch) {
+                        Muted("Pressing starts a Fetch of this Data Provider, with you present")
+                        Button(onClick = onFetch) { Text("Fetch") }
+                    }
                 }
                 SectionTitle("Bank Accounts · ${ui.bankAccounts.size}")
                 SlussenCard {
@@ -137,6 +144,21 @@ fun ServicePageScreen(
                     TextButton(onClick = onCancelRequestLimit) { Text("Cancel") }
                 }
             },
+        )
+    }
+    val warning = ui.fetchWarning
+    if (warning != null) {
+        AlertDialog(
+            onDismissRequest = onCancelFetch,
+            title = { Text(warning.title) },
+            text = {
+                Column {
+                    Text(warning.text)
+                    Muted(warning.risk)
+                }
+            },
+            confirmButton = { TextButton(onClick = onConfirmFetch) { Text("Fetch") } },
+            dismissButton = { TextButton(onClick = onCancelFetch) { Text("Cancel") } },
         )
     }
     if (ui.removalQuestion != null) {

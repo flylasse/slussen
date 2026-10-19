@@ -651,4 +651,105 @@ class UC013ConnectBudgetsAndBankAccountsTest {
         assertTrue(slice.connectionStore.bankAccounts().none { it.providerReference == "acct-1182" })
         assertEquals(0, slice.budgetApp.writer.calls)
     }
+
+    /** An Offered Bank Account whose Data Provider states no currency (BR-010). */
+    private suspend fun offerWithoutCurrency() {
+        slice.offeredStore.replaceOffered(
+            slice.feedsId,
+            null,
+            listOf(ExampleData.offered("acct-9001", "Harbor Joint", "checking", null, "9001", amount(310), kestrelBankId(), slice.clock.instant())),
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-010"])
+    @DisplayName("BR-010: an Offered Bank Account that states no currency is paired; Slussen proposes the currency of the chosen Budget Account for the Operator to state")
+    fun currencyIsProposedFromTheBudgetAccount() = runTest {
+        slice.enterCredentials()
+        chooseHouseholdAndSummerHouse()
+        offerWithoutCurrency()
+
+        val proposal = proposal("acct-9001", "Checking")
+
+        assertEquals(USD, proposal.proposedCurrency)
+        assertFalse(proposal.currencyStatedBySource)
+        val inEuro = proposal("acct-9001", "Current")
+        assertEquals(EUR, inEuro.proposedCurrency)
+        assertFalse(inEuro.currencyStatedBySource)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-010"])
+    @DisplayName("BR-010: the Bank Account is added with the currency the Operator states at step 9")
+    fun bankAccountIsAddedWithTheStatedCurrency() = runTest {
+        slice.enterCredentials()
+        chooseHouseholdAndSummerHouse()
+        offerWithoutCurrency()
+        val p = proposal("acct-9001", "Checking")
+
+        val outcome = slice.connect.add(
+            p.offeredBankAccountId, p.budgetAccountId, p.proposedName, p.proposedType,
+            p.proposedBank?.let { BankChoice.Known(it.bankId) }, null, currency = USD,
+        )
+
+        assertInstanceOf(PairOutcome.Added::class.java, outcome)
+        assertEquals(USD, slice.connectionStore.bankAccounts().single().currency)
+    }
+
+    @Test
+    @UseCase(
+        id = "UC-013",
+        scenario = "A5: Budget Account Already Mapped or in Another Currency",
+        businessRules = ["BR-010"],
+    )
+    @DisplayName("A5, BR-010: a stated currency other than the Budget's is refused at step 9 and nothing is added; no amount is converted")
+    fun statedCurrencyOfAnotherBudgetIsRefused() = runTest {
+        slice.enterCredentials()
+        chooseHouseholdAndSummerHouse()
+        offerWithoutCurrency()
+        val p = proposal("acct-9001", "Checking")
+
+        val outcome = slice.connect.add(
+            p.offeredBankAccountId, p.budgetAccountId, p.proposedName, p.proposedType,
+            p.proposedBank?.let { BankChoice.Known(it.bankId) }, null, currency = EUR,
+        )
+
+        assertEquals(PairOutcome.CurrencyDiffers("Checking", USD, p.proposedName, EUR), outcome)
+        assertTrue(slice.connectionStore.bankAccounts().isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-010"])
+    @DisplayName("BR-010: no Bank Account is added without a currency")
+    fun noBankAccountWithoutACurrency() = runTest {
+        slice.enterCredentials()
+        chooseHouseholdAndSummerHouse()
+        offerWithoutCurrency()
+        val p = proposal("acct-9001", "Checking")
+
+        val outcome = slice.connect.add(
+            p.offeredBankAccountId, p.budgetAccountId, p.proposedName, p.proposedType,
+            p.proposedBank?.let { BankChoice.Known(it.bankId) }, null, currency = null,
+        )
+
+        assertEquals(PairOutcome.CurrencyNotStated, outcome)
+        assertTrue(slice.connectionStore.bankAccounts().isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-010"])
+    @DisplayName("BR-010: a currency the Data Provider states is the Bank Account's; the Operator states one only when it states none")
+    fun currencyTheSourceStatesHolds() = runTest {
+        readyToPair()
+        val p = proposal("acct-4410", "Checking")
+        assertEquals(USD, p.proposedCurrency)
+        assertTrue(p.currencyStatedBySource)
+
+        slice.connect.add(
+            p.offeredBankAccountId, p.budgetAccountId, p.proposedName, p.proposedType,
+            p.proposedBank?.let { BankChoice.Known(it.bankId) }, null, currency = EUR,
+        )
+
+        assertEquals(USD, slice.connectionStore.bankAccounts().single().currency)
+    }
 }

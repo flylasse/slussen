@@ -1,6 +1,7 @@
 package slussen.persistence
 
 import slussen.core.port.AddOutcome
+import slussen.core.port.BackOffCause
 import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
 import slussen.core.port.BudgetToServe
@@ -9,10 +10,14 @@ import slussen.core.port.CoordinatorMode
 import slussen.core.port.CoordinatorStore
 import slussen.core.port.DataProviderRegistration
 import slussen.core.port.DataProviderSettingsStore
+import slussen.core.port.FetchOutcome
+import slussen.core.port.FetchStore
 import slussen.core.port.FileFormatRegistration
 import slussen.core.port.ImportStatusStore
 import slussen.core.port.MappingStore
+import slussen.core.port.NewBackOff
 import slussen.core.port.NewBankAccount
+import slussen.core.port.NewFetch
 import slussen.core.port.NewOfferedBankAccount
 import slussen.core.port.NewProviderRequest
 import slussen.core.port.OfferedBankAccountStore
@@ -25,6 +30,7 @@ import slussen.core.port.RecoveryCause
 import slussen.core.port.RecoveryStore
 import slussen.core.port.RegisteredRows
 import slussen.core.port.ServeOutcome
+import slussen.core.port.StartedBy
 import slussen.core.port.StoredAccountBalance
 import slussen.core.port.StoredAccountMapping
 import slussen.core.port.StoredBackOff
@@ -43,11 +49,14 @@ import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.StoredTransactionFile
 import slussen.persistence.device.OfferedBankAccountDao
 import slussen.persistence.device.OfferedBankAccountEntity
+import slussen.persistence.main.BackOffEntity
 import slussen.persistence.main.BankAccountEntity
 import slussen.persistence.main.BudgetAccountEntity
 import slussen.persistence.main.BudgetEntity
 import slussen.persistence.main.ConnectionDao
 import slussen.persistence.main.CoordinatorDao
+import slussen.persistence.main.FetchDao
+import slussen.persistence.main.FetchEntity
 import slussen.persistence.main.FileFormatEntity
 import slussen.persistence.main.OperatorSettingsDao
 import slussen.persistence.main.OperatorSettingsEntity
@@ -385,19 +394,64 @@ class RoomCoordinatorStore(private val dao: CoordinatorDao) : CoordinatorStore {
     }
 }
 
+private fun FetchEntity.stored() = StoredFetch(
+    id = id,
+    dataProviderId = dataProviderId,
+    startedAt = startedAt,
+    startedBy = valueOfText<StartedBy>(startedBy, MAIN_PART) { it.text },
+    outcome = valueOfText<FetchOutcome>(outcome, MAIN_PART) { it.text },
+    results = emptyList(),
+)
+
+private fun BackOffEntity.stored() = StoredBackOff(
+    dataProviderId = dataProviderId,
+    bankId = bankId,
+    cause = valueOfText<BackOffCause>(cause, MAIN_PART) { it.text },
+    startsAt = startsAt,
+    endsAt = endsAt,
+)
+
+/** `FETCH` and `BACK_OFF` in `slussen.db` (UC-001, ADR-002 §1). */
+class RoomFetchStore(private val dao: FetchDao) : FetchStore {
+    override suspend fun fetchesOf(dataProviderId: Long): List<StoredFetch> = dao.of(dataProviderId).map { it.stored() }
+
+    override suspend fun recordFetch(fetch: NewFetch, keep: Int) = dao.record(
+        FetchEntity(
+            dataProviderId = fetch.dataProviderId,
+            startedAt = fetch.startedAt,
+            startedBy = fetch.startedBy.text,
+            outcome = fetch.outcome.text,
+        ),
+        keep,
+    )
+
+    override suspend fun backOffsOf(dataProviderId: Long): List<StoredBackOff> = dao.backOffsOf(dataProviderId).map { it.stored() }
+
+    override suspend fun startBackOff(backOff: NewBackOff) = dao.insertBackOff(
+        BackOffEntity(
+            dataProviderId = backOff.dataProviderId,
+            bankId = backOff.bankId,
+            cause = backOff.cause.text,
+            startsAt = backOff.startsAt,
+            endsAt = backOff.endsAt,
+        ),
+    )
+}
+
 /**
- * The import status data of UC-001, UC-002, UC-003 and UC-007. Their tables (`fetch`, `fetch_result`,
- * `account_balance`, `back_off`, `transaction_file`, `bank_transaction`, `bank_consent`) come with the slices that
- * build those use cases (ADR-002 §1); until then nothing of them is stored and each read is empty.
+ * The import status data of UC-001, UC-002, UC-003 and UC-007. The Fetches and Back-offs of UC-001 are read from
+ * `fetch` and `back_off`; the other tables (`fetch_result`, `account_balance`, `transaction_file`, `bank_transaction`,
+ * `bank_consent`) come with the slices that build those use cases (ADR-002 §1), and until then each of their reads is
+ * empty.
  */
-class RoomImportStatusStore : ImportStatusStore {
-    override suspend fun recentFetches(): List<StoredFetch> = emptyList()
+class RoomImportStatusStore(private val fetches: FetchDao) : ImportStatusStore {
+    override suspend fun recentFetches(): List<StoredFetch> = fetches.recent().map { it.stored() }
 
     override suspend fun accountBalances(): List<StoredAccountBalance> = emptyList()
 
     override suspend fun bankConsents(): List<StoredBankConsent> = emptyList()
 
-    override suspend fun backOffs(): List<StoredBackOff> = emptyList()
+    override suspend fun backOffs(): List<StoredBackOff> = fetches.backOffs().map { it.stored() }
 
     override suspend fun latestTransactionFiles(): List<StoredTransactionFile> = emptyList()
 

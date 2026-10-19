@@ -8,6 +8,7 @@ import slussen.core.operation.OperationRefusal
 import slussen.core.operation.OperationResult
 import slussen.core.plugin.RegisteredPlugins
 import slussen.core.port.CredentialVault
+import slussen.core.port.FetchStore
 import slussen.core.port.JournalEventKind
 import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.ProviderRequestStore
@@ -15,7 +16,8 @@ import slussen.core.port.ServiceKey
 import slussen.core.port.StartedBy
 import slussen.core.request.BudgetAppGate
 import slussen.core.request.DataProviderGate
-import slussen.core.request.REQUEST_LIMIT_WINDOW
+import slussen.core.request.requestLimitFreesUpAt
+import slussen.core.request.requestToWaitUntil
 import slussen.core.request.ServiceRequestContext
 import slussen.pluginapi.credential.CredentialCapability
 import slussen.pluginapi.credential.CredentialCheck
@@ -65,8 +67,14 @@ sealed interface CredentialOutcome {
     data class RequestLimitReached(val freesUpAt: Instant) : CredentialOutcome
 
     /**
-     * The gate refused the check for another reason than the Request Limit, so nothing was sent or stored. The gate of
-     * this build refuses a credential check only at the Request Limit; a Back-off comes with UC-001 (Open in Phase 7a).
+     * A5: a Back-off holds for the whole Data Provider after it asked Slussen to wait (UC-001 A5), so the check was not
+     * sent and nothing stored; [until] is the time the Back-off ends.
+     */
+    data class WaitingForProvider(val until: Instant) : CredentialOutcome
+
+    /**
+     * The gate refused the check because its operation had ended or been cancelled, so nothing was sent or stored; no
+     * flow of UC-014 needs it (S-34, Assumed).
      */
     data class NotSent(val reason: RefusalReason) : CredentialOutcome
 
@@ -114,6 +122,7 @@ class ServiceCredentials(
     private val journal: DecisionJournal,
     private val settings: OperatorSettingsStore,
     private val providerRequests: ProviderRequestStore,
+    private val fetches: FetchStore,
     private val refusals: CredentialRefusals,
     private val clock: Clock,
 ) : CredentialStatusReader {
@@ -139,7 +148,7 @@ class ServiceCredentials(
         if (service == ServiceKey.budgetApp) {
             BudgetAppGate(permit)
         } else {
-            DataProviderGate(plugins.dataProvider(service).stored, providerRequests, clock, permit)
+            DataProviderGate(plugins.dataProvider(service).stored, providerRequests, fetches, clock, permit)
         }
 
     /** The request context of a call to [service], with the request timeout Operator Setting (NFR-016). */
@@ -168,13 +177,7 @@ class ServiceCredentials(
                 // UC-014 BR-005: Refused credentials replace nothing; the earlier ones stay unchanged.
                 CredentialCheck.Refused -> CredentialOutcome.Refused
                 is CredentialCheck.TransientFailure -> CredentialOutcome.NotReached(check.kind)
-                // UC-014 BR-002: A check of a Data Provider's credentials counts against its Request Limit; when the limit is reached the check is not sent and nothing is stored.
-                is CredentialCheck.StoppedByGate ->
-                    if (check.reason == RefusalReason.RequestLimitReached && service != ServiceKey.budgetApp) {
-                        CredentialOutcome.RequestLimitReached(freesUpAt(service))
-                    } else {
-                        CredentialOutcome.NotSent(check.reason)
-                    }
+                is CredentialCheck.StoppedByGate -> heldBack(service, check.reason)
             }
         }
         return when (result) {
@@ -183,16 +186,20 @@ class ServiceCredentials(
         }
     }
 
-    /** UC-014 A5, UC-001 A3: when the oldest counted Provider Request of [service] leaves the 24-hour window. */
-    private suspend fun freesUpAt(service: ServiceKey): Instant {
+    /** UC-014 A5: the request gate held the check of [service] back, so nothing was sent or stored. */
+    private suspend fun heldBack(service: ServiceKey, reason: RefusalReason): CredentialOutcome {
+        if (service == ServiceKey.budgetApp) return CredentialOutcome.NotSent(reason)
         val provider = plugins.dataProvider(service).stored
         val now = clock.instant()
-        val sent = providerRequests.sentSince(now.minus(REQUEST_LIMIT_WINDOW))
-            .filter { it.dataProviderId == provider.id }
-            .map { it.sentAt }
-            .sorted()
-        val oldestCounted = sent.getOrNull(sent.size - provider.requestLimit) ?: sent.firstOrNull() ?: now
-        return oldestCounted.plus(REQUEST_LIMIT_WINDOW)
+        return when (reason) {
+            // UC-014 BR-002: A check of a Data Provider's credentials counts against its Request Limit; when the limit is reached the check is not sent and nothing is stored.
+            RefusalReason.RequestLimitReached ->
+                CredentialOutcome.RequestLimitReached(requestLimitFreesUpAt(providerRequests, provider, now) ?: now)
+            // UC-014 BR-002: While a Back-off holds for the whole Data Provider after it asked Slussen to wait, the check is not sent and nothing is stored.
+            RefusalReason.BackOff ->
+                CredentialOutcome.WaitingForProvider(fetches.backOffsOf(provider.id).requestToWaitUntil(now) ?: now)
+            RefusalReason.UnattendedAccessLimitReached, RefusalReason.OperationEnded -> CredentialOutcome.NotSent(reason)
+        }
     }
 
     suspend fun remove(service: ServiceKey): RemovalOutcome {

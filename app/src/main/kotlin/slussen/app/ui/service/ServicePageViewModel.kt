@@ -10,6 +10,8 @@ import slussen.app.ui.UiServices
 import slussen.core.credential.CredentialOutcome
 import slussen.core.credential.CredentialStatus
 import slussen.core.credential.RemovalOutcome
+import slussen.core.fetch.FetchReport
+import slussen.core.fetch.FetchStart
 import slussen.core.port.ServiceKey
 import slussen.core.settings.RequestLimitShown
 import slussen.core.settings.ServicePage
@@ -36,7 +38,8 @@ data class RequestLimitEditorUi(
 
 /**
  * The page of one service (UC-010 BR-010, UC-014 BR-007), generated from its declarations, with its credential form
- * (UC-014 steps 2-6, A1-A5) and the Request Limit setting of a Data Provider that publishes none (UC-010 A11).
+ * (UC-014 steps 2-6, A1-A5), the Request Limit setting of a Data Provider that publishes none (UC-010 A11) and, for a
+ * Data Provider, its Fetch (UC-001).
  */
 data class ServicePageUi(
     val name: String,
@@ -59,7 +62,14 @@ data class ServicePageUi(
     val uploadAsClearedShown: Boolean,
     /** Set when accepted credentials return to Connect Budgets and Bank Accounts, which started this use case (step 6). */
     val returnToSetup: Boolean,
+    /** A Data Provider's page offers its Fetch (UC-001 step 1). */
+    val canFetch: Boolean,
+    /** UC-001 A16: the warning the Operator confirms before the Fetch is made, or null. */
+    val fetchWarning: FetchWarningUi?,
 )
+
+/** UC-001 A16 (`budget.html#request-limit-warning`): the warning, its end and the risk, before the Operator confirms. */
+data class FetchWarningUi(val service: ServiceKey, val title: String, val text: String, val risk: String)
 
 /** A service's page in Connections (UC-014). [fromSetup] when Connect Budgets and Bank Accounts started it. */
 class ServicePageViewModel(
@@ -83,6 +93,7 @@ class ServicePageViewModel(
         removalQuestion: String? = null,
         returnToSetup: Boolean = false,
         requestLimitEditor: RequestLimitEditorUi? = null,
+        fetchWarning: FetchWarningUi? = null,
     ) {
         this.page = page
         val formats = services.formats
@@ -129,6 +140,8 @@ class ServicePageViewModel(
             budgetsInUse = page.budgetsInUse.map { "${it.name} · ${it.currency.code}" },
             uploadAsClearedShown = page.supportsClearedMarker,
             returnToSetup = returnToSetup,
+            canFetch = !page.isBudgetApp,
+            fetchWarning = fetchWarning,
         )
     }
 
@@ -154,7 +167,8 @@ class ServicePageViewModel(
                 // A1: use case continues at step 2; the form stays open.
                 CredentialOutcome.Refused -> show(page, entering = true, message = message)
                 // A2, A5: use case ends.
-                is CredentialOutcome.NotReached, is CredentialOutcome.RequestLimitReached, is CredentialOutcome.NotSent ->
+                is CredentialOutcome.NotReached, is CredentialOutcome.RequestLimitReached, is CredentialOutcome.NotSent,
+                is CredentialOutcome.WaitingForProvider ->
                     show(page, message = message)
                 is CredentialOutcome.Unavailable -> show(page, entering = true, message = message)
             }
@@ -226,6 +240,31 @@ class ServicePageViewModel(
             )
             SettingOutcome.NotAnOperatorSetting -> show(services.connections.servicePage(service), message = "Published by the Data Provider · not a setting")
             is SettingOutcome.Unavailable -> mutableState.value = mutableState.value?.copy(message = Texts.refusal(outcome.reason))
+        }
+    }
+
+    /** UC-001 step 1: the Operator starts a Fetch of this Data Provider. */
+    fun fetch() = startFetch(confirmedDespiteWarning = false)
+
+    /** UC-001 A16 step 2: the Operator confirms the Fetch despite the warning. */
+    fun confirmFetch() = startFetch(confirmedDespiteWarning = true)
+
+    /** UC-001 A16 step 2: the Operator cancels; nothing is sent. */
+    fun cancelFetch() {
+        mutableState.value = mutableState.value?.copy(fetchWarning = null)
+    }
+
+    private fun startFetch(confirmedDespiteWarning: Boolean) {
+        viewModelScope.launch {
+            val start = services.fetch.fetch(service, confirmedDespiteWarning)
+            val page = services.connections.servicePage(service)
+            when (start) {
+                is FetchStart.Unavailable -> show(page, message = Texts.refusal(start.reason))
+                is FetchStart.Ran -> when (val report = start.reports.single()) {
+                    is FetchReport.WarningToConfirm -> show(page, fetchWarning = Texts.fetchWarning(report, services.formats))
+                    else -> show(page, message = Texts.fetchReport(report, services.formats))
+                }
+            }
         }
     }
 

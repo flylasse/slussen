@@ -2,6 +2,8 @@ package slussen.app.ui
 
 import slussen.core.credential.CredentialOutcome
 import slussen.core.credential.CredentialStatus
+import slussen.core.fetch.FetchReport
+import slussen.app.ui.service.FetchWarningUi
 import slussen.core.operation.OperationRefusal
 import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
@@ -46,6 +48,9 @@ object Texts {
         is CredentialOutcome.NotReached -> "$service could not be reached: ${failure(outcome.kind)} · nothing stored"
         is CredentialOutcome.RequestLimitReached ->
             "Blocked: Request Limit reached · not checked · frees up from ${formats.dateTime(outcome.freesUpAt)} · " +
+                "nothing stored, the earlier credentials stay unchanged"
+        is CredentialOutcome.WaitingForProvider ->
+            "Blocked: waiting for the provider · not checked · until ${formats.dateTime(outcome.until)} · " +
                 "nothing stored, the earlier credentials stay unchanged"
         is CredentialOutcome.NotSent -> "Not checked: ${gateRefusal(outcome.reason)} · nothing stored, the earlier credentials stay unchanged"
         is CredentialOutcome.Unavailable -> refusal(outcome.reason)
@@ -131,6 +136,62 @@ object Texts {
     }
 
     fun fetch(outcome: FetchOutcome): String = outcome.text
+
+    /** What one Fetch of a Data Provider came to (UC-001), in one line, the way `budget.html` and `setup.html` show it. */
+    fun fetchReport(report: FetchReport, formats: Formats): String {
+        val name = report.dataProviderName
+        return when (report) {
+            is FetchReport.Fetched -> fetched(report, formats)
+            is FetchReport.ServedFromFetchCooldown -> listOfNotNull(
+                "$name · Served from the Fetch of ${formats.time(report.lastFetchAt)} · next ${formats.time(report.contactsAgainAt)}",
+                report.read?.let { read ->
+                    "read the Bank Accounts added since: " + read.identified.joinToString(", ").ifEmpty { "none delivered" }
+                },
+                report.requestLimitFreesUpAt?.let {
+                    "Bank Accounts added since not read · Blocked: Request Limit reached · frees up from ${formats.dateTime(it)}"
+                },
+            ).joinToString(" · ")
+            is FetchReport.WaitingForProvider ->
+                "Blocked: $name, waiting for the provider · until ${formats.dateTime(report.until)}"
+            is FetchReport.RequestLimitReached ->
+                "Blocked: $name, Request Limit reached · frees up from ${formats.dateTime(report.freesUpAt)}"
+            is FetchReport.Failed ->
+                "$name could not be read: ${failure(report.kind)} · ${formats.time(report.failedAt)} · stored data unchanged · Fetch again"
+            is FetchReport.CredentialsRefused -> "Blocked: $name, credentials refused · Enter credentials"
+            is FetchReport.CredentialsMissing -> "Blocked: $name, credentials missing · Enter credentials"
+            is FetchReport.NeedsBankConsent ->
+                "$name · not fetched · a Bank Consent is needed first, which comes with Grant Bank Consent"
+            is FetchReport.WarningToConfirm -> fetchWarning(report, formats).title
+            is FetchReport.NotSent -> "$name · not fetched · ${gateRefusal(report.reason)}"
+        }
+    }
+
+    private fun fetched(report: FetchReport.Fetched, formats: Formats): String = listOfNotNull(
+        "${report.dataProviderName} · Fetched ${formats.time(report.fetchedAt)}",
+        "Bank Accounts offered: ${report.offered}",
+        report.identified.size.takeIf { it > 0 }?.let { "added and identified: $it" },
+        report.notAdded.takeIf { it > 0 }?.let { "not added: $it" },
+        report.waitingUntil?.let { "Blocked: waiting for the provider · until ${formats.dateTime(it)}" },
+        report.warning?.let {
+            "${report.dataProviderName} warned that Slussen is near its Request Limit · Scheduled Fetches leave it alone " +
+                "until ${formats.dateTime(it.endsAt)} · further requests can get Slussen's access to " +
+                "${report.dataProviderName} disabled"
+        },
+    ).joinToString(" · ")
+
+    /** UC-001 A16 step 1 (`budget.html#request-limit-warning`): the warning, its end and the risk. */
+    fun fetchWarning(report: FetchReport.WarningToConfirm, formats: Formats): FetchWarningUi {
+        val name = report.dataProviderName
+        val shown = formats
+        return FetchWarningUi(
+            service = report.service,
+            title = "Fetch $name despite its warning?",
+            text = "$name warned at ${shown.time(report.warning.warnedAt)} that Slussen is near its Request Limit. " +
+                "Scheduled Fetches leave it alone until ${shown.dateTime(report.warning.endsAt)} " +
+                "(the Request Limit warning pause, an Operator Setting).",
+            risk = "Further requests can get Slussen's access to $name disabled.",
+        )
+    }
 
     fun fetchResult(outcome: FetchResultOutcome): String = outcome.text
 }

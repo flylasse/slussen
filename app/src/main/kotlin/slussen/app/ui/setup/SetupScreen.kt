@@ -46,9 +46,10 @@ fun SetupScreen(
     onSaveBudgets: () -> Unit,
     onSelectOffered: (Long) -> Unit,
     onPair: (Long) -> Unit,
-    onSaveNaming: (String, BankAccountType?, BankChoice?, String) -> Unit,
+    onSaveNaming: (String, BankAccountType?, BankChoice?, String, String) -> Unit,
     onCancelNaming: () -> Unit,
     onAddFromFiles: (FileAccountEntry) -> Unit,
+    onFetch: (ServiceKey) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
@@ -90,7 +91,7 @@ fun SetupScreen(
                 }
                 if (ui.budgets.isNotEmpty()) item { Button(onClick = onSaveBudgets) { Text("Continue") } }
             }
-            SetupStep.BankAccounts -> bankAccountsStep(ui, onSelectOffered, onPair, onSaveNaming, onCancelNaming, onAddFromFiles)
+            SetupStep.BankAccounts -> bankAccountsStep(ui, onSelectOffered, onPair, onSaveNaming, onCancelNaming, onAddFromFiles, onFetch)
         }
     }
 }
@@ -99,9 +100,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.bankAccountsStep(
     ui: SetupUi,
     onSelectOffered: (Long) -> Unit,
     onPair: (Long) -> Unit,
-    onSaveNaming: (String, BankAccountType?, BankChoice?, String) -> Unit,
+    onSaveNaming: (String, BankAccountType?, BankChoice?, String, String) -> Unit,
     onCancelNaming: () -> Unit,
     onAddFromFiles: (FileAccountEntry) -> Unit,
+    onFetch: (ServiceKey) -> Unit,
 ) {
     val naming = ui.naming
     if (naming != null) {
@@ -111,6 +113,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.bankAccountsStep(
     items(ui.sources) { source ->
         SectionTitle("${source.name} · Offered Bank Accounts")
         if (source.remedy != null) Muted(source.remedy)
+        // A3 (`setup.html#consent-first`): the Fetch that offers the Bank Accounts of this Source (UC-001).
+        if (source.fetchAction != null) OutlinedButton(onClick = { onFetch(source.service) }) { Text(source.fetchAction) }
         source.offered.forEach { offered ->
             SlussenCard(
                 modifier = Modifier.clickable { onSelectOffered(offered.offeredBankAccountId) },
@@ -138,15 +142,17 @@ private fun androidx.compose.foundation.lazy.LazyListScope.bankAccountsStep(
 
 /**
  * Steps 8-9 (`setup.html#pair-name`): accept or edit the proposed name, confirm or change the Bank Account type and the
- * Bank, and set an optional Start Date (UC-013 BR-004, BR-005, BR-009).
+ * Bank, state the currency when the Source states none, and set an optional Start Date (UC-013 BR-004, BR-005, BR-009,
+ * BR-010).
  */
 @Composable
-private fun NamingCard(naming: NamingUi, onSave: (String, BankAccountType?, BankChoice?, String) -> Unit, onCancel: () -> Unit) {
+private fun NamingCard(naming: NamingUi, onSave: (String, BankAccountType?, BankChoice?, String, String) -> Unit, onCancel: () -> Unit) {
     val key = naming.offeredBankAccountId to naming.budgetAccountId
     var name by remember(key) { mutableStateOf(naming.proposedName) }
     var type by remember(key) { mutableStateOf<BankAccountType?>(naming.proposedType) }
     var bank by remember(key) { mutableStateOf<BankChoice?>(naming.proposedBank?.let { BankChoice.Known(it.bankId) }) }
     var startDate by remember(key) { mutableStateOf("") }
+    var currency by remember(key) { mutableStateOf(naming.currency) }
     SlussenCard {
         Text("Name, Bank Account type and Bank", fontWeight = FontWeight.SemiBold)
         Muted(naming.title)
@@ -155,11 +161,18 @@ private fun NamingCard(naming: NamingUi, onSave: (String, BankAccountType?, Bank
         TypeChooser(naming.types, type) { type = it }
         BankChooser(naming.knownBanks, bank) { bank = it }
         Muted(naming.note)
+        Text("Currency")
+        if (naming.currencyStatedBySource) {
+            Muted("${naming.currency} · ${naming.currencyNote}")
+        } else {
+            OutlinedTextField(value = currency, onValueChange = { currency = it }, singleLine = true, label = { Text("Currency") })
+            Muted(naming.currencyNote)
+        }
         Text("Start Date · optional")
         Muted("Nothing before a Start Date is offered for Upload")
         OutlinedTextField(value = startDate, onValueChange = { startDate = it }, singleLine = true, placeholder = { Text("2026-09-01") })
         Row {
-            Button(onClick = { onSave(name, type, bank, startDate) }) { Text("Save") }
+            Button(onClick = { onSave(name, type, bank, startDate, currency) }) { Text("Save") }
             TextButton(onClick = onCancel) { Text("Cancel") }
         }
     }

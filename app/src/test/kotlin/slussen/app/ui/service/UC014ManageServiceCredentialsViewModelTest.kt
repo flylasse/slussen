@@ -164,7 +164,7 @@ class UC014ManageServiceCredentialsViewModelTest {
     }
 
     @Test
-    @UseCase(id = "UC-014", scenario = "A5: Request Limit Reached", businessRules = ["BR-002"])
+    @UseCase(id = "UC-014", scenario = "A5: Held Back by the Request Gate", businessRules = ["BR-002"])
     @DisplayName("A5: at the Request Limit the check is not sent; the page shows the Blocked Reason with the time it frees up, nothing stored, and the form closes")
     fun requestLimitReachedIsShown() {
         runBlocking { repeat(20) { slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) } }
@@ -229,5 +229,27 @@ class UC014ManageServiceCredentialsViewModelTest {
         assertEquals(listOf("Household · USD", "Summer House · EUR"), ui.budgetsInUse)
         assertTrue(ui.uploadAsClearedShown)
         assertNull(ui.fetchCooldown)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A5: Held Back by the Request Gate", businessRules = ["BR-002"])
+    @DisplayName("A5: during a Back-off of the whole Data Provider the page shows waiting for the provider with the time it ends, nothing stored, and the form closes")
+    fun backOffIsShown() {
+        val endsAt = slice.clock.instant().plus(java.time.Duration.ofHours(3))
+        slice.importStatusStore.backOffList += slussen.core.port.StoredBackOff(
+            slice.feedsId, null, slussen.core.port.BackOffCause.RequestToWait, slice.clock.instant(), endsAt,
+        )
+        val page = page(slice.feedsKey)
+        page.startEntering()
+
+        page.save(mapOf("setupKey" to "PLANTED-NEW-SETUP-KEY"))
+
+        assertEquals(
+            "Blocked: waiting for the provider · not checked · until 2026-10-15 17:00 · nothing stored, the earlier credentials stay unchanged",
+            page.ui().message,
+        )
+        assertFalse(page.ui().entering)
+        assertEquals("Not entered", page.ui().credentials)
+        assertEquals(0, slice.feeds.credentials.requestsSent)
     }
 }

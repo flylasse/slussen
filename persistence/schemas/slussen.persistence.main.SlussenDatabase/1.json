@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "7a97abf8e9ddc4197c6c53c40e03a97e",
+    "identityHash": "15331dec6847a1e5791c3de5a43c445b",
     "entities": [
       {
         "tableName": "operator_settings",
@@ -890,6 +890,164 @@
         ]
       },
       {
+        "tableName": "fetch",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `data_provider_id` INTEGER NOT NULL, `started_at` INTEGER NOT NULL, `started_by` TEXT NOT NULL, `outcome` TEXT NOT NULL, FOREIGN KEY(`data_provider_id`) REFERENCES `data_provider`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataProviderId",
+            "columnName": "data_provider_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "started_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedBy",
+            "columnName": "started_by",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outcome",
+            "columnName": "outcome",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_fetch_data_provider_id_started_at",
+            "unique": false,
+            "columnNames": [
+              "data_provider_id",
+              "started_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fetch_data_provider_id_started_at` ON `${TABLE_NAME}` (`data_provider_id`, `started_at`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "data_provider",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "data_provider_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "back_off",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `data_provider_id` INTEGER NOT NULL, `bank_id` INTEGER, `cause` TEXT NOT NULL, `starts_at` INTEGER NOT NULL, `ends_at` INTEGER NOT NULL, FOREIGN KEY(`data_provider_id`) REFERENCES `data_provider`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bank_id`) REFERENCES `bank`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataProviderId",
+            "columnName": "data_provider_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankId",
+            "columnName": "bank_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "cause",
+            "columnName": "cause",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startsAt",
+            "columnName": "starts_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endsAt",
+            "columnName": "ends_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_back_off_data_provider_id",
+            "unique": false,
+            "columnNames": [
+              "data_provider_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_back_off_data_provider_id` ON `${TABLE_NAME}` (`data_provider_id`)"
+          },
+          {
+            "name": "index_back_off_bank_id",
+            "unique": false,
+            "columnNames": [
+              "bank_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_back_off_bank_id` ON `${TABLE_NAME}` (`bank_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "data_provider",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "data_provider_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "bank",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bank_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
         "tableName": "recovery_check",
         "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `cause` TEXT NOT NULL, `opened_at` INTEGER NOT NULL, `compared_at` INTEGER, `confirmed_at` INTEGER)",
         "fields": [
@@ -979,7 +1137,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7a97abf8e9ddc4197c6c53c40e03a97e')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '15331dec6847a1e5791c3de5a43c445b')"
     ]
   }
 }

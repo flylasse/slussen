@@ -4,6 +4,7 @@ import kotlinx.coroutines.runBlocking
 import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
+import slussen.core.fetch.FetchTransactions
 import slussen.core.journal.DecisionJournal
 import slussen.core.mapping.AccountMappings
 import slussen.core.operation.OperationCoordinator
@@ -21,7 +22,7 @@ import slussen.pluginapi.value.Secret
 import java.util.Random
 
 /**
- * The slices of Phase 7 and 7a wired the way the composition root wires it (ADR-001 §5), on the fakes of `:testing`: the
+ * The slices of Phase 7, 7a and 8a wired the way the composition root wires it (ADR-001 §5), on the fakes of `:testing`: the
  * Integration layer of `docs/architecture/development.md` (Service, on fakes).
  */
 class TestSlice(
@@ -56,7 +57,10 @@ class TestSlice(
     val journal = DecisionJournal(journalRecorder, settings, clock)
     val refusals = CredentialRefusals()
     val credentials = ServiceCredentials(
-        plugins, vault, coordinator, journal, settings, providerRequests, refusals, clock,
+        plugins, vault, coordinator, journal, settings, providerRequests, importStatusStore, refusals, clock,
+    )
+    val fetch = FetchTransactions(
+        plugins, credentials, connectionStore, offeredStore, importStatusStore, providerRequests, coordinator, settings, clock,
     )
     val connections = ConnectionsOverview(plugins, credentials, connectionStore, importStatusStore, settings, clock)
     val connect = BudgetsAndBankAccounts(

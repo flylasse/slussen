@@ -42,7 +42,8 @@ class UC008CheckImportStatusScreenIT {
         setContent {
             SlussenTheme {
                 viewModel.state.collectAsState().value?.let {
-                    OverviewScreen(it, onBudget = {}, onSetUp = {}, onConfirmRecoveryCheck = viewModel::confirmRecoveryCheck, onRecentFetches = {})
+                    OverviewScreen(it, onBudget = {}, onSetUp = {}, onConfirmRecoveryCheck = viewModel::confirmRecoveryCheck, onRecentFetches = {},
+                        onFetchAll = {}, onConfirmFetch = {}, onCancelFetch = {})
                 }
             }
         }
@@ -63,7 +64,8 @@ class UC008CheckImportStatusScreenIT {
         setContent {
             SlussenTheme {
                 viewModel.state.collectAsState().value?.let {
-                    OverviewScreen(it, onBudget = {}, onSetUp = {}, onConfirmRecoveryCheck = {}, onRecentFetches = {})
+                    OverviewScreen(it, onBudget = {}, onSetUp = {}, onConfirmRecoveryCheck = {}, onRecentFetches = {},
+                        onFetchAll = {}, onConfirmFetch = {}, onCancelFetch = {})
                 }
             }
         }

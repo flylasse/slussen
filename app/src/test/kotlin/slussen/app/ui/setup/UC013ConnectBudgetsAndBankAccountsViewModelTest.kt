@@ -307,7 +307,9 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
         setup.goTo(SetupStep.BankAccounts)
 
         val sources = ui().sources.associateBy { it.name }
-        assertEquals("No Bank Accounts offered yet · Fetch Kestrel Feeds (comes with Fetch Transactions)", sources.getValue("Kestrel Feeds").remedy)
+        assertEquals("No Bank Accounts offered yet", sources.getValue("Kestrel Feeds").remedy)
+        assertEquals("Fetch Kestrel Feeds", sources.getValue("Kestrel Feeds").fetchAction)
+        assertNull(sources.getValue("Aurora Open Banking").fetchAction)
         assertEquals(
             "No Bank Accounts offered yet · Grant Bank Consent (comes with Grant Bank Consent)",
             sources.getValue("Aurora Open Banking").remedy,
@@ -372,5 +374,101 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
         setup.goTo(SetupStep.Budgets)
 
         assertEquals("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", ui().message)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A3: No Offered Bank Accounts for a Source")
+    @DisplayName("A3: starting the Fetch from the pairing step stores the Offered Bank Accounts and pairing continues at step 5 with them")
+    fun fetchFromThePairingStepOffersTheBankAccounts() {
+        throughBudgets()
+        setup.goTo(SetupStep.BankAccounts)
+        slice.feeds.fetchAnswer = {
+            slussen.pluginapi.provider.FetchResponse(
+                slussen.pluginapi.provider.SourceOutcome.Completed,
+                emptyList(),
+                listOf(
+                    slussen.pluginapi.provider.DeliveredBankAccount(
+                        "acct-4410", "Kestrel Bank", "CHK", "checking", USD, null,
+                        slussen.pluginapi.provider.BankAccountResult.Read(emptyList(), amount(4140, 50)),
+                    ),
+                ),
+            )
+        }
+
+        setup.fetch(slice.feedsKey)
+
+        val feeds = ui().sources.single { it.name == "Kestrel Feeds" }
+        assertEquals(listOf("CHK"), feeds.offered.map { it.title })
+        assertEquals("4,140.05", feeds.offered.single().balance)
+        assertNull(feeds.fetchAction)
+        assertEquals("Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 1 · not added: 1", ui().message)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-010"])
+    @DisplayName("BR-010: when the Offered Bank Account states no currency, step 9 asks for it with the Budget Account's currency proposed, and the Bank Account is added with it")
+    fun currencyIsStatedAtStep9() {
+        throughBudgets()
+        runBlocking {
+            slice.offeredStore.replaceOffered(
+                slice.feedsId,
+                null,
+                listOf(ExampleData.offered("acct-9001", "Harbor Joint", "checking", null, "9001", amount(310), null, slice.clock.instant())),
+            )
+        }
+        setup.goTo(SetupStep.BankAccounts)
+        setup.selectOffered(offeredId("acct-9001"))
+        setup.pairWith(freeId("Checking"))
+
+        val naming = ui().naming!!
+        assertEquals("USD", naming.currency)
+        assertFalse(naming.currencyStatedBySource)
+        assertEquals("Kestrel Feeds states no currency · state it, the Budget Account's by default", naming.currencyNote)
+
+        setup.saveNaming("Harbor Joint", naming.proposedType, BankChoice.Named("Harbor Bank"), "", "USD")
+
+        assertEquals("Bank Account Harbor Joint added · fetched from the next Fetch", ui().message)
+        assertEquals(USD, runBlocking { slice.connectionStore.bankAccounts().single().currency })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A5: Budget Account Already Mapped or in Another Currency", businessRules = ["BR-010"])
+    @DisplayName("A5, BR-010: a stated currency other than the Budget's is refused with why; a currency that is no ISO code is not accepted")
+    fun statedCurrencyIsChecked() {
+        throughBudgets()
+        runBlocking {
+            slice.offeredStore.replaceOffered(
+                slice.feedsId,
+                null,
+                listOf(ExampleData.offered("acct-9001", "Harbor Joint", "checking", null, "9001", amount(310), null, slice.clock.instant())),
+            )
+        }
+        setup.goTo(SetupStep.BankAccounts)
+        setup.selectOffered(offeredId("acct-9001"))
+        setup.pairWith(freeId("Checking"))
+        val naming = ui().naming!!
+
+        setup.saveNaming("Harbor Joint", naming.proposedType, BankChoice.Named("Harbor Bank"), "", "EUR")
+        assertEquals("Checking is in USD, Harbor Joint in EUR · not paired", ui().message)
+
+        setup.saveNaming("Harbor Joint", naming.proposedType, BankChoice.Named("Harbor Bank"), "", "dollars")
+        assertEquals("The currency is an ISO 4217 code of three capital letters, like USD · not added", ui().message)
+        assertTrue(runBlocking { slice.connectionStore.bankAccounts().isEmpty() })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-010"])
+    @DisplayName("BR-010: a currency the Data Provider states is shown as stated by it")
+    fun currencyStatedBySourceIsShown() {
+        throughBudgets()
+        offer()
+        setup.goTo(SetupStep.BankAccounts)
+        setup.selectOffered(offeredId("acct-4410"))
+        setup.pairWith(freeId("Checking"))
+
+        val naming = ui().naming!!
+        assertEquals("USD", naming.currency)
+        assertTrue(naming.currencyStatedBySource)
+        assertEquals("Stated by Kestrel Feeds", naming.currencyNote)
     }
 }

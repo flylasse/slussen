@@ -18,11 +18,14 @@ import slussen.pluginapi.credential.CredentialField
 import slussen.pluginapi.credential.CredentialForm
 import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.credential.FieldKind
+import slussen.pluginapi.provider.BankAccountSelection
 import slussen.pluginapi.provider.BankConsentCapability
 import slussen.pluginapi.provider.DataProvider
 import slussen.pluginapi.provider.DataProviderProfile
 import slussen.pluginapi.provider.FetchRequest
 import slussen.pluginapi.provider.FetchResponse
+import slussen.pluginapi.provider.ReadKind
+import slussen.pluginapi.provider.SourceOutcome
 import slussen.pluginapi.request.Admission
 import slussen.pluginapi.request.RequestContext
 import slussen.pluginapi.request.RequestKind
@@ -44,9 +47,16 @@ class ScriptedCredentials(
     var requestsSent = 0
         private set
 
+    /**
+     * When true, the part sees before sending anything that the entry cannot be valid, for example a malformed token,
+     * and answers `Refused` without calling the gate (ADR-001 §4.5, UC-014 A1).
+     */
+    var refusesUnsent: Boolean = false
+
     override suspend fun check(input: CredentialInput, context: RequestContext): CredentialCheck {
         checkedInputs += input
         contexts += context
+        if (refusesUnsent) return CredentialCheck.Refused
         val admission = context.gate.admit(RequestSummary(requestKind, null, null))
         if (admission is Admission.Refused) return CredentialCheck.StoppedByGate(admission.reason)
         requestsSent++
@@ -120,7 +130,12 @@ class FakeBudgetApp(
     )
 }
 
-/** A fake Data Provider with invented declarations; [fetch] fails the test, because opening Slussen must not fetch. */
+/**
+ * A fake Data Provider with invented declarations. Its [fetch] asks the gate before its one request, like a part whose
+ * Data Provider answers every Bank Account in one request (ADR-001 §4.0), and then answers with [fetchAnswer]; a test
+ * that scripts no answer fails when it is asked, as opening Slussen must not fetch (UC-008 BR-001). Every request and
+ * context it was given is kept for assertions.
+ */
 class FakeDataProvider(
     override val profile: DataProviderProfile,
     override val credentials: ScriptedCredentials = ScriptedCredentials(
@@ -129,14 +144,39 @@ class FakeDataProvider(
         CredentialCheck.Accepted(Secret(ExampleData.EXCHANGED_ACCESS_CREDENTIAL)),
     ),
 ) : DataProvider {
+    /** How often [fetch] was called, whether or not the gate let its request out. */
     var fetches = 0
         private set
+
+    /** How many requests the gate let out. */
+    var requestsSent = 0
+        private set
+
+    val fetchRequests = mutableListOf<FetchRequest>()
+    val fetchContexts = mutableListOf<RequestContext>()
+
+    /** What the Data Provider answers once the gate admitted the request. */
+    var fetchAnswer: (FetchRequest) -> FetchResponse = { error("No Fetch answer scripted (UC-001).") }
 
     override val bankConsent: BankConsentCapability? = null
 
     override suspend fun fetch(request: FetchRequest, context: RequestContext): FetchResponse {
         fetches++
-        error("No Fetch in this slice (UC-001).")
+        fetchRequests += request
+        fetchContexts += context
+        val admission = context.gate.admit(RequestSummary(kindOf(request), null, null))
+        if (admission is Admission.Refused) {
+            return FetchResponse(SourceOutcome.StoppedByGate(admission.reason), emptyList(), emptyList())
+        }
+        requestsSent++
+        return fetchAnswer(request)
+    }
+
+    private fun kindOf(request: FetchRequest): RequestKind = when (val selection = request.bankAccounts) {
+        is BankAccountSelection.AllForIdentification ->
+            if (selection.read == ReadKind.Balance) RequestKind.Balance else RequestKind.Transactions
+        is BankAccountSelection.Selected ->
+            if (selection.bankAccounts.all { it.read == ReadKind.Balance }) RequestKind.Balance else RequestKind.Transactions
     }
 }
 

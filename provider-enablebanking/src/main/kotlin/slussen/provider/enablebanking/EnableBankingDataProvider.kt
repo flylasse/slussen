@@ -33,13 +33,14 @@ class EnableBankingDataProvider internal constructor(
      * https://enablebanking.com/docs/faq/: quotas are set by contract), so its Request Limit is a default of 50 requests
      * in any 24 hours, an Operator Setting between 10 and 500; the Banks' PSD2 cap is the Unattended Access limit
      * (C-006), counted separately. Its default Fetch Cooldown of 360 minutes, an Operator Setting, follows the same FAQ's
-     * advice to continue after 6 hours once a Bank answers that its rate limit is exceeded. `givesStableReference` is not
-     * stated in the specification (Phase 7a, Open): Enable Banking passes on each Bank's own references, which not every
-     * Bank gives every transaction.
+     * advice to continue after 6 hours once a Bank answers that its rate limit is exceeded. It gives no Stable Reference
+     * (S-34; the same FAQ: not all Banks (ASPSPs) provide unique transaction references, and some duplicate them), so its
+     * transactions are delivered with `stableReference` null and their Import Identifiers are of kind `F` (ADR-008 §2).
      */
     override val profile: DataProviderProfile = DataProviderProfile(
         name = "Enable Banking",
         sourceKey = "enable-banking",
+        // UC-012 BR-005: Enable Banking gives no Stable Reference, since not every Bank gives unique transaction references (ADR-001 §4.1).
         givesStableReference = false,
         needsBankConsent = true,
         defaultFetchCooldownMinutes = 360,

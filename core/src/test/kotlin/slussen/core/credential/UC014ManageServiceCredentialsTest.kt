@@ -10,6 +10,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import slussen.testing.TestSlice
 import slussen.core.operation.OperationRefusal
+import slussen.core.port.BackOffCause
 import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
 import slussen.core.port.CoordinatorMode
@@ -18,6 +19,7 @@ import slussen.core.port.JournalEventKind
 import slussen.core.port.NewBankAccount
 import slussen.core.port.ServiceKey
 import slussen.core.port.StartedBy
+import slussen.core.port.StoredBackOff
 import slussen.core.port.StoredFetch
 import slussen.core.settings.RequestLimitShown
 import slussen.core.settings.ServiceStatus
@@ -167,7 +169,7 @@ class UC014ManageServiceCredentialsTest {
     }
 
     @Test
-    @UseCase(id = "UC-014", scenario = "A5: Request Limit Reached", businessRules = ["BR-002"])
+    @UseCase(id = "UC-014", scenario = "A5: Held Back by the Request Gate", businessRules = ["BR-002"])
     @DisplayName("A5: at the Data Provider's Request Limit the check is not sent, nothing is stored, the earlier credentials stay, and the time it frees up is shown")
     fun checkAtTheRequestLimitIsNotSent() = runTest {
         val limit = 20
@@ -191,7 +193,7 @@ class UC014ManageServiceCredentialsTest {
     }
 
     @Test
-    @UseCase(id = "UC-014", scenario = "A5: Request Limit Reached", businessRules = ["BR-002"])
+    @UseCase(id = "UC-014", scenario = "A5: Held Back by the Request Gate", businessRules = ["BR-002"])
     @DisplayName("A5: without earlier credentials nothing is stored; once the oldest counted Provider Request has left the 24-hour window, the check is sent again")
     fun checkIsSentAgainOnceTheLimitFreesUp() = runTest {
         val first = slice.clock.instant()
@@ -210,7 +212,7 @@ class UC014ManageServiceCredentialsTest {
     }
 
     @Test
-    @UseCase(id = "UC-014", scenario = "A5: Request Limit Reached", businessRules = ["BR-002"])
+    @UseCase(id = "UC-014", scenario = "A5: Held Back by the Request Gate", businessRules = ["BR-002"])
     @DisplayName("A5: the Request Limit the Operator set for a Data Provider that publishes none holds for its credential check")
     fun operatorsRequestLimitHoldsForTheCheck() = runTest {
         slice.providerSettings.changeRequestLimit(slice.openBankingKey, 10)
@@ -435,5 +437,74 @@ class UC014ManageServiceCredentialsTest {
             slice.connections.servicePage(slice.openBankingKey).requestLimit,
         )
         assertEquals(slice.feeds.credentials.form.fields, page.credentialFields)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A5: Held Back by the Request Gate", businessRules = ["BR-002"])
+    @DisplayName("A5: while a Back-off holds for the whole Data Provider after it asked Slussen to wait, the check is not sent, nothing is stored, and the time the Back-off ends is shown")
+    fun checkDuringABackOffOfTheDataProviderIsNotSent() = runTest {
+        slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        val acceptedAt = slice.clock.instant()
+        val endsAt = slice.clock.instant().plus(Duration.ofHours(3))
+        slice.importStatusStore.backOffList += StoredBackOff(slice.feedsId, null, BackOffCause.RequestToWait, slice.clock.instant(), endsAt)
+        slice.clock.advance(Duration.ofMinutes(5))
+        slice.feeds.credentials.answer = CredentialCheck.Accepted(Secret("PLANTED-NEVER-STORED"))
+        val journalBefore = slice.journalRecorder.entries.size
+
+        val outcome = slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to "PLANTED-NEW-SETUP-KEY"))
+
+        assertEquals(CredentialOutcome.WaitingForProvider(endsAt), outcome)
+        assertEquals(1, slice.feeds.credentials.requestsSent)
+        assertEquals(1, slice.providerRequests.requests.size)
+        assertEquals(ExampleData.EXCHANGED_ACCESS_CREDENTIAL, storedSecret(slice.feedsKey))
+        assertEquals(CredentialStatus.Accepted(acceptedAt), slice.credentials.status(slice.feedsKey))
+        assertEquals(journalBefore, slice.journalRecorder.entries.size)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A5: Held Back by the Request Gate", businessRules = ["BR-002"])
+    @DisplayName("A5: after the Back-off has ended, the check is sent again")
+    fun checkIsSentAgainAfterTheBackOff() = runTest {
+        val endsAt = slice.clock.instant().plus(Duration.ofHours(3))
+        slice.importStatusStore.backOffList += StoredBackOff(slice.feedsId, null, BackOffCause.RequestToWait, slice.clock.instant(), endsAt)
+        assertEquals(
+            CredentialOutcome.WaitingForProvider(endsAt),
+            slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)),
+        )
+
+        slice.clock.set(endsAt)
+        val again = slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+
+        assertInstanceOf(CredentialOutcome.Accepted::class.java, again)
+        assertEquals(1, slice.feeds.credentials.requestsSent)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A5: Held Back by the Request Gate", businessRules = ["BR-002"])
+    @DisplayName("A5: a Back-off with cause Request Limit Warning, or one of a single Bank, does not hold a credential check back (S-34, Assumed)")
+    fun warningOrBankBackOffDoesNotHoldTheCheckBack() = runTest {
+        val endsAt = slice.clock.instant().plus(Duration.ofHours(3))
+        slice.importStatusStore.backOffList += StoredBackOff(slice.feedsId, null, BackOffCause.RequestLimitWarning, slice.clock.instant(), endsAt)
+        slice.importStatusStore.backOffList += StoredBackOff(slice.feedsId, 77L, BackOffCause.RequestToWait, slice.clock.instant(), endsAt)
+
+        val outcome = slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+
+        assertInstanceOf(CredentialOutcome.Accepted::class.java, outcome)
+        assertEquals(1, slice.feeds.credentials.requestsSent)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A1: Credentials Refused", businessRules = ["BR-002"])
+    @DisplayName("A1: an entry the part sees cannot be valid before sending is refused: nothing is sent, no Provider Request is counted, nothing is stored")
+    fun entryThatCannotBeValidIsRefusedUnsent() = runTest {
+        slice.feeds.credentials.refusesUnsent = true
+
+        val outcome = slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to "not a setup key"))
+
+        assertEquals(CredentialOutcome.Refused, outcome)
+        assertEquals(0, slice.feeds.credentials.requestsSent)
+        assertTrue(slice.providerRequests.requests.isEmpty())
+        assertNull(slice.vault.read(slice.feedsKey))
+        assertTrue(slice.journalRecorder.entries.isEmpty())
     }
 }

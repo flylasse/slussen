@@ -79,6 +79,8 @@ class EnableBankingDataProviderTest : DataProviderContractTest() {
 
     override fun credentialServiceNeverAnswering() = answering(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
 
+    override fun credentialsThatCannotBeValid() = CredentialScenario(provider().credentials, input("not a key"))
+
     override fun requestsReceived(): Int = server.requestCount
 
     override fun runningCalls(): Int = http.dispatcher.runningCallsCount()
@@ -145,6 +147,13 @@ class EnableBankingDataProviderTest : DataProviderContractTest() {
         assertEquals("enable-banking", profile.sourceKey)
         assertEquals(360, profile.defaultFetchCooldownMinutes)
         assertEquals(true, profile.needsBankConsent)
+    }
+
+    @Test
+    @UseCase(id = "UC-012", businessRules = ["BR-005"])
+    @DisplayName("BR-005: Enable Banking declares no Stable Reference, since not all Banks give unique transaction references (ADR-001 §4.1, S-34)")
+    fun declaresNoStableReference() {
+        assertEquals(false, EnableBankingDataProvider(SilentLog).profile.givesStableReference)
     }
 
     private fun assertSignedByTheApplication(token: String) {

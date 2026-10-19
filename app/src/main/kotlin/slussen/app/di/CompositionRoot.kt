@@ -7,6 +7,7 @@ import slussen.budgetapp.ynab.YnabBudgetApp
 import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
+import slussen.core.fetch.FetchTransactions
 import slussen.core.journal.DecisionJournal
 import slussen.core.mapping.AccountMappings
 import slussen.core.operation.OperationCoordinator
@@ -54,7 +55,7 @@ class CompositionRoot(log: SlussenLog) {
         val journal = DecisionJournal(storage.journalRecorder, storage.settings, clock)
         val credentials = ServiceCredentials(
             registered, storage.credentialVault, coordinator, journal, storage.settings, storage.providerRequests,
-            CredentialRefusals(), clock,
+            storage.fetches, CredentialRefusals(), clock,
         )
         return UiServices(
             credentials = credentials,
@@ -79,6 +80,10 @@ class CompositionRoot(log: SlussenLog) {
                 settings = storage.settings,
                 journal = journal,
                 clock = clock,
+            ),
+            fetch = FetchTransactions(
+                registered, credentials, storage.connections, storage.offered, storage.fetches, storage.providerRequests,
+                coordinator, storage.settings, clock,
             ),
             formats = Formats(clock.zone),
             clock = clock,

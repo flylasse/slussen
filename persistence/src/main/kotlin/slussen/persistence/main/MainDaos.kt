@@ -281,6 +281,37 @@ abstract class ProviderRequestDao {
 }
 
 @Dao
+abstract class FetchDao {
+    @Query("SELECT * FROM fetch ORDER BY started_at DESC, id DESC")
+    abstract suspend fun recent(): List<FetchEntity>
+
+    @Query("SELECT * FROM fetch WHERE data_provider_id = :dataProviderId ORDER BY started_at DESC, id DESC")
+    abstract suspend fun of(dataProviderId: Long): List<FetchEntity>
+
+    @Insert
+    protected abstract suspend fun insert(fetch: FetchEntity)
+
+    @Query("DELETE FROM fetch WHERE id NOT IN (SELECT id FROM fetch ORDER BY started_at DESC, id DESC LIMIT :keep)")
+    protected abstract suspend fun keepMostRecent(keep: Int)
+
+    /** The new Fetch and the housekeeping of `OPERATOR_SETTINGS.fetch_history_size`, in one transaction. */
+    @Transaction
+    open suspend fun record(fetch: FetchEntity, keep: Int) {
+        insert(fetch)
+        keepMostRecent(keep)
+    }
+
+    @Query("SELECT * FROM back_off ORDER BY id")
+    abstract suspend fun backOffs(): List<BackOffEntity>
+
+    @Query("SELECT * FROM back_off WHERE data_provider_id = :dataProviderId ORDER BY id")
+    abstract suspend fun backOffsOf(dataProviderId: Long): List<BackOffEntity>
+
+    @Insert
+    abstract suspend fun insertBackOff(backOff: BackOffEntity)
+}
+
+@Dao
 abstract class RecoveryDao {
     @Query("SELECT * FROM recovery_check WHERE confirmed_at IS NULL ORDER BY id")
     abstract suspend fun openChecks(): List<RecoveryCheckEntity>

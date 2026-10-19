@@ -7,14 +7,17 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
+import slussen.core.port.BackOffCause
 import slussen.core.port.BackupSizeMonitor
 import slussen.core.port.BankAccountType
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.DecisionJournalRecorder
+import slussen.core.port.FetchOutcome
 import slussen.core.port.JournalEntry
 import slussen.core.port.ProviderRequestKind
 import slussen.core.port.RecoveryCause
 import slussen.core.port.StartKind
+import slussen.core.port.StartedBy
 import slussen.core.port.StartState
 import slussen.core.port.UnreadablePart
 import slussen.persistence.credential.KeystoreCredentialVault
@@ -107,7 +110,8 @@ class SlussenStorage private constructor(
     val coordinator = RoomCoordinatorStore(main.coordinator())
     val credentialVault = KeystoreCredentialVault(device.serviceCredentials())
     val journalRecorder = RoomDecisionJournalRecorder(journal.entries())
-    val importStatus = RoomImportStatusStore()
+    val fetches = RoomFetchStore(main.fetches())
+    val importStatus = RoomImportStatusStore(main.fetches())
 
     companion object {
         /** The `Values:` columns of `slussen.db` in this schema, for the logical check of ADR-002 §8 step 1. */
@@ -115,6 +119,9 @@ class SlussenStorage private constructor(
             ValueColumn("bank_account", "bank_account_type", BankAccountType.entries.map { it.text }),
             ValueColumn("recovery_check", "cause", RecoveryCause.entries.map { it.text }),
             ValueColumn("provider_request", "request_kind", ProviderRequestKind.entries.map { it.text }),
+            ValueColumn("fetch", "started_by", StartedBy.entries.map { it.text }),
+            ValueColumn("fetch", "outcome", FetchOutcome.entries.map { it.text }),
+            ValueColumn("back_off", "cause", BackOffCause.entries.map { it.text }),
             ValueColumn("coordinator_state", "mode", CoordinatorMode.entries.map(RoomCoordinatorStore::textOf)),
         )
 

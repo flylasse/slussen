@@ -33,6 +33,7 @@ class UC013ConnectBudgetsAndBankAccountsScreenIT {
                         it, onBack = {}, onStep = viewModel::goTo, onCredentials = {}, onToggleBudget = viewModel::toggleBudget,
                         onSaveBudgets = viewModel::saveBudgets, onSelectOffered = viewModel::selectOffered, onPair = viewModel::pairWith,
                         onSaveNaming = viewModel::saveNaming, onCancelNaming = viewModel::cancelNaming, onAddFromFiles = {},
+                        onFetch = viewModel::fetch,
                     )
                 }
             }

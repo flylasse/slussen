@@ -65,6 +65,9 @@ class YnabBudgetAppTest : BudgetAppContractTest() {
     override fun credentialServiceNeverAnswering() =
         answering(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
 
+    override fun credentialsThatCannotBeValid() =
+        CredentialScenario(app().credentials, CredentialInput(mapOf(YnabCredentials.TOKEN to Secret("  "))))
+
     override fun requestsReceived(): Int = server.requestCount
 
     override fun runningCalls(): Int = http.dispatcher.runningCallsCount()

@@ -11,11 +11,14 @@ import slussen.core.port.CoordinatorStore
 import slussen.core.port.DataProviderRegistration
 import slussen.core.port.DataProviderSettingsStore
 import slussen.core.port.DecisionJournalRecorder
+import slussen.core.port.FetchStore
 import slussen.core.port.FileFormatRegistration
 import slussen.core.port.ImportStatusStore
 import slussen.core.port.JournalEntry
 import slussen.core.port.MappingStore
+import slussen.core.port.NewBackOff
 import slussen.core.port.NewBankAccount
+import slussen.core.port.NewFetch
 import slussen.core.port.NewOfferedBankAccount
 import slussen.core.port.NewProviderRequest
 import slussen.core.port.OfferedBankAccountStore
@@ -320,8 +323,11 @@ class FixedBackupSizeMonitor(
     override fun backedUpBytes(): Long = bytes
 }
 
-/** In-memory fake of [ImportStatusStore]: the data the slices of UC-001, UC-002, UC-003 and UC-007 will store. */
-class InMemoryImportStatusStore : ImportStatusStore {
+/**
+ * In-memory fake of [ImportStatusStore], the data the slices of UC-001, UC-002, UC-003 and UC-007 store, and of the
+ * [FetchStore] of UC-001, which writes the same Fetches and Back-offs the import status reads.
+ */
+class InMemoryImportStatusStore : ImportStatusStore, FetchStore {
     val fetches = mutableListOf<StoredFetch>()
     val balances = mutableListOf<StoredAccountBalance>()
     val consents = mutableListOf<StoredBankConsent>()
@@ -340,4 +346,21 @@ class InMemoryImportStatusStore : ImportStatusStore {
     override suspend fun latestTransactionFiles(): List<StoredTransactionFile> = files.toList()
 
     override suspend fun transactionCounts(): List<StoredTransactionCounts> = counts.toList()
+
+    private var nextFetchId = 1000L
+
+    override suspend fun fetchesOf(dataProviderId: Long): List<StoredFetch> =
+        recentFetches().filter { it.dataProviderId == dataProviderId }
+
+    override suspend fun recordFetch(fetch: NewFetch, keep: Int) {
+        fetches += StoredFetch(nextFetchId++, fetch.dataProviderId, fetch.startedAt, fetch.startedBy, fetch.outcome, emptyList())
+        val kept = fetches.sortedWith(compareByDescending<StoredFetch> { it.startedAt }.thenByDescending { it.id }).take(keep)
+        fetches.retainAll(kept)
+    }
+
+    override suspend fun backOffsOf(dataProviderId: Long): List<StoredBackOff> = backOffList.filter { it.dataProviderId == dataProviderId }
+
+    override suspend fun startBackOff(backOff: NewBackOff) {
+        backOffList += StoredBackOff(backOff.dataProviderId, backOff.bankId, backOff.cause, backOff.startsAt, backOff.endsAt)
+    }
 }
