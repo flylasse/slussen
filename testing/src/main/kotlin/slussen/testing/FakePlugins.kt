@@ -47,9 +47,8 @@ class ScriptedCredentials(
     override suspend fun check(input: CredentialInput, context: RequestContext): CredentialCheck {
         checkedInputs += input
         contexts += context
-        if (context.gate.admit(RequestSummary(requestKind, null, null)) != Admission.Allowed) {
-            return CredentialCheck.TransientFailure(slussen.pluginapi.request.FailureKind.ServiceUnavailable)
-        }
+        val admission = context.gate.admit(RequestSummary(requestKind, null, null))
+        if (admission is Admission.Refused) return CredentialCheck.StoppedByGate(admission.reason)
         requestsSent++
         return answer
     }

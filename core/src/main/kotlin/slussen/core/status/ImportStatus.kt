@@ -41,7 +41,8 @@ import java.time.Instant
  */
 class ImportStatus(
     private val budgetAppName: String,
-    private val dataProviders: List<StoredDataProvider>,
+    /** The Data Provider rows of this build as they are now, with the Operator Settings changed since the start. */
+    private val currentDataProviders: () -> List<StoredDataProvider>,
     private val fileFormats: List<StoredFileFormat>,
     private val connections: ConnectionStore,
     private val stored: ImportStatusStore,
@@ -54,6 +55,8 @@ class ImportStatus(
     private val journal: DecisionJournal,
     private val clock: Clock,
 ) {
+    private val dataProviders: List<StoredDataProvider> get() = currentDataProviders()
+
     /** Everything the import status shows, read once from storage (BR-001: stored data only). */
     private class Snapshot(
         val now: Instant,

@@ -5,6 +5,7 @@ import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
 import slussen.core.journal.DecisionJournal
+import slussen.core.mapping.AccountMappings
 import slussen.core.operation.OperationCoordinator
 import slussen.core.plugin.PluginRegistration
 import slussen.core.plugin.RegisteredPlugins
@@ -13,13 +14,14 @@ import slussen.core.port.ServiceKey
 import slussen.core.port.StartKind
 import slussen.core.port.UnreadablePart
 import slussen.core.settings.ConnectionsOverview
+import slussen.core.settings.DataProviderSettings
 import slussen.core.status.ImportStatus
 import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.value.Secret
 import java.util.Random
 
 /**
- * The slice of Phase 7 wired the way the composition root wires it (ADR-001 §5), on the fakes of `:testing`: the
+ * The slices of Phase 7 and 7a wired the way the composition root wires it (ADR-001 §5), on the fakes of `:testing`: the
  * Integration layer of `docs/architecture/development.md` (Service, on fakes).
  */
 class TestSlice(
@@ -60,9 +62,11 @@ class TestSlice(
     val connect = BudgetsAndBankAccounts(
         plugins, credentials, connectionStore, offeredStore, coordinator, journal, random, clock,
     )
+    val providerSettings = DataProviderSettings(plugins, registry, coordinator, journal)
+    val mappings = AccountMappings(plugins, connectionStore, connectionStore, coordinator, journal)
     val status = ImportStatus(
         budgetAppName = plugins.budgetApp.profile.name,
-        dataProviders = plugins.dataProviders.map { it.stored },
+        currentDataProviders = { plugins.dataProviders.map { it.stored } },
         fileFormats = plugins.fileFormats,
         connections = connectionStore,
         stored = importStatusStore,

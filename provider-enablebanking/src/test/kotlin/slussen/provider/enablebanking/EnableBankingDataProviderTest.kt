@@ -22,6 +22,7 @@ import slussen.pluginapi.diagnostic.LogEvent
 import slussen.pluginapi.diagnostic.LogFact
 import slussen.pluginapi.diagnostic.SlussenLog
 import slussen.pluginapi.provider.DataProvider
+import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.pluginapi.testfixtures.CredentialScenario
 import slussen.pluginapi.testfixtures.DataProviderContractTest
 import slussen.pluginapi.testfixtures.TestRequestContext
@@ -123,6 +124,27 @@ class EnableBankingDataProviderTest : DataProviderContractTest() {
             assertEquals(CredentialCheck.Refused, result)
         }
         assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", businessRules = ["BR-007"])
+    @DisplayName("BR-007: Enable Banking publishes no Request Limit, so its part declares a default of 50 the Operator can change between 10 and 500")
+    fun declaresADefaultRequestLimit() {
+        assertEquals(
+            RequestLimitDeclaration.NotPublished(defaultRequests = 50, range = 10..500),
+            EnableBankingDataProvider(SilentLog).profile.requestLimit,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-012", businessRules = ["BR-011"])
+    @DisplayName("BR-011: Enable Banking's part declares its name, source key, a Bank Consent and a default Fetch Cooldown of 360 minutes (ADR-001 §4.1, O-P2-42)")
+    fun declaresItsProfile() {
+        val profile = EnableBankingDataProvider(SilentLog).profile
+        assertEquals("Enable Banking", profile.name)
+        assertEquals("enable-banking", profile.sourceKey)
+        assertEquals(360, profile.defaultFetchCooldownMinutes)
+        assertEquals(true, profile.needsBankConsent)
     }
 
     private fun assertSignedByTheApplication(token: String) {

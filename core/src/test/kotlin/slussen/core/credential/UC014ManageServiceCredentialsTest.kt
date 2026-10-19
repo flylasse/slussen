@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import slussen.testing.TestSlice
 import slussen.core.operation.OperationRefusal
 import slussen.core.port.BankAccountType
+import slussen.core.port.BankChoice
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.FetchOutcome
 import slussen.core.port.JournalEventKind
@@ -18,6 +19,7 @@ import slussen.core.port.NewBankAccount
 import slussen.core.port.ServiceKey
 import slussen.core.port.StartedBy
 import slussen.core.port.StoredFetch
+import slussen.core.settings.RequestLimitShown
 import slussen.core.settings.ServiceStatus
 import slussen.pluginapi.budgetapp.ReadResult
 import slussen.pluginapi.credential.CredentialCheck
@@ -44,7 +46,8 @@ class UC014ManageServiceCredentialsTest {
         slice.connectionStore.addBankAccount(
             NewBankAccount(
                 generatedIdentifier = "00000000-0000-4000-8000-000000000001",
-                bankId = slice.connectionStore.bankNamed("Kestrel Bank").id,
+                bank = BankChoice.Named("Kestrel Bank"),
+                providerBankId = null,
                 dataProviderId = dataProviderId,
                 fileFormatId = null,
                 balanceDataProviderId = null,
@@ -55,6 +58,7 @@ class UC014ManageServiceCredentialsTest {
                 providerReference = "acct-1",
                 bankAccountFingerprint = null,
                 identifiedAt = slice.clock.instant(),
+                startDate = null,
                 budgetAccountId = budget.budgetAccounts.first().id,
             ),
         )
@@ -163,19 +167,59 @@ class UC014ManageServiceCredentialsTest {
     }
 
     @Test
-    @UseCase(id = "UC-014", scenario = "Main Success Scenario", businessRules = ["BR-002"])
-    @DisplayName("Step 3: at the Data Provider's Request Limit the check sends nothing and stores nothing")
-    fun checkAtTheRequestLimitSendsNothing() = runTest {
-        repeat(ExampleData.feedsProfile.requestLimit) {
+    @UseCase(id = "UC-014", scenario = "A5: Request Limit Reached", businessRules = ["BR-002"])
+    @DisplayName("A5: at the Data Provider's Request Limit the check is not sent, nothing is stored, the earlier credentials stay, and the time it frees up is shown")
+    fun checkAtTheRequestLimitIsNotSent() = runTest {
+        val limit = 20
+        val first = slice.clock.instant()
+        repeat(limit) {
             slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+            slice.clock.advance(Duration.ofMinutes(10))
         }
-        slice.vault.remove(slice.feedsKey)
+        val acceptedAt = (slice.credentials.status(slice.feedsKey) as CredentialStatus.Accepted).acceptedAt
+        val journalBefore = slice.journalRecorder.entries.size
+        slice.feeds.credentials.answer = CredentialCheck.Accepted(Secret("PLANTED-NEVER-STORED"))
 
-        val outcome = slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        val outcome = slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to "PLANTED-NEW-SETUP-KEY"))
 
-        assertEquals(ExampleData.feedsProfile.requestLimit, slice.feeds.credentials.requestsSent)
-        assertEquals(CredentialOutcome.NotReached(FailureKind.ServiceUnavailable), outcome)
+        assertEquals(CredentialOutcome.RequestLimitReached(first.plus(Duration.ofHours(24))), outcome)
+        assertEquals(limit, slice.feeds.credentials.requestsSent)
+        assertEquals(limit, slice.providerRequests.requests.size)
+        assertEquals(ExampleData.EXCHANGED_ACCESS_CREDENTIAL, storedSecret(slice.feedsKey))
+        assertEquals(CredentialStatus.Accepted(acceptedAt), slice.credentials.status(slice.feedsKey))
+        assertEquals(journalBefore, slice.journalRecorder.entries.size)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A5: Request Limit Reached", businessRules = ["BR-002"])
+    @DisplayName("A5: without earlier credentials nothing is stored; once the oldest counted Provider Request has left the 24-hour window, the check is sent again")
+    fun checkIsSentAgainOnceTheLimitFreesUp() = runTest {
+        val first = slice.clock.instant()
+        repeat(20) { slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+        slice.credentials.remove(slice.feedsKey)
+
+        val held = slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        assertEquals(CredentialOutcome.RequestLimitReached(first.plus(Duration.ofHours(24))), held)
         assertNull(slice.vault.read(slice.feedsKey))
+
+        slice.clock.set(first.plus(Duration.ofHours(24)).plusSeconds(1))
+        val again = slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+
+        assertInstanceOf(CredentialOutcome.Accepted::class.java, again)
+        assertEquals(21, slice.feeds.credentials.requestsSent)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A5: Request Limit Reached", businessRules = ["BR-002"])
+    @DisplayName("A5: the Request Limit the Operator set for a Data Provider that publishes none holds for its credential check")
+    fun operatorsRequestLimitHoldsForTheCheck() = runTest {
+        slice.providerSettings.changeRequestLimit(slice.openBankingKey, 10)
+        repeat(10) { slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+
+        val outcome = slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+
+        assertInstanceOf(CredentialOutcome.RequestLimitReached::class.java, outcome)
+        assertEquals(10, slice.openBanking.credentials.requestsSent)
     }
 
     @Test
@@ -383,9 +427,13 @@ class UC014ManageServiceCredentialsTest {
         assertEquals(ServiceStatus.CredentialsMissing, page.status)
         assertEquals(ExampleData.feedsProfile.defaultFetchCooldownMinutes, page.fetchCooldownMinutes)
         assertEquals(ExampleData.feedsProfile.defaultFetchCooldownMinutes, page.defaultFetchCooldownMinutes)
-        assertEquals(ExampleData.feedsProfile.requestLimit, page.requestLimit)
+        assertEquals(RequestLimitShown.Published(20, ExampleData.FEEDS_LIMIT_SOURCE), page.requestLimit)
         assertFalse(page.needsBankConsent)
         assertTrue(slice.connections.servicePage(slice.openBankingKey).needsBankConsent)
+        assertEquals(
+            RequestLimitShown.NotPublished(requests = 50, defaultRequests = 50, range = 10..500),
+            slice.connections.servicePage(slice.openBankingKey).requestLimit,
+        )
         assertEquals(slice.feeds.credentials.form.fields, page.credentialFields)
     }
 }

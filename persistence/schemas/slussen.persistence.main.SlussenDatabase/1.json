@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "6462b0a107fddf31c3a704a6b3d93e26",
+    "identityHash": "7a97abf8e9ddc4197c6c53c40e03a97e",
     "entities": [
       {
         "tableName": "operator_settings",
@@ -144,7 +144,7 @@
       },
       {
         "tableName": "data_provider",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `source_key` TEXT NOT NULL, `stable_reference` INTEGER NOT NULL, `bank_consent_required` INTEGER NOT NULL, `fetch_cooldown_minutes` INTEGER NOT NULL, `request_limit` INTEGER NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `source_key` TEXT NOT NULL, `stable_reference` INTEGER NOT NULL, `bank_consent_required` INTEGER NOT NULL, `fetch_cooldown_minutes` INTEGER NOT NULL, `request_limit` INTEGER NOT NULL, `request_limit_published` INTEGER NOT NULL)",
         "fields": [
           {
             "fieldPath": "id",
@@ -185,6 +185,12 @@
           {
             "fieldPath": "requestLimit",
             "columnName": "request_limit",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requestLimitPublished",
+            "columnName": "request_limit_published",
             "affinity": "INTEGER",
             "notNull": true
           }
@@ -451,7 +457,7 @@
       },
       {
         "tableName": "bank_account",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `generated_identifier` TEXT NOT NULL, `bank_id` INTEGER NOT NULL, `data_provider_id` INTEGER, `file_format_id` INTEGER, `balance_data_provider_id` INTEGER, `name` TEXT NOT NULL, `currency` TEXT NOT NULL, `bank_account_type` TEXT NOT NULL, `start_date` INTEGER, `provider_reference` TEXT, `bank_account_fingerprint` TEXT, `balance_provider_reference` TEXT, `identified_at` INTEGER NOT NULL, `retired` INTEGER NOT NULL, `funded_by_budget_account_id` INTEGER, `transfer_partner_budget_account_id` INTEGER, FOREIGN KEY(`bank_id`) REFERENCES `bank`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`data_provider_id`) REFERENCES `data_provider`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`file_format_id`) REFERENCES `file_format`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`balance_data_provider_id`) REFERENCES `data_provider`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`funded_by_budget_account_id`) REFERENCES `budget_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`transfer_partner_budget_account_id`) REFERENCES `budget_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `generated_identifier` TEXT NOT NULL, `bank_id` INTEGER NOT NULL, `provider_bank_id` INTEGER, `data_provider_id` INTEGER, `file_format_id` INTEGER, `balance_data_provider_id` INTEGER, `name` TEXT NOT NULL, `currency` TEXT NOT NULL, `bank_account_type` TEXT NOT NULL, `start_date` INTEGER, `provider_reference` TEXT, `bank_account_fingerprint` TEXT, `balance_provider_reference` TEXT, `identified_at` INTEGER NOT NULL, `retired` INTEGER NOT NULL, `funded_by_budget_account_id` INTEGER, `transfer_partner_budget_account_id` INTEGER, FOREIGN KEY(`bank_id`) REFERENCES `bank`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`provider_bank_id`) REFERENCES `bank`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`data_provider_id`) REFERENCES `data_provider`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`file_format_id`) REFERENCES `file_format`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`balance_data_provider_id`) REFERENCES `data_provider`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`funded_by_budget_account_id`) REFERENCES `budget_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`transfer_partner_budget_account_id`) REFERENCES `budget_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
         "fields": [
           {
             "fieldPath": "id",
@@ -470,6 +476,11 @@
             "columnName": "bank_id",
             "affinity": "INTEGER",
             "notNull": true
+          },
+          {
+            "fieldPath": "providerBankId",
+            "columnName": "provider_bank_id",
+            "affinity": "INTEGER"
           },
           {
             "fieldPath": "dataProviderId",
@@ -573,6 +584,15 @@
             "createSql": "CREATE INDEX IF NOT EXISTS `index_bank_account_bank_id` ON `${TABLE_NAME}` (`bank_id`)"
           },
           {
+            "name": "index_bank_account_provider_bank_id",
+            "unique": false,
+            "columnNames": [
+              "provider_bank_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_bank_account_provider_bank_id` ON `${TABLE_NAME}` (`provider_bank_id`)"
+          },
+          {
             "name": "index_bank_account_data_provider_id",
             "unique": false,
             "columnNames": [
@@ -625,6 +645,17 @@
             "onUpdate": "NO ACTION",
             "columns": [
               "bank_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "bank",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "provider_bank_id"
             ],
             "referencedColumns": [
               "id"
@@ -948,7 +979,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6462b0a107fddf31c3a704a6b3d93e26')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7a97abf8e9ddc4197c6c53c40e03a97e')"
     ]
   }
 }

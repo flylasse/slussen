@@ -10,6 +10,7 @@ import slussen.core.operation.OperationResult
 import slussen.core.plugin.RegisteredPlugins
 import slussen.core.port.AddOutcome
 import slussen.core.port.BankAccountType
+import slussen.core.port.BankChoice
 import slussen.core.port.BudgetAccountToStore
 import slussen.core.port.BudgetToServe
 import slussen.core.port.ConnectionStore
@@ -178,30 +179,78 @@ class BudgetsAndBankAccounts(
         bankName = bankName,
     )
 
-    suspend fun pair(offeredBankAccountId: Long, budgetAccountId: Long): PairOutcome {
+    /** The Banks Slussen already knows, to choose from at step 9 and in A4 (BR-009). */
+    suspend fun knownBanks(): List<KnownBank> = store.banks().map { KnownBank(it.id, it.name) }
+
+    /** An Offered Bank Account that is offered for adding (step 5, A6) with the Budget Account it is paired with (step 6). */
+    private suspend fun paired(offeredBankAccountId: Long, budgetAccountId: Long): Pair<StoredOfferedBankAccount, Pair<StoredBudget, StoredBudgetAccount>>? {
+        val offeredForAdding = pairing().sources.flatMap { it.offered }.any { it.offeredBankAccountId == offeredBankAccountId }
+        val offer = offered.offered().firstOrNull { it.id == offeredBankAccountId }
+        if (offer == null || !offeredForAdding) return null
+        val mappedInto = budgetAccountFor(budgetAccountId) ?: return null
+        return offer to mappedInto
+    }
+
+    /** Steps 6-8: checks the pairing (step 7, A5) and proposes the name, Bank Account type and Bank; stores nothing. */
+    suspend fun propose(offeredBankAccountId: Long, budgetAccountId: Long): PairOutcome {
         val result = coordinator.run(OperationKind.BudgetAndBankAccountChange, StartedBy.Operator) {
-            val offeredForAdding = pairing().sources.flatMap { it.offered }.any { it.offeredBankAccountId == offeredBankAccountId }
-            val offer = offered.offered().firstOrNull { it.id == offeredBankAccountId }
-            if (offer == null || !offeredForAdding) return@run PairOutcome.NotOffered
-            val mappedInto = budgetAccountFor(budgetAccountId) ?: return@run PairOutcome.NotOffered
+            val (offer, mappedInto) = paired(offeredBankAccountId, budgetAccountId) ?: return@run PairOutcome.NotOffered
             refusal(mappedInto, offer.currency, offer.name ?: offer.bankAccountKind.orEmpty())?.let { return@run it }
-            val bankId = offer.bankId ?: return@run PairOutcome.BankNotKnown
             val provider = plugins.dataProviders.single { it.stored.id == offer.dataProviderId }
+            val banks = knownBanks()
+            PairOutcome.Proposed(
+                AdditionProposal(
+                    offeredBankAccountId = offer.id,
+                    budgetAccountId = budgetAccountId,
+                    proposedName = proposedName(offer, provider.stored.name),
+                    proposedType = typeOf(offer.bankAccountKind),
+                    // UC-013 BR-009: The Bank proposed is the one the Data Provider names for the Bank Account, none when it names none.
+                    proposedBank = banks.firstOrNull { it.bankId == offer.bankId },
+                    types = BankAccountType.entries,
+                    knownBanks = banks,
+                ),
+            )
+        }
+        return when (result) {
+            is OperationResult.Ran -> result.value
+            is OperationResult.Refused -> PairOutcome.Unavailable(result.reason)
+        }
+    }
+
+    /** Steps 9-10: adds the Bank Account with the name, Bank Account type, Bank and optional Start Date the Operator confirmed. */
+    suspend fun add(
+        offeredBankAccountId: Long,
+        budgetAccountId: Long,
+        name: String,
+        type: BankAccountType?,
+        bank: BankChoice?,
+        startDate: LocalDate?,
+    ): PairOutcome {
+        val result = coordinator.run(OperationKind.BudgetAndBankAccountChange, StartedBy.Operator) {
+            // UC-013 BR-004: The Operator accepts or edits the proposed name; the name never identifies the Bank Account.
+            val accepted = validName(name) ?: return@run PairOutcome.NameNotValid
+            confirmedTypeAndBank(type, bank)?.let { return@run it }
+            val (offer, mappedInto) = paired(offeredBankAccountId, budgetAccountId) ?: return@run PairOutcome.NotOffered
+            refusal(mappedInto, offer.currency, accepted)?.let { return@run it }
             add(
                 NewBankAccount(
                     generatedIdentifier = GeneratedIdentifiers.bankAccountIdentifier(random),
-                    bankId = bankId,
+                    bank = requireNotNull(bank),
+                    // UC-013 BR-009: The Bank the Data Provider names for the Bank Account is kept apart from the Operator's Bank; it decides the Bank Consent that covers it.
+                    providerBankId = offer.bankId,
                     dataProviderId = offer.dataProviderId,
                     fileFormatId = null,
                     balanceDataProviderId = null,
                     balanceProviderReference = null,
-                    name = proposedName(offer, provider.stored.name),
+                    name = accepted,
                     currency = requireNotNull(offer.currency),
-                    type = typeOf(offer.bankAccountKind),
+                    type = requireNotNull(type),
                     // UC-013 BR-003: Slussen records how the Source identifies the Bank Account.
                     providerReference = offer.providerReference,
                     bankAccountFingerprint = offer.bankAccountFingerprint,
                     identifiedAt = clock.instant(),
+                    // UC-013 BR-005: The Start Date is optional and set in the app.
+                    startDate = startDate,
                     budgetAccountId = budgetAccountId,
                 ),
                 mappedInto,
@@ -211,6 +260,21 @@ class BudgetsAndBankAccounts(
             is OperationResult.Ran -> result.value
             is OperationResult.Refused -> PairOutcome.Unavailable(result.reason)
         }
+    }
+
+    /**
+     * Null when the Operator confirmed or chose a Bank Account type and a Bank: a known one, or a new one with a name;
+     * otherwise why the Bank Account is not added.
+     */
+    private suspend fun confirmedTypeAndBank(type: BankAccountType?, bank: BankChoice?): PairOutcome? {
+        // UC-013 BR-009: No Bank Account is added without a Bank Account type and a Bank.
+        if (type == null) return PairOutcome.TypeNotChosen
+        val chosen = when (bank) {
+            null -> false
+            is BankChoice.Known -> store.banks().any { it.id == bank.bankId }
+            is BankChoice.Named -> bank.name.isNotBlank() && bank.name.trim().length <= BANK_NAME_MAX_LENGTH
+        }
+        return if (chosen) null else PairOutcome.BankNotChosen
     }
 
     /** A Budget Account of a served Budget that is not a Manually Kept Account, with its Budget. */
@@ -239,14 +303,29 @@ class BudgetsAndBankAccounts(
         return null
     }
 
-    private suspend fun add(bankAccount: NewBankAccount, mappedInto: Pair<StoredBudget, StoredBudgetAccount>): PairOutcome =
-        when (val outcome = store.addBankAccount(bankAccount)) {
-            is AddOutcome.Added -> PairOutcome.Added(outcome.bankAccountId, bankAccount.generatedIdentifier, bankAccount.name)
+    /** Step 10: one O-15 transaction, then the addition recorded in the Decision Journal. */
+    private suspend fun add(bankAccount: NewBankAccount, mappedInto: Pair<StoredBudget, StoredBudgetAccount>): PairOutcome {
+        val named = when (val bank = bankAccount.bank) {
+            is BankChoice.Known -> bankAccount
+            is BankChoice.Named -> bankAccount.copy(bank = BankChoice.Named(bank.name.trim()))
+        }
+        return when (val outcome = store.addBankAccount(named)) {
+            is AddOutcome.Added -> {
+                val bankName = store.banks().single { it.id == store.bankAccounts().single { a -> a.id == outcome.bankAccountId }.bankId }.name
+                journal.record(
+                    JournalEventKind.AccountMappingChange,
+                    "Bank Account ${named.name} added, ${named.type.text} at $bankName, mapped to Budget Account " +
+                        "${mappedInto.second.name} of Budget ${mappedInto.first.name}" +
+                        (named.startDate?.let { ", Start Date $it" } ?: ", no Start Date"),
+                )
+                PairOutcome.Added(outcome.bankAccountId, named.generatedIdentifier, named.name)
+            }
             is AddOutcome.BudgetAccountAlreadyMapped ->
                 PairOutcome.BudgetAccountAlreadyMapped(mappedInto.second.name, outcome.bankAccountName)
             is AddOutcome.CurrencyDiffers ->
-                PairOutcome.CurrencyDiffers(mappedInto.second.name, outcome.budgetCurrency, bankAccount.name, bankAccount.currency)
+                PairOutcome.CurrencyDiffers(mappedInto.second.name, outcome.budgetCurrency, named.name, named.currency)
         }
+    }
 
     // UC-013 BR-004: The proposed name is the Bank Account's name or product with the last four digits of its number.
     private fun proposedName(offer: StoredOfferedBankAccount, sourceName: String): String {
@@ -255,10 +334,7 @@ class BudgetsAndBankAccounts(
         return listOfNotNull(described, digits).joinToString(" ").take(NAME_MAX_LENGTH)
     }
 
-    /**
-     * `BANK_ACCOUNT.bank_account_type` from the kind the Data Provider delivers. No use case states this mapping; it is
-     * an open question of Phase 7.
-     */
+    // UC-013 BR-009: The type proposed comes from the kind the Data Provider gives: credit card, savings or checking, else Other.
     private fun typeOf(kind: String?): BankAccountType {
         val text = kind.orEmpty().lowercase()
         return when {
@@ -271,17 +347,21 @@ class BudgetsAndBankAccounts(
 
     fun fileFormats(): List<FileFormatChoice> = plugins.fileFormats.map { FileFormatChoice(it.id, it.name) }
 
+    /** A4: a Bank Account of a File Format, with the File Format, Bank Account type, Bank and name the Operator chose (BR-006, BR-009). */
     suspend fun addFromTransactionFiles(
         fileFormatId: Long,
-        bankName: String,
+        type: BankAccountType?,
+        bank: BankChoice?,
         balanceOfferedBankAccountId: Long?,
         budgetAccountId: Long,
         name: String,
+        startDate: LocalDate?,
     ): PairOutcome {
         val result = coordinator.run(OperationKind.BudgetAndBankAccountChange, StartedBy.Operator) {
-            // UC-013 BR-006: Slussen proposes no name from a file; the Operator enters it.
+            // UC-013 BR-006: Slussen proposes no name, Bank Account type or Bank from a file; the Operator enters the name and chooses the others.
             val entered = validName(name) ?: return@run PairOutcome.NameNotValid
-            if (plugins.fileFormats.none { it.id == fileFormatId } || bankName.isBlank()) return@run PairOutcome.NotOffered
+            confirmedTypeAndBank(type, bank)?.let { return@run it }
+            if (plugins.fileFormats.none { it.id == fileFormatId }) return@run PairOutcome.NotOffered
             val mappedInto = budgetAccountFor(budgetAccountId) ?: return@run PairOutcome.NotOffered
             val balanceOffer = balanceOfferedBankAccountId?.let { id ->
                 offered.offered().firstOrNull { it.id == id } ?: return@run PairOutcome.NotOffered
@@ -291,7 +371,9 @@ class BudgetsAndBankAccounts(
             add(
                 NewBankAccount(
                     generatedIdentifier = GeneratedIdentifiers.bankAccountIdentifier(random),
-                    bankId = store.bankNamed(bankName.trim()).id,
+                    bank = requireNotNull(bank),
+                    // UC-013 BR-009: For the balance, the Bank the balance Data Provider names is kept apart from the Operator's Bank.
+                    providerBankId = balanceOffer?.bankId,
                     dataProviderId = null,
                     fileFormatId = fileFormatId,
                     // UC-013 BR-006: A Bank Account of a File Format takes its balance from the Offered Bank Account the Operator chose.
@@ -299,10 +381,11 @@ class BudgetsAndBankAccounts(
                     balanceProviderReference = balanceOffer?.providerReference,
                     name = entered,
                     currency = currency,
-                    type = typeOf(balanceOffer?.bankAccountKind),
+                    type = requireNotNull(type),
                     providerReference = null,
                     bankAccountFingerprint = null,
                     identifiedAt = clock.instant(),
+                    startDate = startDate,
                     budgetAccountId = budgetAccountId,
                 ),
                 mappedInto,
@@ -315,28 +398,6 @@ class BudgetsAndBankAccounts(
     }
 
     private fun validName(name: String): String? = name.trim().takeIf { it.isNotEmpty() && it.length <= NAME_MAX_LENGTH }
-
-    suspend fun completeAddition(bankAccountId: Long, name: String, startDate: LocalDate?): AdditionOutcome {
-        val result = coordinator.run(OperationKind.BudgetAndBankAccountChange, StartedBy.Operator) {
-            // UC-013 BR-004: The Operator accepts or edits the proposed name; the name never identifies the Bank Account.
-            val accepted = validName(name) ?: return@run AdditionOutcome.NameNotValid
-            // UC-013 BR-005: The Start Date is optional and set in the app.
-            store.nameAndStartDate(bankAccountId, accepted, startDate)
-            val bankAccount = store.bankAccounts().single { it.id == bankAccountId }
-            val mappedInto = store.budgets().flatMap { b -> b.budgetAccounts.map { b to it } }
-                .single { it.second.id == bankAccount.mapping?.budgetAccountId }
-            journal.record(
-                JournalEventKind.AccountMappingChange,
-                "Bank Account $accepted added, mapped to Budget Account ${mappedInto.second.name} of Budget ${mappedInto.first.name}" +
-                    (startDate?.let { ", Start Date $it" } ?: ", no Start Date"),
-            )
-            AdditionOutcome.Stored
-        }
-        return when (result) {
-            is OperationResult.Ran -> result.value
-            is OperationResult.Refused -> AdditionOutcome.Unavailable(result.reason)
-        }
-    }
 
     suspend fun addedBankAccounts(): List<AddedBankAccount> {
         val banks = store.banks().associateBy { it.id }
@@ -363,5 +424,8 @@ class BudgetsAndBankAccounts(
     private companion object {
         /** `BANK_ACCOUNT.name` holds at most 100 characters (entity model). */
         const val NAME_MAX_LENGTH = 100
+
+        /** `BANK.name` holds at most 100 characters (entity model). */
+        const val BANK_NAME_MAX_LENGTH = 100
     }
 }

@@ -1,6 +1,7 @@
 package slussen.pluginapi.credential
 
 import slussen.pluginapi.request.FailureKind
+import slussen.pluginapi.request.RefusalReason
 import slussen.pluginapi.request.RequestContext
 import slussen.pluginapi.value.Secret
 
@@ -37,4 +38,7 @@ public sealed interface CredentialCheck {
 
     /** UC-014 A2. */
     public data class TransientFailure(val kind: FailureKind) : CredentialCheck
+
+    /** The gate refused the check, so nothing was sent; a reached Request Limit is UC-014 A5 (ADR-001 §4.5). */
+    public data class StoppedByGate(val reason: RefusalReason) : CredentialCheck
 }

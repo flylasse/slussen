@@ -2,13 +2,16 @@ package slussen.persistence
 
 import slussen.core.port.AddOutcome
 import slussen.core.port.BankAccountType
+import slussen.core.port.BankChoice
 import slussen.core.port.BudgetToServe
 import slussen.core.port.ConnectionStore
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.CoordinatorStore
 import slussen.core.port.DataProviderRegistration
+import slussen.core.port.DataProviderSettingsStore
 import slussen.core.port.FileFormatRegistration
 import slussen.core.port.ImportStatusStore
+import slussen.core.port.MappingStore
 import slussen.core.port.NewBankAccount
 import slussen.core.port.NewOfferedBankAccount
 import slussen.core.port.NewProviderRequest
@@ -45,7 +48,6 @@ import slussen.persistence.main.BudgetAccountEntity
 import slussen.persistence.main.BudgetEntity
 import slussen.persistence.main.ConnectionDao
 import slussen.persistence.main.CoordinatorDao
-import slussen.persistence.main.DataProviderEntity
 import slussen.persistence.main.FileFormatEntity
 import slussen.persistence.main.OperatorSettingsDao
 import slussen.persistence.main.OperatorSettingsEntity
@@ -56,7 +58,6 @@ import slussen.persistence.main.RecoveryDao
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
 import java.time.Instant
-import java.time.LocalDate
 
 private const val MAIN_PART = "slussen.db"
 private const val DEVICE_PART = "device.db"
@@ -125,23 +126,18 @@ class RoomOperatorSettingsStore(private val dao: OperatorSettingsDao) : Operator
     )
 }
 
-/** O-11 in `slussen.db`. */
-class RoomPluginRegistryStore(private val dao: PluginRegistryDao) : PluginRegistryStore {
+/** O-11 and the Operator Settings kept per Data Provider (O-13 `SettingsStore`) in `slussen.db`. */
+class RoomPluginRegistryStore(private val dao: PluginRegistryDao) : PluginRegistryStore, DataProviderSettingsStore {
+    override suspend fun storeRequestLimit(dataProviderId: Long, requests: Int) {
+        dao.storeRequestLimit(dataProviderId, requests)
+    }
+
     override suspend fun reconcile(
         dataProviders: List<DataProviderRegistration>,
         fileFormats: List<FileFormatRegistration>,
     ): RegisteredRows {
         val (providers, formats) = dao.reconcile(
-            dataProviders.map {
-                DataProviderEntity(
-                    name = it.name,
-                    sourceKey = it.sourceKey,
-                    stableReference = it.givesStableReference,
-                    bankConsentRequired = it.needsBankConsent,
-                    fetchCooldownMinutes = it.defaultFetchCooldownMinutes,
-                    requestLimit = it.requestLimit,
-                )
-            },
+            dataProviders,
             fileFormats.map { FileFormatEntity(name = it.name, sourceKey = it.sourceKey) },
         )
         return RegisteredRows(
@@ -154,6 +150,7 @@ class RoomPluginRegistryStore(private val dao: PluginRegistryDao) : PluginRegist
                     needsBankConsent = it.bankConsentRequired,
                     fetchCooldownMinutes = it.fetchCooldownMinutes,
                     requestLimit = it.requestLimit,
+                    requestLimitPublished = it.requestLimitPublished,
                 )
             },
             formats.map { StoredFileFormat(it.id, it.name, it.sourceKey) },
@@ -197,6 +194,7 @@ class RoomConnectionStore(private val dao: ConnectionDao) : ConnectionStore {
                 id = e.id,
                 generatedIdentifier = e.generatedIdentifier,
                 bankId = e.bankId,
+                providerBankId = e.providerBankId,
                 dataProviderId = e.dataProviderId,
                 fileFormatId = e.fileFormatId,
                 balanceDataProviderId = e.balanceDataProviderId,
@@ -209,6 +207,8 @@ class RoomConnectionStore(private val dao: ConnectionDao) : ConnectionStore {
                 balanceProviderReference = e.balanceProviderReference,
                 identifiedAt = e.identifiedAt,
                 retired = e.retired,
+                fundedByBudgetAccountId = e.fundedByBudgetAccountId,
+                transferPartnerBudgetAccountId = e.transferPartnerBudgetAccountId,
                 mapping = mappings[e.id]?.let { StoredAccountMapping(it.id, it.bankAccountId, it.budgetAccountId, it.firstSentAt) },
             )
         }
@@ -246,14 +246,15 @@ class RoomConnectionStore(private val dao: ConnectionDao) : ConnectionStore {
     override suspend fun addBankAccount(bankAccount: NewBankAccount): AddOutcome {
         val entity = BankAccountEntity(
             generatedIdentifier = bankAccount.generatedIdentifier,
-            bankId = bankAccount.bankId,
+            bankId = 0,
+            providerBankId = bankAccount.providerBankId,
             dataProviderId = bankAccount.dataProviderId,
             fileFormatId = bankAccount.fileFormatId,
             balanceDataProviderId = bankAccount.balanceDataProviderId,
             name = bankAccount.name,
             currency = bankAccount.currency.code,
             bankAccountType = bankAccount.type.text,
-            startDate = null,
+            startDate = bankAccount.startDate,
             providerReference = bankAccount.providerReference,
             bankAccountFingerprint = bankAccount.bankAccountFingerprint,
             balanceProviderReference = bankAccount.balanceProviderReference,
@@ -262,18 +263,27 @@ class RoomConnectionStore(private val dao: ConnectionDao) : ConnectionStore {
             fundedByBudgetAccountId = null,
             transferPartnerBudgetAccountId = null,
         )
-        return when (val added = dao.add(entity, bankAccount.budgetAccountId)) {
+        return when (val added = dao.add(entity, bankAccount.bank, bankAccount.budgetAccountId)) {
             is ConnectionDao.Added.Stored -> AddOutcome.Added(added.bankAccountId)
             is ConnectionDao.Added.AlreadyMapped -> AddOutcome.BudgetAccountAlreadyMapped(added.bankAccountName)
             is ConnectionDao.Added.CurrencyDiffers -> AddOutcome.CurrencyDiffers(currencyOf(added.budgetCurrency, MAIN_PART))
         }
     }
 
-    override suspend fun nameAndStartDate(bankAccountId: Long, name: String, startDate: LocalDate?) {
-        dao.nameAndStartDate(bankAccountId, name, startDate)
-    }
-
     override suspend fun bankNamed(name: String): StoredBank = dao.bankNamed(name).let { StoredBank(it.id, it.name, it.country) }
+}
+
+/** O-13 `MappingStore` in `slussen.db`: the changes of UC-009 that this build makes. */
+class RoomMappingStore(private val dao: ConnectionDao) : MappingStore {
+    override suspend fun changeTypeAndBank(
+        bankAccountId: Long,
+        type: BankAccountType,
+        bank: BankChoice,
+        clearFundedBy: Boolean,
+        clearTransferPartner: Boolean,
+    ) {
+        dao.changeTypeAndBank(bankAccountId, type.text, bank, clearFundedBy, clearTransferPartner)
+    }
 }
 
 /** The Offered Bank Accounts in `device.db` (O-2). */

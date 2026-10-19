@@ -11,6 +11,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +27,9 @@ import slussen.app.ui.components.ScreenTitle
 import slussen.app.ui.components.SectionTitle
 import slussen.app.ui.components.SlussenCard
 import slussen.app.ui.theme.SlussenColors
+import slussen.core.connection.KnownBank
+import slussen.core.port.BankAccountType
+import slussen.core.port.BankChoice
 import slussen.core.port.ServiceKey
 
 /**
@@ -42,8 +46,9 @@ fun SetupScreen(
     onSaveBudgets: () -> Unit,
     onSelectOffered: (Long) -> Unit,
     onPair: (Long) -> Unit,
-    onSaveNaming: (String, String) -> Unit,
-    onAddFromFiles: (Long, String, Long, String) -> Unit,
+    onSaveNaming: (String, BankAccountType?, BankChoice?, String) -> Unit,
+    onCancelNaming: () -> Unit,
+    onAddFromFiles: (FileAccountEntry) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
@@ -85,7 +90,7 @@ fun SetupScreen(
                 }
                 if (ui.budgets.isNotEmpty()) item { Button(onClick = onSaveBudgets) { Text("Continue") } }
             }
-            SetupStep.BankAccounts -> bankAccountsStep(ui, onSelectOffered, onPair, onSaveNaming, onAddFromFiles)
+            SetupStep.BankAccounts -> bankAccountsStep(ui, onSelectOffered, onPair, onSaveNaming, onCancelNaming, onAddFromFiles)
         }
     }
 }
@@ -94,12 +99,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.bankAccountsStep(
     ui: SetupUi,
     onSelectOffered: (Long) -> Unit,
     onPair: (Long) -> Unit,
-    onSaveNaming: (String, String) -> Unit,
-    onAddFromFiles: (Long, String, Long, String) -> Unit,
+    onSaveNaming: (String, BankAccountType?, BankChoice?, String) -> Unit,
+    onCancelNaming: () -> Unit,
+    onAddFromFiles: (FileAccountEntry) -> Unit,
 ) {
     val naming = ui.naming
     if (naming != null) {
-        item { NamingCard(naming, onSaveNaming) }
+        item { NamingCard(naming, onSaveNaming, onCancelNaming) }
         return
     }
     items(ui.sources) { source ->
@@ -130,33 +136,112 @@ private fun androidx.compose.foundation.lazy.LazyListScope.bankAccountsStep(
     }
 }
 
-/** Steps 9-10: accept or edit the proposed name and set an optional Start Date (UC-013 BR-004, BR-005). */
+/**
+ * Steps 8-9 (`setup.html#pair-name`): accept or edit the proposed name, confirm or change the Bank Account type and the
+ * Bank, and set an optional Start Date (UC-013 BR-004, BR-005, BR-009).
+ */
 @Composable
-private fun NamingCard(naming: NamingUi, onSave: (String, String) -> Unit) {
-    var name by remember(naming.bankAccountId) { mutableStateOf(naming.proposedName) }
-    var startDate by remember(naming.bankAccountId) { mutableStateOf("") }
+private fun NamingCard(naming: NamingUi, onSave: (String, BankAccountType?, BankChoice?, String) -> Unit, onCancel: () -> Unit) {
+    val key = naming.offeredBankAccountId to naming.budgetAccountId
+    var name by remember(key) { mutableStateOf(naming.proposedName) }
+    var type by remember(key) { mutableStateOf<BankAccountType?>(naming.proposedType) }
+    var bank by remember(key) { mutableStateOf<BankChoice?>(naming.proposedBank?.let { BankChoice.Known(it.bankId) }) }
+    var startDate by remember(key) { mutableStateOf("") }
     SlussenCard {
-        Text("Name", fontWeight = FontWeight.SemiBold)
+        Text("Name, Bank Account type and Bank", fontWeight = FontWeight.SemiBold)
+        Muted(naming.title)
         Muted("Proposed ${naming.proposedName}")
-        OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true)
+        OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text("Name") })
+        TypeChooser(naming.types, type) { type = it }
+        BankChooser(naming.knownBanks, bank) { bank = it }
+        Muted(naming.note)
         Text("Start Date · optional")
         Muted("Nothing before a Start Date is offered for Upload")
         OutlinedTextField(value = startDate, onValueChange = { startDate = it }, singleLine = true, placeholder = { Text("2026-09-01") })
-        Button(onClick = { onSave(name, startDate) }) { Text("Save") }
+        Row {
+            Button(onClick = { onSave(name, type, bank, startDate) }) { Text("Save") }
+            TextButton(onClick = onCancel) { Text("Cancel") }
+        }
     }
 }
 
-/** A4: a Bank Account whose transactions come from Transaction Files (UC-013 BR-006). */
+/** The four Bank Account types (UC-013 BR-009, UC-009 BR-012). */
 @Composable
-private fun FileFormatCard(ui: SetupUi, onAdd: (Long, String, Long, String) -> Unit) {
-    var bank by remember { mutableStateOf("") }
+fun TypeChooser(types: List<BankAccountType>, chosen: BankAccountType?, onChoose: (BankAccountType) -> Unit) {
+    Text("Bank Account type")
+    Row {
+        types.forEach { option ->
+            FilterChip(
+                selected = chosen == option,
+                onClick = { onChoose(option) },
+                label = { Text(option.text) },
+                modifier = Modifier.padding(end = 6.dp),
+            )
+        }
+    }
+}
+
+/** A Bank Slussen already knows, or a new one the Operator names (UC-013 BR-009, UC-009 BR-012). */
+@Composable
+fun BankChooser(knownBanks: List<KnownBank>, chosen: BankChoice?, onChoose: (BankChoice) -> Unit) {
+    var newName by remember { mutableStateOf((chosen as? BankChoice.Named)?.name.orEmpty()) }
+    Text("Bank")
+    knownBanks.forEach { known ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = chosen == BankChoice.Known(known.bankId), onCheckedChange = { onChoose(BankChoice.Known(known.bankId)) })
+            Text(known.name)
+        }
+    }
+    OutlinedTextField(
+        value = newName,
+        onValueChange = {
+            newName = it
+            onChoose(BankChoice.Named(it))
+        },
+        singleLine = true,
+        placeholder = { Text("Name a new Bank…") },
+    )
+}
+
+/** What the Operator chose for a Bank Account of a File Format (UC-013 A4). */
+data class FileAccountEntry(
+    val fileFormatId: Long,
+    val type: BankAccountType?,
+    val bank: BankChoice?,
+    val balanceOfferedBankAccountId: Long?,
+    val budgetAccountId: Long,
+    val name: String,
+    val startDate: String,
+)
+
+/** A4 (`setup.html#file-account`): a Bank Account whose transactions come from Transaction Files (UC-013 BR-006, BR-009). */
+@Composable
+private fun FileFormatCard(ui: SetupUi, onAdd: (FileAccountEntry) -> Unit) {
+    var type by remember { mutableStateOf<BankAccountType?>(null) }
+    var bank by remember { mutableStateOf<BankChoice?>(null) }
     var name by remember { mutableStateOf("") }
+    var startDate by remember { mutableStateOf("") }
     var budgetAccount by remember { mutableStateOf<Long?>(null) }
+    var balanceFrom by remember { mutableStateOf<Long?>(null) }
     val format = ui.fileFormats.first()
     SlussenCard {
         Text("Add a file-imported Bank Account", fontWeight = FontWeight.SemiBold)
         Muted("File Format ${format.second}")
-        OutlinedTextField(value = bank, onValueChange = { bank = it }, singleLine = true, placeholder = { Text("Bank") })
+        TypeChooser(ui.types, type) { type = it }
+        BankChooser(ui.knownBanks, bank) { bank = it }
+        Text("Balance from · optional")
+        ui.sources.forEach { source ->
+            source.offered.forEach { offered ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = balanceFrom == offered.offeredBankAccountId,
+                        onCheckedChange = { balanceFrom = if (it) offered.offeredBankAccountId else null },
+                    )
+                    Text("${source.name} · ${offered.title} ${offered.digits.orEmpty()}")
+                }
+            }
+        }
+        Text("Budget Account")
         ui.freeBudgetAccounts.forEach { free ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = budgetAccount == free.budgetAccountId, onCheckedChange = { budgetAccount = free.budgetAccountId })
@@ -164,8 +249,10 @@ private fun FileFormatCard(ui: SetupUi, onAdd: (Long, String, Long, String) -> U
             }
         }
         OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, placeholder = { Text("Name") })
+        OutlinedTextField(value = startDate, onValueChange = { startDate = it }, singleLine = true, placeholder = { Text("Start Date · optional, 2026-09-01") })
+        Muted("Nothing is proposed from a file: choose the type and the Bank and enter the name")
         OutlinedButton(
-            onClick = { budgetAccount?.let { onAdd(format.first, bank, it, name) } },
+            onClick = { budgetAccount?.let { onAdd(FileAccountEntry(format.first, type, bank, balanceFrom, it, name, startDate)) } },
             enabled = budgetAccount != null,
         ) { Text("Add") }
     }

@@ -1,16 +1,20 @@
 package slussen.testing
 
 import slussen.core.port.AddOutcome
+import slussen.core.port.BankAccountType
+import slussen.core.port.BankChoice
 import slussen.core.port.BackupSizeMonitor
 import slussen.core.port.BudgetToServe
 import slussen.core.port.ConnectionStore
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.CoordinatorStore
 import slussen.core.port.DataProviderRegistration
+import slussen.core.port.DataProviderSettingsStore
 import slussen.core.port.DecisionJournalRecorder
 import slussen.core.port.FileFormatRegistration
 import slussen.core.port.ImportStatusStore
 import slussen.core.port.JournalEntry
+import slussen.core.port.MappingStore
 import slussen.core.port.NewBankAccount
 import slussen.core.port.NewOfferedBankAccount
 import slussen.core.port.NewProviderRequest
@@ -39,11 +43,11 @@ import slussen.core.port.StoredFileFormat
 import slussen.core.port.StoredOfferedBankAccount
 import slussen.core.port.StoredProviderRequest
 import slussen.core.port.StoredRecoveryCheck
+import slussen.core.port.StoredRequestLimit
 import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.StoredTransactionFile
 import slussen.core.port.UnreadablePart
 import java.time.Instant
-import java.time.LocalDate
 
 /** In-memory fake of [OperatorSettingsStore]; starts with every default. */
 class InMemoryOperatorSettingsStore(var settings: OperatorSettings = OperatorSettings.DEFAULT) : OperatorSettingsStore {
@@ -66,8 +70,8 @@ class InMemoryDecisionJournal : DecisionJournalRecorder {
     }
 }
 
-/** In-memory fake of [PluginRegistryStore] with the matching rules of O-11. */
-class InMemoryPluginRegistryStore : PluginRegistryStore {
+/** In-memory fake of [PluginRegistryStore] with the matching rules of O-11, and of [DataProviderSettingsStore]. */
+class InMemoryPluginRegistryStore : PluginRegistryStore, DataProviderSettingsStore {
     val dataProviders = mutableListOf<StoredDataProvider>()
     val fileFormats = mutableListOf<StoredFileFormat>()
     private var nextId = 1L
@@ -79,6 +83,7 @@ class InMemoryPluginRegistryStore : PluginRegistryStore {
         dataProviders.forEach { declared ->
             val index = this.dataProviders.indexOfFirst { it.sourceKey == declared.sourceKey }
             if (index < 0) {
+                val limit = declared.requestLimitAtStart(stored = null)
                 this.dataProviders += StoredDataProvider(
                     id = nextId++,
                     name = declared.name,
@@ -86,15 +91,18 @@ class InMemoryPluginRegistryStore : PluginRegistryStore {
                     givesStableReference = declared.givesStableReference,
                     needsBankConsent = declared.needsBankConsent,
                     fetchCooldownMinutes = declared.defaultFetchCooldownMinutes,
-                    requestLimit = declared.requestLimit,
+                    requestLimit = limit.requests,
+                    requestLimitPublished = limit.published,
                 )
             } else {
                 val stored = this.dataProviders[index]
+                val limit = declared.requestLimitAtStart(StoredRequestLimit(stored.requestLimit, stored.requestLimitPublished))
                 this.dataProviders[index] = stored.copy(
                     name = declared.name,
                     givesStableReference = declared.givesStableReference,
                     needsBankConsent = declared.needsBankConsent,
-                    requestLimit = declared.requestLimit,
+                    requestLimit = limit.requests,
+                    requestLimitPublished = limit.published,
                 )
             }
         }
@@ -107,6 +115,10 @@ class InMemoryPluginRegistryStore : PluginRegistryStore {
             this.dataProviders.filter { stored -> dataProviders.any { it.sourceKey == stored.sourceKey } },
             this.fileFormats.filter { stored -> fileFormats.any { it.sourceKey == stored.sourceKey } },
         )
+    }
+
+    override suspend fun storeRequestLimit(dataProviderId: Long, requests: Int) {
+        dataProviders.replaceAll { if (it.id == dataProviderId) it.copy(requestLimit = requests) else it }
     }
 }
 
@@ -158,8 +170,8 @@ class InMemoryOfferedBankAccountStore : OfferedBankAccountStore {
     }
 }
 
-/** In-memory fake of [ConnectionStore] with the refusals of O-15, all or nothing like the real one. */
-class InMemoryConnectionStore : ConnectionStore {
+/** In-memory fake of [ConnectionStore] with the refusals of O-15, all or nothing like the real one, and of [MappingStore]. */
+class InMemoryConnectionStore : ConnectionStore, MappingStore {
     val budgetList = mutableListOf<StoredBudget>()
     val bankList = mutableListOf<StoredBank>()
     val bankAccountList = mutableListOf<StoredBankAccount>()
@@ -219,30 +231,64 @@ class InMemoryConnectionStore : ConnectionStore {
         if (mappedBy != null) return AddOutcome.BudgetAccountAlreadyMapped(mappedBy.name)
         val budget = budgetList.first { b -> b.budgetAccounts.any { it.id == bankAccount.budgetAccountId } }
         if (budget.currency != bankAccount.currency) return AddOutcome.CurrencyDiffers(budget.currency)
+        val bankId = bankIdOf(bankAccount.bank)
         val id = nextId++
         bankAccountList += StoredBankAccount(
             id = id,
             generatedIdentifier = bankAccount.generatedIdentifier,
-            bankId = bankAccount.bankId,
+            bankId = bankId,
+            providerBankId = bankAccount.providerBankId,
             dataProviderId = bankAccount.dataProviderId,
             fileFormatId = bankAccount.fileFormatId,
             balanceDataProviderId = bankAccount.balanceDataProviderId,
             name = bankAccount.name,
             currency = bankAccount.currency,
             type = bankAccount.type,
-            startDate = null,
+            startDate = bankAccount.startDate,
             providerReference = bankAccount.providerReference,
             bankAccountFingerprint = bankAccount.bankAccountFingerprint,
             balanceProviderReference = bankAccount.balanceProviderReference,
             identifiedAt = bankAccount.identifiedAt,
             retired = false,
+            fundedByBudgetAccountId = null,
+            transferPartnerBudgetAccountId = null,
             mapping = StoredAccountMapping(nextId++, id, bankAccount.budgetAccountId, firstSentAt = null),
         )
         return AddOutcome.Added(id)
     }
 
-    override suspend fun nameAndStartDate(bankAccountId: Long, name: String, startDate: LocalDate?) {
-        bankAccountList.replaceAll { if (it.id == bankAccountId) it.copy(name = name, startDate = startDate) else it }
+    private suspend fun bankIdOf(bank: BankChoice): Long = when (bank) {
+        is BankChoice.Known -> bankList.single { it.id == bank.bankId }.id
+        is BankChoice.Named -> bankNamed(bank.name).id
+    }
+
+    override suspend fun changeTypeAndBank(
+        bankAccountId: Long,
+        type: BankAccountType,
+        bank: BankChoice,
+        clearFundedBy: Boolean,
+        clearTransferPartner: Boolean,
+    ) {
+        val bankId = bankIdOf(bank)
+        bankAccountList.replaceAll {
+            if (it.id != bankAccountId) {
+                it
+            } else {
+                it.copy(
+                    type = type,
+                    bankId = bankId,
+                    fundedByBudgetAccountId = if (clearFundedBy) null else it.fundedByBudgetAccountId,
+                    transferPartnerBudgetAccountId = if (clearTransferPartner) null else it.transferPartnerBudgetAccountId,
+                )
+            }
+        }
+    }
+
+    /** Sets a Funded By or Transfer Partner as UC-009 BR-008 will, for the tests of UC-009 A14. */
+    fun link(bankAccountId: Long, fundedBy: Long? = null, transferPartner: Long? = null) {
+        bankAccountList.replaceAll {
+            if (it.id == bankAccountId) it.copy(fundedByBudgetAccountId = fundedBy, transferPartnerBudgetAccountId = transferPartner) else it
+        }
     }
 
     override suspend fun bankNamed(name: String): StoredBank =

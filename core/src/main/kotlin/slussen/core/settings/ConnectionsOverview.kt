@@ -10,6 +10,7 @@ import slussen.core.port.ImportStatusStore
 import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.ServiceKey
 import slussen.pluginapi.credential.CredentialField
+import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.pluginapi.value.CurrencyCode
 import java.time.Clock
 import java.time.Duration
@@ -37,6 +38,18 @@ data class ConnectionsList(val inUse: List<ServiceLine>, val notSetUp: List<Serv
 /** One Bank Account on a Data Provider's page. */
 data class ServiceBankAccount(val bankAccountId: Long, val name: String, val mapped: Boolean, val retired: Boolean)
 
+/**
+ * The Request Limit on a Data Provider's page (UC-010 BR-010, ADR-001 §4.6): the limit the Data Provider publishes,
+ * read-only with its source, or the Operator's value with the default and range its part declares.
+ */
+sealed interface RequestLimitShown {
+    val requests: Int
+
+    data class Published(override val requests: Int, val source: String) : RequestLimitShown
+
+    data class NotPublished(override val requests: Int, val defaultRequests: Int, val range: IntRange) : RequestLimitShown
+}
+
 /** One Budget in use on the Budget App's page. */
 data class BudgetInUse(val budgetId: Long, val name: String, val currency: CurrencyCode)
 
@@ -55,7 +68,7 @@ data class ServicePage(
     val needsBankConsent: Boolean,
     val fetchCooldownMinutes: Int?,
     val defaultFetchCooldownMinutes: Int?,
-    val requestLimit: Int?,
+    val requestLimit: RequestLimitShown?,
     val bankAccounts: List<ServiceBankAccount>,
     val budgetsInUse: List<BudgetInUse>,
     val supportsClearedMarker: Boolean,
@@ -126,7 +139,7 @@ class ConnectionsOverview(
             needsBankConsent = provider.stored.needsBankConsent,
             fetchCooldownMinutes = provider.stored.fetchCooldownMinutes,
             defaultFetchCooldownMinutes = provider.plugin.profile.defaultFetchCooldownMinutes,
-            requestLimit = provider.stored.requestLimit,
+            requestLimit = requestLimitShown(provider),
             bankAccounts = connections.bankAccounts().filter { it.dataProviderId == provider.stored.id }.map {
                 ServiceBankAccount(it.id, it.name, mapped = it.mapping != null, retired = it.retired)
             },
@@ -134,6 +147,14 @@ class ConnectionsOverview(
             supportsClearedMarker = false,
         )
     }
+
+    // UC-010 BR-010: A Data Provider's page shows its Request Limit: published with its source and not changeable, or the Operator's value with the default and range its part declares.
+    private fun requestLimitShown(provider: RegisteredDataProvider): RequestLimitShown =
+        when (val declared = provider.plugin.profile.requestLimit) {
+            is RequestLimitDeclaration.Published -> RequestLimitShown.Published(provider.stored.requestLimit, declared.source)
+            is RequestLimitDeclaration.NotPublished ->
+                RequestLimitShown.NotPublished(provider.stored.requestLimit, declared.defaultRequests, declared.range)
+        }
 
     private suspend fun statusOf(service: ServiceKey, budgetsInUse: Int): ServiceStatus =
         when (credentials.status(service)) {

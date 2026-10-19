@@ -11,6 +11,8 @@ import org.junit.jupiter.api.extension.ExtendWith
 import slussen.app.ui.MainDispatcherExtension
 import slussen.app.ui.UiFixture
 import slussen.app.ui.bankaccounts.BankAccountsViewModel
+import slussen.core.port.BankAccountType
+import slussen.core.port.BankChoice
 import slussen.core.port.CoordinatorMode
 import slussen.pluginapi.budgetapp.ReadResult
 import slussen.pluginapi.request.FailureKind
@@ -53,6 +55,16 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
     private fun offeredId(reference: String) = runBlocking { slice.offeredStore.offered().single { it.providerReference == reference }.id }
 
     private fun freeId(name: String) = ui().freeBudgetAccounts.single { it.title == name }.budgetAccountId
+
+    private fun kestrel() = runBlocking { BankChoice.Known(slice.connectionStore.bankNamed("Kestrel Bank").id) }
+
+    /** Steps 6-10 with the proposed type and Bank, the [name] and [startDate] given. */
+    private fun pairAndSave(reference: String, budgetAccount: String, name: String, startDate: String = "") {
+        setup.selectOffered(offeredId(reference))
+        setup.pairWith(freeId(budgetAccount))
+        val naming = ui().naming!!
+        setup.saveNaming(name, naming.proposedType, naming.proposedBank?.let { BankChoice.Known(it.bankId) }, startDate)
+    }
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-008"])
@@ -138,8 +150,7 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
         throughBudgets()
         offer()
         setup.goTo(SetupStep.BankAccounts)
-        setup.selectOffered(offeredId("acct-4410"))
-        setup.pairWith(freeId("Checking"))
+        pairAndSave("acct-4410", "Checking", "CHK ••4410")
         setup.goTo(SetupStep.Budgets)
 
         setup.toggleBudget("budget-household")
@@ -168,27 +179,93 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-004", "BR-005"])
-    @DisplayName("Steps 6-11: pairing proposes the name; the accepted name and Start Date are stored and the Bank Account is listed as added")
-    fun pairingNamingAndStartDate() {
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-004", "BR-009"])
+    @DisplayName("Steps 6-8: pairing shows the proposed name, Bank Account type and Bank, from what the Data Provider states, and adds nothing yet")
+    fun pairingShowsTheProposal() {
         throughBudgets()
         offer()
         setup.goTo(SetupStep.BankAccounts)
 
         setup.selectOffered(offeredId("acct-4410"))
         setup.pairWith(freeId("Checking"))
-        assertEquals("CHK ••4410", ui().naming?.proposedName)
-        setup.saveNaming("Kestrel Checking", "2026-09-01")
+
+        val naming = ui().naming!!
+        assertEquals("CHK ••4410", naming.proposedName)
+        assertEquals("CHK · ••••4410 → Checking", naming.title)
+        assertEquals(BankAccountType.Checking, naming.proposedType)
+        assertEquals("Kestrel Bank", naming.proposedBank?.name)
+        assertEquals(listOf("Checking", "Savings", "Credit Card", "Other"), naming.types.map { it.text })
+        assertEquals(listOf("Kestrel Bank"), naming.knownBanks.map { it.name })
+        assertEquals("Type and Bank proposed from what Kestrel Feeds states · change them if they are wrong", naming.note)
+        assertTrue(runBlocking { slice.connectionStore.bankAccounts().isEmpty() })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-004", "BR-005", "BR-009"])
+    @DisplayName("Steps 9-11: the accepted name, type, Bank and Start Date are stored and the Bank Account is listed as added")
+    fun pairingNamingAndStartDate() {
+        throughBudgets()
+        offer()
+        setup.goTo(SetupStep.BankAccounts)
+
+        pairAndSave("acct-4410", "Checking", "Kestrel Checking", "2026-09-01")
 
         assertNull(ui().naming)
+        assertEquals("Bank Account Kestrel Checking added · fetched from the next Fetch", ui().message)
         val stored = runBlocking { slice.connectionStore.bankAccounts().single() }
         assertEquals("Kestrel Checking", stored.name)
+        assertEquals(BankAccountType.Checking, stored.type)
         assertEquals(LocalDate.parse("2026-09-01"), stored.startDate)
         assertTrue(ui().sources.single { it.name == "Kestrel Feeds" }.offered.none { it.title == "CHK" })
-        val list = BankAccountsViewModel(fixture.services).also { it.load() }.state.value!!
+        val list = BankAccountsViewModel(fixture.services).also { it.load() }.state.value!!.groups
         assertEquals("Household · USD", list.single().title)
         assertEquals("Kestrel Checking", list.single().lines.single().bankAccount)
+        assertEquals("Kestrel Bank · Checking · Kestrel Feeds", list.single().lines.single().detail)
         assertEquals("Checking", list.single().lines.single().budgetAccount)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-009"])
+    @DisplayName("BR-009: the Operator changes the type and names a new Bank; without a Bank the Bank Account is not added and the screen says why")
+    fun typeAndBankAreConfirmedOrChanged() {
+        throughBudgets()
+        offer()
+        setup.goTo(SetupStep.BankAccounts)
+        setup.selectOffered(offeredId("acct-4410"))
+        setup.pairWith(freeId("Checking"))
+
+        setup.saveNaming("Kestrel Checking", BankAccountType.Savings, null, "")
+        assertEquals("Choose a Bank or name a new one · not added", ui().message)
+        assertTrue(runBlocking { slice.connectionStore.bankAccounts().isEmpty() })
+        setup.saveNaming("Kestrel Checking", null, kestrel(), "")
+        assertEquals("Choose the Bank Account type · not added", ui().message)
+
+        setup.saveNaming("Kestrel Checking", BankAccountType.Savings, BankChoice.Named("Kestrel Savings Bank"), "")
+
+        val stored = runBlocking { slice.connectionStore.bankAccounts().single() }
+        assertEquals(BankAccountType.Savings, stored.type)
+        assertEquals("Kestrel Savings Bank", runBlocking { slice.connectionStore.banks().single { it.id == stored.bankId }.name })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-009"])
+    @DisplayName("BR-009: when the Data Provider names no Bank, none is proposed and the screen asks to choose or name one")
+    fun noBankNamedIsShown() {
+        throughBudgets()
+        runBlocking {
+            slice.offeredStore.replaceOffered(
+                slice.feedsId,
+                null,
+                listOf(ExampleData.offered("acct-2209", "Old Savings", "savings", USD, "2209", null, bankId = null, offeredAt = slice.clock.instant())),
+            )
+        }
+        setup.goTo(SetupStep.BankAccounts)
+
+        setup.selectOffered(offeredId("acct-2209"))
+        setup.pairWith(freeId("Reserve Savings"))
+
+        assertNull(ui().naming!!.proposedBank)
+        assertEquals("Kestrel Feeds names no Bank · choose one or name a new one", ui().naming!!.note)
     }
 
     @Test
@@ -198,13 +275,12 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
         throughBudgets()
         offer()
         setup.goTo(SetupStep.BankAccounts)
-        setup.selectOffered(offeredId("acct-4410"))
-        setup.pairWith(freeId("Checking"))
 
-        setup.saveNaming("Kestrel Checking", "first of September")
+        pairAndSave("acct-4410", "Checking", "Kestrel Checking", "first of September")
 
         assertEquals("The Start Date is a date like 2026-09-01, or empty.", ui().message)
-        assertEquals("CHK ••4410", runBlocking { slice.connectionStore.bankAccounts().single().name })
+        assertTrue(runBlocking { slice.connectionStore.bankAccounts().isEmpty() })
+        assertEquals("CHK ••4410", ui().naming?.proposedName)
     }
 
     @Test
@@ -245,9 +321,7 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
         throughBudgets()
         offer()
         setup.goTo(SetupStep.BankAccounts)
-        setup.selectOffered(offeredId("acct-4410"))
-        setup.pairWith(freeId("Checking"))
-        setup.saveNaming("Kestrel Checking", "")
+        pairAndSave("acct-4410", "Checking", "Kestrel Checking")
         runBlocking {
             val bank = slice.connectionStore.bankNamed("Kestrel Bank").id
             val added = slice.connectionStore.bankAccounts().single().id
@@ -267,18 +341,24 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-006"])
-    @DisplayName("A4: a Bank Account of a File Format is added with the name the Operator enters")
+    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-006", "BR-009"])
+    @DisplayName("A4: a Bank Account of a File Format is added with the type and Bank the Operator chose and the name the Operator enters; nothing is proposed")
     fun bankAccountOfAFileFormat() {
         throughBudgets()
         offer()
         setup.goTo(SetupStep.BankAccounts)
         val format = ui().fileFormats.single()
+        assertEquals(listOf("Checking", "Savings", "Credit Card", "Other"), ui().types.map { it.text })
+        assertEquals(listOf("Kestrel Bank"), ui().knownBanks.map { it.name })
 
-        setup.addFromTransactionFiles(format.first, "Harbor Health Trust", null, freeId("Savings"), "Harbor Health Savings")
+        setup.addFromTransactionFiles(format.first, null, BankChoice.Named("Harbor Health Trust"), null, freeId("Savings"), "Harbor Health Savings", "")
+        assertEquals("Choose the Bank Account type · not added", ui().message)
+        setup.addFromTransactionFiles(format.first, BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), null, freeId("Savings"), "Harbor Health Savings", "")
 
-        assertEquals("Harbor Health Savings", ui().naming?.proposedName)
-        assertEquals("Harbor Health Savings", runBlocking { slice.connectionStore.bankAccounts().single().name })
+        assertEquals("Bank Account Harbor Health Savings added · fetched from the next Fetch", ui().message)
+        val stored = runBlocking { slice.connectionStore.bankAccounts().single() }
+        assertEquals("Harbor Health Savings", stored.name)
+        assertEquals(BankAccountType.Savings, stored.type)
     }
 
     @Test

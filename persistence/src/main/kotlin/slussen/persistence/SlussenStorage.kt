@@ -100,6 +100,7 @@ class SlussenStorage private constructor(
     val settings = RoomOperatorSettingsStore(main.settings())
     val registry = RoomPluginRegistryStore(main.registry())
     val connections = RoomConnectionStore(main.connections())
+    val mappings = RoomMappingStore(main.connections())
     val offered = RoomOfferedBankAccountStore(device.offeredBankAccounts())
     val providerRequests = RoomProviderRequestStore(main.providerRequests())
     val recovery = RoomRecoveryStore(main.recovery())

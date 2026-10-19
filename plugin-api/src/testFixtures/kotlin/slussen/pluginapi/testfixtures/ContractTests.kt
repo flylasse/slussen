@@ -22,7 +22,9 @@ import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.diagnostic.SlussenLog
 import slussen.pluginapi.fileformat.FilePreprocessor
 import slussen.pluginapi.provider.DataProvider
+import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.pluginapi.request.FailureKind
+import slussen.pluginapi.request.RefusalReason
 import slussen.pluginapi.value.Secret
 import java.time.Duration
 
@@ -105,11 +107,11 @@ public abstract class CredentialContractTest {
     }
 
     @Test
-    @DisplayName("ADR-001 §4.0: a refusal by the gate sends nothing and accepts nothing")
+    @DisplayName("ADR-001 §4.5: a refusal by the gate sends nothing and comes back as StoppedByGate with the gate's reason")
     public fun gateRefusalSendsNothing() {
         val gate = RecordingRequestGate.refusing()
         val result = check(credentialsAccepted(), TestRequestContext(gate))
-        assertFalse(result is CredentialCheck.Accepted, "a refused request cannot accept credentials, was $result")
+        assertEquals(CredentialCheck.StoppedByGate(RefusalReason.RequestLimitReached), result)
         assertEquals(0, requestsReceived(), "nothing is sent after a refusal")
     }
 
@@ -158,12 +160,45 @@ public abstract class CredentialContractTest {
 
 /**
  * The Data Provider contract test of ADR-001 §4.4. Each plug-in module's tests extend it with invented recorded answers
- * served by a local test server. This slice holds the credential checks of §4.5; the Fetch and declared-number checks
- * come with the slices that build UC-001 and with the Operator's decision on the declared numbers.
+ * served by a local test server. This slice holds the credential checks of §4.5 and the declared-number checks; the
+ * Fetch checks come with the slice that builds UC-001.
  */
 public abstract class DataProviderContractTest : CredentialContractTest() {
     /** The Data Provider under test, constructed with [log] as the composition root constructs it (ADR-001 §5). */
     protected abstract fun dataProvider(log: SlussenLog): DataProvider
+
+    @Test
+    @DisplayName("ADR-001 §4.4: the declared name and source key are not empty and the default Fetch Cooldown lies in 0 to 1440")
+    public fun declaredProfileIsComplete() {
+        val profile = dataProvider(NoLog).profile
+        assertTrue(profile.name.isNotBlank(), "name")
+        assertTrue(profile.sourceKey.isNotBlank(), "source key")
+        assertTrue(profile.defaultFetchCooldownMinutes in FETCH_COOLDOWN_RANGE, "default Fetch Cooldown ${profile.defaultFetchCooldownMinutes}")
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.4: a published Request Limit lies in 1 to 1000 and names its source; a default lies in its range, inside 1 to 1000")
+    public fun declaredRequestLimitLiesInItsRange() {
+        when (val limit = dataProvider(NoLog).profile.requestLimit) {
+            is RequestLimitDeclaration.Published -> {
+                assertTrue(limit.requests in REQUEST_LIMIT_RANGE, "published ${limit.requests}")
+                assertTrue(limit.source.isNotBlank(), "a published Request Limit names its source")
+            }
+            is RequestLimitDeclaration.NotPublished -> {
+                assertTrue(limit.range.first in REQUEST_LIMIT_RANGE && limit.range.last in REQUEST_LIMIT_RANGE, "range ${limit.range}")
+                assertFalse(limit.range.isEmpty(), "range ${limit.range}")
+                assertTrue(limit.defaultRequests in limit.range, "default ${limit.defaultRequests} in ${limit.range}")
+            }
+        }
+    }
+
+    private companion object {
+        /** `DATA_PROVIDER.fetch_cooldown_minutes` (entity model): Min 0, Max 1440. */
+        val FETCH_COOLDOWN_RANGE = 0..1440
+
+        /** `DATA_PROVIDER.request_limit` (entity model): Min 1, Max 1000. */
+        val REQUEST_LIMIT_RANGE = 1..1000
+    }
 }
 
 /**
@@ -250,9 +285,20 @@ public abstract class BudgetAppContractTest : CredentialContractTest() {
     }
 }
 
-/** See [DataProviderContractTest]. */
+/**
+ * The File Pre-processor contract test of ADR-001 §4.4. This slice holds the declaration check; the conversion checks
+ * come with the slice that builds UC-002.
+ */
 public abstract class FilePreprocessorContractTest {
     protected abstract fun filePreprocessor(log: SlussenLog): FilePreprocessor
+
+    @Test
+    @DisplayName("ADR-001 §4.3: the File Pre-processor declares a name and a source key")
+    public fun declaredProfileIsComplete() {
+        val profile = filePreprocessor(NoLog).profile
+        assertTrue(profile.name.isNotBlank(), "name")
+        assertTrue(profile.sourceKey.isNotBlank(), "source key")
+    }
 }
 
 /** A log that writes nothing, for constructing a plug-in only to read its declarations. */

@@ -62,6 +62,8 @@ class UC014ManageServiceCredentialsScreenIT {
                         it, onBack = {}, onStartEntering = viewModel::startEntering, onCancelEntering = viewModel::cancelEntering,
                         onSave = viewModel::save, onRequestRemoval = viewModel::requestRemoval, onCancelRemoval = viewModel::cancelRemoval,
                         onConfirmRemoval = viewModel::confirmRemoval, onChooseBudgets = {},
+                        onEditRequestLimit = viewModel::startEditingRequestLimit, onSaveRequestLimit = viewModel::saveRequestLimit,
+                        onResetRequestLimit = viewModel::resetRequestLimit, onCancelRequestLimit = viewModel::cancelRequestLimit,
                     )
                 }
             }
@@ -90,6 +92,8 @@ class UC014ManageServiceCredentialsScreenIT {
                         it, onBack = {}, onStartEntering = viewModel::startEntering, onCancelEntering = viewModel::cancelEntering,
                         onSave = viewModel::save, onRequestRemoval = viewModel::requestRemoval, onCancelRemoval = viewModel::cancelRemoval,
                         onConfirmRemoval = viewModel::confirmRemoval, onChooseBudgets = {},
+                        onEditRequestLimit = viewModel::startEditingRequestLimit, onSaveRequestLimit = viewModel::saveRequestLimit,
+                        onResetRequestLimit = viewModel::resetRequestLimit, onCancelRequestLimit = viewModel::cancelRequestLimit,
                     )
                 }
             }

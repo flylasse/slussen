@@ -15,6 +15,7 @@ import slussen.core.status.BlockedReason
 import slussen.core.status.Remedy
 import slussen.core.status.SourceHealth
 import slussen.pluginapi.request.FailureKind
+import slussen.pluginapi.request.RefusalReason
 
 /** The texts the screens show for the core's results, in Slussen's glossary terms. */
 object Texts {
@@ -39,11 +40,22 @@ object Texts {
         CredentialStatus.Missing -> "Not entered"
     }
 
-    fun outcome(service: String, outcome: CredentialOutcome): String = when (outcome) {
+    fun outcome(service: String, outcome: CredentialOutcome, formats: Formats): String = when (outcome) {
         is CredentialOutcome.Accepted -> "Accepted by $service"
         CredentialOutcome.Refused -> "Refused by $service · nothing stored"
         is CredentialOutcome.NotReached -> "$service could not be reached: ${failure(outcome.kind)} · nothing stored"
+        is CredentialOutcome.RequestLimitReached ->
+            "Blocked: Request Limit reached · not checked · frees up from ${formats.dateTime(outcome.freesUpAt)} · " +
+                "nothing stored, the earlier credentials stay unchanged"
+        is CredentialOutcome.NotSent -> "Not checked: ${gateRefusal(outcome.reason)} · nothing stored, the earlier credentials stay unchanged"
         is CredentialOutcome.Unavailable -> refusal(outcome.reason)
+    }
+
+    fun gateRefusal(reason: RefusalReason): String = when (reason) {
+        RefusalReason.RequestLimitReached -> "Request Limit reached"
+        RefusalReason.BackOff -> "waiting for the provider"
+        RefusalReason.UnattendedAccessLimitReached -> "access limit reached"
+        RefusalReason.OperationEnded -> "the operation ended"
     }
 
     fun serviceStatus(status: ServiceStatus, formats: Formats): String = when (status) {

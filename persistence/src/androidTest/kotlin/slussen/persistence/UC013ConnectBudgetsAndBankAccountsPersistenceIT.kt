@@ -10,6 +10,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import slussen.core.port.AddOutcome
 import slussen.core.port.BankAccountType
+import slussen.core.port.BankChoice
 import slussen.core.port.BudgetAccountToStore
 import slussen.core.port.BudgetToServe
 import slussen.core.port.DataProviderRegistration
@@ -49,9 +50,17 @@ class UC013ConnectBudgetsAndBankAccountsPersistenceIT {
         BudgetToServe("budget-summer", "Summer House", eur, listOf(BudgetAccountToStore("ba-current", "Current", Amount(3_402_300)))),
     )
 
-    private suspend fun newBankAccount(budgetAccountId: Long, currency: CurrencyCode, identifier: String) = NewBankAccount(
+    private fun newBankAccount(
+        budgetAccountId: Long,
+        currency: CurrencyCode,
+        identifier: String,
+        bank: BankChoice = BankChoice.Named("Kestrel Bank"),
+        startDate: LocalDate? = null,
+        providerBankId: Long? = null,
+    ) = NewBankAccount(
         generatedIdentifier = identifier,
-        bankId = connections.bankNamed("Kestrel Bank").id,
+        bank = bank,
+        providerBankId = providerBankId,
         dataProviderId = null,
         fileFormatId = null,
         balanceDataProviderId = null,
@@ -62,24 +71,32 @@ class UC013ConnectBudgetsAndBankAccountsPersistenceIT {
         providerReference = null,
         bankAccountFingerprint = null,
         identifiedAt = now,
+        startDate = startDate,
         budgetAccountId = budgetAccountId,
     )
 
     @Test
-    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-001", "BR-003"])
-    @DisplayName("Steps 4-10: served Budgets, Budget Account balances, the added Bank Account and its Account Mapping are stored and read back")
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-001", "BR-003", "BR-009"])
+    @DisplayName("Steps 4-10: served Budgets, Budget Account balances, the added Bank Account with its type, new Bank and Start Date, and its Account Mapping are stored and read back")
     fun servedBudgetsAndAddedBankAccountReadBack() = runBlocking {
         assertEquals(ServeOutcome.Served, connections.serveBudgets(listed, setOf("budget-household"), now))
         val checking = connections.budgets().single { it.served }.budgetAccounts.single()
 
-        val added = connections.addBankAccount(newBankAccount(checking.id, usd, "6f1c2a4e-0b7d-4c1e-9a55-2f8e3b1c0d4a")) as AddOutcome.Added
-        connections.nameAndStartDate(added.bankAccountId, "Kestrel Checking", LocalDate.parse("2026-09-01"))
+        val aurora = connections.bankNamed("Aurora Bank").id
+        connections.addBankAccount(
+            newBankAccount(
+                checking.id, usd, "6f1c2a4e-0b7d-4c1e-9a55-2f8e3b1c0d4a", startDate = LocalDate.parse("2026-09-01"), providerBankId = aurora,
+            ),
+        ) as AddOutcome.Added
 
         assertEquals(Amount(4_140_050), checking.balance)
         assertEquals(now, checking.balanceReadAt)
         val stored = connections.bankAccounts().single()
         assertEquals("6f1c2a4e-0b7d-4c1e-9a55-2f8e3b1c0d4a", stored.generatedIdentifier)
         assertEquals(LocalDate.parse("2026-09-01"), stored.startDate)
+        assertEquals(BankAccountType.Checking, stored.type)
+        assertEquals("Kestrel Bank", connections.banks().single { it.id == stored.bankId }.name)
+        assertEquals(aurora, stored.providerBankId)
         assertEquals(checking.id, stored.mapping?.budgetAccountId)
         assertEquals(listOf("Household"), connections.budgets().filter { it.served }.map { it.name })
     }
@@ -113,6 +130,19 @@ class UC013ConnectBudgetsAndBankAccountsPersistenceIT {
         assertEquals(AddOutcome.BudgetAccountAlreadyMapped("Kestrel Checking"), second)
         assertEquals(AddOutcome.CurrencyDiffers(eur), otherCurrency)
         assertEquals(1, connections.bankAccounts().size)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A5: Budget Account Already Mapped or in Another Currency", businessRules = ["BR-009"])
+    @DisplayName("A5, BR-009: a refused addition stores no new Bank it named either")
+    fun refusedAdditionStoresNoNewBank() = runBlocking {
+        connections.serveBudgets(listed, setOf("budget-household", "budget-summer"), now)
+        val summer = connections.budgets().single { it.name == "Summer House" }.budgetAccounts.single().id
+
+        val refused = connections.addBankAccount(newBankAccount(summer, usd, "9c4f5d7b-3e0a-4f4b-8d88-5b1b6e4f3a7d", BankChoice.Named("Vesta Sparbank")))
+
+        assertEquals(AddOutcome.CurrencyDiffers(eur), refused)
+        assertTrue(connections.banks().none { it.name == "Vesta Sparbank" })
     }
 
     @Test

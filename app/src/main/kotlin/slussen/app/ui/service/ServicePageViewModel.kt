@@ -11,7 +11,9 @@ import slussen.core.credential.CredentialOutcome
 import slussen.core.credential.CredentialStatus
 import slussen.core.credential.RemovalOutcome
 import slussen.core.port.ServiceKey
+import slussen.core.settings.RequestLimitShown
 import slussen.core.settings.ServicePage
+import slussen.core.settings.SettingOutcome
 import slussen.core.settings.ServiceStatus
 import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.credential.FieldKind
@@ -21,8 +23,20 @@ import slussen.pluginapi.value.Secret
 data class FieldUi(val key: String, val kind: FieldKind, val description: String)
 
 /**
+ * Editing the Request Limit of a Data Provider that publishes none (UC-010 steps 2-4, A1, A11;
+ * `connections.html#request-limit`).
+ */
+data class RequestLimitEditorUi(
+    val value: String,
+    val defaultRequests: Int,
+    val hint: String,
+    /** Shown for a Data Provider that needs a Bank Consent: the PSD2 limit still applies (C-006). */
+    val unattendedNote: String?,
+)
+
+/**
  * The page of one service (UC-010 BR-010, UC-014 BR-007), generated from its declarations, with its credential form
- * (UC-014 steps 2-6, A1-A4).
+ * (UC-014 steps 2-6, A1-A5) and the Request Limit setting of a Data Provider that publishes none (UC-010 A11).
  */
 data class ServicePageUi(
     val name: String,
@@ -37,6 +51,9 @@ data class ServicePageUi(
     val message: String?,
     val fetchCooldown: String?,
     val requestLimit: String?,
+    /** True only for a Request Limit the Data Provider does not publish (UC-001 BR-007). */
+    val requestLimitEditable: Boolean,
+    val requestLimitEditor: RequestLimitEditorUi?,
     val bankAccounts: List<String>,
     val budgetsInUse: List<String>,
     val uploadAsClearedShown: Boolean,
@@ -53,6 +70,8 @@ class ServicePageViewModel(
     private val mutableState = MutableStateFlow<ServicePageUi?>(null)
     val state: StateFlow<ServicePageUi?> = mutableState
 
+    private var page: ServicePage? = null
+
     fun load() {
         viewModelScope.launch { show(services.connections.servicePage(service)) }
     }
@@ -63,7 +82,9 @@ class ServicePageViewModel(
         message: String? = null,
         removalQuestion: String? = null,
         returnToSetup: Boolean = false,
+        requestLimitEditor: RequestLimitEditorUi? = null,
     ) {
+        this.page = page
         val formats = services.formats
         val missingOrRefused = page.status == ServiceStatus.CredentialsMissing || page.status == ServiceStatus.CredentialsRefused
         mutableState.value = ServicePageUi(
@@ -86,9 +107,18 @@ class ServicePageViewModel(
             fetchCooldown = page.fetchCooldownMinutes?.let {
                 "$it min · default ${page.defaultFetchCooldownMinutes}, declared by its part · 0 to 1440 · 0 is off"
             },
-            requestLimit = page.requestLimit?.let {
-                "$it per 24 hours · from the Data Provider's own limit, declared by its part · not a setting"
+            requestLimit = page.requestLimit?.let { limit ->
+                when (limit) {
+                    is RequestLimitShown.Published ->
+                        "${limit.requests} per 24 hours · the Data Provider's own limit, published by ${page.name} · " +
+                            "source: ${limit.source} · not a setting"
+                    is RequestLimitShown.NotPublished ->
+                        "${limit.requests} per 24 hours · not published by ${page.name} · default ${limit.defaultRequests} · " +
+                            "${limit.range.first} to ${limit.range.last}"
+                }
             },
+            requestLimitEditable = page.requestLimit is RequestLimitShown.NotPublished,
+            requestLimitEditor = requestLimitEditor,
             bankAccounts = page.bankAccounts.map { account ->
                 account.name + when {
                     account.retired -> " · Retired Account"
@@ -112,21 +142,90 @@ class ServicePageViewModel(
         mutableState.value = mutableState.value?.copy(entering = false, message = null)
     }
 
-    /** Steps 3-6, A1, A2: [values] by the key of each declared field; a File field holds the chosen file's content. */
+    /** Steps 3-6, A1, A2, A5: [values] by the key of each declared field; a File field holds the chosen file's content. */
     fun save(values: Map<String, String>) {
         viewModelScope.launch {
             val input = CredentialInput(values.mapValues { Secret(it.value) })
             val outcome = services.credentials.enter(service, input)
             val page = services.connections.servicePage(service)
-            val message = Texts.outcome(page.name, outcome)
+            val message = Texts.outcome(page.name, outcome, services.formats)
             when (outcome) {
                 is CredentialOutcome.Accepted -> show(page, message = message, returnToSetup = fromSetup)
                 // A1: use case continues at step 2; the form stays open.
                 CredentialOutcome.Refused -> show(page, entering = true, message = message)
-                // A2: use case ends.
-                is CredentialOutcome.NotReached -> show(page, message = message)
+                // A2, A5: use case ends.
+                is CredentialOutcome.NotReached, is CredentialOutcome.RequestLimitReached, is CredentialOutcome.NotSent ->
+                    show(page, message = message)
                 is CredentialOutcome.Unavailable -> show(page, entering = true, message = message)
             }
+        }
+    }
+
+    /** UC-010 step 2: open the editor of a Request Limit the Data Provider does not publish; a published one has none. */
+    fun startEditingRequestLimit() {
+        val current = mutableState.value ?: return
+        val limit = page?.requestLimit as? RequestLimitShown.NotPublished ?: return
+        val name = current.name
+        mutableState.value = current.copy(
+            message = null,
+            requestLimitEditor = RequestLimitEditorUi(
+                value = limit.requests.toString(),
+                defaultRequests = limit.defaultRequests,
+                hint = "Not published by $name. Its part declares ${limit.defaultRequests} requests in any 24 hours by default, " +
+                    "an Operator Setting. Enter ${limit.range.first} to ${limit.range.last}.",
+                unattendedNote = if (page?.needsBankConsent == true) {
+                    "The limit PSD2 sets of 4 Unattended Accesses per Bank Account still applies."
+                } else {
+                    null
+                },
+            ),
+        )
+    }
+
+    /** UC-010 steps 2-6, A1: [text] must be a whole number within the declared range (BR-002). */
+    fun saveRequestLimit(text: String) {
+        val limit = page?.requestLimit as? RequestLimitShown.NotPublished ?: return
+        val range = "${limit.range.first} to ${limit.range.last}"
+        val value = text.trim().toIntOrNull()
+        if (value == null) {
+            mutableState.value = mutableState.value?.copy(message = "Enter a whole number from $range · the Request Limit stays ${limit.requests}")
+            return
+        }
+        viewModelScope.launch {
+            showSetting(services.providerSettings.changeRequestLimit(service, value), "Request Limit $value stored · an Operator Setting", value)
+        }
+    }
+
+    /** UC-010 A11: back to the default its part declares. */
+    fun resetRequestLimit() {
+        val limit = page?.requestLimit as? RequestLimitShown.NotPublished ?: return
+        viewModelScope.launch {
+            showSetting(
+                services.providerSettings.resetRequestLimit(service),
+                "Request Limit reset to its default ${limit.defaultRequests}",
+                limit.defaultRequests,
+            )
+        }
+    }
+
+    /** UC-010 step 2: the Operator cancels; the value stays. */
+    fun cancelRequestLimit() {
+        mutableState.value = mutableState.value?.copy(requestLimitEditor = null)
+    }
+
+    private suspend fun showSetting(outcome: SettingOutcome, storedMessage: String, value: Int) {
+        val editor = mutableState.value?.requestLimitEditor
+        val before = (page?.requestLimit as? RequestLimitShown.NotPublished)?.requests
+        when (outcome) {
+            is SettingOutcome.Stored -> show(services.connections.servicePage(service), message = storedMessage)
+            // A1: refused with the allowed range; the editor stays open (use case continues at step 2).
+            is SettingOutcome.OutsideRange -> mutableState.value = mutableState.value?.copy(
+                message = "$value is outside the allowed range · enter ${outcome.range.first} to ${outcome.range.last} · " +
+                    "the Request Limit stays $before",
+                requestLimitEditor = editor,
+            )
+            SettingOutcome.NotAnOperatorSetting -> show(services.connections.servicePage(service), message = "Published by the Data Provider · not a setting")
+            is SettingOutcome.Unavailable -> mutableState.value = mutableState.value?.copy(message = Texts.refusal(outcome.reason))
         }
     }
 

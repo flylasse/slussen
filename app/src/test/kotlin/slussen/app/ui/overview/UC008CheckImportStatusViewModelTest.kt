@@ -27,6 +27,8 @@ import slussen.core.port.StoredPart
 import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.UnreadablePart
 import slussen.core.connection.PairOutcome
+import slussen.core.port.BankAccountType
+import slussen.core.port.BankChoice
 import slussen.pluginapi.testfixtures.UseCase
 import slussen.testing.ExampleData
 import slussen.testing.ExampleData.USD
@@ -53,8 +55,9 @@ class UC008CheckImportStatusViewModelTest {
             listOf(ExampleData.offered("acct-4410", "CHK", "checking", USD, "4410", null, bank, slice.clock.instant())),
         )
         val checking = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Checking" }.id
-        val added = slice.connect.pair(slice.offeredStore.offered().single().id, checking) as PairOutcome.Added
-        slice.connect.completeAddition(added.bankAccountId, "Kestrel Checking", null)
+        val added = slice.connect.add(
+            slice.offeredStore.offered().single().id, checking, "Kestrel Checking", BankAccountType.Checking, BankChoice.Known(bank), null,
+        ) as PairOutcome.Added
         added.bankAccountId
     }
 

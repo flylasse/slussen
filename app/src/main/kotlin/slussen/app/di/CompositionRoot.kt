@@ -8,10 +8,12 @@ import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
 import slussen.core.journal.DecisionJournal
+import slussen.core.mapping.AccountMappings
 import slussen.core.operation.OperationCoordinator
 import slussen.core.plugin.PluginRegistration
 import slussen.core.port.RandomSource
 import slussen.core.settings.ConnectionsOverview
+import slussen.core.settings.DataProviderSettings
 import slussen.core.status.ImportStatus
 import slussen.fileformat.hsacsv.HsaCsvFilePreprocessor
 import slussen.persistence.SlussenStorage
@@ -37,20 +39,16 @@ class CompositionRoot(log: SlussenLog) {
     )
 
     /**
-     * Opens the storage (the start sequence of ADR-002 §6 included), registers the plug-ins (O-11) and creates the core's
-     * services, before any operation is admitted.
-     *
-     * A plug-in whose declarations are not written yet is not registered: the `source_key`, the Request Limit and the
-     * default Fetch Cooldown of SimpleFIN and Enable Banking, and the File Format of this build, are owed by an Operator
-     * decision (Phase 7, Open). Each part is registered as soon as its part declares them; nothing else changes.
+     * Opens the storage (the start sequence of ADR-002 §6 included), registers every plug-in of this build with what its
+     * part declares (O-11, ADR-001 §4.1, §4.3) and creates the core's services, before any operation is admitted.
      */
     suspend fun start(context: Context, clock: Clock): UiServices {
         val storage = SlussenStorage.open(context, clock)
         val random = SecureRandom()
         val registered = PluginRegistration(storage.registry).register(
             plugins.budgetApp,
-            plugins.dataProviders.filter { declared { it.profile } },
-            plugins.filePreprocessors.filter { declared { it.profile } },
+            plugins.dataProviders,
+            plugins.filePreprocessors,
         )
         val coordinator = OperationCoordinator(storage.coordinator)
         val journal = DecisionJournal(storage.journalRecorder, storage.settings, clock)
@@ -65,9 +63,11 @@ class CompositionRoot(log: SlussenLog) {
                 registered, credentials, storage.connections, storage.offered, coordinator, journal,
                 RandomSource { random.nextBytes(it) }, clock,
             ),
+            providerSettings = DataProviderSettings(registered, storage.registry, coordinator, journal),
+            mappings = AccountMappings(registered, storage.connections, storage.mappings, coordinator, journal),
             status = ImportStatus(
                 budgetAppName = registered.budgetApp.profile.name,
-                dataProviders = registered.dataProviders.map { it.stored },
+                currentDataProviders = { registered.dataProviders.map { it.stored } },
                 fileFormats = registered.fileFormats,
                 connections = storage.connections,
                 stored = storage.importStatus,
@@ -85,8 +85,6 @@ class CompositionRoot(log: SlussenLog) {
         )
     }
 
-    /** True when the part has written its declarations; a part still waiting for them throws `NotImplementedError`. */
-    private fun declared(profile: () -> Any): Boolean = runCatching { profile() }.isSuccess
 }
 
 /** The plug-ins of this build: every Data Provider, the one Budget App and the one File Pre-processor (C-010). */

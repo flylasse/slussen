@@ -14,8 +14,9 @@ import java.time.LocalDate
 
 /**
  * `slussen.db` (ADR-002 §1): the only database that is backed up and transferred, holding all Decision-Critical
- * Data. Phase 7 holds the tables of UC-008, UC-013 and UC-014; the other tables of ADR-002 §1 come with the slices that
- * use them, within schema version 1 until the first release (ADR-002 §7).
+ * Data. Phase 7 holds the tables of UC-008, UC-013 and UC-014, Phase 7a adds `data_provider.request_limit_published`
+ * (S-31) and `bank_account.provider_bank_id` (S-33); the other tables of ADR-002 §1 come with the slices that use them, within schema version 1 until the first
+ * release: a migration is written only from a released schema version (ADR-002 §7).
  */
 @Database(
     entities = [
@@ -88,6 +89,7 @@ data class DataProviderEntity(
     @ColumnInfo(name = "bank_consent_required") val bankConsentRequired: Boolean,
     @ColumnInfo(name = "fetch_cooldown_minutes") val fetchCooldownMinutes: Int,
     @ColumnInfo(name = "request_limit") val requestLimit: Int,
+    @ColumnInfo(name = "request_limit_published") val requestLimitPublished: Boolean,
 )
 
 /** `FILE_FORMAT` (entity model). */
@@ -142,6 +144,7 @@ data class BudgetAccountEntity(
     indices = [
         Index(value = ["generated_identifier"], unique = true),
         Index(value = ["bank_id"]),
+        Index(value = ["provider_bank_id"]),
         Index(value = ["data_provider_id"]),
         Index(value = ["file_format_id"]),
         Index(value = ["balance_data_provider_id"]),
@@ -150,6 +153,7 @@ data class BudgetAccountEntity(
     ],
     foreignKeys = [
         ForeignKey(entity = BankEntity::class, parentColumns = ["id"], childColumns = ["bank_id"]),
+        ForeignKey(entity = BankEntity::class, parentColumns = ["id"], childColumns = ["provider_bank_id"]),
         ForeignKey(entity = DataProviderEntity::class, parentColumns = ["id"], childColumns = ["data_provider_id"]),
         ForeignKey(entity = FileFormatEntity::class, parentColumns = ["id"], childColumns = ["file_format_id"]),
         ForeignKey(entity = DataProviderEntity::class, parentColumns = ["id"], childColumns = ["balance_data_provider_id"]),
@@ -165,6 +169,7 @@ data class BankAccountEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     @ColumnInfo(name = "generated_identifier") val generatedIdentifier: String,
     @ColumnInfo(name = "bank_id") val bankId: Long,
+    @ColumnInfo(name = "provider_bank_id") val providerBankId: Long?,
     @ColumnInfo(name = "data_provider_id") val dataProviderId: Long?,
     @ColumnInfo(name = "file_format_id") val fileFormatId: Long?,
     @ColumnInfo(name = "balance_data_provider_id") val balanceDataProviderId: Long?,

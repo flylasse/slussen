@@ -42,7 +42,13 @@ enum class BankAccountType(val text: String) {
 data class StoredBankAccount(
     val id: Long,
     val generatedIdentifier: String,
+    /** The Bank the Operator confirmed or chose: it names and groups the Bank Account only (UC-007 BR-009). */
     val bankId: Long,
+    /**
+     * `provider_bank_id` (S-33): the Bank the Data Provider reading the Bank Account names for it, taken from the
+     * Offered Bank Account when it is added or identified; never changed by the Operator's Bank (UC-009 BR-012).
+     */
+    val providerBankId: Long?,
     val dataProviderId: Long?,
     val fileFormatId: Long?,
     val balanceDataProviderId: Long?,
@@ -55,6 +61,10 @@ data class StoredBankAccount(
     val balanceProviderReference: String?,
     val identifiedAt: Instant,
     val retired: Boolean,
+    /** `funded_by_budget_account_id`: only a Credit Card has one (entity model `BANK_ACCOUNT` constraints). */
+    val fundedByBudgetAccountId: Long?,
+    /** `transfer_partner_budget_account_id`: only a Bank Account that is not a Credit Card has one. */
+    val transferPartnerBudgetAccountId: Long?,
     val mapping: StoredAccountMapping?,
 )
 
@@ -79,10 +89,20 @@ sealed interface ServeOutcome {
     data class StillMapped(val budgetName: String, val bankAccountNames: List<String>) : ServeOutcome
 }
 
-/** How the Source identifies a Bank Account that is added, and the rest of its row (UC-013 steps 6-8, A4). */
+/** The Bank of a Bank Account: one Slussen already knows, or a new one the Operator names (UC-013 BR-009, UC-009 BR-012). */
+sealed interface BankChoice {
+    data class Known(val bankId: Long) : BankChoice
+
+    /** A Bank by its name; stored when no Bank of that name is known yet (`BANK.name` is unique). */
+    data class Named(val name: String) : BankChoice
+}
+
+/** How the Source identifies a Bank Account that is added, and the rest of its row (UC-013 steps 8-10, A4). */
 data class NewBankAccount(
     val generatedIdentifier: String,
-    val bankId: Long,
+    val bank: BankChoice,
+    /** The `bank_id` of the Offered Bank Account the Bank Account is added with, or null (S-33, UC-013 BR-009). */
+    val providerBankId: Long?,
     val dataProviderId: Long?,
     val fileFormatId: Long?,
     val balanceDataProviderId: Long?,
@@ -93,6 +113,7 @@ data class NewBankAccount(
     val providerReference: String?,
     val bankAccountFingerprint: String?,
     val identifiedAt: Instant,
+    val startDate: LocalDate?,
     val budgetAccountId: Long,
 )
 
@@ -125,14 +146,28 @@ interface ConnectionStore {
     suspend fun serveBudgets(listed: List<BudgetToServe>, chosen: Set<String>, readAt: Instant): ServeOutcome
 
     /**
-     * O-15 Add: the new `bank_account` and its `account_mapping`, refused when the Budget Account already receives
-     * through an Account Mapping or its Budget has another currency (UC-013 A5).
+     * O-15 Add: the new `bank_account` with its name, Bank Account type, Bank (stored first when it is a new one) and
+     * Start Date, and its `account_mapping`, in one transaction; refused, storing nothing, when the Budget Account
+     * already receives through an Account Mapping or its Budget has another currency (UC-013 step 10, A5).
      */
     suspend fun addBankAccount(bankAccount: NewBankAccount): AddOutcome
 
-    /** The name and the optional Start Date of an added Bank Account (UC-013 steps 9-10), one update. */
-    suspend fun nameAndStartDate(bankAccountId: Long, name: String, startDate: LocalDate?)
-
-    /** The Bank named [name], stored when it is new (`BANK.name` is unique); for UC-013 A4. */
+    /** The Bank named [name], stored when it is new (`BANK.name` is unique). */
     suspend fun bankNamed(name: String): StoredBank
+}
+
+/** O-13 `MappingStore` (ADR-002 §3): the changes of UC-009, each one transaction on `slussen.db`. */
+interface MappingStore {
+    /**
+     * UC-009 A14: the Bank Account type and the Bank (stored first when it is a new one) of [bankAccountId], clearing
+     * its Funded By when [clearFundedBy] and its Transfer Partner when [clearTransferPartner], in one transaction.
+     * It changes no Account Mapping, identification, `provider_bank_id` or Sent Record (UC-009 BR-012).
+     */
+    suspend fun changeTypeAndBank(
+        bankAccountId: Long,
+        type: BankAccountType,
+        bank: BankChoice,
+        clearFundedBy: Boolean,
+        clearTransferPartner: Boolean,
+    )
 }

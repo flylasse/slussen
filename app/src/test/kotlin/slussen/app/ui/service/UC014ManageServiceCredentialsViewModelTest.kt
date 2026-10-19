@@ -164,6 +164,25 @@ class UC014ManageServiceCredentialsViewModelTest {
     }
 
     @Test
+    @UseCase(id = "UC-014", scenario = "A5: Request Limit Reached", businessRules = ["BR-002"])
+    @DisplayName("A5: at the Request Limit the check is not sent; the page shows the Blocked Reason with the time it frees up, nothing stored, and the form closes")
+    fun requestLimitReachedIsShown() {
+        runBlocking { repeat(20) { slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) } }
+        val page = page(slice.feedsKey)
+        page.startEntering()
+
+        page.save(mapOf("setupKey" to "PLANTED-NEW-SETUP-KEY"))
+
+        assertEquals(
+            "Blocked: Request Limit reached · not checked · frees up from 2026-10-16 14:00 · nothing stored, the earlier credentials stay unchanged",
+            page.ui().message,
+        )
+        assertFalse(page.ui().entering)
+        assertEquals("Accepted 2026-10-15", page.ui().credentials)
+        assertEquals(20, slice.feeds.credentials.requestsSent)
+    }
+
+    @Test
     @UseCase(id = "UC-014")
     @DisplayName("Precondition: while an Upload Plan awaits confirmation, saving shows why it is unavailable")
     fun savingIsUnavailableWhileAPlanAwaitsConfirmation() {
@@ -186,7 +205,11 @@ class UC014ManageServiceCredentialsViewModelTest {
         assertEquals("Kestrel Feeds", ui.name)
         assertEquals("Data Provider", ui.kind)
         assertEquals("60 min · default 60, declared by its part · 0 to 1440 · 0 is off", ui.fetchCooldown)
-        assertEquals("20 per 24 hours · from the Data Provider's own limit, declared by its part · not a setting", ui.requestLimit)
+        assertEquals(
+            "20 per 24 hours · the Data Provider's own limit, published by Kestrel Feeds · source: Kestrel Feeds developer guide, an invented source · not a setting",
+            ui.requestLimit,
+        )
+        assertFalse(ui.requestLimitEditable)
         assertEquals("Blocked: credentials missing · Enter credentials", ui.blocked)
         assertTrue(ui.bankAccounts.isEmpty())
         assertFalse(ui.uploadAsClearedShown)

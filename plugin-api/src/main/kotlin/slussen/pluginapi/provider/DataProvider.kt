@@ -39,11 +39,29 @@ public data class DataProviderProfile(
      */
     val defaultFetchCooldownMinutes: Int,
     /**
-     * `DATA_PROVIDER.request_limit`, 1 to 1000: the Data Provider's own limit, whose source the implementing part's
-     * KDoc names; not an Operator Setting (FR-017, UC-001 BR-007, UC-012 BR-011).
+     * `DATA_PROVIDER.request_limit` and `request_limit_published` (FR-017, UC-001 BR-007, UC-010 BR-002, UC-012 BR-011):
+     * the limit the Data Provider publishes, or a default the Operator can change.
      */
-    val requestLimit: Int,
+    val requestLimit: RequestLimitDeclaration,
 )
+
+/**
+ * How a Data Provider's part declares its Request Limit (ADR-001 §4.1, S-31): requests in any rolling 24 hours, counted
+ * from the Provider Requests.
+ */
+public sealed interface RequestLimitDeclaration {
+    /**
+     * The limit the Data Provider publishes, 1 to 1000, fixed: not an Operator Setting. [source] names where it is
+     * published and is shown on the Data Provider's page (ADR-001 §4.6).
+     */
+    public data class Published(val requests: Int, val source: String) : RequestLimitDeclaration
+
+    /**
+     * The Data Provider publishes none: a cautious default inside [range], the range inside 1 to 1000; an Operator
+     * Setting the Operator can change within [range] and reset to the default (UC-010 A11), shown as not published.
+     */
+    public data class NotPublished(val defaultRequests: Int, val range: IntRange) : RequestLimitDeclaration
+}
 
 /**
  * What one Fetch asks of a Data Provider (ADR-001 §4.1): the Bank Accounts to read and what to read of each, the

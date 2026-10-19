@@ -46,6 +46,9 @@ class UC008CheckImportStatusTest {
     private val slice = TestSlice()
     private val now: Instant get() = slice.clock.instant()
 
+    /** The Request Limit the invented Data Provider Kestrel Feeds publishes (ExampleData.feedsProfile). */
+    private val FEEDS_REQUEST_LIMIT = 20
+
     private var nextId = 1000L
     private val bankAccountIds = mutableMapOf<String, Long>()
 
@@ -85,6 +88,7 @@ class UC008CheckImportStatusTest {
             id = id,
             generatedIdentifier = "00000000-0000-4000-8000-%012d".format(id),
             bankId = slice.connectionStore.bankNamed(bankName).id,
+            providerBankId = null,
             dataProviderId = dataProviderId,
             fileFormatId = fileFormatId,
             balanceDataProviderId = null,
@@ -97,6 +101,8 @@ class UC008CheckImportStatusTest {
             balanceProviderReference = null,
             identifiedAt = now,
             retired = false,
+            fundedByBudgetAccountId = null,
+            transferPartnerBudgetAccountId = null,
             mapping = StoredAccountMapping(nextId++, id, budgetAccount.id, null),
         )
         bankAccountIds[name] = id
@@ -337,7 +343,7 @@ class UC008CheckImportStatusTest {
         household()
         slice.providerRequests.requests.clear()
         val oldest = now.minus(Duration.ofHours(20))
-        repeat(ExampleData.feedsProfile.requestLimit) { index ->
+        repeat(FEEDS_REQUEST_LIMIT) { index ->
             slice.providerRequests.requests += StoredProviderRequest(slice.feedsId, null, ProviderRequestKind.Other, false, oldest.plus(Duration.ofMinutes(index.toLong())))
         }
         slice.providerRequests.requests += StoredProviderRequest(slice.feedsId, null, ProviderRequestKind.Other, false, now.minus(Duration.ofHours(30)))

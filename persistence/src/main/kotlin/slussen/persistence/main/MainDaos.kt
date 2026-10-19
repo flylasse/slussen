@@ -5,8 +5,10 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import slussen.core.port.BankChoice
+import slussen.core.port.DataProviderRegistration
+import slussen.core.port.StoredRequestLimit
 import java.time.Instant
-import java.time.LocalDate
 
 @Dao
 abstract class OperatorSettingsDao {
@@ -46,26 +48,41 @@ abstract class PluginRegistryDao {
     @Update
     abstract suspend fun update(fileFormat: FileFormatEntity)
 
+    /** The Request Limit of a Data Provider that publishes none, an Operator Setting (UC-010 BR-002, A11; O-13). */
+    // UC-001 BR-007: A Request Limit the Data Provider publishes is never changed by the Operator's setting.
+    @Query("UPDATE data_provider SET request_limit = :requests WHERE id = :id AND request_limit_published = 0")
+    abstract suspend fun storeRequestLimit(id: Long, requests: Int)
+
     /**
      * O-11 (ADR-002 §2, §3): every Data Provider and File Format of the build, matched by `source_key`, in one
      * transaction. A new Data Provider gets its declared default Fetch Cooldown, an existing one keeps the Operator's;
-     * the Request Limit always comes from the part. Nothing is deleted.
+     * the Request Limit follows `DataProviderRegistration.requestLimitAtStart` (S-31). Nothing is deleted.
      */
     @Transaction
     open suspend fun reconcile(
-        dataProviders: List<DataProviderEntity>,
+        dataProviders: List<DataProviderRegistration>,
         fileFormats: List<FileFormatEntity>,
     ): Pair<List<DataProviderEntity>, List<FileFormatEntity>> {
         val providers = dataProviders.map { declared ->
             val stored = dataProviderBySourceKey(declared.sourceKey)
+            val limit = declared.requestLimitAtStart(stored?.let { StoredRequestLimit(it.requestLimit, it.requestLimitPublished) })
             if (stored == null) {
-                declared.copy(id = insert(declared))
+                DataProviderEntity(
+                    name = declared.name,
+                    sourceKey = declared.sourceKey,
+                    stableReference = declared.givesStableReference,
+                    bankConsentRequired = declared.needsBankConsent,
+                    fetchCooldownMinutes = declared.defaultFetchCooldownMinutes,
+                    requestLimit = limit.requests,
+                    requestLimitPublished = limit.published,
+                ).let { it.copy(id = insert(it)) }
             } else {
                 stored.copy(
                     name = declared.name,
-                    stableReference = declared.stableReference,
-                    bankConsentRequired = declared.bankConsentRequired,
-                    requestLimit = declared.requestLimit,
+                    stableReference = declared.givesStableReference,
+                    bankConsentRequired = declared.needsBankConsent,
+                    requestLimit = limit.requests,
+                    requestLimitPublished = limit.published,
                 ).also { update(it) }
             }
         }
@@ -149,8 +166,27 @@ abstract class ConnectionDao {
     @Query("UPDATE budget SET served = 0 WHERE budget_app_reference NOT IN (:chosen)")
     abstract suspend fun stopServingAllBut(chosen: List<String>)
 
-    @Query("UPDATE bank_account SET name = :name, start_date = :startDate WHERE id = :id")
-    abstract suspend fun nameAndStartDate(id: Long, name: String, startDate: LocalDate?)
+    @Query(
+        "UPDATE bank_account SET bank_account_type = :type, bank_id = :bankId, " +
+            "funded_by_budget_account_id = CASE WHEN :clearFundedBy THEN NULL ELSE funded_by_budget_account_id END, " +
+            "transfer_partner_budget_account_id = CASE WHEN :clearTransferPartner THEN NULL ELSE transfer_partner_budget_account_id END " +
+            "WHERE id = :id",
+    )
+    abstract suspend fun typeAndBank(id: Long, type: String, bankId: Long, clearFundedBy: Boolean, clearTransferPartner: Boolean)
+
+    /**
+     * O-13 (ADR-002 §3), UC-009 A14: the Bank Account type and the Bank, a new Bank stored first, clearing a Funded By or
+     * Transfer Partner as asked, in one transaction. No Account Mapping, identification or Sent Record is touched.
+     */
+    @Transaction
+    open suspend fun changeTypeAndBank(id: Long, type: String, bank: BankChoice, clearFundedBy: Boolean, clearTransferPartner: Boolean) {
+        typeAndBank(id, type, bankIdOf(bank), clearFundedBy, clearTransferPartner)
+    }
+
+    private suspend fun bankIdOf(bank: BankChoice): Long = when (bank) {
+        is BankChoice.Known -> bank.bankId
+        is BankChoice.Named -> bankNamed(bank.name).id
+    }
 
     /** A Budget stored for one listed Budget, with its Budget Accounts and their balances read at [readAt]. */
     data class ListedBudget(val budget: BudgetEntity, val budgetAccounts: List<BudgetAccountEntity>)
@@ -199,11 +235,12 @@ abstract class ConnectionDao {
     }
 
     /**
-     * O-15 Add (ADR-002 §3): the new `bank_account` and its `account_mapping`, in one transaction; refused when the
-     * Budget Account already receives through an Account Mapping or its Budget has another currency.
+     * O-15 Add (ADR-002 §3): the new `bank_account` with its Bank, stored first when it is new, and its
+     * `account_mapping`, in one transaction; refused, storing nothing, when the Budget Account already receives through an
+     * Account Mapping or its Budget has another currency. [bankAccount]'s `bank_id` is replaced by the one of [bank].
      */
     @Transaction
-    open suspend fun add(bankAccount: BankAccountEntity, budgetAccountId: Long): Added {
+    open suspend fun add(bankAccount: BankAccountEntity, bank: BankChoice, budgetAccountId: Long): Added {
         // UC-013 BR-002: A Budget Account that receives through an Account Mapping is not paired again.
         mappingInto(budgetAccountId)?.let { mapping ->
             return Added.AlreadyMapped(bankAccount(mapping.bankAccountId)?.name.orEmpty())
@@ -211,7 +248,7 @@ abstract class ConnectionDao {
         val budget = budget(checkNotNull(budgetAccount(budgetAccountId)).budgetId)!!
         // UC-003 BR-013: No amount is ever converted; the Budget has the Bank Account's currency.
         if (budget.currency != bankAccount.currency) return Added.CurrencyDiffers(budget.currency)
-        val id = insert(bankAccount)
+        val id = insert(bankAccount.copy(bankId = bankIdOf(bank)))
         insert(AccountMappingEntity(bankAccountId = id, budgetAccountId = budgetAccountId, firstSentAt = null))
         return Added.Stored(id)
     }

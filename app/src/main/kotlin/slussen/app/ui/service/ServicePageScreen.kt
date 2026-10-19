@@ -2,6 +2,7 @@ package slussen.app.ui.service
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +13,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -30,8 +34,9 @@ import slussen.pluginapi.credential.FieldKind
 
 /**
  * The page of one service (UC-014, UC-010 BR-010; `docs/mockups/connections.html`, `setup.html`): status, credentials
- * with the form its part declares, and what else belongs to it. The per-service Operator Settings are shown read-only;
- * changing them comes with UC-010, the Bank Consents with UC-007.
+ * with the form its part declares, and what else belongs to it. The Request Limit of a Data Provider that publishes none
+ * is changed here (UC-010 A11); the Fetch Cooldown is shown read-only until the slice that builds UC-010, the Bank
+ * Consents come with UC-007.
  */
 @Composable
 fun ServicePageScreen(
@@ -44,6 +49,10 @@ fun ServicePageScreen(
     onCancelRemoval: () -> Unit,
     onConfirmRemoval: () -> Unit,
     onChooseBudgets: () -> Unit,
+    onEditRequestLimit: () -> Unit,
+    onSaveRequestLimit: (String) -> Unit,
+    onResetRequestLimit: () -> Unit,
+    onCancelRequestLimit: () -> Unit,
 ) {
     val values = remember { mutableStateMapOf<String, String>() }
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
@@ -78,6 +87,7 @@ fun ServicePageScreen(
                     Muted(ui.fetchCooldown)
                     Text("Request Limit")
                     Muted(ui.requestLimit.orEmpty())
+                    if (ui.requestLimitEditable) OutlinedButton(onClick = onEditRequestLimit) { Text("Change") }
                 }
                 SectionTitle("Bank Accounts · ${ui.bankAccounts.size}")
                 SlussenCard {
@@ -100,6 +110,34 @@ fun ServicePageScreen(
                 }
             }
         }
+    }
+    val editor = ui.requestLimitEditor
+    if (editor != null) {
+        var value by remember(editor) { mutableStateOf(editor.value) }
+        AlertDialog(
+            onDismissRequest = onCancelRequestLimit,
+            title = { Text("Request Limit · ${ui.name}") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = { value = it },
+                        singleLine = true,
+                        label = { Text("New value · default ${editor.defaultRequests}") },
+                    )
+                    Muted(editor.hint)
+                    if (editor.unattendedNote != null) Muted(editor.unattendedNote)
+                    if (ui.message != null) Muted(ui.message)
+                }
+            },
+            confirmButton = { TextButton(onClick = { onSaveRequestLimit(value) }) { Text("Save") } },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = onResetRequestLimit) { Text("Reset to default") }
+                    TextButton(onClick = onCancelRequestLimit) { Text("Cancel") }
+                }
+            },
+        )
     }
     if (ui.removalQuestion != null) {
         AlertDialog(

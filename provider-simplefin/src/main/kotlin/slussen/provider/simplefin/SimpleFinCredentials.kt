@@ -43,9 +43,9 @@ internal class SimpleFinCredentials(
     @OptIn(SensitiveApi::class)
     override suspend fun check(input: CredentialInput, context: RequestContext): CredentialCheck {
         val claim = input.values[SETUP_TOKEN]?.let { claimAddressOf(it.reveal()) } ?: return CredentialCheck.Refused
-        if (context.gate.admit(RequestSummary(RequestKind.Other, null, null)) != Admission.Allowed) {
-            return CredentialCheck.TransientFailure(FailureKind.ServiceUnavailable)
-        }
+        val admission = context.gate.admit(RequestSummary(RequestKind.Other, null, null))
+        // UC-014 BR-002: When the gate refuses the check, as at the Request Limit, nothing is sent and the refusal is returned, never a failure to reach the service.
+        if (admission is Admission.Refused) return CredentialCheck.StoppedByGate(admission.reason)
         val request = Request.Builder().url(claim).post(ByteArray(0).toRequestBody()).build()
         return when (val answer = http.send(request, context.timeout)) {
             is HttpAnswer.Failed -> CredentialCheck.TransientFailure(answer.kind)

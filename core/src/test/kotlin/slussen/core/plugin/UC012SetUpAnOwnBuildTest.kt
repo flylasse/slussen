@@ -9,7 +9,9 @@ import slussen.testing.TestSlice
 import slussen.core.credential.CredentialStatus
 import slussen.core.port.ServiceKey
 import slussen.core.settings.ConnectionsOverview
+import slussen.core.settings.RequestLimitShown
 import slussen.core.settings.ServiceStatus
+import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.pluginapi.testfixtures.UseCase
 import slussen.testing.ExampleData
 import slussen.testing.FakeDataProvider
@@ -29,7 +31,11 @@ class UC012SetUpAnOwnBuildTest {
     fun addedDataProviderGetsItsOwnPage() = runTest {
         val slice = TestSlice()
         val added = FakeDataProvider(
-            ExampleData.wrenProfile.copy(name = "Osprey Feeds", sourceKey = "example-osprey", requestLimit = 7),
+            ExampleData.wrenProfile.copy(
+                name = "Osprey Feeds",
+                sourceKey = "example-osprey",
+                requestLimit = RequestLimitDeclaration.NotPublished(defaultRequests = 7, range = 5..40),
+            ),
         )
         val plugins = PluginRegistration(slice.registry)
             .register(slice.budgetApp, listOf(slice.feeds, slice.openBanking, slice.wren, added), emptyList())
@@ -45,7 +51,7 @@ class UC012SetUpAnOwnBuildTest {
         val page = connections.servicePage(registered.key)
 
         assertEquals("Osprey Feeds", page.name)
-        assertEquals(7, page.requestLimit)
+        assertEquals(RequestLimitShown.NotPublished(requests = 7, defaultRequests = 7, range = 5..40), page.requestLimit)
         assertEquals(ExampleData.wrenProfile.defaultFetchCooldownMinutes, page.defaultFetchCooldownMinutes)
         assertEquals(added.credentials.form.fields, page.credentialFields)
         assertEquals(ServiceStatus.CredentialsMissing, page.status)
@@ -55,7 +61,7 @@ class UC012SetUpAnOwnBuildTest {
 
     @Test
     @UseCase(id = "UC-012", scenario = "Main Success Scenario", businessRules = ["BR-011"])
-    @DisplayName("BR-011: each Data Provider's Request Limit and default Fetch Cooldown come from its part; the Operator's Fetch Cooldown is kept at the next start")
+    @DisplayName("BR-011: each Data Provider's published Request Limit and default Fetch Cooldown come from its part; the Operator's Fetch Cooldown is kept at the next start")
     fun declaredNumbersComeFromThePart() = runTest {
         val registry = InMemoryPluginRegistryStore()
         val feeds = FakeDataProvider(ExampleData.feedsProfile)
@@ -63,15 +69,21 @@ class UC012SetUpAnOwnBuildTest {
         val first = PluginRegistration(registry).register(budgetApp, listOf(feeds), emptyList())
         val id = first.dataProviders.single().stored.id
         registry.dataProviders.replaceAll { if (it.id == id) it.copy(fetchCooldownMinutes = 15) else it }
-        val newerPart = FakeDataProvider(ExampleData.feedsProfile.copy(requestLimit = 25, defaultFetchCooldownMinutes = 90))
+        val newerPart = FakeDataProvider(
+            ExampleData.feedsProfile.copy(
+                requestLimit = RequestLimitDeclaration.Published(25, ExampleData.FEEDS_LIMIT_SOURCE),
+                defaultFetchCooldownMinutes = 90,
+            ),
+        )
 
         val next = PluginRegistration(registry).register(budgetApp, listOf(newerPart), emptyList())
 
         val stored = next.dataProviders.single().stored
         assertEquals(id, stored.id)
         assertEquals(25, stored.requestLimit)
+        assertTrue(stored.requestLimitPublished)
         assertEquals(15, stored.fetchCooldownMinutes)
-        assertEquals(ExampleData.feedsProfile.requestLimit, first.dataProviders.single().stored.requestLimit)
+        assertEquals(20, first.dataProviders.single().stored.requestLimit)
     }
 
     @Test
@@ -143,9 +155,12 @@ class UC012SetUpAnOwnBuildTest {
         )
         val offered = slice.offeredStore.offered().single().id
         val budgetAccount = slice.connectionStore.budgets().single().budgetAccounts.first().id
-        val added = slice.connect.pair(offered, budgetAccount) as slussen.core.connection.PairOutcome.Added
+        val proposal = (slice.connect.propose(offered, budgetAccount) as slussen.core.connection.PairOutcome.Proposed).proposal
 
-        slice.connect.completeAddition(added.bankAccountId, "Kestrel Checking", java.time.LocalDate.parse("2026-09-02"))
+        slice.connect.add(
+            offered, budgetAccount, "Kestrel Checking", proposal.proposedType,
+            slussen.core.port.BankChoice.Known(bank), java.time.LocalDate.parse("2026-09-02"),
+        )
 
         assertEquals(java.time.LocalDate.parse("2026-09-02"), slice.connectionStore.bankAccounts().single().startDate)
     }

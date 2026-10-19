@@ -102,10 +102,31 @@ data class FreeBudgetAccount(
 /** UC-013 step 5: both sides of the pairing. */
 data class Pairing(val sources: List<SourcePairing>, val freeBudgetAccounts: List<FreeBudgetAccount>)
 
-/** The outcome of pairing (UC-013 steps 6-8, A4, A5). */
+/** A Bank Slussen already knows (`BANK`), to choose for a Bank Account (UC-013 BR-009). */
+data class KnownBank(val bankId: Long, val name: String)
+
+/**
+ * Step 8: what Slussen proposes for a paired Offered Bank Account before adding it: its name (BR-004), its Bank Account
+ * type and its Bank (BR-009), with the Bank Account types and the known Banks the Operator chooses from at step 9.
+ */
+data class AdditionProposal(
+    val offeredBankAccountId: Long,
+    val budgetAccountId: Long,
+    val proposedName: String,
+    val proposedType: BankAccountType,
+    /** The Bank the Data Provider names for it, or null when it names none. */
+    val proposedBank: KnownBank?,
+    val types: List<BankAccountType>,
+    val knownBanks: List<KnownBank>,
+)
+
+/** The outcome of pairing (UC-013 steps 6-10, A4, A5). */
 sealed interface PairOutcome {
-    /** Step 8: added with its generated identifier and its Account Mapping; [proposedName] for step 9 (BR-004). */
-    data class Added(val bankAccountId: Long, val generatedIdentifier: String, val proposedName: String) : PairOutcome
+    /** Step 8: the pairing passed step 7; nothing is stored yet. */
+    data class Proposed(val proposal: AdditionProposal) : PairOutcome
+
+    /** Step 10: added with its generated identifier, its name, Bank Account type, Bank, Start Date and Account Mapping. */
+    data class Added(val bankAccountId: Long, val generatedIdentifier: String, val name: String) : PairOutcome
 
     /** A5: the Budget Account already receives through the Account Mapping of [bankAccountName]. */
     data class BudgetAccountAlreadyMapped(val budgetAccountName: String, val bankAccountName: String) : PairOutcome
@@ -121,26 +142,19 @@ sealed interface PairOutcome {
     /** The Offered Bank Account delivered no currency, so the currency rule of step 7 cannot be checked. */
     data object CurrencyNotKnown : PairOutcome
 
-    /** The Offered Bank Account names no Bank, which `BANK_ACCOUNT.bank_id` needs. */
-    data object BankNotKnown : PairOutcome
-
     /** The Offered Bank Account or the Budget Account is not offered for pairing (BR-002). */
     data object NotOffered : PairOutcome
 
-    /** A4: the name the Operator entered is empty or longer than `BANK_ACCOUNT.name` allows (100). */
+    /** Step 9: the name is empty or longer than `BANK_ACCOUNT.name` allows (100). */
     data object NameNotValid : PairOutcome
 
+    /** BR-009: no Bank Account is added without a Bank Account type. */
+    data object TypeNotChosen : PairOutcome
+
+    /** BR-009: no Bank Account is added without a Bank; a known one chosen or a new one named. */
+    data object BankNotChosen : PairOutcome
+
     data class Unavailable(val reason: OperationRefusal) : PairOutcome
-}
-
-/** The outcome of step 9-10. */
-sealed interface AdditionOutcome {
-    data object Stored : AdditionOutcome
-
-    /** The name is empty or longer than `BANK_ACCOUNT.name` allows (100). */
-    data object NameNotValid : AdditionOutcome
-
-    data class Unavailable(val reason: OperationRefusal) : AdditionOutcome
 }
 
 /** A File Format of this build that a Bank Account can take its transactions from (UC-013 A4). */

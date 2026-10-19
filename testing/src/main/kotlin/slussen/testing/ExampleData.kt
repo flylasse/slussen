@@ -4,6 +4,7 @@ import slussen.core.port.NewOfferedBankAccount
 import slussen.pluginapi.budgetapp.BudgetAccountRead
 import slussen.pluginapi.budgetapp.BudgetRead
 import slussen.pluginapi.provider.DataProviderProfile
+import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
 import java.time.Instant
@@ -21,24 +22,27 @@ object ExampleData {
     const val SETUP_KEY = "PLANTED-SETUP-KEY-51d0e2"
     const val EXCHANGED_ACCESS_CREDENTIAL = "PLANTED-ACCESS-CREDENTIAL-88b4f1"
 
-    /** A Data Provider that gives Stable References and needs no Bank Consent. */
+    /** Where the invented Data Provider Kestrel Feeds publishes its Request Limit. */
+    const val FEEDS_LIMIT_SOURCE = "Kestrel Feeds developer guide, an invented source"
+
+    /** A Data Provider that gives Stable References, publishes its Request Limit and needs no Bank Consent. */
     val feedsProfile = DataProviderProfile(
         name = "Kestrel Feeds",
         sourceKey = "example-feeds",
         givesStableReference = true,
         needsBankConsent = false,
         defaultFetchCooldownMinutes = 60,
-        requestLimit = 20,
+        requestLimit = RequestLimitDeclaration.Published(20, FEEDS_LIMIT_SOURCE),
     )
 
-    /** A Data Provider that needs a Bank Consent for each Bank. */
+    /** A Data Provider that needs a Bank Consent for each Bank and publishes no Request Limit. */
     val openBankingProfile = DataProviderProfile(
         name = "Aurora Open Banking",
         sourceKey = "example-open-banking",
         givesStableReference = true,
         needsBankConsent = true,
         defaultFetchCooldownMinutes = 360,
-        requestLimit = 50,
+        requestLimit = RequestLimitDeclaration.NotPublished(defaultRequests = 50, range = 10..500),
     )
 
     /** A third Data Provider of the build that this household does not use (UC-012 A2). */
@@ -48,7 +52,7 @@ object ExampleData {
         givesStableReference = false,
         needsBankConsent = false,
         defaultFetchCooldownMinutes = 30,
-        requestLimit = 10,
+        requestLimit = RequestLimitDeclaration.Published(10, "Wren Feeds developer notes, an invented source"),
     )
 
     fun amount(units: Long, thousandths: Long = 0): Amount =

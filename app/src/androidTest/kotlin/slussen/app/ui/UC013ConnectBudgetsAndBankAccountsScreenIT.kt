@@ -32,7 +32,7 @@ class UC013ConnectBudgetsAndBankAccountsScreenIT {
                     SetupScreen(
                         it, onBack = {}, onStep = viewModel::goTo, onCredentials = {}, onToggleBudget = viewModel::toggleBudget,
                         onSaveBudgets = viewModel::saveBudgets, onSelectOffered = viewModel::selectOffered, onPair = viewModel::pairWith,
-                        onSaveNaming = viewModel::saveNaming, onAddFromFiles = { _, _, _, _ -> },
+                        onSaveNaming = viewModel::saveNaming, onCancelNaming = viewModel::cancelNaming, onAddFromFiles = {},
                     )
                 }
             }
@@ -55,8 +55,8 @@ class UC013ConnectBudgetsAndBankAccountsScreenIT {
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-004"])
-    @DisplayName("Steps 2-9: Budgets are chosen, an Offered Bank Account is paired with a free Budget Account and its name is proposed")
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-004", "BR-009"])
+    @DisplayName("Steps 2-10: Budgets are chosen, an Offered Bank Account is paired with a free Budget Account, its name, type and Bank are proposed and it is added on Save")
     fun budgetsAndPairing() = compose.use {
         val fixture = ScreenFixture()
         val slice = fixture.slice
@@ -80,5 +80,10 @@ class UC013ConnectBudgetsAndBankAccountsScreenIT {
         onNodeWithText("Checking 4,140.05").performClick()
 
         onNodeWithText("Proposed CHK ••4410").assertExists()
+        onNodeWithText("Type and Bank proposed from what Kestrel Feeds states · change them if they are wrong").assertExists()
+        onNodeWithText("Kestrel Bank").assertExists()
+        onNodeWithText("Save").performClick()
+
+        onNodeWithText("Bank Account CHK ••4410 added · fetched from the next Fetch").assertExists()
     }
 }

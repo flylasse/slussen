@@ -7,14 +7,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import slussen.app.ui.Texts
 import slussen.app.ui.UiServices
-import slussen.core.connection.AdditionOutcome
+import slussen.core.connection.AdditionProposal
 import slussen.core.connection.BudgetChoice
 import slussen.core.connection.BudgetsRead
+import slussen.core.connection.KnownBank
 import slussen.core.connection.ListedBudget
 import slussen.core.connection.OfferRemedy
 import slussen.core.connection.OfferedForPairing
 import slussen.core.connection.PairOutcome
 import slussen.core.credential.CredentialStatus
+import slussen.core.port.BankAccountType
+import slussen.core.port.BankChoice
 import slussen.core.port.ServiceKey
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
@@ -29,7 +32,10 @@ data class CredentialLine(val service: ServiceKey, val name: String, val kind: S
 data class BudgetChoiceLine(val reference: String, val name: String, val currency: String, val chosen: Boolean)
 
 /** One Offered Bank Account not yet added (UC-013 step 5, BR-002). */
-data class OfferedLine(val offeredBankAccountId: Long, val title: String, val detail: String, val balance: String)
+data class OfferedLine(val offeredBankAccountId: Long, val title: String, val detail: String, val balance: String) {
+    /** The last four digits as shown, or null. */
+    val digits: String? get() = detail.split(" · ").firstOrNull { it.startsWith("••••") }
+}
 
 /** One Source on the pairing step, with what it offers or the remedy when it offers nothing (A3, A6). */
 data class SourceSection(
@@ -42,8 +48,21 @@ data class SourceSection(
 /** A free Budget Account of a chosen Budget (UC-013 step 5, BR-002). */
 data class FreeBudgetAccountLine(val budgetAccountId: Long, val title: String, val detail: String, val balance: String)
 
-/** Steps 9-10: the proposed or entered name and the optional Start Date of a Bank Account just added. */
-data class NamingUi(val bankAccountId: Long, val proposedName: String)
+/**
+ * Steps 8-9: what Slussen proposes for a paired Offered Bank Account, its name (BR-004), Bank Account type and Bank
+ * (BR-009), and the types and known Banks the Operator chooses from, before it is added at step 10.
+ */
+data class NamingUi(
+    val offeredBankAccountId: Long,
+    val budgetAccountId: Long,
+    val title: String,
+    val proposedName: String,
+    val proposedType: BankAccountType,
+    val proposedBank: KnownBank?,
+    val types: List<BankAccountType>,
+    val knownBanks: List<KnownBank>,
+    val note: String,
+)
 
 data class SetupUi(
     val step: SetupStep,
@@ -55,6 +74,9 @@ data class SetupUi(
     val selectedOffered: Long?,
     val naming: NamingUi?,
     val fileFormats: List<Pair<Long, String>>,
+    /** A4: the Bank Account types and the Banks Slussen knows, for a Bank Account of a File Format (BR-006, BR-009). */
+    val types: List<BankAccountType>,
+    val knownBanks: List<KnownBank>,
     val message: String?,
 )
 
@@ -76,6 +98,8 @@ class SetupViewModel(private val services: UiServices) : ViewModel() {
         selectedOffered = null,
         naming = null,
         fileFormats = emptyList(),
+        types = emptyList(),
+        knownBanks = emptyList(),
         message = null,
     )
 
@@ -182,6 +206,8 @@ class SetupViewModel(private val services: UiServices) : ViewModel() {
                 )
             },
             fileFormats = services.connect.fileFormats().map { it.fileFormatId to it.name },
+            types = BankAccountType.entries,
+            knownBanks = services.connect.knownBanks(),
             naming = naming,
             message = message,
         )
@@ -191,19 +217,40 @@ class SetupViewModel(private val services: UiServices) : ViewModel() {
         mutableState.value = current().copy(selectedOffered = offeredBankAccountId, message = null)
     }
 
+    /** Steps 6-8: the pairing is checked and the name, Bank Account type and Bank are proposed; nothing is added yet. */
     fun pairWith(budgetAccountId: Long) {
         val offered = current().selectedOffered ?: return
-        viewModelScope.launch { showPaired(services.connect.pair(offered, budgetAccountId)) }
+        viewModelScope.launch {
+            when (val outcome = services.connect.propose(offered, budgetAccountId)) {
+                is PairOutcome.Proposed -> {
+                    mutableState.value = current().copy(selectedOffered = null)
+                    showPairing(message = null, naming = namingOf(outcome.proposal))
+                }
+                else -> showPairing(message = refusalOf(outcome))
+            }
+        }
     }
 
-    private suspend fun showPaired(outcome: PairOutcome) {
-        when (outcome) {
-            is PairOutcome.Added -> {
-                mutableState.value = current().copy(selectedOffered = null)
-                showPairing(message = null, naming = NamingUi(outcome.bankAccountId, outcome.proposedName))
-            }
-            else -> showPairing(message = refusalOf(outcome))
-        }
+    private fun namingOf(proposal: AdditionProposal): NamingUi {
+        val source = current().sources.firstOrNull { section -> section.offered.any { it.offeredBankAccountId == proposal.offeredBankAccountId } }
+        val offered = source?.offered?.single { it.offeredBankAccountId == proposal.offeredBankAccountId }
+        val budgetAccount = current().freeBudgetAccounts.firstOrNull { it.budgetAccountId == proposal.budgetAccountId }?.title.orEmpty()
+        val sourceName = source?.name.orEmpty()
+        return NamingUi(
+            offeredBankAccountId = proposal.offeredBankAccountId,
+            budgetAccountId = proposal.budgetAccountId,
+            title = listOfNotNull(offered?.title, offered?.digits).joinToString(" · ") + " → $budgetAccount",
+            proposedName = proposal.proposedName,
+            proposedType = proposal.proposedType,
+            proposedBank = proposal.proposedBank,
+            types = proposal.types,
+            knownBanks = proposal.knownBanks,
+            note = if (proposal.proposedBank != null) {
+                "Type and Bank proposed from what $sourceName states · change them if they are wrong"
+            } else {
+                "$sourceName names no Bank · choose one or name a new one"
+            },
+        )
     }
 
     private fun refusalOf(outcome: PairOutcome): String = when (outcome) {
@@ -213,41 +260,61 @@ class SetupViewModel(private val services: UiServices) : ViewModel() {
             "${outcome.budgetAccountName} is in ${outcome.budgetCurrency.code}, ${outcome.bankAccountName} in " +
                 "${outcome.bankAccountCurrency.code} · not paired"
         PairOutcome.CurrencyNotKnown -> "The Data Provider delivered no currency for this Bank Account · not paired"
-        PairOutcome.BankNotKnown -> "The Data Provider named no Bank for this Bank Account · not paired"
         PairOutcome.NotOffered -> "Not offered for pairing"
-        PairOutcome.NameNotValid -> "A name is needed, at most 100 characters"
+        PairOutcome.NameNotValid -> "A name is needed, at most 100 characters · not added"
+        PairOutcome.TypeNotChosen -> "Choose the Bank Account type · not added"
+        PairOutcome.BankNotChosen -> "Choose a Bank or name a new one · not added"
         is PairOutcome.Unavailable -> Texts.refusal(outcome.reason)
-        is PairOutcome.Added -> ""
+        is PairOutcome.Proposed, is PairOutcome.Added -> ""
     }
 
-    /** Steps 9-10: [startDate] is empty or `yyyy-MM-dd`. */
-    fun saveNaming(name: String, startDate: String) {
+    private fun startDateOf(text: String): Result<LocalDate?> = try {
+        Result.success(text.trim().takeIf { it.isNotEmpty() }?.let(LocalDate::parse))
+    } catch (e: DateTimeParseException) {
+        Result.failure(e)
+    }
+
+    private suspend fun showAdded(outcome: PairOutcome) {
+        when (outcome) {
+            is PairOutcome.Added ->
+                showPairing(message = "Bank Account ${outcome.name} added · fetched from the next Fetch", naming = null)
+            else -> mutableState.value = current().copy(message = refusalOf(outcome))
+        }
+    }
+
+    /** Steps 9-10: [startDate] is empty or `yyyy-MM-dd`; [type] and [bank] as the Operator confirmed or changed them. */
+    fun saveNaming(name: String, type: BankAccountType?, bank: BankChoice?, startDate: String) {
         val naming = current().naming ?: return
-        val date = try {
-            startDate.trim().takeIf { it.isNotEmpty() }?.let(LocalDate::parse)
-        } catch (e: DateTimeParseException) {
+        val date = startDateOf(startDate).getOrElse {
             mutableState.value = current().copy(message = "The Start Date is a date like 2026-09-01, or empty.")
             return
         }
         viewModelScope.launch {
-            when (val outcome = services.connect.completeAddition(naming.bankAccountId, name, date)) {
-                AdditionOutcome.Stored -> showPairing(message = "Bank Account $name added · fetched from the next Fetch", naming = null)
-                AdditionOutcome.NameNotValid -> mutableState.value = current().copy(message = "A name is needed, at most 100 characters.")
-                is AdditionOutcome.Unavailable -> mutableState.value = current().copy(message = Texts.refusal(outcome.reason))
-            }
+            showAdded(services.connect.add(naming.offeredBankAccountId, naming.budgetAccountId, name, type, bank, date))
         }
     }
 
-    /** A4. */
+    /** Step 9: the Operator cancels; nothing is added. */
+    fun cancelNaming() {
+        viewModelScope.launch { showPairing(message = null, naming = null) }
+    }
+
+    /** A4: the Operator chose the File Format, type, Bank, an optional balance source and the Budget Account, and named it. */
     fun addFromTransactionFiles(
         fileFormatId: Long,
-        bankName: String,
+        type: BankAccountType?,
+        bank: BankChoice?,
         balanceOfferedBankAccountId: Long?,
         budgetAccountId: Long,
         name: String,
+        startDate: String,
     ) {
+        val date = startDateOf(startDate).getOrElse {
+            mutableState.value = current().copy(message = "The Start Date is a date like 2026-09-01, or empty.")
+            return
+        }
         viewModelScope.launch {
-            showPaired(services.connect.addFromTransactionFiles(fileFormatId, bankName, balanceOfferedBankAccountId, budgetAccountId, name))
+            showAdded(services.connect.addFromTransactionFiles(fileFormatId, type, bank, balanceOfferedBankAccountId, budgetAccountId, name, date))
         }
     }
 }

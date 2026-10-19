@@ -10,8 +10,15 @@ import slussen.pluginapi.budgetapp.BudgetApp
 import slussen.pluginapi.fileformat.FilePreprocessor
 import slussen.pluginapi.provider.DataProvider
 
-/** A Data Provider of this build with the row O-11 stored for it. */
-class RegisteredDataProvider(val stored: StoredDataProvider, val plugin: DataProvider) {
+/**
+ * A Data Provider of this build with the row O-11 stored for it. [stored] follows the Operator Settings the Operator
+ * changes while the app runs (UC-010), so that every gate and page of this process sees the stored value.
+ */
+class RegisteredDataProvider(stored: StoredDataProvider, val plugin: DataProvider) {
+    @Volatile
+    var stored: StoredDataProvider = stored
+        internal set
+
     val key: ServiceKey get() = ServiceKey.dataProvider(stored.id)
 }
 
@@ -34,8 +41,8 @@ class RegisteredPlugins(
 
 /**
  * Registers the plug-ins of this build at every start, before any operation is admitted (ADR-002 §2, O-11): each Data
- * Provider and File Pre-processor by its declared `source_key`, with the Request Limit and the default Fetch Cooldown its
- * part declares.
+ * Provider and File Pre-processor by its declared `source_key`, with the Request Limit (published, or a default with its
+ * range) and the default Fetch Cooldown its part declares.
  */
 class PluginRegistration(private val store: PluginRegistryStore) {
     suspend fun register(
@@ -45,7 +52,7 @@ class PluginRegistration(private val store: PluginRegistryStore) {
     ): RegisteredPlugins {
         val declared = dataProviders.map { plugin ->
             val profile = plugin.profile
-            // UC-012 BR-011: The Request Limit and the default Fetch Cooldown of each Data Provider are declared by its part, not given to the build.
+            // UC-012 BR-011: The Request Limit, published or a default the Operator can change, and the default Fetch Cooldown of each Data Provider are declared by its part, not given to the build.
             plugin to DataProviderRegistration(
                 name = profile.name,
                 sourceKey = profile.sourceKey,

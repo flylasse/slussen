@@ -13,6 +13,7 @@ import slussen.testing.TestSlice
 import slussen.core.credential.CredentialStatus
 import slussen.core.operation.OperationRefusal
 import slussen.core.port.BankAccountType
+import slussen.core.port.BankChoice
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.JournalEventKind
 import slussen.core.port.ServiceKey
@@ -62,6 +63,29 @@ class UC013ConnectBudgetsAndBankAccountsTest {
         slice.enterCredentials()
         chooseHouseholdAndSummerHouse()
         offerFeedsBankAccounts()
+    }
+
+    private suspend fun proposal(providerReference: String, budgetAccount: String): AdditionProposal =
+        (slice.connect.propose(offeredId(providerReference), budgetAccountId(budgetAccount)) as PairOutcome.Proposed).proposal
+
+    /** Steps 6-10 with everything the Operator accepts as proposed, or the [name] and [startDate] given. */
+    private suspend fun pairAndAdd(
+        providerReference: String,
+        budgetAccount: String,
+        name: String? = null,
+        startDate: LocalDate? = null,
+    ): PairOutcome {
+        val proposed = slice.connect.propose(offeredId(providerReference), budgetAccountId(budgetAccount))
+        if (proposed !is PairOutcome.Proposed) return proposed
+        val p = proposed.proposal
+        return slice.connect.add(
+            p.offeredBankAccountId,
+            p.budgetAccountId,
+            name ?: p.proposedName,
+            p.proposedType,
+            p.proposedBank?.let { BankChoice.Known(it.bankId) },
+            startDate,
+        )
     }
 
     @Test
@@ -148,7 +172,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     @DisplayName("Step 5: a Budget Account that receives through an Account Mapping is not offered for pairing")
     fun mappedBudgetAccountIsNotOffered() = runTest {
         readyToPair()
-        slice.connect.pair(offeredId("acct-4410"), budgetAccountId("Checking"))
+        pairAndAdd("acct-4410", "Checking")
 
         val pairing = slice.connect.pairing()
 
@@ -156,66 +180,196 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-004"])
-    @DisplayName("Steps 6-8: pairing adds the Bank Account with a generated identifier, how its Source identifies it, a proposed name and its Account Mapping")
-    fun pairingAddsTheBankAccount() = runTest {
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-004", "BR-009"])
+    @DisplayName("Steps 6-8: pairing proposes the name, the Bank Account type from the kind and the Bank the Data Provider names, and adds nothing yet")
+    fun pairingProposesNameTypeAndBank() = runTest {
+        readyToPair()
+
+        val proposal = proposal("acct-4410", "Checking")
+
+        assertEquals("CHK ••4410", proposal.proposedName)
+        assertEquals(BankAccountType.Checking, proposal.proposedType)
+        assertEquals(KnownBank(kestrelBankId(), "Kestrel Bank"), proposal.proposedBank)
+        assertEquals(listOf(BankAccountType.Checking, BankAccountType.Savings, BankAccountType.CreditCard, BankAccountType.Other), proposal.types)
+        assertEquals(listOf("Kestrel Bank"), proposal.knownBanks.map { it.name })
+        assertTrue(slice.connectionStore.bankAccounts().isEmpty())
+        assertTrue(slice.journalRecorder.entries.none { it.eventKind == JournalEventKind.AccountMappingChange })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-004", "BR-005", "BR-009"])
+    @DisplayName("Steps 9-10: the Bank Account is added with a generated identifier, how its Source identifies it, the accepted or edited name, type, Bank, Start Date and its Account Mapping, and recorded in the Decision Journal")
+    fun confirmedPairingAddsTheBankAccount() = runTest {
         readyToPair()
         slice.clock.advance(Duration.ofMinutes(3))
 
-        val outcome = slice.connect.pair(offeredId("acct-4410"), budgetAccountId("Checking")) as PairOutcome.Added
+        val outcome = pairAndAdd("acct-4410", "Checking", name = "Kestrel Checking", startDate = LocalDate.parse("2026-09-01")) as PairOutcome.Added
 
-        assertEquals("CHK ••4410", outcome.proposedName)
         val added = slice.connectionStore.bankAccounts().single()
         assertEquals(outcome.bankAccountId, added.id)
         assertEquals(outcome.generatedIdentifier, added.generatedIdentifier)
+        assertEquals("Kestrel Checking", outcome.name)
         assertEquals("acct-4410", added.providerReference)
         assertEquals("fp-acct-4410", added.bankAccountFingerprint)
         assertEquals(slice.feedsId, added.dataProviderId)
         assertNull(added.fileFormatId)
         assertEquals(USD, added.currency)
         assertEquals(BankAccountType.Checking, added.type)
+        assertEquals(kestrelBankId(), added.bankId)
+        assertEquals(kestrelBankId(), added.providerBankId)
         assertEquals(slice.clock.instant(), added.identifiedAt)
-        assertEquals("CHK ••4410", added.name)
+        assertEquals("Kestrel Checking", added.name)
+        assertEquals(LocalDate.parse("2026-09-01"), added.startDate)
         assertEquals(budgetAccountId("Checking"), added.mapping?.budgetAccountId)
         assertNull(added.mapping?.firstSentAt)
+        val addition = slice.journalRecorder.entries.single { it.eventKind == JournalEventKind.AccountMappingChange }
+        assertTrue("Kestrel Checking" in addition.details, addition.details)
+        assertTrue("Checking" in addition.details && "Kestrel Bank" in addition.details, addition.details)
+        assertTrue("2026-09-01" in addition.details, addition.details)
+        assertFalse("acct-" in addition.details, addition.details)
     }
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-004", "BR-005"])
-    @DisplayName("Steps 9-10: the accepted or edited name and the optional Start Date are stored and the addition is recorded in the Decision Journal")
-    fun nameAndStartDateAreStoredAndJournaled() = runTest {
+    @DisplayName("Step 9: the proposed name is accepted and the Start Date left empty")
+    fun proposedNameAcceptedWithoutStartDate() = runTest {
         readyToPair()
-        val checking = slice.connect.pair(offeredId("acct-4410"), budgetAccountId("Checking")) as PairOutcome.Added
-        val card = slice.connect.pair(offeredId("acct-1182"), budgetAccountId("Rewards Card")) as PairOutcome.Added
 
-        val edited = slice.connect.completeAddition(checking.bankAccountId, "Kestrel Checking", LocalDate.parse("2026-09-01"))
-        val accepted = slice.connect.completeAddition(card.bankAccountId, card.proposedName, null)
+        pairAndAdd("acct-1182", "Rewards Card")
 
-        assertEquals(AdditionOutcome.Stored, edited)
-        assertEquals(AdditionOutcome.Stored, accepted)
-        val stored = slice.connectionStore.bankAccounts().associateBy { it.id }
-        assertEquals("Kestrel Checking", stored.getValue(checking.bankAccountId).name)
-        assertEquals(LocalDate.parse("2026-09-01"), stored.getValue(checking.bankAccountId).startDate)
-        assertEquals("Pinecrest Rewards Visa ••1182", stored.getValue(card.bankAccountId).name)
-        assertNull(stored.getValue(card.bankAccountId).startDate)
-        val additions = slice.journalRecorder.entries.filter { it.eventKind == JournalEventKind.AccountMappingChange }
-        assertEquals(2, additions.size)
-        assertTrue("Kestrel Checking" in additions.first().details)
-        assertTrue("2026-09-01" in additions.first().details)
-        additions.forEach { assertFalse("acct-" in it.details, it.details) }
+        val added = slice.connectionStore.bankAccounts().single()
+        assertEquals("Pinecrest Rewards Visa ••1182", added.name)
+        assertNull(added.startDate)
+        assertTrue("no Start Date" in slice.journalRecorder.entries.last().details)
     }
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-004"])
-    @DisplayName("Step 9: an empty name is not stored; the name never identifies the Bank Account")
+    @DisplayName("Step 9: an empty or too long name is refused and nothing is added; the name never identifies the Bank Account")
     fun emptyNameIsNotStored() = runTest {
         readyToPair()
-        val added = slice.connect.pair(offeredId("acct-4410"), budgetAccountId("Checking")) as PairOutcome.Added
+        val p = proposal("acct-4410", "Checking")
+        val bank = BankChoice.Known(p.proposedBank!!.bankId)
 
-        assertEquals(AdditionOutcome.NameNotValid, slice.connect.completeAddition(added.bankAccountId, "  ", null))
-        assertEquals(AdditionOutcome.NameNotValid, slice.connect.completeAddition(added.bankAccountId, "x".repeat(101), null))
-        assertEquals("CHK ••4410", slice.connectionStore.bankAccounts().single().name)
-        assertEquals(added.generatedIdentifier, slice.connectionStore.bankAccounts().single().generatedIdentifier)
+        assertEquals(PairOutcome.NameNotValid, slice.connect.add(p.offeredBankAccountId, p.budgetAccountId, "  ", p.proposedType, bank, null))
+        assertEquals(PairOutcome.NameNotValid, slice.connect.add(p.offeredBankAccountId, p.budgetAccountId, "x".repeat(101), p.proposedType, bank, null))
+        assertTrue(slice.connectionStore.bankAccounts().isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-009"])
+    @DisplayName("BR-009: the type is proposed from the kind: credit card, savings and checking; Other when the kind matches none of them or is missing")
+    fun typeIsProposedFromTheKind() = runTest {
+        readyToPair()
+        val bank = kestrelBankId()
+        slice.offeredStore.replaceOffered(
+            slice.feedsId,
+            null,
+            listOf(
+                ExampleData.offered("acct-4410", "CHK", "checking", USD, "4410", null, bank, slice.clock.instant()),
+                ExampleData.offered("acct-1182", "Rewards", "credit card", USD, "1182", null, bank, slice.clock.instant()),
+                ExampleData.offered("acct-7731", "Reserve", "savings", USD, "7731", null, bank, slice.clock.instant()),
+                ExampleData.offered("acct-3300", "Loan", "loan", USD, "3300", null, bank, slice.clock.instant()),
+                ExampleData.offered("acct-3301", "Other", null, USD, "3301", null, bank, slice.clock.instant()),
+            ),
+        )
+
+        assertEquals(BankAccountType.Checking, proposal("acct-4410", "Checking").proposedType)
+        assertEquals(BankAccountType.CreditCard, proposal("acct-1182", "Checking").proposedType)
+        assertEquals(BankAccountType.Savings, proposal("acct-7731", "Checking").proposedType)
+        assertEquals(BankAccountType.Other, proposal("acct-3300", "Checking").proposedType)
+        assertEquals(BankAccountType.Other, proposal("acct-3301", "Checking").proposedType)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-009"])
+    @DisplayName("BR-009: the Operator changes the proposed type and chooses another known Bank, and the Bank Account is added with them")
+    fun operatorChangesTypeAndBank() = runTest {
+        readyToPair()
+        val pinecrest = slice.connectionStore.bankNamed("Pinecrest Card Co.").id
+        val p = proposal("acct-4410", "Checking")
+
+        slice.connect.add(p.offeredBankAccountId, p.budgetAccountId, p.proposedName, BankAccountType.Savings, BankChoice.Known(pinecrest), null)
+
+        val added = slice.connectionStore.bankAccounts().single()
+        assertEquals(BankAccountType.Savings, added.type)
+        assertEquals(pinecrest, added.bankId)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-009"])
+    @DisplayName("BR-009: the Bank the Data Provider names is kept apart from the Bank the Operator chooses, which only names and groups the Bank Account")
+    fun theDataProvidersBankIsKeptApart() = runTest {
+        slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        readyToPair()
+        val aurora = slice.connectionStore.bankNamed("Aurora Bank").id
+        val vesta = slice.connectionStore.bankNamed("Vesta Sparbank").id
+        slice.offeredStore.replaceOffered(
+            slice.openBankingId,
+            aurora,
+            listOf(ExampleData.offered("eb-4471", "Aurora Current", "current", EUR, "4471", null, aurora, slice.clock.instant())),
+        )
+        val p = proposal("eb-4471", "Current")
+
+        slice.connect.add(p.offeredBankAccountId, p.budgetAccountId, p.proposedName, p.proposedType, BankChoice.Known(vesta), null)
+
+        val added = slice.connectionStore.bankAccounts().single()
+        assertEquals(vesta, added.bankId)
+        assertEquals(aurora, added.providerBankId)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-009"])
+    @DisplayName("BR-009: when the Data Provider names no Bank, the Bank Account keeps none of the Data Provider's")
+    fun noProviderBankWhenNoneIsNamed() = runTest {
+        readyToPair()
+        slice.offeredStore.replaceOffered(
+            slice.feedsId,
+            null,
+            listOf(ExampleData.offered("acct-2209", "Old Savings", "savings", USD, "2209", null, bankId = null, offeredAt = slice.clock.instant())),
+        )
+        val p = proposal("acct-2209", "Reserve Savings")
+
+        slice.connect.add(p.offeredBankAccountId, p.budgetAccountId, p.proposedName, p.proposedType, BankChoice.Named("Kestrel Bank"), null)
+
+        assertNull(slice.connectionStore.bankAccounts().single().providerBankId)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-009"])
+    @DisplayName("BR-009: when the Data Provider names no Bank, none is proposed; the Operator names a new one, which Slussen then knows")
+    fun noBankNamedTheOperatorNamesOne() = runTest {
+        readyToPair()
+        slice.offeredStore.replaceOffered(
+            slice.feedsId,
+            null,
+            listOf(ExampleData.offered("acct-2209", "Old Savings", "savings", USD, "2209", null, bankId = null, offeredAt = slice.clock.instant())),
+        )
+        val p = proposal("acct-2209", "Reserve Savings")
+
+        assertNull(p.proposedBank)
+        val outcome = slice.connect.add(p.offeredBankAccountId, p.budgetAccountId, p.proposedName, p.proposedType, BankChoice.Named("Kestrel Savings Bank"), null)
+
+        assertInstanceOf(PairOutcome.Added::class.java, outcome)
+        val bank = slice.connectionStore.banks().single { it.name == "Kestrel Savings Bank" }
+        assertEquals(bank.id, slice.connectionStore.bankAccounts().single().bankId)
+        assertTrue(slice.connect.knownBanks().any { it.name == "Kestrel Savings Bank" })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-009"])
+    @DisplayName("BR-009: no Bank Account is added without a Bank Account type and a Bank; nothing is stored")
+    fun noBankAccountWithoutTypeAndBank() = runTest {
+        readyToPair()
+        val p = proposal("acct-4410", "Checking")
+        val bank = BankChoice.Known(p.proposedBank!!.bankId)
+
+        assertEquals(PairOutcome.TypeNotChosen, slice.connect.add(p.offeredBankAccountId, p.budgetAccountId, p.proposedName, null, bank, null))
+        assertEquals(PairOutcome.BankNotChosen, slice.connect.add(p.offeredBankAccountId, p.budgetAccountId, p.proposedName, p.proposedType, null, null))
+        assertEquals(PairOutcome.BankNotChosen, slice.connect.add(p.offeredBankAccountId, p.budgetAccountId, p.proposedName, p.proposedType, BankChoice.Named("  "), null))
+        assertEquals(PairOutcome.BankNotChosen, slice.connect.add(p.offeredBankAccountId, p.budgetAccountId, p.proposedName, p.proposedType, BankChoice.Known(-1), null))
+        assertTrue(slice.connectionStore.bankAccounts().isEmpty())
+        assertEquals(listOf("Kestrel Bank"), slice.connectionStore.banks().map { it.name })
     }
 
     @Test
@@ -223,8 +377,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     @DisplayName("Step 11: the added Bank Account is shown as added and is no longer offered, so each Bank Account comes in through one path")
     fun addedBankAccountIsShownAndNoLongerOffered() = runTest {
         readyToPair()
-        val added = slice.connect.pair(offeredId("acct-4410"), budgetAccountId("Checking")) as PairOutcome.Added
-        slice.connect.completeAddition(added.bankAccountId, "Kestrel Checking", null)
+        pairAndAdd("acct-4410", "Checking", name = "Kestrel Checking")
 
         val list = slice.connect.addedBankAccounts()
         val pairing = slice.connect.pairing()
@@ -235,8 +388,9 @@ class UC013ConnectBudgetsAndBankAccountsTest {
         assertEquals("Kestrel Feeds", shown.sourceName)
         assertEquals("Household", shown.budgetName)
         assertEquals("Checking", shown.budgetAccountName)
+        assertEquals(BankAccountType.Checking, shown.type)
         assertTrue(pairing.sources.flatMap { it.offered }.none { it.offeredBankAccountId == offeredId("acct-4410") })
-        assertEquals(PairOutcome.NotOffered, slice.connect.pair(offeredId("acct-4410"), budgetAccountId("Rewards Card")))
+        assertEquals(PairOutcome.NotOffered, slice.connect.propose(offeredId("acct-4410"), budgetAccountId("Rewards Card")))
     }
 
     @Test
@@ -271,7 +425,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     @DisplayName("A2: stopping to serve a Budget with mapped Bank Accounts is refused, naming them")
     fun stopServingAMappedBudgetIsRefused() = runTest {
         readyToPair()
-        slice.connect.pair(offeredId("acct-4410"), budgetAccountId("Checking"))
+        pairAndAdd("acct-4410", "Checking")
         val read = slice.connect.readBudgets() as BudgetsRead.Listed
 
         val choice = slice.connect.chooseBudgets(read.budgets, setOf("budget-summer"))
@@ -312,46 +466,60 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-006"])
-    @DisplayName("A4: a Bank Account of a File Format is added with its File Format, Bank, the Offered Bank Account that reports its balance and the name the Operator enters")
+    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-006", "BR-009"])
+    @DisplayName("A4: a Bank Account of a File Format is added with its File Format, the type and the new Bank the Operator chose, the Offered Bank Account that reports its balance, and the name the Operator enters")
     fun bankAccountOfAFileFormatIsAdded() = runTest {
         readyToPair()
         val format = slice.connect.fileFormats().single()
 
         val outcome = slice.connect.addFromTransactionFiles(
             fileFormatId = format.fileFormatId,
-            bankName = "Harbor Health Trust",
+            type = BankAccountType.Savings,
+            bank = BankChoice.Named("Harbor Health Trust"),
             balanceOfferedBankAccountId = offeredId("acct-7731"),
             budgetAccountId = budgetAccountId("Reserve Savings"),
             name = "Harbor Health Savings",
+            startDate = LocalDate.parse("2026-08-01"),
         ) as PairOutcome.Added
 
-        assertEquals("Harbor Health Savings", outcome.proposedName)
+        assertEquals("Harbor Health Savings", outcome.name)
         val added = slice.connectionStore.bankAccounts().single()
         assertEquals("Harbor Health Savings", added.name)
+        assertEquals(BankAccountType.Savings, added.type)
         assertEquals(format.fileFormatId, added.fileFormatId)
         assertNull(added.dataProviderId)
         assertEquals(slice.feedsId, added.balanceDataProviderId)
         assertEquals("acct-7731", added.balanceProviderReference)
         assertEquals("Harbor Health Trust", slice.connectionStore.banks().single { it.id == added.bankId }.name)
+        assertEquals(kestrelBankId(), added.providerBankId)
+        assertEquals(LocalDate.parse("2026-08-01"), added.startDate)
         assertEquals(budgetAccountId("Reserve Savings"), added.mapping?.budgetAccountId)
+        assertTrue("Harbor Health Savings" in slice.journalRecorder.entries.last().details)
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-006"])
-    @DisplayName("A4: without a balance Data Provider the Bank Account of a File Format has none, and an empty name is refused")
+    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-006", "BR-009"])
+    @DisplayName("A4: without a balance Data Provider the Bank Account of a File Format has none; a known Bank can be chosen; a missing name, type or Bank is refused")
     fun bankAccountOfAFileFormatWithoutBalanceSource() = runTest {
         readyToPair()
         val format = slice.connect.fileFormats().single()
+        val kestrel = BankChoice.Known(kestrelBankId())
+        val checking = budgetAccountId("Checking")
 
-        val unnamed = slice.connect.addFromTransactionFiles(format.fileFormatId, "Harbor Health Trust", null, budgetAccountId("Checking"), " ")
-        val outcome = slice.connect.addFromTransactionFiles(format.fileFormatId, "Harbor Health Trust", null, budgetAccountId("Checking"), "Health Savings")
+        val unnamed = slice.connect.addFromTransactionFiles(format.fileFormatId, BankAccountType.Savings, kestrel, null, checking, " ", null)
+        val untyped = slice.connect.addFromTransactionFiles(format.fileFormatId, null, kestrel, null, checking, "Health Savings", null)
+        val noBank = slice.connect.addFromTransactionFiles(format.fileFormatId, BankAccountType.Savings, null, null, checking, "Health Savings", null)
+        val outcome = slice.connect.addFromTransactionFiles(format.fileFormatId, BankAccountType.Savings, kestrel, null, checking, "Health Savings", null)
 
         assertEquals(PairOutcome.NameNotValid, unnamed)
+        assertEquals(PairOutcome.TypeNotChosen, untyped)
+        assertEquals(PairOutcome.BankNotChosen, noBank)
         assertInstanceOf(PairOutcome.Added::class.java, outcome)
         val added = slice.connectionStore.bankAccounts().single()
         assertNull(added.balanceDataProviderId)
         assertNull(added.balanceProviderReference)
+        assertNull(added.providerBankId)
+        assertEquals(kestrelBankId(), added.bankId)
     }
 
     @Test
@@ -359,9 +527,9 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     @DisplayName("A5: a Budget Account that already receives through an Account Mapping is refused, with why")
     fun alreadyMappedBudgetAccountIsRefused() = runTest {
         readyToPair()
-        slice.connect.pair(offeredId("acct-4410"), budgetAccountId("Checking"))
+        pairAndAdd("acct-4410", "Checking")
 
-        val outcome = slice.connect.pair(offeredId("acct-7731"), budgetAccountId("Checking"))
+        val outcome = slice.connect.propose(offeredId("acct-7731"), budgetAccountId("Checking"))
 
         assertEquals(PairOutcome.BudgetAccountAlreadyMapped("Checking", "CHK ••4410"), outcome)
         assertEquals(1, slice.connectionStore.bankAccounts().size)
@@ -373,7 +541,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     fun budgetAccountInAnotherCurrencyIsRefused() = runTest {
         readyToPair()
 
-        val outcome = slice.connect.pair(offeredId("acct-5520"), budgetAccountId("Current"))
+        val outcome = slice.connect.propose(offeredId("acct-5520"), budgetAccountId("Current"))
 
         assertEquals(PairOutcome.CurrencyDiffers("Current", EUR, "Aurora Dollar", USD), outcome)
         assertTrue(slice.connectionStore.bankAccounts().isEmpty())
@@ -384,7 +552,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     @DisplayName("A6: an Offered Bank Account that is probably an added Bank Account is shown as its proposed match, not as one to add")
     fun probablyAddedBankAccountIsAProposedMatch() = runTest {
         readyToPair()
-        val added = slice.connect.pair(offeredId("acct-4410"), budgetAccountId("Checking")) as PairOutcome.Added
+        val added = pairAndAdd("acct-4410", "Checking") as PairOutcome.Added
         slice.offeredStore.replaceOffered(
             slice.feedsId,
             null,
@@ -400,7 +568,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
 
         assertTrue(feeds.offered.isEmpty())
         assertEquals("CHK ••4410", feeds.proposedMatches.single().bankAccountName)
-        assertEquals(PairOutcome.NotOffered, slice.connect.pair(offeredId("acct-4410-new"), budgetAccountId("Rewards Card")))
+        assertEquals(PairOutcome.NotOffered, slice.connect.propose(offeredId("acct-4410-new"), budgetAccountId("Rewards Card")))
     }
 
     @Test
@@ -424,7 +592,11 @@ class UC013ConnectBudgetsAndBankAccountsTest {
 
         assertEquals(BudgetsRead.Unavailable(refusal), slice.connect.readBudgets())
         assertEquals(BudgetChoice.Unavailable(refusal), slice.connect.chooseBudgets(read.budgets, setOf("budget-care")))
-        assertEquals(PairOutcome.Unavailable(refusal), slice.connect.pair(offeredId("acct-4410"), budgetAccountId("Checking")))
+        assertEquals(PairOutcome.Unavailable(refusal), slice.connect.propose(offeredId("acct-4410"), budgetAccountId("Checking")))
+        assertEquals(
+            PairOutcome.Unavailable(refusal),
+            slice.connect.add(offeredId("acct-4410"), budgetAccountId("Checking"), "CHK", BankAccountType.Checking, BankChoice.Named("Kestrel Bank"), null),
+        )
         assertTrue(slice.connectionStore.bankAccounts().isEmpty())
         assertFalse(slice.connectionStore.budgets().any { it.name == "Care Fund" })
     }
@@ -434,8 +606,8 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     @DisplayName("BR-003: every added Bank Account gets its own generated identifier, a random version 4 UUID")
     fun generatedIdentifiersAreRandomVersion4Uuids() = runTest {
         readyToPair()
-        val first = slice.connect.pair(offeredId("acct-4410"), budgetAccountId("Checking")) as PairOutcome.Added
-        val second = slice.connect.pair(offeredId("acct-1182"), budgetAccountId("Rewards Card")) as PairOutcome.Added
+        val first = pairAndAdd("acct-4410", "Checking") as PairOutcome.Added
+        val second = pairAndAdd("acct-1182", "Rewards Card") as PairOutcome.Added
 
         val uuid = Regex("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
         assertTrue(uuid.matches(first.generatedIdentifier), first.generatedIdentifier)
@@ -459,16 +631,24 @@ class UC013ConnectBudgetsAndBankAccountsTest {
 
     @Test
     @UseCase(id = "UC-013")
-    @DisplayName("Failure postconditions: no Bank Account without the Operator's pairing, no Budget Account with two Account Mappings, nothing written to the Budget App")
+    @DisplayName("Failure postconditions: no Bank Account without the Operator's pairing or without a type and Bank, no Budget Account with two Account Mappings, nothing written to the Budget App")
     fun failurePostconditions() = runTest {
         readyToPair()
-        slice.connect.pair(offeredId("acct-4410"), budgetAccountId("Checking"))
-        slice.connect.pair(offeredId("acct-7731"), budgetAccountId("Checking"))
-        slice.connect.pair(offeredId("acct-5520"), budgetAccountId("Savings"))
+        pairAndAdd("acct-4410", "Checking")
+        val stale = proposal("acct-1182", "Rewards Card")
+        pairAndAdd("acct-7731", "Checking")
+        pairAndAdd("acct-5520", "Savings")
+        pairAndAdd("acct-7731", "Rewards Card")
+        val late = slice.connect.add(
+            stale.offeredBankAccountId, stale.budgetAccountId, stale.proposedName, stale.proposedType,
+            BankChoice.Known(stale.proposedBank!!.bankId), null,
+        )
+        assertEquals(PairOutcome.BudgetAccountAlreadyMapped("Rewards Card", "Reserve Saver ••7731"), late)
 
         val mapped = slice.connectionStore.bankAccounts().mapNotNull { it.mapping?.budgetAccountId }
         assertEquals(mapped.distinct(), mapped)
-        assertEquals(1, slice.connectionStore.bankAccounts().size)
+        assertEquals(2, slice.connectionStore.bankAccounts().size)
+        assertTrue(slice.connectionStore.bankAccounts().none { it.providerReference == "acct-1182" })
         assertEquals(0, slice.budgetApp.writer.calls)
     }
 }

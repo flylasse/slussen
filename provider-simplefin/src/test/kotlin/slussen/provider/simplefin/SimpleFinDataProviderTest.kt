@@ -8,6 +8,7 @@ import okhttp3.mockwebserver.SocketPolicy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -18,6 +19,7 @@ import slussen.pluginapi.diagnostic.LogEvent
 import slussen.pluginapi.diagnostic.LogFact
 import slussen.pluginapi.diagnostic.SlussenLog
 import slussen.pluginapi.provider.DataProvider
+import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.pluginapi.testfixtures.CredentialScenario
 import slussen.pluginapi.testfixtures.DataProviderContractTest
 import slussen.pluginapi.testfixtures.TestRequestContext
@@ -115,6 +117,27 @@ class SimpleFinDataProviderTest : DataProviderContractTest() {
     @DisplayName("ADR-001 §4.1: SimpleFIN needs no Bank Consent")
     fun needsNoBankConsent() {
         assertNull(SimpleFinDataProvider(SilentLog).bankConsent)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", businessRules = ["BR-007"])
+    @DisplayName("BR-007: SimpleFIN declares the Request Limit it publishes, 24 in any 24 hours, with its source; fixed, not an Operator Setting")
+    fun declaresThePublishedRequestLimit() {
+        val limit = SimpleFinDataProvider(SilentLog).profile.requestLimit as RequestLimitDeclaration.Published
+        assertEquals(24, limit.requests)
+        assertTrue("https://beta-bridge.simplefin.org/info/developers" in limit.source, limit.source)
+        assertTrue("SimpleFIN Bridge Developer Guide" in limit.source, limit.source)
+    }
+
+    @Test
+    @UseCase(id = "UC-012", businessRules = ["BR-011"])
+    @DisplayName("BR-011: SimpleFIN's part declares its name, source key and default Fetch Cooldown of 60 minutes (ADR-001 §4.1, O-P2-42)")
+    fun declaresItsProfile() {
+        val profile = SimpleFinDataProvider(SilentLog).profile
+        assertEquals("SimpleFIN", profile.name)
+        assertEquals("simplefin", profile.sourceKey)
+        assertEquals(60, profile.defaultFetchCooldownMinutes)
+        assertEquals(false, profile.needsBankConsent)
     }
 
     private object SilentLog : SlussenLog {

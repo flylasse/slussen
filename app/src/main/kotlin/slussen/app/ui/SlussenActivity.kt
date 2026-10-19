@@ -167,6 +167,10 @@ fun SlussenScreens(services: UiServices) {
                             onCancelRemoval = vm::cancelRemoval,
                             onConfirmRemoval = vm::confirmRemoval,
                             onChooseBudgets = { go(Screen.Setup) },
+                            onEditRequestLimit = vm::startEditingRequestLimit,
+                            onSaveRequestLimit = vm::saveRequestLimit,
+                            onResetRequestLimit = vm::resetRequestLimit,
+                            onCancelRequestLimit = vm::cancelRequestLimit,
                         )
                     }
                 }
@@ -184,8 +188,12 @@ fun SlussenScreens(services: UiServices) {
                             onSelectOffered = vm::selectOffered,
                             onPair = vm::pairWith,
                             onSaveNaming = vm::saveNaming,
-                            onAddFromFiles = { format, bank, budgetAccount, name ->
-                                vm.addFromTransactionFiles(format, bank, null, budgetAccount, name)
+                            onCancelNaming = vm::cancelNaming,
+                            onAddFromFiles = { entry ->
+                                vm.addFromTransactionFiles(
+                                    entry.fileFormatId, entry.type, entry.bank, entry.balanceOfferedBankAccountId, entry.budgetAccountId, entry.name,
+                                    entry.startDate,
+                                )
                             },
                         )
                     }
@@ -193,7 +201,18 @@ fun SlussenScreens(services: UiServices) {
                 Screen.BankAccounts -> {
                     val vm: BankAccountsViewModel = viewModel(key = "bank-accounts") { BankAccountsViewModel(services) }
                     LaunchedEffect(current) { vm.load() }
-                    vm.state.collectAsState().value?.let { BankAccountsScreen(it, ::back) { go(Screen.Setup) } }
+                    vm.state.collectAsState().value?.let {
+                        BankAccountsScreen(
+                            ui = it,
+                            onBack = ::back,
+                            onAdd = { go(Screen.Setup) },
+                            onOpenTypeAndBank = vm::openTypeAndBank,
+                            onSaveTypeAndBank = vm::saveTypeAndBank,
+                            onConfirmClearing = vm::confirmClearing,
+                            onCancelClearing = vm::cancelClearing,
+                            onCancelTypeAndBank = vm::cancelTypeAndBank,
+                        )
+                    }
                 }
             }
         }

@@ -36,9 +36,9 @@ internal class YnabCredentials(private val base: HttpUrl, private val http: OkHt
     override suspend fun check(input: CredentialInput, context: RequestContext): CredentialCheck {
         val token = input.values[TOKEN]
         if (token == null || token.reveal().isBlank()) return CredentialCheck.Refused
-        if (context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null)) != Admission.Allowed) {
-            return CredentialCheck.TransientFailure(FailureKind.ServiceUnavailable)
-        }
+        // UC-014 BR-002: The YNAB token is checked by listing the Budgets; a request the gate refuses is not sent.
+        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null))
+        if (admission is Admission.Refused) return CredentialCheck.StoppedByGate(admission.reason)
         val request = Request.Builder().url(base.resolve("budgets")!!).bearer(token).build()
         return when (val answer = http.send(request, context.timeout)) {
             is HttpAnswer.Failed -> CredentialCheck.TransientFailure(answer.kind)
