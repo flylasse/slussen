@@ -30,6 +30,7 @@ import slussen.pluginapi.provider.BankAccountSelection
 import slussen.pluginapi.provider.BankAccountToRead
 import slussen.pluginapi.provider.DeliveredBankAccount
 import slussen.pluginapi.provider.FetchResponse
+import slussen.pluginapi.provider.NotReadCause
 import slussen.pluginapi.provider.OperatorPresence
 import slussen.pluginapi.provider.ReadKind
 import slussen.pluginapi.provider.SourceOutcome
@@ -442,7 +443,7 @@ class UC001FetchTransactionsTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-011"])
-    @DisplayName("Step 3: Slussen reads every Bank Account the Operator added with an Account Mapping that is not a Retired Account, and for its balance only one whose transactions come from Transaction Files")
+    @DisplayName("Step 3: Slussen reads every Bank Account the Operator added with an Account Mapping that is not a Retired Account, and for its balance only one whose transactions come from Transaction Files; until steps 7-10 are built, the added ones too are read for their balance only (O-P2-54)")
     fun selectsTheAddedMappedBankAccounts() = runTest {
         ready()
         addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
@@ -463,13 +464,54 @@ class UC001FetchTransactionsTest {
         assertEquals(
             BankAccountSelection.Selected(
                 listOf(
-                    BankAccountToRead("acct-4410", ReadKind.TransactionsAndBalance),
+                    BankAccountToRead("acct-4410", ReadKind.Balance),
                     BankAccountToRead("acct-6324", ReadKind.Balance),
                 ),
             ),
             slice.feeds.fetchRequests.single().bankAccounts,
         )
-        assertEquals(ProviderRequestKind.Transactions, slice.providerRequests.requests.last().kind)
+        assertEquals(ProviderRequestKind.Balance, slice.providerRequests.requests.last().kind)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-011"], requirements = ["NFR-002"])
+    @DisplayName("Step 4 (O-P2-54): until steps 7-10 are built, every selected Bank Account is asked for its balance only, so no transaction is delivered and none is dropped (NFR-002); the request is kept as a Provider Request of the balance")
+    fun selectedBankAccountsAreAskedForTheirBalanceOnly() = runTest {
+        ready()
+        addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        addFeedsBankAccount("acct-1182", "Pinecrest Rewards Card", "Rewards Card")
+        addFileBankAccount("acct-6324", "Harbor Health Savings", "Health Savings")
+        answerFeeds(accounts = listed + delivered("acct-6324", "HSA", amount(6310, 200)))
+        val before = slice.providerRequests.requests.size
+
+        val report = fetchFeeds() as FetchReport.Fetched
+
+        val selection = slice.feeds.fetchRequests.single().bankAccounts as BankAccountSelection.Selected
+        assertEquals(listOf("acct-4410", "acct-1182", "acct-6324"), selection.bankAccounts.map { it.providerReference })
+        assertTrue(selection.bankAccounts.all { it.read == ReadKind.Balance }, "$selection")
+        assertEquals(listOf(ProviderRequestKind.Balance), slice.providerRequests.requests.drop(before).map { it.kind })
+        assertEquals(listOf("Kestrel Checking", "Pinecrest Rewards Card", "Harbor Health Savings"), report.identified)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("Step 6 (S-35): an Offered Bank Account the request did not ask to read keeps the balance the Data Provider gave with the list, NotRead(NotSelected, balance), or has none when it gave none")
+    fun listedBankAccountsKeepTheBalanceGivenWithTheList() = runTest {
+        ready()
+        addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerFeeds(
+            accounts = listOf(
+                delivered("acct-4410", "CHK", amount(4140, 50)),
+                delivered("acct-7731", "Reserve Saver", kind = "savings", result = BankAccountResult.NotRead(NotReadCause.NotSelected, amount(12000))),
+                delivered("acct-1182", "Pinecrest Rewards Visa", kind = "credit card", result = BankAccountResult.NotRead(NotReadCause.NotSelected)),
+            ),
+        )
+
+        fetchFeeds()
+
+        val offered = slice.offeredStore.offered().filter { it.dataProviderId == slice.feedsId }
+        assertEquals(listOf("acct-4410", "acct-7731", "acct-1182"), offered.map { it.providerReference })
+        assertEquals(listOf(amount(4140, 50), amount(12000), null), offered.map { it.balance })
     }
 
     @Test
@@ -592,7 +634,7 @@ class UC001FetchTransactionsTest {
         val report = fetchFeeds() as FetchReport.ServedFromFetchCooldown
 
         assertEquals(
-            BankAccountSelection.Selected(listOf(BankAccountToRead("acct-7731", ReadKind.TransactionsAndBalance))),
+            BankAccountSelection.Selected(listOf(BankAccountToRead("acct-7731", ReadKind.Balance))),
             slice.feeds.fetchRequests.last().bankAccounts,
         )
         assertEquals(listOf("Kestrel Reserve"), report.read?.identified)

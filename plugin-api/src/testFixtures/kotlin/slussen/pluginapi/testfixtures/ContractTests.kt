@@ -22,14 +22,17 @@ import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.diagnostic.SlussenLog
 import slussen.pluginapi.fileformat.FilePreprocessor
 import slussen.pluginapi.provider.BankAccountResult
+import slussen.pluginapi.provider.BankAccountSelection
 import slussen.pluginapi.provider.DataProvider
 import slussen.pluginapi.provider.FetchRequest
 import slussen.pluginapi.provider.FetchResponse
+import slussen.pluginapi.provider.NotReadCause
 import slussen.pluginapi.provider.ProviderTransaction
 import slussen.pluginapi.provider.SourceOutcome
 import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.request.RefusalReason
+import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.Secret
 import java.time.Duration
 
@@ -237,6 +240,20 @@ public class RecordedFetch(
 )
 
 /**
+ * What a recorded answer to a request that reads only some of the Bank Accounts it lists gives with the list (S-35,
+ * ADR-001 §4.1).
+ */
+public class RecordedListedBalances(
+    /**
+     * The balance the answer gives with the list for each listed Bank Account the request does not ask to read, by
+     * `providerReference`; null where it gives none.
+     */
+    public val balances: Map<String, Amount?>,
+    /** How many requests the Data Provider needs for the Bank Accounts the request reads; none more is sent for the others. */
+    public val requests: Int,
+)
+
+/**
  * The Fetch checks of the Data Provider contract test (ADR-001 §4.0, §4.1, §4.4), for a Data Provider whose Fetch is
  * built. The subclass serves invented recorded answers from its own local test server through the hooks.
  */
@@ -245,6 +262,14 @@ public abstract class DataProviderFetchContractTest : DataProviderContractTest()
     protected abstract fun fetchAnswered(): FetchScenario
 
     protected abstract fun recordedFetch(): RecordedFetch
+
+    /**
+     * The Data Provider answers a request of [BankAccountSelection.Selected] that reads only some of the Bank Accounts
+     * it lists, with the balances it gives with the list, as [recordedListedBalances] describes.
+     */
+    protected abstract fun fetchReadingSome(): FetchScenario
+
+    protected abstract fun recordedListedBalances(): RecordedListedBalances
 
     /** The Data Provider answers that the stored credential is not valid or not allowed. */
     protected abstract fun fetchCredentialRefused(): FetchScenario
@@ -280,6 +305,42 @@ public abstract class DataProviderFetchContractTest : DataProviderContractTest()
         val unreadable = response.bankAccounts.flatMap { (it.result as? BankAccountResult.Read)?.transactions.orEmpty() }
             .count { it is ProviderTransaction.Uninterpretable }
         assertEquals(recorded.uninterpretable, unreadable, "items without a readable date or amount are Uninterpretable")
+        assertNoBalanceUnlessNotSelected(response)
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.1 (S-35): a listed Bank Account the request did not ask to read is NotRead(NotSelected) with the balance the Data Provider gave with the list in the same answer, or none, and no further request is sent for it")
+    public fun listedBankAccountsCarryTheirBalance() {
+        val gate = RecordingRequestGate()
+        val scenario = fetchReadingSome()
+        val selection = scenario.request.bankAccounts
+        assertTrue(selection is BankAccountSelection.Selected, "the scenario selects Bank Accounts: $selection")
+        val asked = (selection as BankAccountSelection.Selected).bankAccounts.map { it.providerReference }.toSet()
+        val response = fetch(scenario, TestRequestContext(gate, credential = scenario.credential))
+        val recorded = recordedListedBalances()
+        assertEquals(SourceOutcome.Completed, response.sourceOutcome)
+        val notAsked = response.bankAccounts.filter { it.providerReference !in asked }
+        assertEquals(recorded.balances.keys, notAsked.map { it.providerReference }.toSet(), "the listed Bank Accounts not asked for")
+        notAsked.forEach { listed ->
+            assertEquals(
+                BankAccountResult.NotRead(NotReadCause.NotSelected, recorded.balances.getValue(listed.providerReference)),
+                listed.result,
+                listed.providerReference,
+            )
+        }
+        assertEquals(recorded.requests, requestsReceived(), "no further request is sent for a listed Bank Account")
+        assertEquals(requestsReceived(), gate.requests.size, "every request is admitted by the gate first")
+        assertNoBalanceUnlessNotSelected(response)
+    }
+
+    /** ADR-001 §4.1 (S-35): `NotRead` for any cause other than NotSelected carries no balance. */
+    private fun assertNoBalanceUnlessNotSelected(response: FetchResponse) {
+        response.bankAccounts.forEach { delivered ->
+            val result = delivered.result
+            if (result is BankAccountResult.NotRead && result.cause != NotReadCause.NotSelected) {
+                assertEquals(null, result.balance, "${delivered.providerReference}: NotRead(${result.cause}) carries no balance")
+            }
+        }
     }
 
     @Test

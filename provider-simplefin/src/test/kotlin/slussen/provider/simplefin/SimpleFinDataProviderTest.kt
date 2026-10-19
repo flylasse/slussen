@@ -24,6 +24,7 @@ import slussen.pluginapi.testfixtures.CredentialScenario
 import slussen.pluginapi.testfixtures.DataProviderFetchContractTest
 import slussen.pluginapi.testfixtures.FetchScenario
 import slussen.pluginapi.testfixtures.RecordedFetch
+import slussen.pluginapi.testfixtures.RecordedListedBalances
 import slussen.pluginapi.testfixtures.RecordingRequestGate
 import slussen.pluginapi.testfixtures.TestRequestContext
 import slussen.pluginapi.testfixtures.UseCase
@@ -184,13 +185,21 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
         ),
     )
 
-    /** An invented Account Set: three accounts at two organizations, with pending, zero-amount and unreadable items. */
+    /**
+     * An invented Account Set of SimpleFIN protocol version 2: three accounts through two connections, one connection
+     * naming its organization (`org_name`), one only by its own `name`; with pending, zero-amount and unreadable items.
+     */
     private fun accountSet(): String = """
-        {"errors": [],
+        {"errlist": [],
+         "connections": [
+          {"conn_id": "CON-KESTREL-01", "name": "Kestrel Bank - Joint", "org_id": "ORG-KESTREL", "org_name": "Kestrel Bank",
+           "org_url": "https://kestrel.example", "sfin_url": "https://bridge.invalid/simplefin"},
+          {"conn_id": "CON-PINE-02", "name": "Pinecrest Card Services", "org_id": "ORG-PINE",
+           "org_url": "https://pinecrest.example", "sfin_url": "https://bridge.invalid/simplefin"}
+         ],
          "accounts": [
-          {"org": {"domain": "kestrel.example", "name": "Kestrel Bank", "sfin-url": "https://bridge.invalid/simplefin"},
-           "id": "ACT-4410", "name": "CHK", "currency": "USD", "balance": "4140.05", "available-balance": "4100.00",
-           "balance-date": ${epoch("2026-10-15T06:00:00Z")},
+          {"id": "ACT-4410", "name": "CHK", "conn_id": "CON-KESTREL-01", "currency": "USD", "balance": "4140.05",
+           "available-balance": "4100.00", "balance-date": ${epoch("2026-10-15T06:00:00Z")},
            "transactions": [
              {"id": "TRN-1", "posted": ${epoch("2026-10-14T12:00:00Z")}, "amount": "-12.34", "description": "Corner Grocer"},
              {"id": "TRN-2", "posted": 0, "transacted_at": ${epoch("2026-10-15T09:00:00Z")}, "amount": "-5.00", "description": "Pending Cafe", "pending": true},
@@ -198,14 +207,13 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
              {"id": "TRN-4", "amount": "-7.50", "description": "No date"},
              {"id": "TRN-5", "posted": ${epoch("2026-10-13T12:00:00Z")}, "amount": "lots", "description": "Bad amount"}
            ]},
-          {"org": {"domain": "pinecrest.example", "name": "Pinecrest Card Services", "sfin-url": "https://bridge.invalid/simplefin"},
-           "id": "ACT-1182", "name": "Pinecrest Rewards Visa", "currency": "USD", "balance": "-1268.40",
+          {"id": "ACT-1182", "name": "Pinecrest Rewards Visa", "conn_id": "CON-PINE-02", "currency": "USD", "balance": "-1268.40",
            "balance-date": ${epoch("2026-10-15T06:00:00Z")},
            "transactions": [
-             {"id": " TRN-Opaque-6 ", "posted": ${epoch("2026-10-12T23:30:00Z")}, "amount": "-49.99", "description": "Fuel stop", "payee": "Fuel Stop Inc", "memo": "Pump 4"}
+             {"id": " TRN-Opaque-6 ", "posted": ${epoch("2026-10-12T23:30:00Z")}, "amount": "-49.99", "description": "Fuel Stop Inc pump 4",
+              "extra": {"category": "fuel"}}
            ]},
-          {"org": {"domain": "kestrel.example", "name": "Kestrel Bank", "sfin-url": "https://bridge.invalid/simplefin"},
-           "id": "ACT-7731", "name": "Reserve Saver", "currency": "USD", "balance": "12000.00",
+          {"id": "ACT-7731", "name": "Reserve Saver", "conn_id": "CON-KESTREL-01", "currency": "USD", "balance": "12000.00",
            "balance-date": ${epoch("2026-10-15T06:00:00Z")}, "transactions": []}
          ]}
     """.trimIndent()
@@ -226,6 +234,16 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
         uninterpretable = 2,
     )
 
+    /** The core's request since O-P2-54: one added account, for its balance only. */
+    private val readOneBalance = BankAccountSelection.Selected(listOf(BankAccountToRead("ACT-4410", ReadKind.Balance)))
+
+    override fun fetchReadingSome() = fetching(MockResponse().setBody(accountSet()), readOneBalance)
+
+    override fun recordedListedBalances() = RecordedListedBalances(
+        balances = mapOf("ACT-1182" to Amount(-1_268_400), "ACT-7731" to Amount(12_000_000)),
+        requests = 1,
+    )
+
     override fun fetchCredentialRefused() = fetching(MockResponse().setResponseCode(403).setBody("invented refusal"))
 
     override fun fetchUnavailable() = fetching(MockResponse().setResponseCode(503))
@@ -236,7 +254,7 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-009"])
-    @DisplayName("Step 4: one request lists every account with its transactions for the fetch period, sent with the access credential and admitted by the gate as a read of transactions")
+    @DisplayName("Step 4: one request of protocol version 2 lists every account with its transactions for the fetch period, sent with the access credential and admitted by the gate as a read of transactions")
     fun fetchAsksForTheAccountsWithTheirTransactions() {
         val gate = RecordingRequestGate()
 
@@ -251,17 +269,19 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
         assertEquals(epoch("2026-10-16T00:00:00Z").toString(), sent.requestUrl!!.queryParameter("end-date"))
         assertNull(sent.requestUrl!!.queryParameter("balances-only"))
         assertNull(sent.requestUrl!!.queryParameter("account"))
+        assertEquals("2", sent.requestUrl!!.queryParameter("version"))
         assertEquals(listOf(RequestSummary(RequestKind.Transactions, null, null)), gate.requests)
         assertEquals(1, server.requestCount)
     }
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-011"])
-    @DisplayName("Step 4, BR-011: where only balances are read, the request asks for balances only and is admitted as a read of the balance")
+    @DisplayName("Step 4, BR-011: where only balances are read, as the core asks every selected Bank Account until steps 7-10 are built (O-P2-54), the request of protocol version 2 asks for balances only and is admitted as a read of the balance")
     fun balancesOnlyWhereOnlyBalancesAreRead() {
         val selections = listOf(
             BankAccountSelection.AllForIdentification(ReadKind.Balance),
             BankAccountSelection.Selected(listOf(BankAccountToRead("ACT-7731", ReadKind.Balance))),
+            readOneBalance,
             BankAccountSelection.Selected(emptyList()),
         )
         selections.forEach { selection ->
@@ -270,13 +290,15 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
             val sent = server.takeRequest(1, TimeUnit.SECONDS)!!
             assertEquals("1", sent.requestUrl!!.queryParameter("balances-only"), "$selection")
             assertNull(sent.requestUrl!!.queryParameter("start-date"))
+            assertNull(sent.requestUrl!!.queryParameter("end-date"))
+            assertEquals("2", sent.requestUrl!!.queryParameter("version"), "$selection")
             assertEquals(listOf(RequestSummary(RequestKind.Balance, null, null)), gate.requests)
         }
     }
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario")
-    @DisplayName("Step 5: each account is delivered with its identifier, the Bank its organization names, its name, currency and balance; a listed account the request did not read is NotRead(NotSelected)")
+    @DisplayName("Step 5: each account is delivered with its identifier, the Bank its connection names, its name, currency and balance; a listed account the request did not read is NotRead(NotSelected) with the balance of the same answer (S-35)")
     fun accountsAreDelivered() {
         val response = fetch(fetchAnswered())
 
@@ -291,7 +313,7 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
         assertNull(checking.number)
         assertEquals(Amount(4_140_050), (checking.result as BankAccountResult.Read).balance)
         assertEquals("Pinecrest Card Services", response.bankAccounts[1].bankReference)
-        assertEquals(BankAccountResult.NotRead(NotReadCause.NotSelected), response.bankAccounts[2].result)
+        assertEquals(BankAccountResult.NotRead(NotReadCause.NotSelected, Amount(12_000_000)), response.bankAccounts[2].result)
     }
 
     @Test
@@ -309,7 +331,7 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario")
-    @DisplayName("Step 5: every transaction is passed on unfiltered, its id as the Stable Reference exactly as delivered; one without a date or with an unreadable amount is Uninterpretable")
+    @DisplayName("Step 5: every transaction is passed on unfiltered, its id as the Stable Reference exactly as delivered, its description as the payee and no memo; one without a date or with an unreadable amount is Uninterpretable")
     fun transactionsArePassedOn() {
         val response = fetch(fetchAnswered())
 
@@ -331,8 +353,8 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
         assertEquals(UnreadableReason.UnreadableAmount, (items[4] as ProviderTransaction.Uninterpretable).reason)
         val card = (response.bankAccounts[1].result as BankAccountResult.Read).transactions.single() as ProviderTransaction.Interpretable
         assertEquals(" TRN-Opaque-6 ", card.stableReference)
-        assertEquals("Fuel Stop Inc", card.payee)
-        assertEquals("Pump 4", card.memo)
+        assertEquals("Fuel Stop Inc pump 4", card.payee)
+        assertNull(card.memo)
         assertEquals(LocalDate.of(2026, 10, 12), card.bookedDate)
     }
 
@@ -341,9 +363,10 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
     @DisplayName("Step 5: an account in a currency that is no ISO 4217 code states no currency, and its transactions are Uninterpretable for the missing currency")
     fun customCurrencyIsNoCurrency() {
         val body = """
-            {"errors": [], "accounts": [
-              {"org": {"domain": "harbor.example", "name": "Harbor Points", "sfin-url": "https://bridge.invalid/simplefin"},
-               "id": "ACT-PTS", "name": "Points", "currency": "https://harbor.example/points", "balance": "120.5",
+            {"errlist": [],
+             "connections": [{"conn_id": "CON-PTS", "name": "Harbor Points", "org_id": "ORG-PTS", "sfin_url": "https://bridge.invalid/simplefin"}],
+             "accounts": [
+              {"id": "ACT-PTS", "name": "Points", "conn_id": "CON-PTS", "currency": "https://harbor.example/points", "balance": "120.5",
                "balance-date": ${epoch("2026-10-15T06:00:00Z")},
                "transactions": [{"id": "P-1", "posted": ${epoch("2026-10-14T12:00:00Z")}, "amount": "10", "description": "Bonus"}]}
             ]}
@@ -382,6 +405,83 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
 
         assertEquals(SourceOutcome.TransientFailure(FailureKind.UnreadableAnswer), response.sourceOutcome)
         assertTrue(response.bankAccounts.isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("Step 5 (O-P2-60): the Bank of each account is its connection's org_name, else the connection's name, else the host of its org_url; an account with the org object of protocol version 1 takes its name, else its domain")
+    fun bankComesFromTheConnection() {
+        val body = """
+            {"errlist": [],
+             "connections": [
+              {"conn_id": "CON-A", "name": "Kestrel Bank - Joint", "org_id": "ORG-A", "org_name": "Kestrel Bank", "org_url": "https://kestrel.example", "sfin_url": "https://bridge.invalid/simplefin"},
+              {"conn_id": "CON-B", "name": "Pinecrest Card Services", "org_id": "ORG-B", "org_name": "  ", "sfin_url": "https://bridge.invalid/simplefin"},
+              {"conn_id": "CON-C", "org_id": "ORG-C", "org_url": "https://harbor.example/home", "sfin_url": "https://bridge.invalid/simplefin"},
+              {"conn_id": "CON-D", "org_id": "ORG-D", "org_url": "lighthouse.example", "sfin_url": "https://bridge.invalid/simplefin"}
+             ],
+             "accounts": [
+              {"id": "ACT-A", "name": "A", "conn_id": "CON-A", "currency": "USD", "balance": "1.00", "balance-date": ${epoch("2026-10-15T06:00:00Z")}},
+              {"id": "ACT-B", "name": "B", "conn_id": "CON-B", "currency": "USD", "balance": "2.00", "balance-date": ${epoch("2026-10-15T06:00:00Z")}},
+              {"id": "ACT-C", "name": "C", "conn_id": "CON-C", "currency": "USD", "balance": "3.00", "balance-date": ${epoch("2026-10-15T06:00:00Z")}},
+              {"id": "ACT-D", "name": "D", "conn_id": "CON-D", "currency": "USD", "balance": "4.00", "balance-date": ${epoch("2026-10-15T06:00:00Z")}},
+              {"id": "ACT-E", "name": "E", "org": {"domain": "aurora.example", "name": "Aurora Savings", "sfin-url": "https://bridge.invalid/simplefin"},
+               "currency": "USD", "balance": "5.00", "balance-date": ${epoch("2026-10-15T06:00:00Z")}},
+              {"id": "ACT-F", "name": "F", "org": {"domain": "meadow.example", "sfin-url": "https://bridge.invalid/simplefin"},
+               "currency": "USD", "balance": "6.00", "balance-date": ${epoch("2026-10-15T06:00:00Z")}},
+              {"id": "ACT-G", "name": "G", "conn_id": "CON-UNKNOWN", "currency": "USD", "balance": "7.00", "balance-date": ${epoch("2026-10-15T06:00:00Z")}}
+             ]}
+        """.trimIndent()
+
+        val response = fetch(fetching(MockResponse().setBody(body), BankAccountSelection.AllForIdentification(ReadKind.Balance)))
+
+        assertEquals(
+            listOf("Kestrel Bank", "Pinecrest Card Services", "harbor.example", "lighthouse.example", "Aurora Savings", "meadow.example", null),
+            response.bankAccounts.map { it.bankReference },
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("Step 5 (O-P2-60): the payee is the transaction's description only and there is no memo, also when an answer carries attributes named payee or memo that protocol version 2 does not define")
+    fun payeeIsTheDescriptionOnly() {
+        val body = """
+            {"errlist": [],
+             "connections": [{"conn_id": "CON-A", "name": "Kestrel Bank", "org_id": "ORG-A", "sfin_url": "https://bridge.invalid/simplefin"}],
+             "accounts": [
+              {"id": "ACT-A", "name": "A", "conn_id": "CON-A", "currency": "USD", "balance": "1.00", "balance-date": ${epoch("2026-10-15T06:00:00Z")},
+               "transactions": [
+                {"id": "T-1", "posted": ${epoch("2026-10-14T12:00:00Z")}, "amount": "-3.10", "description": "Harbor Bakery",
+                 "payee": "Not the payee", "memo": "Not a memo", "extra": {"memo": "Not a memo either"}}
+               ]}
+             ]}
+        """.trimIndent()
+        val selection = BankAccountSelection.Selected(listOf(BankAccountToRead("ACT-A", ReadKind.TransactionsAndBalance)))
+
+        val item = (fetch(fetching(MockResponse().setBody(body), selection)).bankAccounts.single().result as BankAccountResult.Read)
+            .transactions.single() as ProviderTransaction.Interpretable
+
+        assertEquals("Harbor Bakery", item.payee)
+        assertNull(item.memo)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("Step 4 (S-35): a listed account the request did not read whose balance cannot be read is NotRead(NotSelected) with no balance, from the same one request")
+    fun listedAccountWithoutAReadableBalanceHasNone() {
+        val body = """
+            {"errlist": [],
+             "connections": [{"conn_id": "CON-A", "name": "Kestrel Bank", "org_id": "ORG-A", "sfin_url": "https://bridge.invalid/simplefin"}],
+             "accounts": [
+              {"id": "ACT-4410", "name": "CHK", "conn_id": "CON-A", "currency": "USD", "balance": "4140.05", "balance-date": ${epoch("2026-10-15T06:00:00Z")}},
+              {"id": "ACT-9", "name": "Odd", "conn_id": "CON-A", "currency": "USD", "balance": "n/a", "balance-date": ${epoch("2026-10-15T06:00:00Z")}}
+             ]}
+        """.trimIndent()
+
+        val response = fetch(fetching(MockResponse().setBody(body), readOneBalance))
+
+        assertEquals(BankAccountResult.Read(emptyList(), Amount(4_140_050)), response.bankAccounts[0].result)
+        assertEquals(BankAccountResult.NotRead(NotReadCause.NotSelected, null), response.bankAccounts[1].result)
+        assertEquals(1, server.requestCount)
     }
 
     @Test

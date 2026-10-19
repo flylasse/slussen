@@ -147,7 +147,13 @@ public sealed interface BankAccountResult {
     /** A paged read that did not finish is `Failed(Incomplete)` and carries none of its transactions (UC-001 A8). */
     public data class Failed(val kind: FailureKind) : BankAccountResult
 
-    public data class NotRead(val cause: NotReadCause) : BankAccountResult
+    /**
+     * Listed but not read. For [NotReadCause.NotSelected], [balance] is the balance the Data Provider gave with the list
+     * in the same answer, or null when it gave none; the plug-in sends no further request for it. The core takes it as
+     * the Offered Bank Account's balance and does not store it as an Account Balance (S-35, ADR-001 §4.1). For any other
+     * cause [balance] is null.
+     */
+    public data class NotRead(val cause: NotReadCause, val balance: Amount? = null) : BankAccountResult
 }
 
 /** Why a delivered Bank Account was not read. */

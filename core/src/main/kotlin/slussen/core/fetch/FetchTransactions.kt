@@ -33,10 +33,12 @@ import slussen.pluginapi.provider.BankAccountToRead
 import slussen.pluginapi.provider.DeliveredBankAccount
 import slussen.pluginapi.provider.FetchRequest
 import slussen.pluginapi.provider.FetchResponse
+import slussen.pluginapi.provider.NotReadCause
 import slussen.pluginapi.provider.OperatorPresence
 import slussen.pluginapi.provider.ReadKind
 import slussen.pluginapi.provider.SourceOutcome
 import slussen.pluginapi.request.RefusalReason
+import slussen.pluginapi.value.Amount
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -48,7 +50,8 @@ import java.time.LocalDate
  * the Offered Bank Accounts with their balance (step 6), the identification of the Bank Accounts the Operator added
  * (step 6, A18, BR-011), the Back-offs a Data Provider asks for (A5, A15), and the Fetch record with its outcome (step
  * 11, A6, A7). Steps 7-10 (Bank Transactions, Account Balances, Fetch Results, the Decision Journal, the Comparison)
- * and the Scheduled Fetch (A12) come with later slices; the transactions a Data Provider delivers are not used yet.
+ * and the Scheduled Fetch (A12) come with later slices. Until then step 4 asks every selected Bank Account for its
+ * balance only (O-P2-54), so no transaction is delivered and none is dropped (NFR-002).
  */
 class FetchTransactions(
     private val plugins: RegisteredPlugins,
@@ -136,7 +139,12 @@ class FetchTransactions(
         return answered(provider, response, toRead, startedAt, cooldown, backOffs)
     }
 
-    /** Step 4: what is asked of the Data Provider, with the Operator present, for the fetch period. */
+    /**
+     * Step 4: what is asked of the Data Provider, with the Operator present, for the fetch period. Partial until steps
+     * 7-10 are built (O-P2-54): every selected Bank Account is asked for its balance only (see [selected]), so the Data
+     * Provider delivers no transaction that Slussen could neither store nor show, and none is dropped (NFR-002); the
+     * fetch period is still sent. Nothing is lost for later, since every Fetch asks for the whole fetch period again.
+     */
     private suspend fun request(toRead: List<Selected>, now: Instant): FetchRequest {
         val today = LocalDate.ofInstant(now, clock.zone)
         return FetchRequest(
@@ -166,8 +174,9 @@ class FetchTransactions(
             val ownReference = bankAccount.providerReference
             val balanceReference = bankAccount.balanceProviderReference
             when {
+                // Step 4 (O-P2-54): ReadKind.TransactionsAndBalance once steps 7-10 store and show the transactions.
                 bankAccount.dataProviderId == stored.id && ownReference != null ->
-                    Selected(bankAccount, BankAccountToRead(ownReference, ReadKind.TransactionsAndBalance))
+                    Selected(bankAccount, BankAccountToRead(ownReference, ReadKind.Balance))
                 // UC-001 BR-011: A Bank Account whose transactions come from Transaction Files is read for its balance only, from the Data Provider the Operator chose for it.
                 bankAccount.balanceDataProviderId == stored.id && balanceReference != null ->
                     Selected(bankAccount, BankAccountToRead(balanceReference, ReadKind.Balance))
@@ -307,11 +316,22 @@ class FetchTransactions(
             name = delivered.name?.take(NAME_MAX_LENGTH),
             bankAccountKind = delivered.kind?.take(KIND_MAX_LENGTH),
             currency = delivered.currency,
-            balance = (delivered.result as? BankAccountResult.Read)?.balance,
+            balance = balanceOf(delivered.result),
             lastFourDigits = delivered.number?.let { BankAccountFingerprint.lastFourDigits(it) },
             proposedBankAccountId = null,
             offeredAt = offeredAt,
         )
+    }
+
+    /**
+     * The balance of an Offered Bank Account: from a Bank Account read, or the one the Data Provider gave with the list
+     * for a Bank Account the request did not ask to read (S-35, ADR-001 §4.1), so the Offered Bank Accounts not yet
+     * added keep their balance after another one was added (UC-013 step 5). Not stored as an Account Balance (step 8).
+     */
+    private fun balanceOf(result: BankAccountResult): Amount? = when (result) {
+        is BankAccountResult.Read -> result.balance
+        is BankAccountResult.NotRead -> result.balance.takeIf { result.cause == NotReadCause.NotSelected }
+        is BankAccountResult.Failed -> null
     }
 
     /** UC-014 BR-005: refused in this process, or in the last Fetch after the credentials were last accepted. */

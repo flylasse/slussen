@@ -18,6 +18,12 @@ import slussen.core.port.CoordinatorMode
 import slussen.core.port.JournalEventKind
 import slussen.core.port.ServiceKey
 import slussen.pluginapi.budgetapp.ReadResult
+import slussen.pluginapi.provider.BankAccountResult
+import slussen.pluginapi.provider.BankAccountSelection
+import slussen.pluginapi.provider.DeliveredBankAccount
+import slussen.pluginapi.provider.FetchResponse
+import slussen.pluginapi.provider.NotReadCause
+import slussen.pluginapi.provider.SourceOutcome
 import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.testfixtures.UseCase
 import slussen.testing.ExampleData
@@ -165,6 +171,43 @@ class UC013ConnectBudgetsAndBankAccountsTest {
         )
         assertEquals(amount(4140, 50), pairing.freeBudgetAccounts.first().balance)
         assertTrue(pairing.freeBudgetAccounts.none { it.budgetName == "Care Fund" })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-002"])
+    @DisplayName("Step 5, BR-002 (S-35): after one Offered Bank Account is added, the next Fetch reads only that one, and the Offered Bank Accounts not yet added keep showing the balance the Data Provider gave with the list")
+    fun offeredKeepTheirBalanceAfterAnAddition() = runTest {
+        readyToPair()
+        val listed = listOf(
+            Triple("acct-4410", "CHK", amount(4140, 50)),
+            Triple("acct-1182", "Pinecrest Rewards Visa", amount(-1268, 400)),
+            Triple("acct-7731", "Reserve Saver", amount(12000)),
+            Triple("acct-5520", "Aurora Dollar", amount(1520)),
+        )
+        // A Data Provider that keeps the contract of ADR-001 §4.1: a listed Bank Account not asked for comes with the balance of the list.
+        slice.feeds.fetchAnswer = { request ->
+            val asked = (request.bankAccounts as BankAccountSelection.Selected).bankAccounts.map { it.providerReference }.toSet()
+            FetchResponse(
+                SourceOutcome.Completed,
+                emptyList(),
+                listed.map { (reference, name, balance) ->
+                    val result = if (reference in asked) {
+                        BankAccountResult.Read(emptyList(), balance)
+                    } else {
+                        BankAccountResult.NotRead(NotReadCause.NotSelected, balance)
+                    }
+                    DeliveredBankAccount(reference, "Kestrel Bank", name, "savings", USD, null, result)
+                },
+            )
+        }
+        assertInstanceOf(PairOutcome.Added::class.java, pairAndAdd("acct-4410", "Checking"))
+
+        slice.fetch.fetch(slice.feedsKey)
+
+        assertEquals(listOf("acct-4410"), (slice.feeds.fetchRequests.single().bankAccounts as BankAccountSelection.Selected).bankAccounts.map { it.providerReference })
+        val offered = slice.connect.pairing().sources.single { it.name == "Kestrel Feeds" }.offered
+        assertEquals(listOf("Pinecrest Rewards Visa", "Reserve Saver", "Aurora Dollar"), offered.map { it.nameOrProduct })
+        assertEquals(listOf(amount(-1268, 400), amount(12000), amount(1520)), offered.map { it.balance })
     }
 
     @Test

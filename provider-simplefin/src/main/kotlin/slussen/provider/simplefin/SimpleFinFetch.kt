@@ -38,10 +38,13 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 
 /**
- * A Fetch from SimpleFIN (ADR-001 §4.1, UC-001 step 4): one `GET {access}/accounts`, which lists every account of the
- * access credential. When a Bank Account is read for its transactions, the request asks for the transactions of the
- * fetch period (`start-date`, `end-date`); when only balances are read, it asks for balances only (`balances-only`).
- * SimpleFIN answers every account in that one request, so the gate is asked once, for the whole Data Provider.
+ * A Fetch from SimpleFIN (ADR-001 §4.1, UC-001 step 4): one `GET {access}/accounts` of protocol version 2
+ * (`version=2`, O-P2-60), which lists every account of the access credential with its balance. When a Bank Account is
+ * read for its transactions, the request asks for the transactions of the fetch period (`start-date`, `end-date`);
+ * when only balances are read, it asks for balances only (`balances-only`). SimpleFIN answers every account in that one
+ * request, so the gate is asked once, for the whole Data Provider, and a listed account the request does not read
+ * carries the balance of the same answer (`NotRead(NotSelected, balance)`, S-35). The `errlist` of the answer is not
+ * read yet (O-P2-61).
  *
  * The plug-in passes every item on: it does not filter pending or zero-amount transactions, identify Bank Accounts or
  * start Back-offs, which are rules of the core (ADR-001 §4.1). No text of SimpleFIN's answer leaves this class except
@@ -100,6 +103,8 @@ internal class SimpleFinFetch(private val http: OkHttpClient, private val allowP
      */
     private fun accountsAddress(access: HttpUrl, request: FetchRequest, readsTransactions: Boolean): HttpUrl =
         access.newBuilder().username("").password("").addPathSegment("accounts").apply {
+            // Protocol version 2: without it the server chooses the version (O-P2-60).
+            addQueryParameter("version", PROTOCOL_VERSION)
             if (readsTransactions) {
                 addQueryParameter("start-date", startOf(request.periodFrom).toString())
                 addQueryParameter("end-date", startOf(request.periodTo.plusDays(1)).toString())
@@ -125,29 +130,34 @@ internal class SimpleFinFetch(private val http: OkHttpClient, private val allowP
             throw UnreadableAccountSet()
         }
         val accounts = ((set as? JsonObject)?.get("accounts") as? JsonArray) ?: throw UnreadableAccountSet()
+        val connections = ((set as JsonObject)["connections"] as? JsonArray).orEmpty()
+            .mapNotNull { it as? JsonObject }
+            .mapNotNull { connection -> connection.text("conn_id")?.let { it to connection } }
+            .toMap()
         return accounts.map { element ->
             val account = element as? JsonObject ?: throw UnreadableAccountSet()
             val reference = account.text("id") ?: throw UnreadableAccountSet()
-            val org = account["org"] as? JsonObject
             val currency = account.text("currency")?.let(::currencyOf)
             val read = readOf(selection, reference)
+            val balance = account.text("balance")?.let(::amountOf)
             DeliveredBankAccount(
                 providerReference = reference,
-                bankReference = org?.text("name") ?: org?.text("domain"),
+                bankReference = bankOf(account, connections),
                 name = account.text("name"),
                 // SimpleFIN describes no kind of account and gives no account number.
                 kind = null,
                 currency = currency,
                 number = null,
                 result = when (read) {
-                    null -> BankAccountResult.NotRead(NotReadCause.NotSelected)
+                    // Listed, not asked for: the balance SimpleFIN gave with the list in the same answer (S-35).
+                    null -> BankAccountResult.NotRead(NotReadCause.NotSelected, balance)
                     else -> BankAccountResult.Read(
                         transactions = if (read == ReadKind.Balance) {
                             emptyList()
                         } else {
                             ((account["transactions"] as? JsonArray) ?: JsonArray(emptyList())).map { transactionOf(it, currency) }
                         },
-                        balance = if (read == ReadKind.Transactions) null else account.text("balance")?.let(::amountOf),
+                        balance = if (read == ReadKind.Transactions) null else balance,
                     )
                 },
             )
@@ -155,15 +165,33 @@ internal class SimpleFinFetch(private val http: OkHttpClient, private val allowP
     }
 
     /**
+     * The Bank of an account (O-P2-60): in protocol version 2 its connection (`conn_id`) names it, by `org_name`, else
+     * by the connection's own `name`, else by the host of `org_url`; an answer of version 1 names it in the account's
+     * `org` object, by `name`, else by `domain`.
+     */
+    private fun bankOf(account: JsonObject, connections: Map<String, JsonObject>): String? {
+        val connection = account.text("conn_id")?.let(connections::get)
+        if (connection != null) {
+            return connection.nonBlank("org_name") ?: connection.nonBlank("name") ?: connection.nonBlank("org_url")?.let(::hostOf)
+        }
+        val org = account["org"] as? JsonObject ?: return null
+        return org.nonBlank("name") ?: org.nonBlank("domain")
+    }
+
+    /** The host of `org_url`, which the protocol describes as the institution's domain name and shows as an address. */
+    private fun hostOf(text: String): String? =
+        (text.trim().toHttpUrlOrNull() ?: "https://${text.trim()}".toHttpUrlOrNull())?.host
+
+    /**
      * One SimpleFIN transaction: its `id` is its Stable Reference, passed on exactly as delivered (ADR-008 §2); `posted`
-     * (a Unix time) gives the booked date in UTC, or, for a pending one that is not posted yet, `transacted_at`.
+     * (a Unix time) gives the booked date in UTC, or, for a pending one that is not posted yet, `transacted_at`. Its
+     * `description` is the payee; protocol version 2 gives no payee or memo of its own, so there is no memo (O-P2-60).
      */
     private fun transactionOf(element: JsonElement, currency: CurrencyCode?): ProviderTransaction {
         val item = element as? JsonObject
             ?: return ProviderTransaction.Uninterpretable(null, null, currency, null, null, null, UnreadableReason.UnreadableStructure)
         val pending = (item["pending"] as? JsonPrimitive)?.booleanOrNull == true
-        val payee = item.text("payee") ?: item.text("description")
-        val memo = item.text("memo")
+        val payee = item.text("description")
         val dateField = listOf("posted", "transacted_at").map { item[it] }
         val dateProblem: UnreadableReason?
         val date: LocalDate?
@@ -185,9 +213,9 @@ internal class SimpleFinFetch(private val http: OkHttpClient, private val allowP
         val currencyProblem = if (currency == null) UnreadableReason.MissingCurrency else null
         val problem = dateProblem ?: amountProblem ?: currencyProblem
         return if (problem == null) {
-            ProviderTransaction.Interpretable(item.text("id"), date!!, amount!!, currency!!, payee, memo, booked = !pending)
+            ProviderTransaction.Interpretable(item.text("id"), date!!, amount!!, currency!!, payee, memo = null, booked = !pending)
         } else {
-            ProviderTransaction.Uninterpretable(date, amount, currency, payee, memo, booked = !pending, reason = problem)
+            ProviderTransaction.Uninterpretable(date, amount, currency, payee, memo = null, booked = !pending, reason = problem)
         }
     }
 
@@ -227,7 +255,12 @@ internal class SimpleFinFetch(private val http: OkHttpClient, private val allowP
 
     private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
 
+    private fun JsonObject.nonBlank(key: String): String? = text(key)?.takeIf { it.isNotBlank() }
+
     private companion object {
+        /** The SimpleFIN protocol version the plug-in reads: https://www.simplefin.org/protocol.html, `GET /accounts`. */
+        const val PROTOCOL_VERSION = "2"
+
         val DECIMAL = Regex("""[+-]?\d+(\.\d+)?""")
     }
 }
