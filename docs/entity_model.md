@@ -22,6 +22,7 @@ erDiagram
     BANK_CONSENT ||--o| BANK_SESSION : "opens"
     DATA_PROVIDER |o--o| SERVICE_CREDENTIAL : "is reached with"
     DATA_PROVIDER ||--o{ OFFERED_BANK_ACCOUNT : "offers"
+    DATA_PROVIDER ||--o{ LEFT_OUT_BANK_ACCOUNT : "remembers as left out"
     BANK |o--o{ OFFERED_BANK_ACCOUNT : "holds"
     BANK_ACCOUNT |o--o{ OFFERED_BANK_ACCOUNT : "is proposed as"
     DATA_PROVIDER ||--o{ FETCH : "is read by"
@@ -84,13 +85,14 @@ A place inside a Budget in the Budget App that holds transactions and a balance,
 | budget_id            | Budget the Budget Account belongs to                                                | Long      | 19               | Not Null, Foreign Key (BUDGET.id) |
 | budget_app_reference | Identifier the Budget App gives this Budget Account                                 | String    | 100              | Not Null, Unique                  |
 | name                 | Name of the Budget Account in the Budget App                                        | String    | 100              | Not Null                          |
-| manually_kept        | True when no Source exposes the Budget Account and the Operator keeps it by hand     | Boolean   | 1                | Not Null                          |
+| manually_kept        | True when the Operator marked the Budget Account as a Manually Kept Account, kept by hand in the Budget App and never offered for pairing (UC-013 BR-014, UC-009 A16); false until the Operator marks it | Boolean   | 1                | Not Null                          |
 | balance              | Balance of the Budget Account as the Budget App last reported it, in the Budget's currency | Decimal   | 12,3             | Optional                          |
 | balance_read_at      | Time the Budget App last reported the balance                                       | DateTime  | -                | Optional                          |
 
 #### Constraints
 
 - A Manually Kept Account (`manually_kept` is true) has no Account Mapping.
+- `manually_kept` is set and cleared only by the Operator (UC-013 A9, UC-009 A16), set only while the Budget Account receives through no Account Mapping, kept when the Budget App's Budget Accounts are read again, and every change is recorded in the Decision Journal.
 - `balance_read_at` is filled exactly when `balance` is filled.
 
 ### BUDGET_APP_TRANSACTION
@@ -253,6 +255,28 @@ A Bank Account that a Data Provider delivered in its latest list of Bank Account
 - Within one Data Provider, two Offered Bank Accounts never have the same `provider_reference`.
 - For a Data Provider that needs a Bank Consent, `bank_id` is always filled: the Bank of the Bank Consent through which the Bank Account was delivered.
 - An Offered Bank Account never appears in the Decision Journal, is never included in device backups or transfers, and is not restored after a reinstall.
+- An Offered Bank Account whose `data_provider_id` and `provider_reference` match a `LEFT_OUT_BANK_ACCOUNT` is not offered for pairing and never proposed as a likely match (`proposed_bank_account_id` stays empty) until the Operator brings it back (UC-013 BR-011).
+
+### LEFT_OUT_BANK_ACCOUNT
+
+An Offered Bank Account that the Operator chose not to import, remembered by its Data Provider and the Data Provider's reference so that it is no longer offered for pairing and never read.
+
+| Attribute          | Description                                                                                         | Data Type | Length/Precision | Validation Rules                         |
+|--------------------|-----------------------------------------------------------------------------------------------------|-----------|------------------|------------------------------------------|
+| id                 | Unique identifier                                                                                   | Long      | 19               | Primary Key, Sequence                    |
+| data_provider_id   | Data Provider that offered the Bank Account                                                         | Long      | 19               | Not Null, Foreign Key (DATA_PROVIDER.id) |
+| provider_reference | Identifier the Data Provider gives the Bank Account, as in `OFFERED_BANK_ACCOUNT.provider_reference` | String    | 200              | Not Null                                 |
+| name               | Name shown among the Bank Accounts not imported: the Offered Bank Account's name or product with its last four digits, taken when it was left out | String    | 100              | Optional                                 |
+| left_out_at        | Time the Operator left the Bank Account out                                                         | DateTime  | -                | Not Null                                 |
+
+#### Constraints
+
+- Within one Data Provider, two Left-Out Bank Accounts never have the same `provider_reference`.
+- `provider_reference` is never the `provider_reference` of a `BANK_ACCOUNT` whose `data_provider_id` is the same Data Provider, nor the `balance_provider_reference` of one whose `balance_data_provider_id` is that Data Provider: a Bank Account that is added is never left out (UC-013 BR-011).
+- A Fetch never asks for the transactions or the balance of a Left-Out Bank Account and stores none of either (UC-001 A18).
+- It is removed only when the Operator brings it back (UC-013 A10, UC-009 A15), never by a Fetch, a Bank Consent or a delivery of the Data Provider that no longer contains it.
+- It is included in device backups, restored after a reinstall and kept on an upgrade (NFR-017), like the Bank Accounts; it is not Decision-Critical Data.
+- Leaving it out and bringing it back are recorded in the Decision Journal with its `name`, never with its `provider_reference` (NFR-012).
 
 ### BANK_CONSENT
 

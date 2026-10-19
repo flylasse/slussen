@@ -147,7 +147,7 @@ phone and live items.
 | E-03 | A `slussen.db` with planted garbage bytes, and one with a planted unknown `Values:` text, are kept unchanged with their journal, the last good copy is used, the notice is shown and a Recovery Check opens; the running-app path restarts and recovers. A damaged `journal.db` and a damaged `device.db` are kept unchanged and show the notice, and open **no** Recovery Check and block no Upload (S-13) | instrumented, API 26 and phone | ADR-002 §6, §8 steps 3-5; NFR-005, NFR-006 |
 | E-04 | With no last good copy, an unreadable database starts empty with the default content | instrumented, API 26 | ADR-002 §8 step 3 |
 | E-05 | Each atomic operation O-1 to O-14 leaves nothing visible after a failure injected before its commit; a process killed between O-4 and O-5 leaves the Comparison pending and preparation refused until O-5 is committed (ADR-007 §3a); `confirmPlan` survives a killed process right after it returns | instrumented, API 26 | ADR-002 §3, §4 |
-| E-06 | Migration from every released schema version keeps every row | instrumented (`MigrationTestHelper`), API 26 | ADR-002 §7, NFR-017 |
+| E-06 | Migration from every committed schema version keeps every row (S-39) | instrumented (`MigrationTestHelper`), API 26 | ADR-002 §7, NFR-017 |
 | E-07 | Backup and restore with `adb shell bmgr` (backup now, uninstall, reinstall, restore): `slussen.db` comes back, `device.db` and `journal.db` do not, the start is detected as Restored Backup, a Recovery Check blocks Uploads until a Comparison and confirmation | phone | ADR-002 §5, §6; NFR-009, NFR-010, FR-095 |
 | E-08 | A new installation opens a Recovery Check with cause New Installation | instrumented, API 26 | ADR-002 §6 |
 | E-09 | An in-place upgrade of the `release` variant built on a second checkout with the same keystore keeps every Sent Record, Account Mapping lock and decision | phone | §6, NFR-017 |
@@ -221,3 +221,5 @@ fails on the device is changed by amending ADR-002, not worked around.
   ABI, for the `x86_64` emulator of §7).
 - Phase 9, first attempt (2026-10-19): S-37 (FR-104, UC-010 BR-011): §4 the app shows `versionName` and, for the
   `debug` variant, that it is a debug build, on Settings.
+- Phase 9, first attempt (2026-10-19): S-39 (NFR-017, ADR-002 §7): §7 E-06 migrates from every committed schema
+  version, not only from released ones.

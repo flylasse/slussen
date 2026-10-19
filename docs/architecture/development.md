@@ -7,7 +7,7 @@
 technical layer: `/use-case-implement` runs the Skill column bottom-up, `/use-case-test` runs the Test skill column from the
 integration layer up, and `/use-case-coverage` searches for the markers in the last table.
 
-**Last updated:** 2026-10-18
+**Last updated:** 2026-10-19
 
 Derived from the Accepted ADRs: modules and dependencies from ADR-001 §1-§3, storage from ADR-002, test runner and
 gates from ADR-005 §3, markers from ADR-004 §1-§2. On a conflict, the ADR wins and this view is corrected. Written by
@@ -18,7 +18,7 @@ hand from the template of `aiup-core` `skills/architecture/references/developmen
 
 | Layer       | Technology | Skill | Test skill | Location |
 |-------------|------------|-------|------------|----------|
-| Migration   | Room schema versions (`exportSchema`) and hand-written Room `Migration`s (ADR-002 §7) | – | – | `:persistence`, schemas in `persistence/schemas/` |
+| Migration   | Room schema versions (`exportSchema`), each final once committed, and hand-written Room `Migration`s (ADR-002 §7) | – | – | `:persistence`, schemas in `persistence/schemas/` |
 | Persistence | Room databases, DAOs and the storage ports O-1..O-16 of the core (ADR-001 §3, ADR-002 §3) | – | – | `:persistence`, `slussen.persistence.*` |
 | Service     | Kotlin/JVM, the rules of every use case, the operation coordinator (ADR-007), on the plug-in contracts of `:plugin-api` | – | – | `:core`, `slussen.core.*` |
 | API         | – | – | – | – |
@@ -104,7 +104,7 @@ ADR-004 §1-§2; on a conflict, ADR-004 wins. This waives the template's "do not
 |-------------|-------|------|--------------------|
 | All         | –     | Code | `// UC-XXX BR-YYY:` directly above the function, `if`/`when` branch, `require`/`check` call or validator that enforces the rule; a KDoc block may stand between (ADR-004 §1, checked by T-03, T-04) |
 | All         | –     | Test | `@UseCase(id = "UC-XXX", scenario = "…", businessRules = ["BR-YYY"], requirements = ["NFR-ZZZ"])` on each `@Test` method or on the class (ADR-004 §2, checked by T-01, T-02); a linked NFR or C may instead be named first in `@DisplayName("NFR-ZZZ: …")` |
-| Migration   | –     | Name | a Room `Migration` per schema version and its `MigrationTestHelper` test in `persistence/src/androidTest` (ADR-002 §7) |
+| Migration   | –     | Name | a Room `Migration` per schema version and its `MigrationTestHelper` test from every committed version in `persistence/src/androidTest`; the schema check by identity hash in `persistence/src/test`, run by `gradlew check` (ADR-002 §7) |
 | Persistence | –     | Test | `UC<id><Name>PersistenceIT` in `persistence/src/androidTest` |
 | Persistence | –     | Code | `// UC-XXX BR-YYY:` only where the storage itself enforces a rule (ADR-004 §1) |
 | Service     | –     | Test | `UC<id><Name>Test` in `core/src/test` |

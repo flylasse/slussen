@@ -27,7 +27,7 @@
 6. Bank confirms the consent to the Data Provider, and the Operator returns to Slussen with the result.
 7. Slussen checks that the result answers the most recent Consent Request for this Bank, arrives within the Consent Request lifetime and has not been used before (BR-002).
 8. Slussen stores the Bank Consent with the expiry date the Bank or Data Provider reports and the Bank Session it opens, replacing any earlier Bank Consent and Bank Session of this Bank (BR-004).
-9. Slussen keeps the Bank Accounts the Bank Consent covers as Offered Bank Accounts (UC-009 BR-009) and identifies each that the Operator already added (UC-009 BR-004); the others can be added (UC-013).
+9. Slussen keeps the Bank Accounts the Bank Consent covers as Offered Bank Accounts (UC-009 BR-009) and identifies each that the Operator already added (UC-009 BR-004); the others can be added (UC-013), except the Left-Out Bank Accounts, which the Operator brings back first (UC-013 BR-011).
 10. Slussen shows the Bank Consent as valid, with its expiry date and the Bank Accounts it covers (BR-009).
 
 ## Alternative Flows
