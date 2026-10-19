@@ -28,7 +28,7 @@
 7. Slussen checks that the result answers the most recent Consent Request for this Bank, arrives within the Consent Request lifetime and has not been used before (BR-002).
 8. Slussen stores the Bank Consent with the expiry date the Bank or Data Provider reports and the Bank Session it opens, replacing any earlier Bank Consent and Bank Session of this Bank (BR-004).
 9. Slussen keeps the Bank Accounts the Bank Consent covers as Offered Bank Accounts (UC-009 BR-009) and identifies each that the Operator already added (UC-009 BR-004); the others can be added (UC-013).
-10. Slussen shows the Bank Consent as valid, with its expiry date and the Bank Accounts it covers.
+10. Slussen shows the Bank Consent as valid, with its expiry date and the Bank Accounts it covers (BR-009).
 
 ## Alternative Flows
 
@@ -143,3 +143,7 @@ Revoking a Bank Consent deletes the stored Bank Consent, its Bank Session and ev
 ### BR-008: Bank Consents Live on the Data Provider's Page
 
 The Bank Consents of a Data Provider that needs one are shown on that Data Provider's page in Connections (UC-010 BR-010), each with its Bank, status, expiry date and the Bank Accounts it covers, and with the actions to grant, renew and revoke. Whether a Data Provider needs a Bank Consent is declared by its part; a Data Provider that needs none has no Bank Consents on its page.
+
+### BR-009: The Bank Consent Follows the Data Provider's Bank
+
+A Bank Consent covers every Bank Account that its Data Provider reads, for its transactions or for its balance, and names this Bank for: the Bank where the Bank Consent is granted. Slussen records that Bank for the Bank Account when the Bank Account is added (UC-013) or identified (UC-009, step 9). The Bank the Operator confirms or changes for a Bank Account (UC-013 BR-009, UC-009 A14, BR-012) is only how the Bank Account is named and grouped in Slussen; it never decides which Bank Consent covers the Bank Account or at which Bank a Bank Consent is granted. Wherever this use case and UC-001 speak of the Bank Accounts of a Bank, or of the Bank of a Bank Account, in connection with a Bank Consent, the Bank the Data Provider names is meant.

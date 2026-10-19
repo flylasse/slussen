@@ -7,6 +7,7 @@ erDiagram
     BUDGET ||--o{ BUDGET_ACCOUNT : "holds"
     BUDGET_ACCOUNT ||--o{ BUDGET_APP_TRANSACTION : "holds"
     BANK ||--o{ BANK_ACCOUNT : "holds"
+    BANK |o--o{ BANK_ACCOUNT : "is named by the Data Provider for"
     DATA_PROVIDER |o--o{ BANK_ACCOUNT : "delivers transactions of"
     FILE_FORMAT |o--o{ BANK_ACCOUNT : "delivers transactions of"
     DATA_PROVIDER |o--o{ BANK_ACCOUNT : "reports balance of"
@@ -175,7 +176,7 @@ One of the Operator's or a household member's Bank Accounts at a Bank, as expose
 |-----------------------------------|---------------------------------------------------------------------------------------------------------------|-----------|------------------|------------------------------------------|
 | id                                | Unique identifier                                                                                             | Long      | 19               | Primary Key, Sequence                    |
 | generated_identifier              | Identifier Slussen generates when the Bank Account is added, as unlikely to collide as a random UUID (NFR-020); never changes | String    | 36               | Not Null, Unique                         |
-| bank_id                           | Bank that holds the Bank Account                                                                              | Long      | 19               | Not Null, Foreign Key (BANK.id)          |
+| bank_id                           | Bank that holds the Bank Account as the Operator confirms or chooses it, which names and groups the Bank Account in Slussen (UC-013 BR-009) | Long      | 19               | Not Null, Foreign Key (BANK.id)          |
 | data_provider_id                  | Data Provider that delivers the Bank Account's transactions, empty when they come from Transaction Files     | Long      | 19               | Optional                                 |
 | file_format_id                    | File Format of the Bank Account's Transaction Files, empty when a Data Provider delivers the transactions     | Long      | 19               | Optional                                 |
 | balance_data_provider_id          | Data Provider that reports the Bank Account's balance when the transactions come from Transaction Files      | Long      | 19               | Optional                                 |
@@ -185,6 +186,7 @@ One of the Operator's or a household member's Bank Accounts at a Bank, as expose
 | start_date                        | Start Date set by the Operator in the app, before which no Bank Transaction of the Bank Account is offered for Upload; empty when there is none | Date      | -                | Optional                                 |
 | provider_reference                | Identifier the Data Provider gives the Bank Account, recorded once the Bank Account is identified with certainty | String    | 200              | Optional                                 |
 | bank_account_fingerprint          | One-way fingerprint of the Bank Account number that recognises the Bank Account when the Data Provider's identifier changes | String    | 64               | Optional                                 |
+| provider_bank_id                  | Bank that the Data Provider reading the Bank Account (`data_provider_id`, or `balance_data_provider_id` for its balance) names for it, recorded when the Bank Account is added or identified; empty when no Data Provider reads it or the Data Provider names no Bank | Long      | 19               | Optional                                 |
 | balance_provider_reference        | Identifier the balance Data Provider gives the Bank Account, taken from the Offered Bank Account the Operator chose for its balance (UC-013 A4, BR-006) | String    | 200              | Optional                                 |
 | identified_at                     | Time the Bank Account was added, or the Operator last confirmed or changed how its Source identifies it; a Fetch within the Fetch Cooldown still reads a Bank Account identified after the Data Provider's last successful Fetch (UC-001 BR-006) | DateTime  | -                | Not Null                                 |
 | retired                           | True when the Operator has retired the Bank Account so that it is neither fetched nor uploaded                | Boolean   | 1                | Not Null                                 |
@@ -196,6 +198,8 @@ One of the Operator's or a household member's Bank Accounts at a Bank, as expose
 - Exactly one of `data_provider_id` and `file_format_id` is filled.
 - `balance_data_provider_id` is filled only when `file_format_id` is filled.
 - `balance_provider_reference` is filled exactly when `balance_data_provider_id` is filled.
+- `provider_bank_id` is filled only when `data_provider_id` or `balance_data_provider_id` is filled, and always when that Data Provider needs a Bank Consent. It is taken from the `bank_id` of the Offered Bank Account the Bank Account is added or identified with; a change of `bank_id` by the Operator never changes it (UC-009 BR-012).
+- For a Data Provider that needs a Bank Consent, the Bank Consent that covers the Bank Account is the one of `provider_bank_id`; `bank_id` never decides which Bank Consent covers the Bank Account or at which Bank a Bank Consent is granted (UC-007 BR-009).
 - Two Bank Accounts of the same Data Provider never have the same `provider_reference` or the same `bank_account_fingerprint`.
 - `funded_by_budget_account_id` and `transfer_partner_budget_account_id` belong to the same Budget as the Bank Account's own Account Mapping, differ from its own Budget Account, and are each a Budget Account that Slussen fetches, that is, one that a Bank Account the Operator added that is not a Retired Account is mapped to through an Account Mapping; never a Manually Kept Account (UC-005 BR-014).
 - When that Budget Account loses its last Account Mapping of a Bank Account that is not a Retired Account, the value is kept but no longer applies: it is not used to detect Transfers and is shown as not applying until the Operator changes or clears it or such a Bank Account is mapped to it again.
@@ -247,6 +251,7 @@ A Bank Account that a Data Provider delivered in its latest list of Bank Account
 - The Offered Bank Accounts of a Data Provider, or of one Bank through it, are kept until the Data Provider next delivers its Bank Accounts, in a Fetch or after a Bank Consent is granted, and are then replaced by those of that delivery (UC-009 BR-009).
 - Of a Bank Account number, only `last_four_digits` and the one-way `bank_account_fingerprint` are ever kept.
 - Within one Data Provider, two Offered Bank Accounts never have the same `provider_reference`.
+- For a Data Provider that needs a Bank Consent, `bank_id` is always filled: the Bank of the Bank Consent through which the Bank Account was delivered.
 - An Offered Bank Account never appears in the Decision Journal, is never included in device backups or transfers, and is not restored after a reinstall.
 
 ### BANK_CONSENT
@@ -265,6 +270,7 @@ The Bank's permission, granted by the Operator through Strong Customer Authentic
 
 - `expires_at` is after `granted_at`; Slussen assumes no fixed consent length.
 - A Bank has at most one Bank Consent per Data Provider; renewing replaces it.
+- A Bank Consent covers each `BANK_ACCOUNT` whose `provider_bank_id` is its `bank_id` and whose `data_provider_id` or `balance_data_provider_id` is its `data_provider_id`, whatever the Bank Account's `bank_id` (UC-007 BR-009).
 - Revoking a Bank Consent removes it together with its Bank Session (`BANK_SESSION`), also when the Data Provider does not confirm the end of the consent.
 - A Bank Consent is not restored after a reinstall of Slussen.
 

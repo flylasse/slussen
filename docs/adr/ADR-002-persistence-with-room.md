@@ -171,6 +171,11 @@ Configuration of them and no reconciliation by key:
   Sent Records keep their `budget_account_id` (UC-003 BR-021), except that a later retry of a Rejected send moves its
   record to the Budget Account of the current Account Mapping (§4 step 2; UC-006 BR-020, O-P2-34 (1)).
 - `offered_bank_account.balance` holds the balance the Data Provider reported with the delivery (UC-013 step 5).
+- `bank_account.provider_bank_id` (S-33) is set by O-15 when the Bank Account is added and by O-13 when it is
+  identified, from the `offered_bank_account.bank_id` it is identified with, and is never changed by a change of
+  `bank_account.bank_id` (UC-009 A14). It is kept in `slussen.db`, a real foreign key to `bank`, because the Offered
+  Bank Accounts in `device.db` are replaced at every delivery and not restored after a reinstall, while the Bank
+  Accounts a Bank Consent will cover must still be known when the Operator grants it again (UC-007 BR-005, BR-009).
 - `data_provider.request_limit` with `request_limit_published` (S-31): when the Data Provider's part declares a
   published limit (`RequestLimitDeclaration.Published`, ADR-001 §4.1; FR-017), it is not an Operator Setting and O-11
   sets it at every start from the part; when the part declares none published (`NotPublished`), it is an Operator
@@ -572,4 +577,5 @@ run with JUnit 5 (ADR-004, ADR-005).
     keep theirs), §4 "What this guarantees"; ADR-007 §4, UC-006 BR-020.
 - Mockup gate follow-up (2026-10-18): §2 and §3 O-13 (no confirmation to move or remove an Account Mapping whose Sent Records are all Rejected; `first_sent_at` keeps its meaning; UC-009 A8, A11, BR-003).
 - Pre-Phase-6 review follow-up (2026-10-18): §2 and §3 O-13, O-15 (`bank_account.identified_at`, so the Fetch Cooldown never serves a Bank Account added or identified again, UC-001 BR-006; the confirmation to move, remove or identify again rests on the non-Rejected `sent_record`s alone, not on `first_sent_at`, and states the Rejected ones separately; mapping a Bank Account again; the balance Data Provider's reference stored on adding; UC-009 A6-A8, A11, BR-003, BR-007; UC-013 A4).
+- Phase 7 (2026-10-18): S-33 (O-P2-48; UC-007 BR-009): §2 (`bank_account.provider_bank_id`, the Bank the Data Provider names, which decides the Bank Consent that covers the Bank Account; `bank_account.bank_id` names and groups only).
 - Phase 7 (2026-10-18): S-31 (O-P2-42; FR-017, UC-001 BR-007, UC-010 A11, BR-002): Context and §2 (`data_provider.request_limit_published`; a Request Limit the Data Provider does not publish is an Operator Setting kept per Data Provider like the Fetch Cooldown; O-11 sets a published one from the part and keeps the Operator's value otherwise), §3 O-11, §8 step 3 (default content).

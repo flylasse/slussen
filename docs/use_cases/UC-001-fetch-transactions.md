@@ -21,7 +21,7 @@
 
 1. Operator starts a Fetch of a Data Provider.
 2. Slussen checks that the Data Provider is in no Back-off, is not within its Fetch Cooldown and has not reached its Request Limit.
-3. Slussen selects the Bank Accounts to read: every Bank Account the Operator added for the Data Provider (UC-013), and, for its balance only, every Bank Account whose transactions come from Transaction Files and whose balance the Operator chose to take from the Data Provider (BR-011), that has an Account Mapping, is not a Retired Account and whose Bank has a valid Bank Consent when the Data Provider needs one.
+3. Slussen selects the Bank Accounts to read: every Bank Account the Operator added for the Data Provider (UC-013), and, for its balance only, every Bank Account whose transactions come from Transaction Files and whose balance the Operator chose to take from the Data Provider (BR-011), that has an Account Mapping, is not a Retired Account and is covered by a valid Bank Consent when the Data Provider needs one (UC-007 BR-009).
 4. Slussen asks the Data Provider, with the Operator present, for the Bank Accounts it offers, also when no Bank Account is selected, and for the transactions and the balance of each selected Bank Account for the fetch period, only the balance for one whose transactions come from Transaction Files, and keeps each request as a Provider Request (BR-007).
 5. Data Provider delivers the transactions and the Account Balance of each selected Bank Account.
 6. Slussen keeps the delivered Bank Accounts as Offered Bank Accounts (UC-009 BR-009) and identifies each selected one with certainty as one of the Bank Accounts the Operator added.
@@ -65,7 +65,7 @@
 
 ### A4: Bank Without Valid Bank Consent
 
-**Trigger:** The Bank of one or more Bank Accounts has no Bank Consent, or its Bank Consent has expired (step 3)  
+**Trigger:** The Bank the Data Provider names for one or more Bank Accounts has no Bank Consent, or its Bank Consent has expired (UC-007 BR-009) (step 3)  
 **Flow:**
 
 1. Slussen leaves those Bank Accounts out without contacting their Bank.
