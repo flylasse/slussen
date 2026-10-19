@@ -310,7 +310,7 @@ sealed interface BankOutcome { val bankReference: String
 data class DeliveredBankAccount(
     val providerReference: String, val bankReference: String?, val name: String?, val kind: String?,
     val currency: CurrencyCode?, val number: BankAccountNumber?,
-    val result: BankAccountResult,                     // Read(transactions, balance?) | Failed(kind) | NotRead(cause)
+    val result: BankAccountResult,                     // Read(transactions, balance?) | Failed(kind) | NotRead(cause, balance?)
 )
 sealed interface ProviderTransaction {
     data class Interpretable(val stableReference: String?, val bookedDate: LocalDate, val amount: Amount,
@@ -340,6 +340,12 @@ sealed interface ProviderTransaction {
   the description UC-009 step 3 shows. The core replaces the stored Offered Bank Accounts of that Data Provider (or of
   one Bank through it) with this list in one storage operation (ADR-002 §3, O-2), keeping only `last_four_digits` and
   the fingerprint of each number (UC-009 BR-009).
+- **Balances of listed Bank Accounts (S-35, O-P2-56).** A Bank Account the request did not ask to read is
+  `NotRead(NotSelected, balance)`, carrying the balance the Data Provider gave with the list in the same answer, or
+  none when it gave none; the plug-in sends no further request for it. The core takes the balance of each Offered
+  Bank Account from `Read.balance` or from this one, so the Offered Bank Accounts not yet added keep showing their
+  balance after another Bank Account was added (UC-013 step 5, BR-002). The core does not store it as an Account
+  Balance (UC-001 step 8). `NotRead` for any other cause carries no balance.
 - The plug-in does not filter, deduplicate or classify. Leaving out pending and zero-amount transactions
   (UC-001 BR-002, BR-003), identifying Bank Accounts (UC-009 BR-004), every Back-off and every Transaction Status
   are core rules. That the plug-in passes every item on is a contract-test property (§4.4), not a static one.
@@ -908,3 +914,5 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
   `givesStableReference` with its source (SimpleFIN `true`, Enable Banking `false`, kind `F` of ADR-008 §2); §4.4 and
   §4.5 an input that cannot be valid is `Refused` without calling the gate (UC-014 A1); §4.5 `StoppedByGate` also
   for a Back-off of the Data Provider (UC-014 A5).
+- Phase 8a (2026-10-19): S-35 (O-P2-56, UC-013 step 5, BR-002): §4.1 `NotRead(NotSelected)` carries the balance the
+  Data Provider gave with the list, so Offered Bank Accounts not yet added keep their balance.
