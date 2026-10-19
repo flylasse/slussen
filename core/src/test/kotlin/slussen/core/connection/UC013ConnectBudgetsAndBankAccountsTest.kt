@@ -452,6 +452,21 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     }
 
     @Test
+    @UseCase(id = "UC-013", scenario = "A1: Budget App Cannot Be Read or Refuses Slussen's Credentials", requirements = ["NFR-004"])
+    @DisplayName("A1: a Budget App that cannot be reached from the device, a lost connection, leaves the Budgets served unchanged and says so")
+    fun budgetAppTheDeviceCannotReachLeavesServedBudgetsUnchanged() = runTest {
+        slice.enterCredentials()
+        chooseHouseholdAndSummerHouse()
+        val before = slice.connectionStore.budgets()
+        slice.budgetApp.reader.readBudgetsAnswer = ReadResult.TransientFailure(FailureKind.ConnectionLost)
+
+        val read = slice.connect.readBudgets()
+
+        assertEquals(BudgetsRead.CouldNotRead(FailureKind.ConnectionLost), read)
+        assertEquals(before, slice.connectionStore.budgets())
+    }
+
+    @Test
     @UseCase(id = "UC-013", scenario = "A1: Budget App Cannot Be Read or Refuses Slussen's Credentials")
     @DisplayName("A1: a Budget App that refuses the credentials shows the Blocked Reason credentials refused")
     fun refusingBudgetAppShowsCredentialsRefused() = runTest {

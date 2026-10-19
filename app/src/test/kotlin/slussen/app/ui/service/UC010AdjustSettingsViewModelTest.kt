@@ -7,15 +7,20 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import slussen.app.ui.AppVersion
 import slussen.app.ui.MainDispatcherExtension
 import slussen.app.ui.UiFixture
+import slussen.app.ui.connections.ConnectionsViewModel
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.ServiceKey
 import slussen.pluginapi.testfixtures.UseCase
 
-/** The Request Limit of a Data Provider that publishes none, on its page in Connections (`connections.html#request-limit`). */
+/**
+ * The Request Limit of a Data Provider that publishes none, on its page in Connections (`connections.html#request-limit`),
+ * and the app's version on Settings (`settings.html#list-2`).
+ */
 @ExtendWith(MainDispatcherExtension::class)
-@DisplayName("UC-010: Adjust Settings, the Request Limit on a Data Provider's page")
+@DisplayName("UC-010: Adjust Settings, the Request Limit on a Data Provider's page and the app's version on Settings")
 class UC010AdjustSettingsViewModelTest {
     private val fixture = UiFixture()
     private val slice = fixture.slice
@@ -128,5 +133,37 @@ class UC010AdjustSettingsViewModelTest {
 
         assertEquals("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", page.ui().message)
         assertEquals(50, storedLimit())
+    }
+
+    // ---- The app's version on Settings (S-37) -------------------------------------------------------------------
+
+    private fun settings(version: AppVersion) =
+        ConnectionsViewModel(UiFixture(appVersion = version).services).also { it.load() }.state.value!!
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-011"])
+    @DisplayName("Step 1, BR-011: Settings shows the version name of the release build the Operator runs, from Android's package information, with no debug label")
+    fun settingsShowsTheVersionName() {
+        val ui = settings(AppVersion.of(packageName = "slussen.app", versionName = "4.5.6"))
+
+        assertEquals("4.5.6", ui.version)
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-011"])
+    @DisplayName("Step 1, BR-011: a debug build, told by the .debug suffix of its package name, says that it is a debug build beside its version name")
+    fun debugBuildSaysSo() {
+        val version = AppVersion.of(packageName = "slussen.app.debug", versionName = "4.5.6")
+
+        assertTrue(version.debugBuild)
+        assertEquals("4.5.6 · debug build", settings(version).version)
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-011"])
+    @DisplayName("BR-011: a package name that only contains debug is not the debug variant")
+    fun onlyTheDebugSuffixMakesADebugBuild() {
+        assertFalse(AppVersion.of(packageName = "slussen.debugger", versionName = "4.5.6").debugBuild)
+        assertFalse(AppVersion.of(packageName = "slussen.app.debug.other", versionName = "4.5.6").debugBuild)
     }
 }

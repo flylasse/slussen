@@ -256,6 +256,24 @@ class UC014ManageServiceCredentialsTest {
     }
 
     @Test
+    @UseCase(id = "UC-014", scenario = "A2: Service Cannot Be Reached", requirements = ["NFR-004"])
+    @DisplayName("A2: a service that cannot be reached from the device, a lost connection, stores nothing and keeps the earlier credentials unchanged")
+    fun serviceTheDeviceCannotReachStoresNothing() = runTest {
+        slice.credentials.enter(ServiceKey.budgetApp, slice.input("token" to ExampleData.BUDGET_APP_TOKEN))
+        val acceptedAt = slice.clock.instant()
+        val recorded = slice.journalRecorder.entries.size
+        slice.budgetApp.credentials.answer = CredentialCheck.TransientFailure(FailureKind.ConnectionLost)
+        slice.clock.advance(Duration.ofMinutes(1))
+
+        val outcome = slice.credentials.enter(ServiceKey.budgetApp, slice.input("token" to "PLANTED-OTHER-TOKEN"))
+
+        assertEquals(CredentialOutcome.NotReached(FailureKind.ConnectionLost), outcome)
+        assertEquals(ExampleData.BUDGET_APP_TOKEN, storedSecret(ServiceKey.budgetApp))
+        assertEquals(CredentialStatus.Accepted(acceptedAt), slice.credentials.status(ServiceKey.budgetApp))
+        assertEquals(recorded, slice.journalRecorder.entries.size)
+    }
+
+    @Test
     @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", businessRules = ["BR-005", "BR-007"])
     @DisplayName("A3: removed credentials are deleted and recorded; a Data Provider with a Bank Account stays in use as credentials missing")
     fun removedCredentialsLeaveTheDataProviderInUseAsCredentialsMissing() = runTest {

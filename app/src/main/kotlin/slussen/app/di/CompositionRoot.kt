@@ -1,6 +1,7 @@
 package slussen.app.di
 
 import android.content.Context
+import slussen.app.platform.version.installedAppVersion
 import slussen.app.ui.Formats
 import slussen.app.ui.UiServices
 import slussen.budgetapp.ynab.YnabBudgetApp
@@ -87,6 +88,7 @@ class CompositionRoot(log: SlussenLog) {
             ),
             formats = Formats(clock.zone),
             clock = clock,
+            appVersion = context.installedAppVersion(),
         )
     }
 

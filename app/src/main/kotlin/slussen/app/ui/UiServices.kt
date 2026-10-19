@@ -19,4 +19,6 @@ class UiServices(
     val fetch: FetchTransactions,
     val formats: Formats,
     val clock: java.time.Clock,
+    /** The version of the build the Operator runs, shown on Settings (UC-010 BR-011). */
+    val appVersion: AppVersion,
 )

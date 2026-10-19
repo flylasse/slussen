@@ -1,6 +1,9 @@
 package slussen.budgetapp.ynab
 
 import kotlinx.coroutines.runBlocking
+import okhttp3.Dispatcher
+import okhttp3.Dns
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -21,13 +24,17 @@ import slussen.pluginapi.diagnostic.LogFact
 import slussen.pluginapi.diagnostic.SlussenLog
 import slussen.pluginapi.testfixtures.BudgetAppContractTest
 import slussen.pluginapi.testfixtures.CredentialScenario
+import slussen.pluginapi.testfixtures.DeviceRefusal
 import slussen.pluginapi.testfixtures.ReadScenario
+import slussen.pluginapi.testfixtures.RecordingRequestThreads
 import slussen.pluginapi.testfixtures.TestRequestContext
 import slussen.pluginapi.testfixtures.UseCase
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
 import slussen.pluginapi.value.Secret
 import slussen.pluginapi.value.SensitiveApi
+import java.net.InetAddress
+import java.net.Proxy
 import java.util.concurrent.TimeUnit
 
 /** The YNAB Budget App against the contract tests of ADR-001 §4.4, with invented recorded answers. */
@@ -100,6 +107,27 @@ class YnabBudgetAppTest : BudgetAppContractTest() {
     override fun budgetsUnavailable() = reading(MockResponse().setResponseCode(503))
 
     override fun budgetsNeverAnswering() = reading(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+
+    /**
+     * ADR-001 §4.0 (S-36): a device that refuses network access, as Android does for an app without the network
+     * permission: the address lookup throws, and the requests run on [threads]. No proxy, so the lookup is of the
+     * Budget App's own invented host.
+     */
+    private fun refusingDevice(threads: RecordingRequestThreads) = YnabBudgetApp(
+        SilentLog,
+        "https://api.budget-app.invalid/v1/".toHttpUrl(),
+        OkHttpClient.Builder()
+            .dns(object : Dns { override fun lookup(hostname: String): List<InetAddress> = throw DeviceRefusal.exception() })
+            .dispatcher(Dispatcher(threads))
+            .proxy(Proxy.NO_PROXY)
+            .build(),
+    )
+
+    override fun credentialsOnRefusingDevice(threads: RecordingRequestThreads) =
+        CredentialScenario(refusingDevice(threads).credentials, tokenInput())
+
+    override fun budgetsOnRefusingDevice(threads: RecordingRequestThreads) =
+        ReadScenario(refusingDevice(threads).reader, Secret(PLANTED_TOKEN))
 
     @Test
     @UseCase(id = "UC-014", scenario = "Main Success Scenario", businessRules = ["BR-002"], requirements = ["C-008"])

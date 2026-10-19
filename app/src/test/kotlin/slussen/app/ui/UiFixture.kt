@@ -13,8 +13,15 @@ import slussen.core.port.UnreadablePart
 import slussen.testing.TestSlice
 import java.time.ZoneId
 
-/** The slice on the fakes of `:testing`, as the screens see it, in an invented device time zone. */
-class UiFixture(startKind: StartKind = StartKind.Normal, unreadableParts: List<UnreadablePart> = emptyList()) {
+/**
+ * The slice on the fakes of `:testing`, as the screens see it, in an invented device time zone, with an invented version
+ * of the app (ADR-005 §4).
+ */
+class UiFixture(
+    startKind: StartKind = StartKind.Normal,
+    unreadableParts: List<UnreadablePart> = emptyList(),
+    appVersion: AppVersion = AppVersion.of(packageName = "slussen.app", versionName = "9.8.7"),
+) {
     val slice = TestSlice(startKind, unreadableParts)
     val zone: ZoneId = ZoneId.of("Europe/Stockholm")
     val services = UiServices(
@@ -27,6 +34,7 @@ class UiFixture(startKind: StartKind = StartKind.Normal, unreadableParts: List<U
         fetch = slice.fetch,
         formats = Formats(zone),
         clock = slice.clock,
+        appVersion = appVersion,
     )
 }
 

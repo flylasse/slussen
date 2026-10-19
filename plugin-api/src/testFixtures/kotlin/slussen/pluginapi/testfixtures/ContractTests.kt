@@ -86,6 +86,13 @@ public abstract class CredentialContractTest {
     /** Every credential value planted in this test's input and recorded answers, which no `toString()` may show. */
     protected abstract fun plantedValues(): List<String>
 
+    /**
+     * A credential check on a device that refuses network access (ADR-001 §4.0, S-36): the capability of a plug-in
+     * built on an HTTP client whose address lookup throws [DeviceRefusal.exception] and whose requests run on
+     * [threads], with an entry that would be sent.
+     */
+    protected abstract fun credentialsOnRefusingDevice(threads: RecordingRequestThreads): CredentialScenario
+
     private fun check(scenario: CredentialScenario, context: TestRequestContext): CredentialCheck =
         runBlocking(Dispatchers.Default) { scenario.capability.check(scenario.input, context) }
 
@@ -159,6 +166,23 @@ public abstract class CredentialContractTest {
             withTimeout(slack.toMillis()) { while (runningCalls() > 0) delay(10) }
         }
         assertEquals(0, runningCalls())
+    }
+
+    @Test
+    @DisplayName("NFR-004: a credential check the device refuses (an address lookup that throws a SecurityException) ends as TransientFailure(ConnectionLost) and leaves no uncaught exception on any thread (ADR-001 §4.0, §4.4, S-36)")
+    public fun deviceRefusedCheckIsALostConnection() {
+        val threads = RecordingRequestThreads()
+        try {
+            val gate = RecordingRequestGate()
+            val result = check(credentialsOnRefusingDevice(threads), TestRequestContext(gate))
+            threads.awaitIdle(slack)
+            assertNoUncaughtException(threads)
+            assertEquals(CredentialCheck.TransientFailure(FailureKind.ConnectionLost), result)
+            assertFalse(DeviceRefusal.TEXT in result.toString(), "the refusal's text leaves the plug-in: $result")
+            assertTrue(gate.requests.isNotEmpty(), "the request was admitted by the gate before it was sent")
+        } finally {
+            threads.shutdownNow()
+        }
     }
 
     @Test
@@ -283,6 +307,12 @@ public abstract class DataProviderFetchContractTest : DataProviderContractTest()
     /** Every credential, Bank Account number or Bank Session planted in this test's recorded answers and credential. */
     protected abstract fun plantedFetchValues(): List<String>
 
+    /**
+     * A Fetch on a device that refuses network access (ADR-001 §4.0, S-36): a Data Provider built on an HTTP client whose
+     * address lookup throws [DeviceRefusal.exception] and whose requests run on [threads].
+     */
+    protected abstract fun fetchOnRefusingDevice(threads: RecordingRequestThreads): FetchScenario
+
     private fun fetch(scenario: FetchScenario, context: TestRequestContext): FetchResponse =
         runBlocking(Dispatchers.Default) { scenario.dataProvider.fetch(scenario.request, context) }
 
@@ -395,6 +425,22 @@ public abstract class DataProviderFetchContractTest : DataProviderContractTest()
     }
 
     @Test
+    @DisplayName("NFR-004: a Fetch the device refuses (an address lookup that throws a SecurityException) ends as TransientFailure(ConnectionLost) and leaves no uncaught exception on any thread (ADR-001 §4.0, §4.4, S-36)")
+    public fun deviceRefusedFetchIsALostConnection() {
+        val threads = RecordingRequestThreads()
+        try {
+            val scenario = fetchOnRefusingDevice(threads)
+            val response = fetch(scenario, TestRequestContext(credential = scenario.credential))
+            threads.awaitIdle(slack)
+            assertNoUncaughtException(threads)
+            assertEquals(SourceOutcome.TransientFailure(FailureKind.ConnectionLost), response.sourceOutcome)
+            assertFalse(DeviceRefusal.TEXT in response.toString(), "the refusal's text leaves the plug-in: $response")
+        } finally {
+            threads.shutdownNow()
+        }
+    }
+
+    @Test
     @DisplayName("ADR-006 §2: no toString() of a Fetch result reveals the credential, a Bank Account number or a Bank Session")
     public fun noFetchResultRevealsASecret() {
         val scenario = fetchAnswered()
@@ -424,6 +470,12 @@ public abstract class BudgetAppContractTest : CredentialContractTest() {
 
     /** The Budget App accepts the connection and never answers. */
     protected abstract fun budgetsNeverAnswering(): ReadScenario
+
+    /**
+     * A read of the Budgets on a device that refuses network access (ADR-001 §4.0, S-36): a reader built on an HTTP
+     * client whose address lookup throws [DeviceRefusal.exception] and whose requests run on [threads].
+     */
+    protected abstract fun budgetsOnRefusingDevice(threads: RecordingRequestThreads): ReadScenario
 
     private fun read(scenario: ReadScenario, context: TestRequestContext): ReadResult<List<BudgetRead>> =
         runBlocking(Dispatchers.Default) { scenario.reader.readBudgets(context) }
@@ -473,6 +525,22 @@ public abstract class BudgetAppContractTest : CredentialContractTest() {
     }
 
     @Test
+    @DisplayName("NFR-004: a read the device refuses (an address lookup that throws a SecurityException) ends as TransientFailure(ConnectionLost) and leaves no uncaught exception on any thread (ADR-001 §4.0, §4.4, S-36)")
+    public fun deviceRefusedReadIsALostConnection() {
+        val threads = RecordingRequestThreads()
+        try {
+            val scenario = budgetsOnRefusingDevice(threads)
+            val result = read(scenario, TestRequestContext(credential = scenario.credential))
+            threads.awaitIdle(slack)
+            assertNoUncaughtException(threads)
+            assertEquals(ReadResult.TransientFailure(FailureKind.ConnectionLost), result)
+            assertFalse(DeviceRefusal.TEXT in result.toString(), "the refusal's text leaves the plug-in: $result")
+        } finally {
+            threads.shutdownNow()
+        }
+    }
+
+    @Test
     @DisplayName("ADR-001 §4.0: a read refused by the gate sends nothing")
     public fun gateRefusedReadSendsNothing() {
         val scenario = budgetsAnswered()
@@ -501,6 +569,15 @@ public abstract class FilePreprocessorContractTest {
         assertTrue(profile.name.isNotBlank(), "name")
         assertTrue(profile.sourceKey.isNotBlank(), "source key")
     }
+}
+
+/**
+ * ADR-001 §4.0 (S-36): no exception of a request ended a thread it ran on; on Android such an exception ends the app.
+ * The message names each exception's type only.
+ */
+private fun assertNoUncaughtException(threads: RecordingRequestThreads) {
+    val uncaught = threads.uncaught
+    assertTrue(uncaught.isEmpty(), "an exception ended a request thread: ${uncaught.map { it::class.java.name }}")
 }
 
 /** A log that writes nothing, for constructing a plug-in only to read its declarations. */

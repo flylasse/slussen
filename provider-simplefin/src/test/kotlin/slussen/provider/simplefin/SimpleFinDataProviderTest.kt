@@ -1,6 +1,8 @@
 package slussen.provider.simplefin
 
 import kotlinx.coroutines.runBlocking
+import okhttp3.Dispatcher
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -22,9 +24,11 @@ import slussen.pluginapi.provider.DataProvider
 import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.pluginapi.testfixtures.CredentialScenario
 import slussen.pluginapi.testfixtures.DataProviderFetchContractTest
+import slussen.pluginapi.testfixtures.DeviceRefusal
 import slussen.pluginapi.testfixtures.FetchScenario
 import slussen.pluginapi.testfixtures.RecordedFetch
 import slussen.pluginapi.testfixtures.RecordedListedBalances
+import slussen.pluginapi.testfixtures.RecordingRequestThreads
 import slussen.pluginapi.testfixtures.RecordingRequestGate
 import slussen.pluginapi.testfixtures.TestRequestContext
 import slussen.pluginapi.testfixtures.UseCase
@@ -45,6 +49,8 @@ import slussen.pluginapi.request.RequestKind
 import slussen.pluginapi.request.RequestSummary
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
+import java.net.InetAddress
+import java.net.Proxy
 import java.time.Instant
 import java.time.LocalDate
 import java.util.Base64
@@ -100,6 +106,26 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
     override fun runningCalls(): Int = http.dispatcher.runningCallsCount()
 
     override fun plantedValues(): List<String> = listOf(setupToken(), CLAIM_PATH, PLANTED_USER, PLANTED_PASSWORD)
+
+    /**
+     * ADR-001 §4.0 (S-36): a device that refuses network access, as Android does for an app without the network
+     * permission: the address lookup throws, and the requests run on [threads]. No proxy, so the lookup is of the
+     * service's own invented host.
+     */
+    private fun refusingDevice(threads: RecordingRequestThreads) = SimpleFinDataProvider(
+        SilentLog,
+        OkHttpClient.Builder()
+            .dns(object : Dns { override fun lookup(hostname: String): List<InetAddress> = throw DeviceRefusal.exception() })
+            .dispatcher(Dispatcher(threads))
+            .proxy(Proxy.NO_PROXY)
+            .build(),
+        allowPlainHttp = false,
+    )
+
+    override fun credentialsOnRefusingDevice(threads: RecordingRequestThreads): CredentialScenario {
+        val claim = Base64.getEncoder().encodeToString("https://bridge.invalid$CLAIM_PATH".toByteArray(Charsets.UTF_8))
+        return CredentialScenario(refusingDevice(threads).credentials, input(claim))
+    }
 
     @Test
     @UseCase(id = "UC-014", scenario = "Main Success Scenario", businessRules = ["BR-002"], requirements = ["C-008"])
@@ -251,6 +277,12 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
     override fun fetchNeverAnswering() = fetching(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
 
     override fun plantedFetchValues(): List<String> = listOf(PLANTED_USER, PLANTED_PASSWORD)
+
+    override fun fetchOnRefusingDevice(threads: RecordingRequestThreads) = FetchScenario(
+        refusingDevice(threads),
+        request(readBoth),
+        Secret("https://$PLANTED_USER:$PLANTED_PASSWORD@bridge.invalid/simplefin"),
+    )
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-009"])

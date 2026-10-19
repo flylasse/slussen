@@ -131,6 +131,19 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
     }
 
     @Test
+    @UseCase(id = "UC-013", scenario = "A1: Budget App Cannot Be Read or Refuses Slussen's Credentials", requirements = ["NFR-004"])
+    @DisplayName("A1: a Budget App the device cannot reach, a lost connection, is shown as not read and the Budgets stay unchanged")
+    fun budgetAppTheDeviceCannotReachIsShown() {
+        runBlocking { slice.enterCredentials() }
+        slice.budgetApp.reader.readBudgetsAnswer = ReadResult.TransientFailure(FailureKind.ConnectionLost)
+        setup.load()
+
+        setup.goTo(SetupStep.Budgets)
+
+        assertEquals("${ExampleData.BUDGET_APP_NAME} could not be read: the connection was lost · Budgets unchanged", ui().message)
+    }
+
+    @Test
     @UseCase(id = "UC-013", scenario = "A1: Budget App Cannot Be Read or Refuses Slussen's Credentials")
     @DisplayName("A1: refused credentials show the Blocked Reason credentials refused with the action that enters them")
     fun refusedCredentialsAreShown() {

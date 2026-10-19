@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- The only permission Slussen asks the device for: network access, for the requests to the Data Providers and the
+         Budget App (NFR-022, ADR-001 section 5). The permission check of ADR-001 section 6.4 fails on any other. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Backup rules: one copy, in :persistence (ADR-002 §5). -->
     <application
         android:name=".SlussenApplication"

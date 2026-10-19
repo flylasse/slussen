@@ -2,20 +2,27 @@ package slussen.app.ui
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.platform.app.InstrumentationRegistry
 import de.mannodermaus.junit5.compose.createComposeExtension
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
+import slussen.app.platform.version.installedAppVersion
+import slussen.app.ui.connections.ConnectionsViewModel
+import slussen.app.ui.connections.SettingsScreen
 import slussen.app.ui.service.ServicePageScreen
 import slussen.app.ui.service.ServicePageViewModel
 import slussen.app.ui.theme.SlussenTheme
 import slussen.pluginapi.testfixtures.UseCase
 
 @OptIn(ExperimentalTestApi::class)
-@DisplayName("UC-010: Adjust Settings, the Request Limit on a device")
+@DisplayName("UC-010: Adjust Settings, the Request Limit and the app's version on a device")
 class UC010AdjustSettingsScreenIT {
     @JvmField
     @RegisterExtension
@@ -51,5 +58,24 @@ class UC010AdjustSettingsScreenIT {
         onNodeWithText("Reset to default").performClick()
 
         onNodeWithText("Request Limit reset to its default 50").assertExists()
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-011"])
+    @DisplayName("Step 1, BR-011: Settings shows the version name of the installed debug build, from Android's package information, and says it is a debug build")
+    fun settingsShowsTheInstalledVersion() = compose.use {
+        val installed = InstrumentationRegistry.getInstrumentation().targetContext.installedAppVersion()
+        assertTrue(installed.debugBuild, "the instrumented tests run the debug variant, slussen.app.debug")
+        assertTrue(Regex("""\d+\.\d+\.\d+""").matches(installed.versionName), "the version name from VERSION: ${installed.versionName}")
+        val viewModel = ConnectionsViewModel(ScreenFixture(installed).services)
+        onMain { viewModel.load() }
+        setContent {
+            SlussenTheme {
+                viewModel.state.collectAsState().value?.let { SettingsScreen(it, onService = {}, onBankAccounts = {}, onSetUp = {}) }
+            }
+        }
+
+        onNode(hasScrollAction()).performScrollToNode(hasText("This app"))
+        onNodeWithText("${installed.versionName} · debug build").assertExists()
     }
 }

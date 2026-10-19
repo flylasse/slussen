@@ -1,12 +1,17 @@
 package slussen.buildlogic
 
+import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.dsl.ApplicationExtension
 import com.android.build.api.dsl.CommonExtension
 import com.android.build.api.dsl.LibraryExtension
+import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.tasks.TaskProvider
 import org.gradle.kotlin.dsl.configure
+import org.gradle.kotlin.dsl.getByType
 import org.gradle.kotlin.dsl.register
+import org.gradle.kotlin.dsl.withType
 
 private fun Project.configureAndroidCommon(android: CommonExtension<*, *, *, *, *, *>) {
     android.apply {
@@ -38,8 +43,8 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
 
 /**
  * `slussen.android-application` (ADR-005 §1): the version name and code from `VERSION` (§4), the `.debug` suffix and
- * the release ABI filter (§5), and the release signing of ADR-003 §1-§2 (§6). A `debug` package is signed with the
- * machine's debug key and needs no signing value.
+ * the release ABI filter (§5), the release signing of ADR-003 §1-§2 (§6), and the permission check of ADR-001 §6.4
+ * (S-36). A `debug` package is signed with the machine's debug key and needs no signing value.
  */
 class AndroidApplicationConventionPlugin : Plugin<Project> {
     override fun apply(project: Project) = with(project) {
@@ -89,6 +94,33 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
         tasks.configureEach {
             if (isReleasePackagingTask(name)) dependsOn(verify)
         }
+
+        configurePermissionCheck()
+    }
+
+    /**
+     * ADR-001 §5, §6.4 (S-36, NFR-022): one permission check per variant, on its merged manifest, before every
+     * packaging task of that variant and as a dependency of `check`. The variants are known before AGP creates their
+     * tasks, so every packaging task finds its check.
+     */
+    private fun Project.configurePermissionCheck() {
+        val checkBeforePackaging = mutableMapOf<String, TaskProvider<VerifyPermissionsTask>>()
+        extensions.getByType<ApplicationAndroidComponentsExtension>().onVariants { variant ->
+            val variantName = variant.name.replaceFirstChar { it.uppercaseChar() }
+            val permissions = tasks.register<VerifyPermissionsTask>("verify${variantName}Permissions") {
+                group = "verification"
+                description = "Checks the permissions of the ${variant.name} merged manifest (ADR-001 section 5, NFR-022)."
+                mergedManifest.set(variant.artifacts.get(SingleArtifact.MERGED_MANIFEST))
+                applicationId.set(variant.applicationId)
+                this.variantName.set(variant.name)
+                checked.set(layout.buildDirectory.file("slussen/permissions/${variant.name}.txt"))
+            }
+            DevicePermissions.packagingTasks(variant.name).forEach { checkBeforePackaging[it] = permissions }
+        }
+        tasks.configureEach {
+            checkBeforePackaging[name]?.let { dependsOn(it) }
+        }
+        tasks.named("check") { dependsOn(tasks.withType<VerifyPermissionsTask>()) }
     }
 
     companion object {

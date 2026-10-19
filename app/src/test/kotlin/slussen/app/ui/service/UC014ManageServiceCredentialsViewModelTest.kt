@@ -123,6 +123,21 @@ class UC014ManageServiceCredentialsViewModelTest {
     }
 
     @Test
+    @UseCase(id = "UC-014", scenario = "A2: Service Cannot Be Reached", requirements = ["NFR-004"])
+    @DisplayName("A2: a service the device cannot reach, a lost connection, is shown as not reached, nothing is stored and the use case ends")
+    fun serviceTheDeviceCannotReachIsShown() {
+        slice.feeds.credentials.answer = CredentialCheck.TransientFailure(FailureKind.ConnectionLost)
+        val page = page(slice.feedsKey)
+        page.startEntering()
+
+        page.save(mapOf("setupKey" to ExampleData.SETUP_KEY))
+
+        assertEquals("Kestrel Feeds could not be reached: the connection was lost · nothing stored", page.ui().message)
+        assertFalse(page.ui().entering)
+        assertEquals("Not entered", page.ui().credentials)
+    }
+
+    @Test
     @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", businessRules = ["BR-005"])
     @DisplayName("A3: removing asks first, stating the service is not contacted until new credentials are entered; confirming shows credentials missing")
     fun removalAsksFirstAndShowsCredentialsMissing() = runBlocking {

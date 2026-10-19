@@ -140,6 +140,52 @@ class BuildLogicUnitTest {
     }
 
     @Test
+    @DisplayName("NFR-022, ADR-001 section 5: only network access and the app's own receiver permission are allowed; every other uses-permission is named")
+    fun devicePermissionsAllowed() {
+        val manifest = """
+            <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="slussen.fixture">
+                <permission android:name="slussen.app.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" android:protectionLevel="signature" />
+                <uses-permission android:name="android.permission.INTERNET" />
+                <uses-permission android:name="slussen.app.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+                <uses-permission android:name="other.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+                <uses-permission android:name="android.permission.READ_CONTACTS" />
+                <uses-permission-sdk-23 android:name="android.permission.CAMERA" />
+                <application><receiver android:name=".R" android:permission="android.permission.DUMP" /></application>
+            </manifest>
+        """.trimIndent()
+        val requested = DevicePermissions.requested(manifest)
+        assertEquals(
+            listOf(
+                "android.permission.INTERNET",
+                "slussen.app.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+                "other.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+                "android.permission.READ_CONTACTS",
+                "android.permission.CAMERA",
+            ),
+            requested,
+        )
+        assertEquals(
+            listOf(
+                "other.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+                "android.permission.READ_CONTACTS",
+                "android.permission.CAMERA",
+            ),
+            DevicePermissions.disallowed(requested, "slussen.app.debug"),
+        )
+        assertEquals(emptyList<String>(), DevicePermissions.disallowed(requested.take(2), "slussen.app.debug"))
+    }
+
+    @Test
+    @DisplayName("ADR-001 section 6.4: the permission check runs before the packaging tasks of each variant, not before the resource steps")
+    fun permissionCheckedPackagingTasks() {
+        assertEquals(
+            setOf("packageDebug", "bundleDebug", "packageDebugBundle", "signDebugBundle", "packageDebugUniversalApk"),
+            DevicePermissions.packagingTasks("debug"),
+        )
+        assertTrue("packageReleaseResources" !in DevicePermissions.packagingTasks("release"))
+    }
+
+    @Test
     @DisplayName("ADR-003 section 3: the package scanner finds a value planted in UTF-8 or UTF-16")
     fun packageScannerFindsPlantedValues(@TempDir directory: File) {
         val apk = File(directory, "planted.apk")
