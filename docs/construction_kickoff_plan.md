@@ -45,13 +45,16 @@ This section lets a fresh orchestrator session (local or cloud) pick up the plan
   - the Phase 0 inventory summary is in §5 row 0;
   - the operator's answers are in §6;
   - the re-review prompt is in §4.
-- The gate tool `tools/lint_specs.py` needs the AIUP Marketplace clone at the pinned commit in the header. Clone `https://github.com/AI-Unified-Process/marketplace` and check out that commit. Then set `SLUSSEN_MARKETPLACE` to the clone's root. Without it, the tool looks in `C:\work\marketplace` and in a `marketplace` folder next to the repository.
+- The gate tool `tools/lint_specs.py` needs the AIUP Marketplace clone at the pinned commit in the header. Clone `https://github.com/AI-Unified-Process/marketplace` and check out that commit. Then set `SLUSSEN_MARKETPLACE` to the clone's root. Without it, the tool looks in `C:\work\marketplace` and in a `marketplace` folder next to the repository. In a cloud session, clone it next to the repository (for example `/home/user/marketplace` beside `/home/user/slussen`) and no variable is needed; cloning over `git` works there.
 - Evidence repositories, **read-only**. Never commit to them or push to them.
   - The predecessor `https://github.com/flylasse/ynab-import-android`, commit `46efbf0`. Phase 4 needs its six `docs/archive/*mockup*.html` files.
   - The book `https://github.com/flylasse/book-context-martinelli-spec-driven-dev`.
 - The Android SDK, JDK 17 and `adb` (§2) are needed from Phase 6 on. Phase 9 needs the operator's machine and phone.
 - **Cloud session specifics:**
-  - The `aiup-core` 3.0.0 skills (O-P2-38) are read from Marketplace PR #38's branch `feat/layer-plugins` (`gh api repos/AI-Unified-Process/marketplace/contents/<path>?ref=feat/layer-plugins`, read-only); the local copies the Windows session used are not in the repository.
+  - The `aiup-core` 3.0.0 skills (O-P2-38) are read from Marketplace PR #38's branch `feat/layer-plugins`, read-only; the local copies the Windows session used are not in the repository. `gh` and the GitHub API are refused in a cloud container, so wherever this plan says `gh api ...?ref=feat/layer-plugins`, use the Marketplace clone instead: `git -C <clone> fetch origin feat/layer-plugins`, then `git -C <clone> show FETCH_HEAD:<path>`. The clone itself stays at the pinned commit.
+  - Network: the environment must allow `dl.google.com` (Google's Maven for the Android Gradle Plugin, and the Android SDK) before the session starts; a change to the allowed domains does not reach a session that is already running (found 2026-10-19). Check it first with `curl -s -o /dev/null -w "%{http_code}" https://dl.google.com/android/repository/repository2-3.xml` (expect `200`). Maven Central sometimes answers `429 Too Many Requests`; a retry gets past it.
+  - The Android SDK is not preinstalled: install the command-line tools from `dl.google.com`, then the platform for `compile-sdk` and its build tools (`gradle/libs.versions.toml`), and set `ANDROID_HOME`. The container has JDK 21; the build targets JVM 17 (`jvm-target`).
+  - `gradlew` is not executable after a cloud checkout: run it as `sh ./gradlew`.
   - The mockup link check is `python tools/check_mockup_links.py` (added with this handoff; earlier §5 rows call it "links").
   - Without an Android emulator, `connectedCheck` cannot run: report the instrumented tests as written and owed, never as passed. Phase 7 and 7a ran them on a headless API 36 AVD, `Slussen_Test_API_36`, on the operator's machine.
   - On Windows a stale `lint-cache` lock needs `gradlew --stop` before a gate; elsewhere it is harmless.
@@ -62,8 +65,9 @@ This section lets a fresh orchestrator session (local or cloud) pick up the plan
   - End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
   - End the PR body with "🤖 Generated with [Claude Code](https://claude.com/claude-code)".
   - `main` is protected by the "Force PR" ruleset.
-  - Files use CRLF; keep it when editing.
+  - Files are stored with LF and checked out with the platform's line ending (`.gitattributes`: CRLF on Windows, LF elsewhere); keep the checkout's line ending when editing.
   - From 2026-10-16 the orchestrator did not commit or push and left gated changes for the operator (O-P2-33). Since 2026-10-18 the orchestrator commits each gated phase on `construction-build` (one commit per phase, with the §3 commit message; specification changes in their own `docs:` commit before the code that follows them) and does not push; the operator reviews and pushes. The operator's standing instruction: carry on phase by phase until Phase 10, but stop and ask at every Operator decision (with a recommendation) and at Phase 9.
+  - In a cloud session (operator, 2026-10-19): work on `construction-build`, not the session's own branch, and push each gated commit there, since the operator cannot push from the container; at the end, `construction-build` goes to `main` through a PR.
   - Branches (operator, 2026-10-18): `construction-kickoff` carried the docs only, up to but excluding Phase 6, and went to `main` in one PR that the operator squash-merged (PR #2, `3ec2e7e`). Phase 6 and all later construction run on `construction-build`, created from the updated `main`, never on `construction-kickoff`, so that the code has its own history after the docs-only squash merge.
 - **Private data:** no agent reads, writes or prints the operator's signing values or live-test credentials (`~/.gradle/gradle.properties`, environment variables) or the retired `build-config/local/`, §1.2.
 
