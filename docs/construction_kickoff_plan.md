@@ -409,6 +409,28 @@ Same rules as Phase 7, after the operator has accepted the S-40 mockups. Build t
 
 Same rules as Phase 7. The operator chose to finish this round with the balances SimpleFIN already sends. (1) `slussen.db` version 3 adds `account_balance` and `fetch_result` as the entity model defines them, with a hand-written Migration from the committed version 2 and JVM migration tests from versions 1 and 2 (ADR-002 §7, S-39); versions 1 and 2 stay as committed. (2) UC-001 step 8 stores the Account Balance of each Bank Account a Fetch reads, and step 11 its Fetch Result, in the storage operation ADR-002 O-1 names; the Fetch still asks for balances only (O-P2-54), so no Bank Transaction is stored; list what of O-1 and steps 7-11 stays not built. (3) UC-008 and the Budget tab show each Bank Account's Source Health, Freshness and Account Balance next to the Budget Account's balance, as the specification and the mockups say. (4) Fix P9-13 (say plainly that Bank Consents are not in this build; Enable Banking's Fetch unavailable with that reason), P9-14 (the Fetch action above the Budget cards; the Recovery Check note in plain words; one line saying what a Fetch does in this build) and what of P9-15 remains after (2) and (3). (5) O-P2-72: remove `MappingStore.bringBack` and `setManuallyKept` if nothing uses them, and report the ADR-002 §3 O-13 text the orchestrator must change. Stop and report if the specification is wrong or incomplete (§1.3).
 
+### Phase 9 — Acceptance checklist (operator, on the phone, after Phase 8f)
+
+Agreed scope (2026-10-20). Report anything that fails or is unclear as P9-16 and onwards.
+
+**A. Upgrade keeps the data (debug build, NFR-017, S-39).** Install the Phase 8f debug build over the current debug install without clearing it. Expected: the credentials, chosen Budgets, Import and "Receives from Slussen" switches, Left-Out Bank Accounts and mappings are all still there (`slussen.db` version 2 to 3); Settings, This app shows the version and "debug build".
+
+**B. Fresh install (release build, the plan's acceptance criterion).** Build `release` with the signing values in `~/.gradle/gradle.properties` (README, ADR-003 §1) and install it; it is a separate app from the debug one and starts empty.
+
+1. First opening: the Overview shows only "Set up Slussen in Settings" with the next step (UC-008 A10, BR-011).
+2. Settings: YNAB, SimpleFIN, Enable Banking, HSA CSV export and Account Mappings at the top, each with its status; Account Mappings unavailable with its reason until a Budget is chosen and a Bank Account imported (UC-013 BR-015).
+3. YNAB's page: enter the token (accepted), choose the Budgets; under each Budget, switch one Budget Account's "Receives from Slussen" off and on again (FR-106).
+4. SimpleFIN's page: enter the setup token (accepted); Fetch; the offered Bank Accounts appear with their balances and Import switches, On; switch one off (Undo offered) and on again (FR-105).
+5. Account Mappings: the Bank Accounts to map, one line each; open one: only the free Budget Accounts of its currency, one proposed when it is the only one (BR-013); name (no doubled last four digits, P9-04), type, Bank (one choice), Start Date; Add and continue; Skip for now; the summary.
+6. HSA CSV export's page: add the HSA Bank Account with its Bank Account type, Bank, the SimpleFIN Bank Account that reports its balance, and its Budget Account (UC-013 A4).
+7. Fetch (Overview, above the Budget cards, or SimpleFIN's page): a result line; then each mapped Bank Account shows its Account Balance from SimpleFIN next to YNAB's balance and when it was fetched (Phase 8f). A second Fetch within 60 minutes is served from the Fetch Cooldown.
+8. Enable Banking's page: credentials can be entered and are checked; it says plainly that Bank Consents are not in this build, and its Fetch is unavailable (P9-13).
+9. A device without network (airplane mode): entering or checking credentials and a Fetch say the service could not be reached; the app does not end (NFR-004).
+
+**Out of scope in this plan:** Bank Transactions (no transactions are fetched or shown; Eligible and waiting for a decision stay 0), the Comparison with YNAB and confirming the Recovery Check (uploads stay blocked), Uploads, Enable Banking's Bank Consent and Fetch (O-P2-73), importing a Transaction File (UC-002), Transfers, the Scheduled Fetch, the Journal Export.
+
+**Optional, owed device evidence (O-P2-46):** the instrumented tests run with `gradlew connectedDebugAndroidTest`; on a phone this replaces the debug app and its data, so run it only after A, or on an emulator.
+
 ### Phase 10 — Close (`inherit`)
 
 - Fill §7.
