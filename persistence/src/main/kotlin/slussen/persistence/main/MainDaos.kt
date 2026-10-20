@@ -312,7 +312,7 @@ abstract class ConnectionDao {
         return true
     }
 
-    /** O-15 Bring back (UC-013 A10) and O-13 (UC-009 A15): deletes one `left_out_bank_account` and returns it. */
+    /** O-15 Bring back (UC-013 A10; UC-009 A15 leads there): deletes one `left_out_bank_account` and returns it. */
     @Transaction
     open suspend fun bringBack(id: Long): LeftOutBankAccountEntity? = leftOut(id)?.also { deleteLeftOut(id) }
 
@@ -326,7 +326,7 @@ abstract class ConnectionDao {
     }
 
     /**
-     * O-15 Mark (UC-013 A9) and O-13 (UC-009 A16): sets or clears `budget_account.manually_kept` in one transaction;
+     * O-15 Mark (UC-013 A9; UC-009 A16 leads there): sets or clears `budget_account.manually_kept` in one transaction;
      * setting it is refused while the Budget Account receives through an Account Mapping.
      */
     @Transaction
@@ -374,16 +374,55 @@ abstract class FetchDao {
     abstract suspend fun of(dataProviderId: Long): List<FetchEntity>
 
     @Insert
-    protected abstract suspend fun insert(fetch: FetchEntity)
+    protected abstract suspend fun insert(fetch: FetchEntity): Long
 
     @Query("DELETE FROM fetch WHERE id NOT IN (SELECT id FROM fetch ORDER BY started_at DESC, id DESC LIMIT :keep)")
     protected abstract suspend fun keepMostRecent(keep: Int)
 
-    /** The new Fetch and the housekeeping of `OPERATOR_SETTINGS.fetch_history_size`, in one transaction. */
+    @Query("DELETE FROM fetch_result WHERE fetch_id NOT IN (SELECT id FROM fetch ORDER BY started_at DESC, id DESC LIMIT :keep)")
+    protected abstract suspend fun keepResultsOfMostRecent(keep: Int)
+
+    /**
+     * The new Fetch and the housekeeping of `OPERATOR_SETTINGS.fetch_history_size`, in one transaction: a Fetch that is
+     * no longer among the most recent goes with its Fetch Results. Returns the id of the new Fetch.
+     */
     @Transaction
-    open suspend fun record(fetch: FetchEntity, keep: Int) {
-        insert(fetch)
+    open suspend fun record(fetch: FetchEntity, keep: Int): Long {
+        val id = insert(fetch)
+        keepResultsOfMostRecent(keep)
         keepMostRecent(keep)
+        return id
+    }
+
+    @Query("SELECT * FROM fetch_result ORDER BY fetch_id, bank_account_id")
+    abstract suspend fun results(): List<FetchResultEntity>
+
+    @Query("SELECT * FROM fetch_result WHERE fetch_id IN (SELECT id FROM fetch WHERE data_provider_id = :dataProviderId) ORDER BY fetch_id, bank_account_id")
+    abstract suspend fun resultsOf(dataProviderId: Long): List<FetchResultEntity>
+
+    @Query("SELECT * FROM account_balance ORDER BY bank_account_id")
+    abstract suspend fun balances(): List<AccountBalanceEntity>
+
+    @Insert
+    protected abstract suspend fun insertResult(result: FetchResultEntity)
+
+    @Query("DELETE FROM account_balance WHERE bank_account_id = :bankAccountId")
+    protected abstract suspend fun deleteBalanceOf(bankAccountId: Long)
+
+    @Insert
+    protected abstract suspend fun insertBalance(balance: AccountBalanceEntity)
+
+    /**
+     * O-1 (ADR-002 §3) as far as this build stores it: the Fetch Result of one Bank Account and, when the Data Provider
+     * reported one, its Account Balance in place of the stored one, all or nothing (UC-001 steps 8, 11, A8).
+     */
+    @Transaction
+    open suspend fun storeBankAccountDelivery(result: FetchResultEntity, balance: AccountBalanceEntity?) {
+        insertResult(result)
+        if (balance != null) {
+            deleteBalanceOf(balance.bankAccountId)
+            insertBalance(balance)
+        }
     }
 
     @Query("SELECT * FROM back_off ORDER BY id")

@@ -201,7 +201,7 @@ interface ConnectionStore {
     suspend fun bringBack(leftOutBankAccountId: Long): StoredLeftOutBankAccount?
 
     /**
-     * O-15 Mark (UC-013 A9) and O-13 (UC-009 A16): sets or clears `budget_account.manually_kept`; setting it is refused
+     * O-15 Mark and unmark (UC-013 A9; UC-009 A16 leads there): sets or clears `budget_account.manually_kept`; setting it is refused
      * while the Budget Account receives through an Account Mapping.
      */
     suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome
@@ -221,13 +221,4 @@ interface MappingStore {
         clearFundedBy: Boolean,
         clearTransferPartner: Boolean,
     )
-
-    /** UC-009 A15: deletes one `left_out_bank_account` and returns it, or null when there is none (`MappingStore.bringBack`). */
-    suspend fun bringBack(leftOutBankAccountId: Long): StoredLeftOutBankAccount?
-
-    /**
-     * UC-009 A16: sets or clears `budget_account.manually_kept`, refused while it receives through an Account Mapping
-     * (`MappingStore.setManuallyKept`).
-     */
-    suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome
 }

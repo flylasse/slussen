@@ -13,6 +13,7 @@ import slussen.core.port.BankAccountType
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.DecisionJournalRecorder
 import slussen.core.port.FetchOutcome
+import slussen.core.port.FetchResultOutcome
 import slussen.core.port.JournalEntry
 import slussen.core.port.ProviderRequestKind
 import slussen.core.port.RecoveryCause
@@ -121,6 +122,7 @@ class SlussenStorage private constructor(
             ValueColumn("provider_request", "request_kind", ProviderRequestKind.entries.map { it.text }),
             ValueColumn("fetch", "started_by", StartedBy.entries.map { it.text }),
             ValueColumn("fetch", "outcome", FetchOutcome.entries.map { it.text }),
+            ValueColumn("fetch_result", "outcome", FetchResultOutcome.entries.map { it.text }),
             ValueColumn("back_off", "cause", BackOffCause.entries.map { it.text }),
             ValueColumn("coordinator_state", "mode", CoordinatorMode.entries.map(RoomCoordinatorStore::textOf)),
         )

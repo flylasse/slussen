@@ -21,9 +21,13 @@ import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.FetchOutcome
+import slussen.core.port.FetchResultOutcome
 import slussen.core.port.NewBankAccount
 import slussen.core.port.ProviderRequestKind
+import slussen.core.port.StoredAccountBalance
 import slussen.core.port.StoredBackOff
+import slussen.core.port.StoredFetchResult
+import slussen.core.port.StoredLeftOutBankAccount
 import slussen.core.settings.ServiceStatus
 import slussen.pluginapi.provider.BankAccountResult
 import slussen.pluginapi.provider.BankAccountSelection
@@ -67,8 +71,9 @@ import java.time.Duration
  * declared by each Data Provider's part as published or as a default the Operator can change, S-31; Back-offs, A1, A5,
  * A15, A16; the Fetch Cooldown, A2, BR-006), the Fetch with the Operator present, the Offered Bank Accounts with their
  * balance, the identification of the Bank Accounts the Operator added (step 6, A18, BR-011), the Fetch record with its
- * outcome (step 11, A1-A3, A6, A7) and the Fetch of several Data Providers (A11, BR-010). The Bank Transactions, Account
- * Balances, Fetch Results, the Comparison and the Scheduled Fetch come with later slices.
+ * outcome (step 11, A1-A3, A6, A7) and the Fetch of several Data Providers (A11, BR-010); since Phase 8f also the Account
+ * Balance (step 8, BR-011) and the Fetch Result (step 11, A2, A5, A8) of each Bank Account a Fetch reads, stored by O-1.
+ * The Bank Transactions (steps 7-10), the Comparison and the Scheduled Fetch come with later slices.
  */
 @DisplayName("UC-001: Fetch Transactions")
 class UC001FetchTransactionsTest {
@@ -1001,5 +1006,258 @@ class UC001FetchTransactionsTest {
         }
 
         assertEquals(2, slice.importStatusStore.fetches.size)
+    }
+    // ---- Account Balances and Fetch Results (Phase 8f) ---------------------------------------------------------------
+
+    /** The stored Account Balances, by Bank Account id. */
+    private suspend fun balances(): Map<Long, StoredAccountBalance> =
+        slice.importStatusStore.accountBalances().associateBy { it.bankAccountId }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-011"])
+    @DisplayName("Steps 8, 11: the Account Balance of each identified Bank Account is stored with the time the Data Provider reported it, a file-imported one's too (BR-011), and the Fetch records a Fetch Result Fetched for each; no Bank Transaction is delivered while a Fetch asks for balances only (O-P2-54)")
+    fun accountBalanceAndFetchResultOfEachReadBankAccountAreStored() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        val card = addFeedsBankAccount("acct-1182", "Pinecrest Rewards Card", "Rewards Card")
+        val hsa = addFileBankAccount("acct-6324", "Harbor Health Savings", "Health Savings")
+        answerFeeds(accounts = listed + delivered("acct-6324", "HSA", amount(6310, 200)))
+        val now = slice.clock.instant()
+
+        fetchFeeds()
+
+        assertEquals(
+            mapOf(
+                checking to StoredAccountBalance(checking, amount(4140, 50), USD, now),
+                card to StoredAccountBalance(card, amount(-1268, 400), USD, now),
+                hsa to StoredAccountBalance(hsa, amount(6310, 200), USD, now),
+            ),
+            balances(),
+        )
+        val fetch = fetchesOfFeeds().single()
+        assertEquals(FetchOutcome.Fetched, fetch.outcome)
+        assertEquals(
+            listOf(
+                StoredFetchResult(checking, FetchResultOutcome.Fetched, transactionCount = 0),
+                StoredFetchResult(card, FetchResultOutcome.Fetched, transactionCount = 0),
+                StoredFetchResult(hsa, FetchResultOutcome.Fetched, transactionCount = 0),
+            ),
+            fetch.results.sortedBy { it.bankAccountId },
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("Step 8: the Account Balance keeps the currency the Data Provider reports, or the Bank Account's own when it reports none")
+    fun accountBalanceKeepsTheReportedCurrency() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        val reserve = addFeedsBankAccount("acct-7731", "Kestrel Reserve", "Reserve Savings")
+        answerFeeds(
+            accounts = listOf(
+                delivered("acct-4410", "CHK", amount(4140, 50), currency = ExampleData.EUR),
+                delivered("acct-7731", "Reserve Saver", amount(12000), currency = null),
+            ),
+        )
+
+        fetchFeeds()
+
+        assertEquals(ExampleData.EUR, balances().getValue(checking).currency)
+        assertEquals(USD, balances().getValue(reserve).currency)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("Step 8: a later Fetch replaces the Account Balance, so only the most recent balance of each Bank Account is kept; each Fetch has its own Fetch Result")
+    fun laterFetchReplacesTheAccountBalance() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerFeeds()
+        fetchFeeds()
+        slice.clock.advance(Duration.ofMinutes(61))
+        answerFeeds(accounts = listOf(delivered("acct-4410", "CHK", amount(3990, 10))))
+
+        fetchFeeds()
+
+        assertEquals(listOf(StoredAccountBalance(checking, amount(3990, 10), USD, slice.clock.instant())), slice.importStatusStore.accountBalances())
+        assertEquals(
+            listOf(listOf(StoredFetchResult(checking, FetchResultOutcome.Fetched, 0)), listOf(StoredFetchResult(checking, FetchResultOutcome.Fetched, 0))),
+            fetchesOfFeeds().map { it.results },
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("Step 8: a read Bank Account for which the Data Provider reports no balance keeps the Account Balance stored before; its Fetch Result is Fetched")
+    fun noReportedBalanceKeepsTheStoredOne() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerFeeds()
+        val first = slice.clock.instant()
+        fetchFeeds()
+        slice.clock.advance(Duration.ofMinutes(61))
+        answerFeeds(accounts = listOf(delivered("acct-4410", "CHK", balance = null)))
+
+        fetchFeeds()
+
+        assertEquals(StoredAccountBalance(checking, amount(4140, 50), USD, first), balances().getValue(checking))
+        assertEquals(listOf(StoredFetchResult(checking, FetchResultOutcome.Fetched, 0)), fetchesOfFeeds().first().results)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A18: Bank Account Not Added")
+    @DisplayName("A18, S-35: an Offered Bank Account that is not added stores no Account Balance and no Fetch Result, though the Data Provider listed its balance; nor does a Left-Out Bank Account")
+    fun bankAccountNotAddedStoresNoAccountBalance() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        slice.connectionStore.leftOutList += StoredLeftOutBankAccount(77, slice.feedsId, "acct-1182", "Pinecrest Rewards Visa", slice.clock.instant())
+        answerFeeds(
+            accounts = listOf(
+                delivered("acct-4410", "CHK", amount(4140, 50)),
+                delivered("acct-7731", "Reserve Saver", kind = "savings", result = BankAccountResult.NotRead(NotReadCause.NotSelected, amount(12000))),
+                delivered("acct-1182", "Pinecrest Rewards Visa", result = BankAccountResult.NotRead(NotReadCause.NotSelected, amount(-1268, 400))),
+            ),
+        )
+
+        fetchFeeds()
+
+        assertEquals(setOf(checking), balances().keys)
+        assertEquals(listOf(checking), fetchesOfFeeds().single().results.map { it.bankAccountId })
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account", businessRules = ["BR-010"])
+    @DisplayName("A8, BR-010: when the Data Provider reports a failure for one Bank Account, its Account Balance stays unchanged and its Fetch Result is Failed, while the others are stored as usual")
+    fun failureForOneBankAccountKeepsItsAccountBalance() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        val card = addFeedsBankAccount("acct-1182", "Pinecrest Rewards Card", "Rewards Card")
+        answerFeeds()
+        val first = slice.clock.instant()
+        fetchFeeds()
+        slice.clock.advance(Duration.ofMinutes(61))
+        answerFeeds(
+            accounts = listOf(
+                delivered("acct-4410", "CHK", result = BankAccountResult.Failed(FailureKind.Timeout)),
+                delivered("acct-1182", "Pinecrest Rewards Visa", amount(-547, 900), bank = "Pinecrest Card Services"),
+            ),
+        )
+
+        val report = fetchFeeds() as FetchReport.Fetched
+
+        assertEquals(StoredAccountBalance(checking, amount(4140, 50), USD, first), balances().getValue(checking))
+        assertEquals(StoredAccountBalance(card, amount(-547, 900), USD, slice.clock.instant()), balances().getValue(card))
+        assertEquals(
+            listOf(StoredFetchResult(checking, FetchResultOutcome.Failed, 0), StoredFetchResult(card, FetchResultOutcome.Fetched, 0)),
+            fetchesOfFeeds().first().results.sortedBy { it.bankAccountId },
+        )
+        assertEquals(FetchOutcome.Fetched, fetchesOfFeeds().first().outcome)
+        assertEquals(listOf("Kestrel Checking"), report.failed)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A6: Data Provider Does Not Answer Usably", businessRules = ["BR-005"])
+    @DisplayName("A6: a Fetch without a usable answer keeps every stored Account Balance unchanged and records no Fetch Result")
+    fun unusableAnswerKeepsTheAccountBalances() = runTest {
+        ready()
+        addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerFeeds()
+        fetchFeeds()
+        val stored = slice.importStatusStore.accountBalances()
+        slice.clock.advance(Duration.ofMinutes(61))
+        answerFeeds(outcome = SourceOutcome.TransientFailure(FailureKind.ServiceUnavailable), accounts = emptyList())
+
+        fetchFeeds()
+
+        assertEquals(stored, slice.importStatusStore.accountBalances())
+        assertEquals(FetchOutcome.Failed, fetchesOfFeeds().first().outcome)
+        assertTrue(fetchesOfFeeds().first().results.isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A7: Data Provider Refuses Slussen's Credentials")
+    @DisplayName("A7: refused credentials keep every stored Account Balance unchanged and record no Fetch Result")
+    fun refusedCredentialsKeepTheAccountBalances() = runTest {
+        ready()
+        addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerFeeds()
+        fetchFeeds()
+        val stored = slice.importStatusStore.accountBalances()
+        slice.clock.advance(Duration.ofMinutes(61))
+        answerFeeds(outcome = SourceOutcome.CredentialsRefused, accounts = emptyList())
+
+        fetchFeeds()
+
+        assertEquals(stored, slice.importStatusStore.accountBalances())
+        assertEquals(FetchOutcome.CredentialsRefused, fetchesOfFeeds().first().outcome)
+        assertTrue(fetchesOfFeeds().first().results.isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A5: Data Provider Asks Slussen to Wait", businessRules = ["BR-004"])
+    @DisplayName("A5: when the Data Provider asks to wait while delivering, the delivered Bank Accounts are stored with their Fetch Result, and the one not delivered keeps its Account Balance with no Fetch Result")
+    fun askedToWaitStoresWhatWasDelivered() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        val card = addFeedsBankAccount("acct-1182", "Pinecrest Rewards Card", "Rewards Card")
+        answerFeeds()
+        val first = slice.clock.instant()
+        fetchFeeds()
+        slice.clock.advance(Duration.ofMinutes(61))
+        answerFeeds(
+            outcome = SourceOutcome.AskedToWait(null),
+            accounts = listOf(
+                delivered("acct-4410", "CHK", amount(4001)),
+                delivered("acct-1182", "Pinecrest Rewards Visa", result = BankAccountResult.NotRead(NotReadCause.StoppedWithTheSource)),
+            ),
+        )
+
+        fetchFeeds()
+
+        assertEquals(StoredAccountBalance(checking, amount(4001), USD, slice.clock.instant()), balances().getValue(checking))
+        assertEquals(StoredAccountBalance(card, amount(-1268, 400), USD, first), balances().getValue(card))
+        assertEquals(listOf(StoredFetchResult(checking, FetchResultOutcome.Fetched, 0)), fetchesOfFeeds().first().results)
+        assertEquals(1, slice.importStatusStore.backOffList.size)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A2: Within the Fetch Cooldown", businessRules = ["BR-006"])
+    @DisplayName("A2: within the Fetch Cooldown the Bank Account added since is read and its Account Balance stored, with its Fetch Result on the Fetch Served From Fetch Cooldown; the other Bank Accounts keep theirs from the last Fetch")
+    fun withinTheCooldownTheBankAccountAddedSinceStoresItsBalance() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerFeeds()
+        val first = slice.clock.instant()
+        fetchFeeds()
+        slice.clock.advance(Duration.ofMinutes(10))
+        val reserve = addFeedsBankAccount("acct-7731", "Kestrel Reserve", "Reserve Savings")
+        slice.clock.advance(Duration.ofMinutes(10))
+
+        fetchFeeds()
+
+        assertEquals(StoredAccountBalance(checking, amount(4140, 50), USD, first), balances().getValue(checking))
+        assertEquals(StoredAccountBalance(reserve, amount(12000), USD, slice.clock.instant()), balances().getValue(reserve))
+        val served = fetchesOfFeeds().first()
+        assertEquals(FetchOutcome.ServedFromFetchCooldown, served.outcome)
+        assertEquals(listOf(StoredFetchResult(reserve, FetchResultOutcome.Fetched, 0)), served.results)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("Step 11: a Fetch that is no longer among the most recent ones is removed with its Fetch Results; the Account Balances stay")
+    fun olderFetchesGoWithTheirFetchResults() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerFeeds()
+        slice.settings.settings = slice.settings.settings.copy(fetchHistorySize = 2)
+        repeat(3) {
+            fetchFeeds()
+            slice.clock.advance(Duration.ofMinutes(61))
+        }
+
+        val kept = fetchesOfFeeds()
+        assertEquals(2, kept.size)
+        assertTrue(kept.all { it.results == listOf(StoredFetchResult(checking, FetchResultOutcome.Fetched, 0)) })
+        assertEquals(setOf(checking), balances().keys)
     }
 }

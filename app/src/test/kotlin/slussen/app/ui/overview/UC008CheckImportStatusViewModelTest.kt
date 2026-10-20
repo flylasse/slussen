@@ -29,6 +29,13 @@ import slussen.core.port.UnreadablePart
 import slussen.core.connection.PairOutcome
 import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
+import slussen.core.port.NewBankAccount
+import slussen.core.port.AddOutcome
+import slussen.pluginapi.provider.BankAccountResult
+import slussen.pluginapi.provider.DeliveredBankAccount
+import slussen.pluginapi.provider.FetchResponse
+import slussen.pluginapi.provider.SourceOutcome
+import slussen.testing.ExampleData.EUR
 import slussen.pluginapi.testfixtures.UseCase
 import slussen.testing.ExampleData
 import slussen.testing.TestSlice
@@ -119,9 +126,10 @@ class UC008CheckImportStatusViewModelTest {
 
         viewModel.confirmRecoveryCheck()
 
+        // P9-14: the note in plain words, saying that only Uploads wait and a Fetch still works.
         assertEquals(
-            "The Recovery Check stays open: confirming it needs a Comparison with the Budget App that read every Budget, " +
-                "which this build cannot run yet. Uploads stay blocked.",
+            "The Recovery Check stays open: it can be confirmed only after Slussen has compared every Budget with the " +
+                "Budget App, and comparing is not in this build yet. Only Uploads wait for it; a Fetch still works.",
             viewModel.state.value!!.message,
         )
         assertEquals(1, runBlocking { slice.recoveryStore.openChecks().size })
@@ -281,5 +289,102 @@ class UC008CheckImportStatusViewModelTest {
         val lines = RecentFetchesViewModel(fixture.services).also { it.load() }.state.value!!
 
         assertEquals(listOf("Kestrel Feeds · 2026-10-15 14:00 · Fetch Schedule · Fetched"), lines)
+    }
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-005"])
+    @DisplayName("Steps 6-7 after a Fetch (P9-15): each Bank Account card shows the Source Health and Freshness of its Fetch Result and its Account Balance next to the Budget Account's, with the difference; the tab says that Bank Transactions are not fetched in this build")
+    fun budgetShowsWhatAFetchStored() {
+        household()
+        slice.feeds.fetchAnswer = {
+            FetchResponse(
+                SourceOutcome.Completed,
+                emptyList(),
+                listOf(DeliveredBankAccount("acct-4410", "Kestrel Bank", "CHK", "checking", USD, null, BankAccountResult.Read(emptyList(), amount(5135, 280)))),
+            )
+        }
+        OverviewViewModel(fixture.services).also { it.load() }.fetchAll()
+
+        val ui = BudgetViewModel(fixture.services, budgetId("Household")).also { it.load() }.state.value!!
+
+        val account = ui.bankAccounts.single()
+        assertEquals("Source Health: Fetched 2026-10-15 14:00 · started by you", account.health)
+        assertEquals("Freshness: data as of 2026-10-15 14:00", account.freshness)
+        assertEquals("Bank 5,135.28 · Budget App 4,140.05 · Difference +995.23 · Read 14:00 / 14:00", account.balance)
+        assertTrue(account.blocked.isEmpty())
+        assertEquals("Source Health: Fetched 2026-10-15 14:00 · started by you", ui.sources.single().health)
+        assertEquals(
+            "Bank Transactions are not fetched in this build yet: a Fetch stores the Account Balances, so the counts stay at 0.",
+            ui.note,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A8: Recovery Check Open", businessRules = ["BR-009"])
+    @DisplayName("A8 (P9-14): with the Recovery Check open, the Overview says in plain words that only Uploads wait for it and a Fetch still works, and still offers the Fetch")
+    fun recoveryCheckSaysAFetchStillWorks() {
+        household()
+        slice.recoveryStore.open(RecoveryCause.NewInstallation, slice.clock.instant())
+
+        val ui = overview()
+
+        assertEquals("Only Uploads wait for the Recovery Check; a Fetch still works.", ui.recoveryNote)
+        assertTrue(ui.canFetch)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A6: Operator Takes the Remedy", businessRules = ["BR-006"])
+    @DisplayName("A6, BR-006 (P9-13, P9-15): a failed Fetch, of the Source or of one Bank Account, offers Fetch again on its Data Provider's page; a missing Bank Consent says plainly that Bank Consents are not in this build")
+    fun remediesSayWhatThisBuildDoes() {
+        val checking = household()
+        slice.importStatusStore.fetches += StoredFetch(
+            1, slice.feedsId, slice.clock.instant(), StartedBy.Operator, FetchOutcome.Failed,
+            listOf(StoredFetchResult(checking, FetchResultOutcome.Failed, 0)),
+        )
+        runBlocking {
+            slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+            val current = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Current" }.id
+            val added = slice.connectionStore.addBankAccount(
+                NewBankAccount(
+                    generatedIdentifier = "00000000-0000-4000-8000-000000000501",
+                    bank = BankChoice.Named("Aurora Bank"),
+                    providerBankId = null,
+                    dataProviderId = slice.openBankingId,
+                    fileFormatId = null,
+                    balanceDataProviderId = null,
+                    balanceProviderReference = null,
+                    name = "Aurora Current",
+                    currency = EUR,
+                    type = BankAccountType.Checking,
+                    providerReference = "aurora-current",
+                    bankAccountFingerprint = null,
+                    identifiedAt = slice.clock.instant(),
+                    startDate = null,
+                    budgetAccountId = current,
+                ),
+            )
+            assertTrue(added is AddOutcome.Added)
+        }
+
+        val household = BudgetViewModel(fixture.services, budgetId("Household")).also { it.load() }.state.value!!
+        val fetchAgain = RemedyAction("Fetch again", available = true, service = slice.feedsKey, note = null)
+        assertEquals(fetchAgain, household.sources.single().blocked.single { it.text.contains("Fetch failed") }.action)
+        assertEquals(fetchAgain, household.bankAccounts.single().blocked.single().action)
+
+        val summer = BudgetViewModel(fixture.services, budgetId("Summer House")).also { it.load() }.state.value!!
+        assertEquals(
+            RemedyAction("Grant Bank Consent", available = false, service = null, note = "Bank Consents are not in this build yet"),
+            summer.bankAccounts.single().blocked.single().action,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-002"])
+    @DisplayName("Step 2 (P9-13): an expiring Bank Consent is shown with the plain note that Bank Consents are not in this build, so it cannot be renewed here")
+    fun expiringBankConsentSaysWhatThisBuildDoes() {
+        household()
+        val aurora = runBlocking { slice.connectionStore.bankNamed("Aurora Bank").id }
+        slice.importStatusStore.consents += StoredBankConsent(1, aurora, slice.openBankingId, slice.clock.instant(), slice.clock.instant().plus(Duration.ofDays(4)))
+
+        assertEquals("Bank Consents are not in this build yet, so it cannot be renewed here.", overview().expiringConsentNote)
     }
 }

@@ -23,6 +23,28 @@ import slussen.pluginapi.request.RefusalReason
 
 /** The texts the screens show for the core's results, in Slussen's glossary terms. */
 object Texts {
+    /**
+     * P9-13: Bank Consents (UC-007) are not built yet, said plainly wherever a Data Provider that needs one would act,
+     * instead of naming a feature this build does not have.
+     */
+    const val BANK_CONSENTS_NOT_IN_THIS_BUILD = "Bank Consents are not in this build yet"
+
+    /** P9-13: why a Data Provider that needs a Bank Consent cannot fetch in this build. */
+    fun cannotFetchWithoutBankConsents(dataProviderName: String): String =
+        "$BANK_CONSENTS_NOT_IN_THIS_BUILD; $dataProviderName cannot fetch until they are"
+
+    /** P9-14: what a Fetch does in this build, while UC-001 steps 7-10 are not built and a Fetch asks for balances only (O-P2-54). */
+    const val FETCH_IN_THIS_BUILD =
+        "In this build a Fetch lists the Bank Accounts each Data Provider offers and stores the Account Balance of each " +
+            "Bank Account you added; Bank Transactions are not fetched yet."
+
+    /** P9-15: what the Budget tab does not show yet in this build. */
+    const val TRANSACTIONS_NOT_IN_THIS_BUILD =
+        "Bank Transactions are not fetched in this build yet: a Fetch stores the Account Balances, so the counts stay at 0."
+
+    /** UC-008 A8 (P9-14): what an open Recovery Check holds back, in plain words. */
+    const val RECOVERY_CHECK_HOLDS_UPLOADS_ONLY = "Only Uploads wait for the Recovery Check; a Fetch still works."
+
     fun refusal(reason: OperationRefusal): String = when (reason) {
         OperationRefusal.UploadPlanAwaitingConfirmation ->
             "Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first."
@@ -162,8 +184,8 @@ object Texts {
                 "$name could not be read: ${failure(report.kind)} · ${formats.time(report.failedAt)} · stored data unchanged · Fetch again"
             is FetchReport.CredentialsRefused -> "Blocked: $name, credentials refused · Enter credentials"
             is FetchReport.CredentialsMissing -> "Blocked: $name, credentials missing · Enter credentials"
-            is FetchReport.NeedsBankConsent ->
-                "$name · not fetched · a Bank Consent is needed first, which comes with Grant Bank Consent"
+            // P9-13: said plainly; no Bank is contacted without a valid Bank Consent (UC-001 BR-008), and this build grants none yet.
+            is FetchReport.NeedsBankConsent -> "$name · not fetched · ${cannotFetchWithoutBankConsents(name)}"
             is FetchReport.WarningToConfirm -> fetchWarning(report, formats).title
             is FetchReport.NotSent -> "$name · not fetched · ${gateRefusal(report.reason)}"
         }
@@ -174,6 +196,7 @@ object Texts {
         "Bank Accounts offered: ${report.offered}",
         report.identified.size.takeIf { it > 0 }?.let { "added and identified: $it" },
         report.notAdded.takeIf { it > 0 }?.let { "not added: $it" },
+        report.failed.takeIf { it.isNotEmpty() }?.let { "failed: ${it.joinToString(", ")}, stored data unchanged" },
         report.waitingUntil?.let { "Blocked: waiting for the provider · until ${formats.dateTime(it)}" },
         report.warning?.let {
             "${report.dataProviderName} warned that Slussen is near its Request Limit · Scheduled Fetches leave it alone " +

@@ -17,7 +17,9 @@ import slussen.app.ui.theme.SlussenColors
 
 /**
  * One Budget's workspace (UC-008 steps 4-8, A2-A4, A6; `docs/mockups/budget.html`): its Sources with Source Health and
- * Freshness apart, its Bank Accounts with the balance comparison, and every Blocked Reason with its remedy.
+ * Freshness apart, its Bank Accounts with the Source Health and Freshness of their last Fetch Result and the Account
+ * Balance next to the Budget Account's, every Blocked Reason with its remedy, and what this build does not show yet
+ * (P9-15).
  */
 @Composable
 fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit) {
@@ -25,6 +27,7 @@ fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit) {
         item {
             ScreenTitle(ui.title, ui.subtitle)
             Muted(ui.counts)
+            if (ui.note != null) Muted(ui.note)
             SectionTitle("Sources")
         }
         items(ui.sources) { source ->

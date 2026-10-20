@@ -111,6 +111,10 @@ fun ServicePageScreen(
                     if (ui.canFetch) {
                         Button(onClick = onFetch) { Text("Fetch ${ui.name}") }
                         Muted("Starts a Fetch of this Data Provider, with you present")
+                    } else if (ui.fetchUnavailable != null) {
+                        // P9-13: the Fetch is shown unavailable, with the reason in plain words.
+                        Button(onClick = onFetch, enabled = false) { Text("Fetch ${ui.name}") }
+                        Muted(ui.fetchUnavailable)
                     }
                     Text("Fetch Cooldown", fontSize = 13.sp)
                     Muted(ui.fetchCooldown)

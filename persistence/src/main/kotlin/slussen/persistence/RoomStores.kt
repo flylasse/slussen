@@ -2,6 +2,7 @@ package slussen.persistence
 
 import slussen.core.port.AddOutcome
 import slussen.core.port.BackOffCause
+import slussen.core.port.BankAccountDelivery
 import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
 import slussen.core.port.BudgetToServe
@@ -11,6 +12,7 @@ import slussen.core.port.CoordinatorStore
 import slussen.core.port.DataProviderRegistration
 import slussen.core.port.DataProviderSettingsStore
 import slussen.core.port.FetchOutcome
+import slussen.core.port.FetchResultOutcome
 import slussen.core.port.FetchStore
 import slussen.core.port.FileFormatRegistration
 import slussen.core.port.ImportStatusStore
@@ -43,6 +45,7 @@ import slussen.core.port.StoredBudget
 import slussen.core.port.StoredBudgetAccount
 import slussen.core.port.StoredDataProvider
 import slussen.core.port.StoredFetch
+import slussen.core.port.StoredFetchResult
 import slussen.core.port.StoredFileFormat
 import slussen.core.port.StoredLeftOutBankAccount
 import slussen.core.port.StoredOfferedBankAccount
@@ -52,6 +55,7 @@ import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.StoredTransactionFile
 import slussen.persistence.device.OfferedBankAccountDao
 import slussen.persistence.device.OfferedBankAccountEntity
+import slussen.persistence.main.AccountBalanceEntity
 import slussen.persistence.main.BackOffEntity
 import slussen.persistence.main.BankAccountEntity
 import slussen.persistence.main.BudgetAccountEntity
@@ -60,6 +64,7 @@ import slussen.persistence.main.ConnectionDao
 import slussen.persistence.main.CoordinatorDao
 import slussen.persistence.main.FetchDao
 import slussen.persistence.main.FetchEntity
+import slussen.persistence.main.FetchResultEntity
 import slussen.persistence.main.FileFormatEntity
 import slussen.persistence.main.LeftOutBankAccountEntity
 import slussen.persistence.main.OperatorSettingsDao
@@ -309,11 +314,6 @@ private fun ConnectionDao.Kept.outcome(): KeptOutcome = when (this) {
 
 /** O-13 `MappingStore` in `slussen.db`: the changes of UC-009 that this build makes. */
 class RoomMappingStore(private val dao: ConnectionDao) : MappingStore {
-    override suspend fun bringBack(leftOutBankAccountId: Long): StoredLeftOutBankAccount? = dao.bringBack(leftOutBankAccountId)?.stored()
-
-    override suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome =
-        dao.setManuallyKept(budgetAccountId, manuallyKept).outcome()
-
     override suspend fun changeTypeAndBank(
         bankAccountId: Long,
         type: BankAccountType,
@@ -424,14 +424,22 @@ class RoomCoordinatorStore(private val dao: CoordinatorDao) : CoordinatorStore {
     }
 }
 
-private fun FetchEntity.stored() = StoredFetch(
+private fun FetchEntity.stored(results: List<FetchResultEntity>) = StoredFetch(
     id = id,
     dataProviderId = dataProviderId,
     startedAt = startedAt,
     startedBy = valueOfText<StartedBy>(startedBy, MAIN_PART) { it.text },
     outcome = valueOfText<FetchOutcome>(outcome, MAIN_PART) { it.text },
-    results = emptyList(),
+    results = results.map {
+        StoredFetchResult(it.bankAccountId, valueOfText<FetchResultOutcome>(it.outcome, MAIN_PART) { outcome -> outcome.text }, it.transactionCount)
+    },
 )
+
+/** The Fetches [fetches] with their Fetch Results among [results]. */
+private fun withResults(fetches: List<FetchEntity>, results: List<FetchResultEntity>): List<StoredFetch> {
+    val byFetch = results.groupBy { it.fetchId }
+    return fetches.map { it.stored(byFetch[it.id].orEmpty()) }
+}
 
 private fun BackOffEntity.stored() = StoredBackOff(
     dataProviderId = dataProviderId,
@@ -441,11 +449,28 @@ private fun BackOffEntity.stored() = StoredBackOff(
     endsAt = endsAt,
 )
 
-/** `FETCH` and `BACK_OFF` in `slussen.db` (UC-001, ADR-002 §1). */
+/** `FETCH`, `FETCH_RESULT`, `ACCOUNT_BALANCE` and `BACK_OFF` in `slussen.db` (UC-001, ADR-002 §1, O-1). */
 class RoomFetchStore(private val dao: FetchDao) : FetchStore {
-    override suspend fun fetchesOf(dataProviderId: Long): List<StoredFetch> = dao.of(dataProviderId).map { it.stored() }
+    override suspend fun fetchesOf(dataProviderId: Long): List<StoredFetch> = withResults(dao.of(dataProviderId), dao.resultsOf(dataProviderId))
 
-    override suspend fun recordFetch(fetch: NewFetch, keep: Int) = dao.record(
+    override suspend fun storeBankAccountDelivery(delivery: BankAccountDelivery) = dao.storeBankAccountDelivery(
+        FetchResultEntity(
+            fetchId = delivery.fetchId,
+            bankAccountId = delivery.bankAccountId,
+            outcome = delivery.outcome.text,
+            transactionCount = delivery.transactionCount,
+        ),
+        delivery.balance?.let {
+            AccountBalanceEntity(
+                bankAccountId = delivery.bankAccountId,
+                amount = it.amount.thousandths,
+                currency = it.currency.code,
+                reportedAt = it.reportedAt,
+            )
+        },
+    )
+
+    override suspend fun recordFetch(fetch: NewFetch, keep: Int): Long = dao.record(
         FetchEntity(
             dataProviderId = fetch.dataProviderId,
             startedAt = fetch.startedAt,
@@ -469,15 +494,17 @@ class RoomFetchStore(private val dao: FetchDao) : FetchStore {
 }
 
 /**
- * The import status data of UC-001, UC-002, UC-003 and UC-007. The Fetches and Back-offs of UC-001 are read from
- * `fetch` and `back_off`; the other tables (`fetch_result`, `account_balance`, `transaction_file`, `bank_transaction`,
- * `bank_consent`) come with the slices that build those use cases (ADR-002 §1), and until then each of their reads is
- * empty.
+ * The import status data of UC-001, UC-002, UC-003 and UC-007. The Fetches with their Fetch Results, the Account
+ * Balances and the Back-offs of UC-001 are read from `fetch`, `fetch_result`, `account_balance` and `back_off`; the other
+ * tables (`transaction_file`, `bank_transaction`, `bank_consent`) come with the slices that build those use cases
+ * (ADR-002 §1), and until then each of their reads is empty.
  */
 class RoomImportStatusStore(private val fetches: FetchDao) : ImportStatusStore {
-    override suspend fun recentFetches(): List<StoredFetch> = fetches.recent().map { it.stored() }
+    override suspend fun recentFetches(): List<StoredFetch> = withResults(fetches.recent(), fetches.results())
 
-    override suspend fun accountBalances(): List<StoredAccountBalance> = emptyList()
+    override suspend fun accountBalances(): List<StoredAccountBalance> = fetches.balances().map {
+        StoredAccountBalance(it.bankAccountId, Amount(it.amount), currencyOf(it.currency, MAIN_PART), it.reportedAt)
+    }
 
     override suspend fun bankConsents(): List<StoredBankConsent> = emptyList()
 

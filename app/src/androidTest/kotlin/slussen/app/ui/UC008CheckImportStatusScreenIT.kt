@@ -51,6 +51,10 @@ class UC008CheckImportStatusScreenIT {
 
         onNodeWithText("Uploads blocked: Recovery Check open").assertExists()
         onNodeWithText("New installation", substring = true).assertExists()
+        // P9-14: in plain words, only Uploads wait; the Fetch stays offered with what it does in this build.
+        onNodeWithText("Only Uploads wait for the Recovery Check; a Fetch still works.").assertExists()
+        onNodeWithText("Fetch all Data Providers").assertIsEnabled()
+        onNodeWithText("In this build a Fetch lists the Bank Accounts", substring = true).assertExists()
         onNodeWithText("Recovery Check").performClick()
         onNodeWithText("The Recovery Check stays open", substring = true).assertExists()
     }
@@ -83,7 +87,7 @@ class UC008CheckImportStatusScreenIT {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A6: Operator Takes the Remedy", businessRules = ["BR-006"])
-    @DisplayName("A6: a Blocked Reason shows its remedy; enter credentials is available, a remedy of a use case not built yet is not")
+    @DisplayName("A6: a Blocked Reason shows its remedy; entering credentials and fetching again are available, granting a Bank Consent is not and says so plainly (P9-13)")
     fun remediesAreShown() = compose.use {
         var opened: ServiceKey? = null
         val ui = BudgetUi(
@@ -99,16 +103,20 @@ class UC008CheckImportStatusScreenIT {
                     counts = "Not yet uploaded: Eligible 0 · waiting for a decision 0",
                     blocked = listOf(
                         BlockedLine("Blocked: Kestrel Feeds, credentials missing", RemedyAction("Enter credentials", true, ServiceKey.dataProvider(1), null)),
-                        BlockedLine("Blocked: Kestrel Feeds, Fetch failed", RemedyAction("Fetch again", false, null, "comes with Fetch Transactions")),
+                        BlockedLine("Blocked: Kestrel Feeds, Fetch failed", RemedyAction("Fetch again", true, ServiceKey.dataProvider(1), null)),
+                        BlockedLine("Blocked: Aurora Current, missing Bank Consent", RemedyAction("Grant Bank Consent", false, null, "Bank Consents are not in this build yet")),
                     ),
                 ),
             ),
             bankAccounts = emptyList(),
+            note = "Bank Transactions are not fetched in this build yet: a Fetch stores the Account Balances, so the counts stay at 0.",
         )
         setContent { SlussenTheme { BudgetScreen(ui) { opened = it.service } } }
 
-        onNodeWithText("Fetch again").assertIsNotEnabled()
-        onNodeWithText("comes with Fetch Transactions").assertExists()
+        onNodeWithText("Grant Bank Consent").assertIsNotEnabled()
+        onNodeWithText("Bank Consents are not in this build yet").assertExists()
+        onNodeWithText("Bank Transactions are not fetched in this build yet", substring = true).assertExists()
+        onNodeWithText("Fetch again").assertIsEnabled()
         onNodeWithText("Enter credentials").performClick()
         assertEquals(ServiceKey.dataProvider(1), opened)
     }

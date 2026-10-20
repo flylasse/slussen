@@ -19,7 +19,8 @@ sealed interface FetchReport {
      * Fetch is recorded as Fetched. [identified] names the Bank Accounts the Operator added that were identified with
      * certainty (step 6, BR-011); [notAdded] counts the delivered Bank Accounts that match none of them (A18).
      * [waitingUntil] is set when the Data Provider asked Slussen to wait while delivering (A5), [warning] when it warned
-     * about its Request Limit (A15).
+     * about its Request Limit (A15). [failed] names the identified Bank Accounts the Data Provider reported a failure
+     * for, whose stored data stays unchanged (A8).
      */
     data class Fetched(
         override val service: ServiceKey,
@@ -30,6 +31,7 @@ sealed interface FetchReport {
         val notAdded: Int,
         val waitingUntil: Instant?,
         val warning: RequestLimitWarningShown?,
+        val failed: List<String> = emptyList(),
     ) : FetchReport
 
     /**

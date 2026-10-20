@@ -47,6 +47,12 @@ data class OverviewUi(
     val fetchWarning: FetchWarningUi?,
     /** A10, BR-011: while no Bank Account is added, the only thing shown; null from the first added Bank Account on. */
     val firstRun: FirstRunUi? = null,
+    /** P9-14: one line saying what a Fetch does in this build, next to the Fetch action. */
+    val fetchNote: String? = null,
+    /** A8 (P9-14): under the Recovery Check, in plain words, what waits for it and what does not. */
+    val recoveryNote: String? = null,
+    /** Step 2 (P9-13): under the expiring Bank Consents, why they cannot be renewed in this build. */
+    val expiringConsentNote: String? = null,
 )
 
 /** The Overview tab (UC-008), from stored data only. */
@@ -113,6 +119,15 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
             canFetch = true,
             fetchMessages = fetchMessages,
             fetchWarning = pendingWarnings.firstOrNull(),
+            fetchNote = Texts.FETCH_IN_THIS_BUILD,
+            // A8 (P9-14): an open Recovery Check holds back Uploads only; nothing blocks a Fetch (UC-001 preconditions).
+            recoveryNote = overview.recoveryCheck?.let { Texts.RECOVERY_CHECK_HOLDS_UPLOADS_ONLY },
+            // Step 2 (P9-13): the renew action needs Grant Bank Consent (UC-007), which this build does not have.
+            expiringConsentNote = if (overview.expiringBankConsents.isEmpty()) {
+                null
+            } else {
+                "${Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD}, so it cannot be renewed here."
+            },
         )
     }
 
@@ -177,9 +192,10 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
         viewModelScope.launch {
             val message = when (services.status.confirmRecoveryCheck()) {
                 RecoveryConfirmation.NoneOpen -> null
+                // A9 step 1 (P9-14): confirming needs a Comparison that read every Budget (UC-003), not in this build yet.
                 RecoveryConfirmation.ComparisonNotAvailable ->
-                    "The Recovery Check stays open: confirming it needs a Comparison with the Budget App that read every " +
-                        "Budget, which this build cannot run yet. Uploads stay blocked."
+                    "The Recovery Check stays open: it can be confirmed only after Slussen has compared every Budget with the " +
+                        "Budget App, and comparing is not in this build yet. Only Uploads wait for it; a Fetch still works."
             }
             mutableState.value = mutableState.value?.copy(message = message)
         }

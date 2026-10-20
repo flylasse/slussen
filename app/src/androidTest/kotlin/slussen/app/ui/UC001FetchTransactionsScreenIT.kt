@@ -2,6 +2,7 @@ package slussen.app.ui
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
@@ -59,5 +60,23 @@ class UC001FetchTransactionsScreenIT {
 
         onNodeWithText("Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 1 · not added: 1").assertExists()
         onNodeWithText("Connected · last Fetch 2026-10-15 14:00").assertExists()
+    }
+    @Test
+    @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
+    @DisplayName("A4, BR-008 (P9-13): the page of a Data Provider that needs a Bank Consent shows its Fetch unavailable, saying plainly that Bank Consents are not in this build")
+    fun bankConsentProviderCannotFetchInThisBuild() = compose.use {
+        val fixture = ScreenFixture()
+        runBlocking { fixture.slice.credentials.enter(fixture.slice.openBankingKey, fixture.slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+        val viewModel = ServicePageViewModel(fixture.services, fixture.slice.openBankingKey)
+        onMain { viewModel.load() }
+        setContent {
+            SlussenTheme {
+                ServicePage(viewModel)
+            }
+        }
+
+        onNodeWithText("Fetch Aurora Open Banking").assertIsNotEnabled()
+        onNodeWithText("Bank Consents are not in this build yet; Aurora Open Banking cannot fetch until they are.").assertExists()
+        org.junit.jupiter.api.Assertions.assertEquals(0, fixture.slice.openBanking.fetches)
     }
 }

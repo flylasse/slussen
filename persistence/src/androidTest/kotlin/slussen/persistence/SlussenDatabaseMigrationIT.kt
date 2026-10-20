@@ -11,7 +11,14 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import slussen.core.port.BankAccountDelivery
+import slussen.core.port.FetchOutcome
+import slussen.core.port.FetchResultOutcome
+import slussen.core.port.NewAccountBalance
 import slussen.core.port.NewLeftOutBankAccount
+import slussen.core.port.StoredFetchResult
+import slussen.pluginapi.value.Amount
+import slussen.pluginapi.value.CurrencyCode
 import slussen.persistence.main.SlussenDatabase
 import slussen.persistence.main.SlussenMigrations
 import java.time.Instant
@@ -20,7 +27,8 @@ import java.time.Instant
  * Evidence E-06 of ADR-005 §7 (ADR-002 §7, S-39): `slussen.db` created at every committed schema version with Room's
  * `MigrationTestHelper` from the committed schema files, with invented rows in every table, migrated with the
  * hand-written Migrations to the current version and validated by Room, keeping every row and value; and a version 1
- * `slussen.db`, as the Operator's phone holds it, opened by the app's own [SlussenDatabases.openMain] and read back.
+ * and a version 2 `slussen.db`, as the Operator's phone held and holds it, opened by the app's own
+ * [SlussenDatabases.openMain] and read back.
  * Instrumented, on API 26 and the phone; the same migration also runs on the JVM in `SlussenDatabaseMigrationTest`.
  */
 class SlussenDatabaseMigrationIT {
@@ -66,6 +74,12 @@ class SlussenDatabaseMigrationIT {
         ).forEach(::execSQL)
     }
 
+    /** Invented rows in every table of version 2: those of version 1 and a Left-Out Bank Account (S-38). */
+    private fun SupportSQLiteDatabase.inventedVersion2Data() {
+        inventedVersion1Data()
+        execSQL("INSERT INTO left_out_bank_account VALUES (1, 1, 'acct-2290', 'Kids Saver ••2290', 1760533200000)")
+    }
+
     @Test
     @DisplayName("NFR-017: E-06, slussen.db at version 1 with rows in every table migrates to the current version, Room validates it, and every row and value is kept (ADR-002 §7)")
     fun version1MigratesKeepingEveryValue() {
@@ -77,11 +91,58 @@ class SlussenDatabaseMigrationIT {
             tables to db.everything(tables)
         }
 
-        helper.runMigrationsAndValidate(name, 2, true, *SlussenMigrations.ALL).use { db ->
+        helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
             assertEquals(before, db.everything(version1Tables))
             assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
-            assertTrue("left_out_bank_account" in db.tables())
+            assertTrue(db.tables().containsAll(listOf("left_out_bank_account", "account_balance", "fetch_result")))
         }
+    }
+
+    @Test
+    @DisplayName("NFR-017: E-06, slussen.db at version 2, as the Operator's phone holds it, with rows in every table migrates to the current version, Room validates it, and every row and value is kept (ADR-002 §7)")
+    fun version2MigratesKeepingEveryValue() {
+        val name = "migration-version-2.db"
+        val (version2Tables, before) = helper.createDatabase(name, 2).use { db ->
+            db.inventedVersion2Data()
+            val tables = db.tables()
+            assertTrue(tables.all { db.select("SELECT COUNT(*) FROM `$it`").single().single() != "0" }, "every table holds a row")
+            tables to db.everything(tables)
+        }
+
+        helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
+            assertEquals(before, db.everything(version2Tables))
+            assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
+            assertEquals(listOf("account_balance", "fetch_result"), db.tables() - version2Tables.toSet())
+        }
+    }
+
+    @Test
+    @DisplayName("NFR-017: E-06, a version 2 slussen.db as the Operator's phone holds it is upgraded by the app itself, never cleared, and its data is read back with the new tables usable (ADR-002 §7)")
+    fun theAppUpgradesAnInstalledVersion2() = runBlocking {
+        helper.createDatabase(SlussenDatabases.MAIN_FILE, 2).use { it.inventedVersion2Data() }
+
+        val main = SlussenDatabases.openMain(DeviceFiles.context)
+        try {
+            val connections = RoomConnectionStore(main.connections())
+            assertEquals(listOf("Kestrel Checking"), connections.bankAccounts().map { it.name })
+            assertEquals(listOf("acct-2290"), connections.leftOutBankAccounts().map { it.providerReference })
+            val fetches = RoomFetchStore(main.fetches())
+            val status = RoomImportStatusStore(main.fetches())
+            assertEquals(listOf(FetchOutcome.Fetched), fetches.fetchesOf(1).map { it.outcome })
+            assertTrue(status.accountBalances().isEmpty())
+            fetches.storeBankAccountDelivery(
+                BankAccountDelivery(1, 1, FetchResultOutcome.Fetched, 0, NewAccountBalance(Amount(5135280), CurrencyCode("USD"), Instant.parse("2026-10-20T12:00:00Z"))),
+            )
+            assertEquals(listOf(Amount(5135280)), status.accountBalances().map { it.amount })
+            assertEquals(listOf(StoredFetchResult(1, FetchResultOutcome.Fetched, 0)), fetches.fetchesOf(1).single().results)
+        } finally {
+            main.close()
+        }
+    }
+
+    private companion object {
+        /** The schema version of `slussen.db` this build creates and migrates to (ADR-002 §7). */
+        const val CURRENT_VERSION = 3
     }
 
     @Test

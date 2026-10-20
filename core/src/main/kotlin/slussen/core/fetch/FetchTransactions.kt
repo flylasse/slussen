@@ -10,10 +10,13 @@ import slussen.core.operation.OperationResult
 import slussen.core.plugin.RegisteredDataProvider
 import slussen.core.plugin.RegisteredPlugins
 import slussen.core.port.BackOffCause
+import slussen.core.port.BankAccountDelivery
 import slussen.core.port.ConnectionStore
 import slussen.core.port.FetchOutcome
+import slussen.core.port.FetchResultOutcome
 import slussen.core.port.FetchStore
 import slussen.core.port.NewBackOff
+import slussen.core.port.NewAccountBalance
 import slussen.core.port.NewFetch
 import slussen.core.port.NewOfferedBankAccount
 import slussen.core.port.OfferedBankAccountStore
@@ -35,6 +38,7 @@ import slussen.pluginapi.provider.FetchRequest
 import slussen.pluginapi.provider.FetchResponse
 import slussen.pluginapi.provider.NotReadCause
 import slussen.pluginapi.provider.OperatorPresence
+import slussen.pluginapi.provider.ProviderTransaction
 import slussen.pluginapi.provider.ReadKind
 import slussen.pluginapi.provider.SourceOutcome
 import slussen.pluginapi.request.RefusalReason
@@ -46,12 +50,13 @@ import java.time.LocalDate
 
 /**
  * Fetch Transactions (UC-001), `:core` `fetch` (ADR-001 §7), as far as the identification slice builds it (Phase 8a,
- * O-P2-45): the request gate (Back-off, Fetch Cooldown, Request Limit; A1-A3, A16), the Fetch with the Operator present,
- * the Offered Bank Accounts with their balance (step 6), the identification of the Bank Accounts the Operator added
- * (step 6, A18, BR-011), the Back-offs a Data Provider asks for (A5, A15), and the Fetch record with its outcome (step
- * 11, A6, A7). Steps 7-10 (Bank Transactions, Account Balances, Fetch Results, the Decision Journal, the Comparison)
- * and the Scheduled Fetch (A12) come with later slices. Until then step 4 asks every selected Bank Account for its
- * balance only (O-P2-54), so no transaction is delivered and none is dropped (NFR-002).
+ * O-P2-45) and the Account Balances (Phase 8f): the request gate (Back-off, Fetch Cooldown, Request Limit; A1-A3, A16),
+ * the Fetch with the Operator present, the Offered Bank Accounts with their balance (step 6), the identification of the
+ * Bank Accounts the Operator added (step 6, A18, BR-011), the Account Balance of each Bank Account it read (step 8,
+ * BR-011), the Back-offs a Data Provider asks for (A5, A15), and the Fetch record with its outcome and the Fetch Result
+ * of each Bank Account it read (step 11, A2, A6, A7, A8). Steps 7, 9 and 10 (Bank Transactions, the Decision Journal,
+ * the Comparison) and the Scheduled Fetch (A12) come with later slices. Until then step 4 asks every selected Bank
+ * Account for its balance only (O-P2-54), so no transaction is delivered and none is dropped (NFR-002).
  */
 class FetchTransactions(
     private val plugins: RegisteredPlugins,
@@ -216,13 +221,17 @@ class FetchTransactions(
                     record(stored, startedAt, FetchOutcome.WaitingForBackOff)
                     return FetchReport.WaitingForProvider(key, name, waitingUntil)
                 }
+                val answeredAt = clock.instant()
                 val fetched = keep(provider, response.bankAccounts, toRead, startedAt, waitingUntil, warning)
                 if (cooldown == null) {
-                    record(stored, startedAt, FetchOutcome.Fetched)
+                    val fetchId = record(stored, startedAt, FetchOutcome.Fetched)
+                    storeDeliveries(fetchId, response.bankAccounts, toRead, answeredAt)
                     fetched
                 } else {
                     // UC-001 BR-006: A read within the Fetch Cooldown is recorded as served from it, so it neither starts nor extends it.
-                    record(stored, startedAt, FetchOutcome.ServedFromFetchCooldown)
+                    val fetchId = record(stored, startedAt, FetchOutcome.ServedFromFetchCooldown)
+                    // A2 step 3: the Fetch Served From Fetch Cooldown carries the outcome of each Bank Account it read.
+                    storeDeliveries(fetchId, response.bankAccounts, toRead, answeredAt)
                     FetchReport.ServedFromFetchCooldown(key, name, cooldown.lastFetchAt, cooldown.endsAt, read = fetched, requestLimitFreesUpAt = null)
                 }
             }
@@ -289,6 +298,7 @@ class FetchTransactions(
         val references = delivered.map { it.providerReference }.toSet()
         // UC-001 BR-011: A Bank Account is identified with certainty by the identifier its Data Provider gives it, a file-imported one by the identifier its balance Data Provider gives it.
         val identified = toRead.filter { it.read.providerReference in references }.map { it.bankAccount.name }
+        val failedReferences = delivered.filter { it.result is BankAccountResult.Failed }.map { it.providerReference }.toSet()
         val added = connections.bankAccounts().flatMap { bankAccount ->
             listOfNotNull(
                 bankAccount.providerReference?.takeIf { bankAccount.dataProviderId == stored.id },
@@ -305,7 +315,40 @@ class FetchTransactions(
             notAdded = delivered.count { it.providerReference !in added },
             waitingUntil = waitingUntil,
             warning = warning,
+            // A8: the identified Bank Accounts the Data Provider reported a failure for.
+            failed = toRead.filter { it.read.providerReference in failedReferences }.map { it.bankAccount.name },
         )
+    }
+
+    /**
+     * Steps 8 and 11 for each selected Bank Account the Data Provider delivered (O-1, one storage operation each): its
+     * Fetch Result for the Fetch [fetchId] and the Account Balance the Data Provider reported, as at [answeredAt]. A
+     * Bank Account the answer lists but did not read (A5, a Bank or the Data Provider stopped) keeps its stored data and
+     * gets no Fetch Result; one not delivered at all is not identified (A10, not built) and gets none either. Offered
+     * Bank Accounts that are not added store nothing (A18, S-35). No Bank Transaction is stored: steps 7, 9 and 10 come
+     * with a later slice, and until then a Fetch asks for balances only (O-P2-54).
+     */
+    private suspend fun storeDeliveries(fetchId: Long, delivered: List<DeliveredBankAccount>, toRead: List<Selected>, answeredAt: Instant) {
+        val byReference = delivered.associateBy { it.providerReference }
+        toRead.forEach { selected ->
+            val bankAccount = selected.bankAccount
+            val one = byReference[selected.read.providerReference] ?: return@forEach
+            val delivery = when (val result = one.result) {
+                is BankAccountResult.Read -> BankAccountDelivery(
+                    fetchId = fetchId,
+                    bankAccountId = bankAccount.id,
+                    outcome = FetchResultOutcome.Fetched,
+                    transactionCount = result.transactions.count { it is ProviderTransaction.Interpretable && it.booked && it.amount.thousandths != 0L },
+                    // UC-001 BR-011: The Account Balance of a file-imported Bank Account is the one its balance Data Provider reports, stored like any other.
+                    balance = result.balance?.let { NewAccountBalance(it, one.currency ?: bankAccount.currency, answeredAt) },
+                )
+                // A8: a failure for one Bank Account keeps its stored Account Balance and records the outcome Failed.
+                is BankAccountResult.Failed -> BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.Failed, 0, balance = null)
+                is BankAccountResult.NotRead -> null
+            }
+            // UC-001 BR-010: A failure of one Bank Account leaves the others' storage unaffected: each is its own storage operation.
+            delivery?.let { fetches.storeBankAccountDelivery(it) }
+        }
     }
 
     private suspend fun offeredOf(
@@ -333,7 +376,8 @@ class FetchTransactions(
     /**
      * The balance of an Offered Bank Account: from a Bank Account read, or the one the Data Provider gave with the list
      * for a Bank Account the request did not ask to read (S-35, ADR-001 §4.1), so the Offered Bank Accounts not yet
-     * added keep their balance after another one was added (UC-013 step 5). Not stored as an Account Balance (step 8).
+     * added keep their balance after another one was added (UC-013 step 5). Only an added Bank Account that was read
+     * stores it as its Account Balance (step 8, [storeDeliveries]).
      */
     private fun balanceOf(result: BankAccountResult): Amount? = when (result) {
         is BankAccountResult.Read -> result.balance
@@ -351,7 +395,7 @@ class FetchTransactions(
     }
 
     /** Step 11: the Fetch with its time, who started it and its outcome; only the most recent are kept (`FETCH`). */
-    private suspend fun record(stored: StoredDataProvider, startedAt: Instant, outcome: FetchOutcome) =
+    private suspend fun record(stored: StoredDataProvider, startedAt: Instant, outcome: FetchOutcome): Long =
         fetches.recordFetch(NewFetch(stored.id, startedAt, StartedBy.Operator, outcome), settings.current().fetchHistorySize)
 
     private companion object {

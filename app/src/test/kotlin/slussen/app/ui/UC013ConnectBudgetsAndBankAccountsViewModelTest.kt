@@ -363,7 +363,11 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
             feedsPage.ui().offered!!.emptyText,
         )
         assertTrue(feedsPage.ui().canFetch)
-        assertEquals("None yet · grant a Bank Consent of a Bank to see its Bank Accounts", openBankingPage.ui().offered!!.emptyText)
+        // P9-13: the same sentence says plainly that Bank Consents are not in this build yet.
+        assertEquals(
+            "None yet · a Bank Consent of a Bank lists its Bank Accounts here · Bank Consents are not in this build yet",
+            openBankingPage.ui().offered!!.emptyText,
+        )
     }
 
     @Test

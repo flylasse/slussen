@@ -26,8 +26,27 @@ object SlussenMigrations {
             "ON `left_out_bank_account` (`data_provider_id`, `provider_reference`)",
     )
 
+    /**
+     * Version 2 (committed with Phase 8d, the Operator's phone) to version 3: adds `account_balance` and `fetch_result`
+     * with their indices (UC-001 steps 8, 11; Phase 8f), exactly as Room's version 3 schema declares them. No existing
+     * table, row or value changes; both tables start empty and are filled by the next Fetch (O-1).
+     */
+    val MIGRATION_2_3: Migration = Statements(
+        from = 2,
+        to = 3,
+        "CREATE TABLE IF NOT EXISTS `account_balance` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`bank_account_id` INTEGER NOT NULL, `amount` INTEGER NOT NULL, `currency` TEXT NOT NULL, `reported_at` INTEGER NOT NULL, " +
+            "FOREIGN KEY(`bank_account_id`) REFERENCES `bank_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "CREATE UNIQUE INDEX IF NOT EXISTS `index_account_balance_bank_account_id` ON `account_balance` (`bank_account_id`)",
+        "CREATE TABLE IF NOT EXISTS `fetch_result` (`fetch_id` INTEGER NOT NULL, `bank_account_id` INTEGER NOT NULL, " +
+            "`outcome` TEXT NOT NULL, `transaction_count` INTEGER NOT NULL, PRIMARY KEY(`fetch_id`, `bank_account_id`), " +
+            "FOREIGN KEY(`fetch_id`) REFERENCES `fetch`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , " +
+            "FOREIGN KEY(`bank_account_id`) REFERENCES `bank_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "CREATE INDEX IF NOT EXISTS `index_fetch_result_bank_account_id` ON `fetch_result` (`bank_account_id`)",
+    )
+
     /** Every Migration of `slussen.db`, given to Room when the database is opened (ADR-002 §7). */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2)
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 
     /**
      * A Migration made of SQL statements, run the same way on the platform's SQLite through Room's open helper (the app,

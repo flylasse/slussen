@@ -8,6 +8,12 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import slussen.testing.TestSlice
+import slussen.core.fetch.FetchStart
+import slussen.pluginapi.provider.BankAccountResult
+import slussen.pluginapi.provider.DeliveredBankAccount
+import slussen.pluginapi.provider.FetchResponse
+import slussen.pluginapi.provider.SourceOutcome
+import slussen.pluginapi.request.FailureKind
 import slussen.core.port.BackOffCause
 import slussen.core.port.BankAccountType
 import slussen.core.port.BudgetAccountToStore
@@ -571,5 +577,46 @@ class UC008CheckImportStatusTest {
         assertEquals(requests, slice.providerRequests.requests.size)
         assertEquals(0, slice.feeds.fetches + slice.openBanking.fetches)
         assertEquals(0, slice.budgetApp.writer.calls)
+    }
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-005"])
+    @DisplayName("Steps 6-7 after a Fetch (UC-001 steps 8, 11): each Bank Account the Fetch read shows its Source Health and Freshness from its Fetch Result, and its Account Balance next to its Budget Account's balance with the difference and the time each was read")
+    fun whatAFetchStoredIsShown() = runTest {
+        household()
+        slice.feeds.fetchAnswer = {
+            FetchResponse(
+                SourceOutcome.Completed,
+                emptyList(),
+                listOf(
+                    DeliveredBankAccount("ref-${id("Kestrel Checking")}", "Kestrel Bank", "CHK", "checking", USD, null, BankAccountResult.Read(emptyList(), amount(5135, 280))),
+                    DeliveredBankAccount("ref-${id("Pinecrest Rewards Card")}", "Pinecrest Card Co.", "Visa", "credit card", USD, null, BankAccountResult.Failed(FailureKind.Timeout)),
+                ),
+            )
+        }
+        val fetchedAt = now
+
+        assertTrue(slice.fetch.fetch(slice.feedsKey) is FetchStart.Ran)
+        slice.clock.advance(Duration.ofMinutes(5))
+
+        val checking = workspaceAccount("Household", "Kestrel Checking")
+        assertEquals(SourceHealth.BankAccountFetchHealth(FetchResultOutcome.Fetched, fetchedAt, StartedBy.Operator), checking.health)
+        assertEquals(fetchedAt, checking.freshness)
+        assertEquals(
+            BalanceComparison.Compared(
+                accountBalance = amount(5135, 280),
+                budgetAccountBalance = amount(4140, 50),
+                difference = amount(995, 230),
+                accountBalanceReadAt = fetchedAt,
+                budgetAccountBalanceReadAt = fetchedAt,
+            ),
+            checking.balance,
+        )
+        assertTrue(checking.blocked.isEmpty())
+        val card = workspaceAccount("Household", "Pinecrest Rewards Card")
+        assertEquals(SourceHealth.BankAccountFetchHealth(FetchResultOutcome.Failed, fetchedAt, StartedBy.Operator), card.health)
+        assertNull(card.freshness)
+        assertEquals(listOf(Blocked(BlockedReason.FailedFetch, Remedy.FetchAgain, fetchedAt, "Pinecrest Rewards Card")), card.blocked)
+        assertEquals(slice.feedsId, card.dataProviderId)
+        assertEquals(SourceHealth.FetchHealth(FetchOutcome.Fetched, fetchedAt, StartedBy.Operator), slice.status.workspace(budgetId("Household")).sources.single().health)
     }
 }

@@ -254,7 +254,8 @@ class UC001FetchTransactionsViewModelTest {
         assertEquals(
             listOf(
                 "Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 3 · not added: 3",
-                "Aurora Open Banking · not fetched · a Bank Consent is needed first, which comes with Grant Bank Consent",
+                // P9-13: said plainly, without naming a feature this build does not have.
+                "Aurora Open Banking · not fetched · Bank Consents are not in this build yet; Aurora Open Banking cannot fetch until they are",
             ),
             overview.state.value!!.fetchMessages,
         )
@@ -279,5 +280,78 @@ class UC001FetchTransactionsViewModelTest {
 
         assertNull(overview.state.value!!.fetchWarning)
         assertEquals(listOf("Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 3 · not added: 3"), overview.state.value!!.fetchMessages)
+    }
+    @Test
+    @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
+    @DisplayName("A4, BR-008 (P9-13): the page of a Data Provider that needs a Bank Consent says plainly that Bank Consents are not in this build, and its Fetch is unavailable with that reason")
+    fun bankConsentProviderCannotFetchInThisBuild() {
+        runBlocking { slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+        val page = page(slice.openBankingKey)
+
+        assertFalse(page.ui().canFetch)
+        assertEquals("Bank Consents are not in this build yet; Aurora Open Banking cannot fetch until they are.", page.ui().fetchUnavailable)
+        assertEquals("None yet · a Bank Consent of a Bank lists its Bank Accounts here · Bank Consents are not in this build yet", page.ui().offered!!.emptyText)
+        page.fetch()
+        assertEquals(0, slice.openBanking.fetches)
+        assertNull(page(slice.feedsKey).ui().fetchUnavailable)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A11: Fetch of Several Data Providers")
+    @DisplayName("A11 (P9-14): the Overview says in one line what a Fetch does in this build: it lists the Bank Accounts with their balances and stores the Account Balances, no Bank Transactions yet")
+    fun overviewSaysWhatAFetchDoesInThisBuild() {
+        runBlocking { slice.enterCredentials() }
+        aBankAccountIsAdded()
+
+        val ui = OverviewViewModel(fixture.services).also { it.load() }.state.value!!
+
+        assertEquals(
+            "In this build a Fetch lists the Bank Accounts each Data Provider offers and stores the Account Balance of each " +
+                "Bank Account you added; Bank Transactions are not fetched yet.",
+            ui.fetchNote,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account", businessRules = ["BR-010"])
+    @DisplayName("A8: a Fetch that delivered the others names the Bank Account the Data Provider reported a failure for, whose stored data stays unchanged")
+    fun failureForOneBankAccountIsNamed() {
+        runBlocking { slice.enterCredentials() }
+        aFeedsBankAccountIsAdded()
+        slice.feeds.fetchAnswer = {
+            FetchResponse(
+                SourceOutcome.Completed,
+                emptyList(),
+                listOf(DeliveredBankAccount("acct-4410", "Kestrel Bank", "CHK", "checking", USD, null, BankAccountResult.Failed(FailureKind.Timeout))),
+            )
+        }
+        val page = page(slice.feedsKey)
+
+        page.fetch()
+
+        assertEquals(
+            "Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 1 · added and identified: 1 · failed: Kestrel Checking, stored data unchanged",
+            page.ui().message,
+        )
+    }
+
+    /** Kestrel Checking, added from Kestrel Feeds's Offered Bank Account acct-4410 into Household's Checking (UC-013). */
+    private fun aFeedsBankAccountIsAdded() = runBlocking {
+        val listed = ExampleData.budgetsRead().map { budget ->
+            slussen.core.port.BudgetToServe(
+                budget.reference, budget.name, budget.currency,
+                budget.budgetAccounts.map { slussen.core.port.BudgetAccountToStore(it.reference, it.name, it.balance) },
+            )
+        }
+        slice.connectionStore.serveBudgets(listed, setOf("budget-household"), slice.clock.instant())
+        val bank = slice.connectionStore.bankNamed("Kestrel Bank").id
+        slice.offeredStore.replaceOffered(
+            slice.feedsId, null, listOf(ExampleData.offered("acct-4410", "CHK", "checking", USD, "4410", null, bank, slice.clock.instant())),
+        )
+        val checking = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Checking" }.id
+        slice.connect.add(
+            slice.offeredStore.offered().single().id, checking, "Kestrel Checking", slussen.core.port.BankAccountType.Checking,
+            slussen.core.port.BankChoice.Known(bank), null,
+        )
     }
 }

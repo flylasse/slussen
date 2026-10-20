@@ -27,9 +27,10 @@ import slussen.app.ui.theme.SlussenColors
 
 /**
  * The Overview tab (UC-008 steps 1-3, A1, A7, A8, A10; `docs/mockups/overview.html`): while no Bank Account is added,
- * only the card that leads to Settings (`#new-installation`, `#first-run-next`); otherwise every Budget with its counts
- * and blocked states, the expiring Bank Consents, the notices that appear at every opening, and the Fetch of all Data
- * Providers (UC-001 A11, with the confirmation of a warning, A16).
+ * only the card that leads to Settings (`#new-installation`, `#first-run-next`); otherwise the notices that appear at
+ * every opening (the Recovery Check with what it holds back, P9-14), the Fetch of all Data Providers above the Budget
+ * cards with one line on what a Fetch does in this build (UC-001 A11, with the confirmation of a warning, A16; P9-14),
+ * the expiring Bank Consents, and every Budget with its counts and blocked states.
  */
 @Composable
 fun OverviewScreen(
@@ -67,12 +68,21 @@ fun OverviewScreen(
         if (ui.recoveryCheck != null) {
             item {
                 Banner(ui.recoveryCheck, ui.recoveryCause, SlussenColors.RedBackground, SlussenColors.Red)
+                if (ui.recoveryNote != null) Muted(ui.recoveryNote)
                 OutlinedButton(onClick = onConfirmRecoveryCheck) { Text("Recovery Check") }
             }
         }
         if (ui.message != null) item { Banner(ui.message, null, SlussenColors.Surface2, SlussenColors.Text) }
         if (ui.backupWarning != null) item { Banner(ui.backupWarning, null) }
-        items(ui.expiringConsents) { Banner(it, "Renewing a Bank Consent comes with Grant Bank Consent") }
+        // P9-14: the Fetch action stands above the Budget cards, where it is seen without scrolling.
+        item {
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                Button(onClick = onFetchAll, enabled = ui.canFetch) { Text("Fetch all Data Providers") }
+                if (ui.fetchNote != null) Muted(ui.fetchNote)
+                ui.fetchMessages.forEach { Muted(it) }
+            }
+        }
+        items(ui.expiringConsents) { Banner(it, ui.expiringConsentNote) }
         items(ui.budgets) { budget ->
             SlussenCard(modifier = Modifier.clickable { onBudget(budget.budgetId) }) {
                 Row {
@@ -89,11 +99,7 @@ fun OverviewScreen(
             }
         }
         item {
-            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                OutlinedButton(onClick = onFetchAll, enabled = ui.canFetch) { Text("Fetch all Data Providers") }
-                ui.fetchMessages.forEach { Muted(it) }
-                OutlinedButton(onClick = onRecentFetches) { Text("Recent Fetches") }
-            }
+            OutlinedButton(onClick = onRecentFetches, modifier = Modifier.padding(vertical = 8.dp)) { Text("Recent Fetches") }
         }
     }
     val warning = ui.fetchWarning

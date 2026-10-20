@@ -138,6 +138,8 @@ data class ServicePageUi(
     val canFetch: Boolean,
     /** UC-001 A16: the warning the Operator confirms before the Fetch is made, or null. */
     val fetchWarning: FetchWarningUi?,
+    /** UC-001 BR-008 (P9-13): why the Fetch is unavailable in this build, or null when it is offered. */
+    val fetchUnavailable: String? = null,
 )
 
 /** UC-001 A16 (`budget.html#request-limit-warning`): the warning, its end and the risk, before the Operator confirms. */
@@ -221,7 +223,9 @@ class ServicePageViewModel(
             // A3 of UC-013 (P9-05): one sentence while nothing is offered.
             emptyText = when (offered.remedy) {
                 OfferRemedy.StartFetch -> "None yet · a Fetch lists the Bank Accounts $name offers; no transactions are fetched until a Bank Account is added"
-                OfferRemedy.GrantBankConsent -> "None yet · grant a Bank Consent of a Bank to see its Bank Accounts"
+                // P9-13: a Bank Consent shows the Bank Accounts, and this build has none yet.
+                OfferRemedy.GrantBankConsent ->
+                    "None yet · a Bank Consent of a Bank lists its Bank Accounts here · ${Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD}"
                 null -> null
             },
             nothingNew = if (offered.nothingNew) "Nothing new to import · every Offered Bank Account is added, not imported or reports a balance" else null,
@@ -309,8 +313,10 @@ class ServicePageViewModel(
             budgets = if (page.isBudgetApp) budgetsSection else null,
             offered = if (page.isBudgetApp) null else offeredSection,
             snack = snack,
-            canFetch = !page.isBudgetApp,
+            // UC-001 BR-008: No Bank is contacted without a valid Bank Consent; this build grants none, so the Fetch is unavailable (P9-13).
+            canFetch = !page.isBudgetApp && !page.needsBankConsent,
             fetchWarning = fetchWarning,
+            fetchUnavailable = if (!page.isBudgetApp && page.needsBankConsent) "${Texts.cannotFetchWithoutBankConsents(page.name)}." else null,
         )
     }
 
@@ -416,8 +422,10 @@ class ServicePageViewModel(
         }
     }
 
-    /** UC-001 step 1: the Operator starts a Fetch of this Data Provider. */
-    fun fetch() = startFetch(confirmedDespiteWarning = false)
+    /** UC-001 step 1: the Operator starts a Fetch of this Data Provider, when the page offers it (P9-13). */
+    fun fetch() {
+        if (mutableState.value?.canFetch == true) startFetch(confirmedDespiteWarning = false)
+    }
 
     /** UC-001 A16 step 2: the Operator confirms the Fetch despite the warning. */
     fun confirmFetch() = startFetch(confirmedDespiteWarning = true)

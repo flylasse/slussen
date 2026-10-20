@@ -108,6 +108,76 @@ class SlussenDatabaseMigrationTest {
         assertTrue(query("PRAGMA foreign_key_check").isEmpty())
     }
 
+    /** Invented rows in every table of version 2: those of version 1 and a Left-Out Bank Account (S-38). */
+    private fun inventedVersion2Data() {
+        inventedVersion1Data()
+        connection.execSQL("INSERT INTO left_out_bank_account VALUES (1, 1, 'acct-2290', 'Kids Saver ••2290', 1760533200000)")
+    }
+
+    @Test
+    @DisplayName("NFR-017: slussen.db created at version 2, as the Operator's phone holds it, with rows in every table and migrated to the current version keeps every row and value, and Room accepts the result as the current version (ADR-002 §7)")
+    fun version2MigratesToTheCurrentVersionKeepingEveryValue() {
+        create(SlussenDatabase::class.java, 2)
+        inventedVersion2Data()
+        val version2Tables = tables().filter { it != "room_master_table" }
+        assertTrue(version2Tables.all { table -> query("SELECT COUNT(*) FROM `$table`").single().single() != "0" }, "every table holds a row")
+        val before = everything()
+
+        val current = RoomSchemas.currentOf(SlussenDatabase::class).version
+        (2 until current).forEach { from -> SlussenMigrations.ALL.single { it.startVersion == from }.migrate(connection) }
+
+        assertEquals(before, everything().filterKeys { it in version2Tables })
+        assertEquals(setOf("account_balance", "fetch_result"), everything().keys - version2Tables.toSet())
+        val validation = RoomSchemas.openDelegateOf(SlussenDatabase::class).onValidateSchema(connection)
+        assertTrue(validation.isValid, validation.expectedFoundMsg)
+        assertTrue(query("PRAGMA foreign_key_check").isEmpty())
+    }
+
+    @Test
+    @DisplayName("NFR-017: the Migration 2 to 3 creates account_balance and fetch_result with their indices exactly as the committed version 3 states them")
+    fun migrationSqlIsTheCommittedVersion3() {
+        val schema = File(RoomSchemas.committed, "${SlussenDatabase::class.java.name}/3.json").readText()
+        val expected = listOf("account_balance", "fetch_result").flatMap { table ->
+            val entity = schema.substringAfter("\"tableName\": \"$table\"").substringBefore("\"tableName\"")
+            Regex(""""createSql"\s*:\s*"([^"]*)"""").findAll(entity).map { it.groupValues[1].replace("\${TABLE_NAME}", table) }.toList()
+        }
+
+        val statements = (SlussenMigrations.MIGRATION_2_3 as SlussenMigrations.Statements).statements
+
+        assertEquals(expected, statements)
+    }
+
+    @Test
+    @DisplayName("NFR-017: after the Migration 2 to 3 a Bank Account has at most one Account Balance and a Fetch at most one Fetch Result per Bank Account, each only for a stored Bank Account and Fetch (entity model ACCOUNT_BALANCE, FETCH_RESULT; ADR-002 §2)")
+    fun migratedTablesKeepTheirRules() {
+        create(SlussenDatabase::class.java, 2)
+        inventedVersion2Data()
+        SlussenMigrations.MIGRATION_2_3.migrate(connection)
+        connection.execSQL("PRAGMA foreign_keys = ON")
+        connection.execSQL("INSERT INTO account_balance (bank_account_id, amount, currency, reported_at) VALUES (1, 5135280, 'USD', 1760533200000)")
+        connection.execSQL("INSERT INTO fetch_result (fetch_id, bank_account_id, outcome, transaction_count) VALUES (1, 1, 'Fetched', 0)")
+
+        val secondBalance = runCatching {
+            connection.execSQL("INSERT INTO account_balance (bank_account_id, amount, currency, reported_at) VALUES (1, 1, 'USD', 1760533200000)")
+        }
+        val balanceOfNoBankAccount = runCatching {
+            connection.execSQL("INSERT INTO account_balance (bank_account_id, amount, currency, reported_at) VALUES (9, 1, 'USD', 1760533200000)")
+        }
+        val secondResult = runCatching {
+            connection.execSQL("INSERT INTO fetch_result (fetch_id, bank_account_id, outcome, transaction_count) VALUES (1, 1, 'Failed', 0)")
+        }
+        val resultOfNoFetch = runCatching {
+            connection.execSQL("INSERT INTO fetch_result (fetch_id, bank_account_id, outcome, transaction_count) VALUES (9, 1, 'Fetched', 0)")
+        }
+
+        assertTrue(secondBalance.isFailure)
+        assertTrue(balanceOfNoBankAccount.isFailure)
+        assertTrue(secondResult.isFailure)
+        assertTrue(resultOfNoFetch.isFailure)
+        assertEquals(listOf(listOf("1", "5135280", "USD", "1760533200000")), query("SELECT bank_account_id, amount, currency, reported_at FROM account_balance"))
+        assertEquals(listOf(listOf("1", "1", "Fetched", "0")), query("SELECT * FROM fetch_result"))
+    }
+
     @Test
     @DisplayName("NFR-017: slussen.db created at every committed version migrates, one Migration per version, to a schema Room accepts as the current version (ADR-002 §7)")
     fun everyCommittedVersionMigrates() {

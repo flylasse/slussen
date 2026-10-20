@@ -122,6 +122,8 @@ data class BankAccountStatus(
     val notYetUploaded: NotYetUploaded,
     val balance: BalanceComparison,
     val blocked: List<Blocked>,
+    /** The Data Provider that fetches the Bank Account, whose Fetch removes a failed Fetch (BR-006, A6); null for a file-imported one. */
+    val dataProviderId: Long?,
 )
 
 /** One Source of the selected Budget (steps 5-6). */

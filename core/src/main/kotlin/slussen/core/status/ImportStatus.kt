@@ -264,6 +264,7 @@ class ImportStatus(
             notYetUploaded = NotYetUploaded(counts?.eligible ?: 0, counts?.waitingForDecision ?: 0),
             balance = balance(bankAccount, budget, snapshot),
             blocked = bankAccountBlocked(bankAccount, budget, snapshot),
+            dataProviderId = bankAccount.dataProviderId,
         )
     }
 

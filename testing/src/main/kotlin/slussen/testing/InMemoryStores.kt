@@ -1,6 +1,7 @@
 package slussen.testing
 
 import slussen.core.port.AddOutcome
+import slussen.core.port.BankAccountDelivery
 import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
 import slussen.core.port.BackupSizeMonitor
@@ -44,6 +45,7 @@ import slussen.core.port.StoredBudget
 import slussen.core.port.StoredBudgetAccount
 import slussen.core.port.StoredDataProvider
 import slussen.core.port.StoredFetch
+import slussen.core.port.StoredFetchResult
 import slussen.core.port.StoredFileFormat
 import slussen.core.port.StoredLeftOutBankAccount
 import slussen.core.port.StoredOfferedBankAccount
@@ -177,8 +179,8 @@ class InMemoryOfferedBankAccountStore : OfferedBankAccountStore {
 }
 
 /**
- * In-memory fake of [ConnectionStore] with the refusals of O-15, all or nothing like the real one, and of [MappingStore]
- * (O-13), with the Left-Out Bank Accounts and Manually Kept Accounts of S-38.
+ * In-memory fake of [ConnectionStore] with the refusals of O-15, all or nothing like the real one, with the Left-Out
+ * Bank Accounts and Manually Kept Accounts of S-38, and of [MappingStore] (O-13).
  */
 class InMemoryConnectionStore : ConnectionStore, MappingStore {
     val budgetList = mutableListOf<StoredBudget>()
@@ -361,7 +363,8 @@ class FixedBackupSizeMonitor(
 
 /**
  * In-memory fake of [ImportStatusStore], the data the slices of UC-001, UC-002, UC-003 and UC-007 store, and of the
- * [FetchStore] of UC-001, which writes the same Fetches and Back-offs the import status reads.
+ * [FetchStore] of UC-001, which writes the same Fetches, Fetch Results, Account Balances and Back-offs the import status
+ * reads, all or nothing like the real one (O-1).
  */
 class InMemoryImportStatusStore : ImportStatusStore, FetchStore {
     val fetches = mutableListOf<StoredFetch>()
@@ -388,10 +391,25 @@ class InMemoryImportStatusStore : ImportStatusStore, FetchStore {
     override suspend fun fetchesOf(dataProviderId: Long): List<StoredFetch> =
         recentFetches().filter { it.dataProviderId == dataProviderId }
 
-    override suspend fun recordFetch(fetch: NewFetch, keep: Int) {
-        fetches += StoredFetch(nextFetchId++, fetch.dataProviderId, fetch.startedAt, fetch.startedBy, fetch.outcome, emptyList())
+    override suspend fun recordFetch(fetch: NewFetch, keep: Int): Long {
+        val id = nextFetchId++
+        fetches += StoredFetch(id, fetch.dataProviderId, fetch.startedAt, fetch.startedBy, fetch.outcome, emptyList())
         val kept = fetches.sortedWith(compareByDescending<StoredFetch> { it.startedAt }.thenByDescending { it.id }).take(keep)
         fetches.retainAll(kept)
+        return id
+    }
+
+    /** O-1: the Fetch Result of one Bank Account and, when reported, its Account Balance in place of the stored one. */
+    override suspend fun storeBankAccountDelivery(delivery: BankAccountDelivery) {
+        val index = fetches.indexOfFirst { it.id == delivery.fetchId }
+        require(index >= 0) { "No Fetch ${delivery.fetchId}: a Fetch Result belongs to a recorded Fetch (FETCH_RESULT.fetch_id)" }
+        val fetch = fetches[index]
+        require(fetch.results.none { it.bankAccountId == delivery.bankAccountId }) { "One Fetch Result per Fetch and Bank Account" }
+        fetches[index] = fetch.copy(results = fetch.results + StoredFetchResult(delivery.bankAccountId, delivery.outcome, delivery.transactionCount))
+        delivery.balance?.let { balance ->
+            balances.removeAll { it.bankAccountId == delivery.bankAccountId }
+            balances += StoredAccountBalance(delivery.bankAccountId, balance.amount, balance.currency, balance.reportedAt)
+        }
     }
 
     override suspend fun backOffsOf(dataProviderId: Long): List<StoredBackOff> = backOffList.filter { it.dataProviderId == dataProviderId }

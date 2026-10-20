@@ -51,6 +51,8 @@ data class BudgetUi(
     val counts: String,
     val sources: List<SourceCard>,
     val bankAccounts: List<BankAccountCard>,
+    /** P9-15: what this build does not show yet. */
+    val note: String? = null,
 )
 
 /** A Budget tab (UC-008 steps 4-8), from stored data only. */
@@ -64,7 +66,8 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
             val workspace = services.status.workspace(budgetId)
             val serviceByName = services.settingsOverview.entries().entries
                 .mapNotNull { entry -> entry.service?.let { entry.name to it } }.toMap()
-            fun lines(blocked: List<Blocked>) = blocked.map { BlockedLine(Texts.blocked(it, formats), action(it, serviceByName)) }
+            fun lines(blocked: List<Blocked>, dataProvider: ServiceKey?) =
+                blocked.map { BlockedLine(Texts.blocked(it, formats), action(it, serviceByName[it.subject] ?: dataProvider)) }
             mutableState.value = BudgetUi(
                 title = workspace.summary.name,
                 subtitle = "Budget · ${workspace.summary.currency.code} · from stored data",
@@ -76,7 +79,7 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                         health = Texts.health(source.health, formats),
                         freshness = freshness(source.freshness, formats),
                         counts = "Not yet uploaded: " + counts(source.notYetUploaded),
-                        blocked = lines(source.blocked),
+                        blocked = lines(source.blocked, dataProvider = null),
                     )
                 },
                 bankAccounts = workspace.bankAccounts.map { account ->
@@ -87,9 +90,11 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                         freshness = freshness(account.freshness, formats),
                         counts = counts(account.notYetUploaded),
                         balance = balance(account.balance, formats),
-                        blocked = lines(account.blocked),
+                        blocked = lines(account.blocked, account.dataProviderId?.let(ServiceKey::dataProvider)),
                     )
                 },
+                // P9-15: while a Fetch asks for balances only (O-P2-54), the tab says why the counts stay at 0.
+                note = Texts.TRANSACTIONS_NOT_IN_THIS_BUILD,
             )
         }
     }
@@ -99,17 +104,22 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
     private fun freshness(at: Instant?, formats: Formats) =
         at?.let { "Freshness: data as of ${formats.dateTime(it)}" } ?: "Freshness: no data yet"
 
-    /** UC-008 A6: the remedy of a Blocked Reason starts its use case; of those, this build has Manage Service Credentials. */
-    private fun action(blocked: Blocked, serviceByName: Map<String, ServiceKey>): RemedyAction? {
+    /**
+     * UC-008 A6: the remedy of a Blocked Reason starts its use case; of those, this build has Manage Service Credentials
+     * and Fetch Transactions, both on the service's page in Settings ([service]: the service the Blocked Reason names,
+     * or the Data Provider of the Bank Account it names). A remedy this build does not have says so plainly (P9-13).
+     */
+    private fun action(blocked: Blocked, service: ServiceKey?): RemedyAction? {
         val title = Texts.remedy(blocked.remedy) ?: return null
         return when (blocked.remedy) {
-            Remedy.EnterCredentials -> RemedyAction(title, available = true, service = serviceByName[blocked.subject], note = null)
-            Remedy.GrantBankConsent -> RemedyAction(title, available = false, service = null, note = "comes with Grant Bank Consent")
+            Remedy.EnterCredentials -> RemedyAction(title, available = true, service = service, note = null)
+            // UC-008 BR-006: A failed Fetch is removed by fetching again (UC-001), on its Data Provider's page.
+            Remedy.FetchAgain -> RemedyAction(title, available = service != null, service = service, note = null)
+            Remedy.GrantBankConsent -> RemedyAction(title, available = false, service = null, note = Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD)
             Remedy.IdentifyBankAccount, Remedy.MoveAccountMapping ->
                 RemedyAction(title, available = false, service = null, note = "comes with Manage Account Mappings")
-            Remedy.FetchAgain -> RemedyAction(title, available = false, service = null, note = "comes with Fetch Transactions")
             Remedy.CompareAndConfirm ->
-                RemedyAction(title, available = false, service = null, note = "comes with Compare With the Budget App")
+                RemedyAction(title, available = false, service = null, note = "Comparing with the Budget App is not in this build yet")
             Remedy.WaitUntilItEnds -> null
         }
     }

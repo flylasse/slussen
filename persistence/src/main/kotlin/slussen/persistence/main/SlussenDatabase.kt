@@ -16,7 +16,8 @@ import java.time.LocalDate
  * `slussen.db` (ADR-002 §1): the only database that is backed up and transferred, holding all Decision-Critical
  * Data. Version 1, as committed at `96712aa`, holds the tables of UC-008, UC-013, UC-014 and the Fetch of UC-001; it is
  * final, because the Operator's phone holds it (ADR-002 §7, S-39). Version 2 adds `left_out_bank_account` (S-38) with
- * the hand-written [SlussenMigrations.MIGRATION_1_2]. Every later schema change, also a table a later slice adds,
+ * the hand-written [SlussenMigrations.MIGRATION_1_2]; version 3 adds `account_balance` and `fetch_result` (UC-001 steps
+ * 8, 11; Phase 8f) with [SlussenMigrations.MIGRATION_2_3]. Every later schema change, also a table a later slice adds,
  * raises the version by one, commits its schema file and adds a Migration from the version before.
  */
 @Database(
@@ -32,11 +33,13 @@ import java.time.LocalDate
         LeftOutBankAccountEntity::class,
         ProviderRequestEntity::class,
         FetchEntity::class,
+        FetchResultEntity::class,
         BackOffEntity::class,
+        AccountBalanceEntity::class,
         RecoveryCheckEntity::class,
         CoordinatorStateEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(StorageConverters::class)
@@ -245,7 +248,7 @@ data class ProviderRequestEntity(
     @ColumnInfo(name = "sent_at") val sentAt: Instant,
 )
 
-/** `FETCH` (entity model). Its `fetch_result` rows come with O-1, in the slice that builds the Comparison (UC-003). */
+/** `FETCH` (entity model); its Fetch Results are the `fetch_result` rows O-1 stores for it. */
 @Entity(
     tableName = "fetch",
     indices = [Index(value = ["data_provider_id", "started_at"])],
@@ -257,6 +260,44 @@ data class FetchEntity(
     @ColumnInfo(name = "started_at") val startedAt: Instant,
     @ColumnInfo(name = "started_by") val startedBy: String,
     @ColumnInfo(name = "outcome") val outcome: String,
+)
+
+/**
+ * `FETCH_RESULT` (entity model): the outcome of one Fetch for one Bank Account, keyed by both (ADR-002 §2), stored by O-1
+ * (UC-001 step 11) and removed with its Fetch when the Fetch leaves the kept history.
+ */
+@Entity(
+    tableName = "fetch_result",
+    primaryKeys = ["fetch_id", "bank_account_id"],
+    indices = [Index(value = ["bank_account_id"])],
+    foreignKeys = [
+        ForeignKey(entity = FetchEntity::class, parentColumns = ["id"], childColumns = ["fetch_id"]),
+        ForeignKey(entity = BankAccountEntity::class, parentColumns = ["id"], childColumns = ["bank_account_id"]),
+    ],
+)
+data class FetchResultEntity(
+    @ColumnInfo(name = "fetch_id") val fetchId: Long,
+    @ColumnInfo(name = "bank_account_id") val bankAccountId: Long,
+    @ColumnInfo(name = "outcome") val outcome: String,
+    @ColumnInfo(name = "transaction_count") val transactionCount: Int,
+)
+
+/**
+ * `ACCOUNT_BALANCE` (entity model): the most recent balance of a Bank Account as its Data Provider reported it, `amount`
+ * in thousandths of the currency unit (ADR-002 §2). A Bank Account has at most one (`BANK_ACCOUNT ||--o| ACCOUNT_BALANCE`),
+ * which O-1 replaces (UC-001 step 8).
+ */
+@Entity(
+    tableName = "account_balance",
+    indices = [Index(value = ["bank_account_id"], unique = true)],
+    foreignKeys = [ForeignKey(entity = BankAccountEntity::class, parentColumns = ["id"], childColumns = ["bank_account_id"])],
+)
+data class AccountBalanceEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "bank_account_id") val bankAccountId: Long,
+    @ColumnInfo(name = "amount") val amount: Long,
+    @ColumnInfo(name = "currency") val currency: String,
+    @ColumnInfo(name = "reported_at") val reportedAt: Instant,
 )
 
 /** `BACK_OFF` (entity model); `bank_id` empty when the whole Data Provider waits. */
