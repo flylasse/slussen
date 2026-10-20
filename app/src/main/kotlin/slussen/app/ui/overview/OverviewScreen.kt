@@ -26,21 +26,38 @@ import slussen.app.ui.components.SlussenCard
 import slussen.app.ui.theme.SlussenColors
 
 /**
- * The Overview tab (UC-008 steps 1-3, A1, A7, A8; `docs/mockups/overview.html`): every Budget with its counts and blocked
- * states, the expiring Bank Consents, the notices that appear at every opening, and the Fetch of all Data Providers
- * (UC-001 A11, with the confirmation of a warning, A16).
+ * The Overview tab (UC-008 steps 1-3, A1, A7, A8, A10; `docs/mockups/overview.html`): while no Bank Account is added,
+ * only the card that leads to Settings (`#new-installation`, `#first-run-next`); otherwise every Budget with its counts
+ * and blocked states, the expiring Bank Consents, the notices that appear at every opening, and the Fetch of all Data
+ * Providers (UC-001 A11, with the confirmation of a warning, A16).
  */
 @Composable
 fun OverviewScreen(
     ui: OverviewUi,
     onBudget: (Long) -> Unit,
-    onSetUp: () -> Unit,
+    onOpenSettings: () -> Unit,
     onConfirmRecoveryCheck: () -> Unit,
     onRecentFetches: () -> Unit,
     onFetchAll: () -> Unit,
     onConfirmFetch: () -> Unit,
     onCancelFetch: () -> Unit,
 ) {
+    val firstRun = ui.firstRun
+    if (firstRun != null) {
+        // UC-008 BR-011: While no Bank Account is added, the Overview shows nothing but the card that leads to Settings.
+        LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
+            item {
+                ScreenTitle("Slussen", ui.heading)
+                SlussenCard(border = SlussenColors.Teal) {
+                    Text(firstRun.title, color = SlussenColors.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(firstRun.next, color = SlussenColors.Teal, fontSize = 13.sp)
+                    if (firstRun.then != null) Muted(firstRun.then)
+                    Button(onClick = onOpenSettings) { Text("Open Settings") }
+                }
+            }
+        }
+        return
+    }
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
             ScreenTitle("Slussen", ui.heading)
@@ -56,14 +73,6 @@ fun OverviewScreen(
         if (ui.message != null) item { Banner(ui.message, null, SlussenColors.Surface2, SlussenColors.Text) }
         if (ui.backupWarning != null) item { Banner(ui.backupWarning, null) }
         items(ui.expiringConsents) { Banner(it, "Renewing a Bank Consent comes with Grant Bank Consent") }
-        if (ui.noBankAccountAdded) {
-            item {
-                SlussenCard {
-                    Text("No Bank Account added yet", color = SlussenColors.Text, fontWeight = FontWeight.SemiBold)
-                    Button(onClick = onSetUp) { Text("Set up Slussen") }
-                }
-            }
-        }
         items(ui.budgets) { budget ->
             SlussenCard(modifier = Modifier.clickable { onBudget(budget.budgetId) }) {
                 Row {

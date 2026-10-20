@@ -14,9 +14,8 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
 import slussen.app.platform.version.installedAppVersion
-import slussen.app.ui.connections.ConnectionsViewModel
-import slussen.app.ui.connections.SettingsScreen
-import slussen.app.ui.service.ServicePageScreen
+import slussen.app.ui.settings.SettingsScreen
+import slussen.app.ui.settings.SettingsViewModel
 import slussen.app.ui.service.ServicePageViewModel
 import slussen.app.ui.theme.SlussenTheme
 import slussen.pluginapi.testfixtures.UseCase
@@ -35,20 +34,11 @@ class UC010AdjustSettingsScreenIT {
     @DisplayName("Steps 1-4, A11: a Request Limit the Data Provider does not publish opens its editor with the default and range, and resets to the default")
     fun requestLimitEditorOpensAndResets() = compose.use {
         val fixture = ScreenFixture()
-        val viewModel = ServicePageViewModel(fixture.services, fixture.slice.openBankingKey, fromSetup = false)
+        val viewModel = ServicePageViewModel(fixture.services, fixture.slice.openBankingKey)
         onMain { viewModel.load() }
         setContent {
             SlussenTheme {
-                viewModel.state.collectAsState().value?.let {
-                    ServicePageScreen(
-                        it, onBack = {}, onStartEntering = viewModel::startEntering, onCancelEntering = viewModel::cancelEntering,
-                        onSave = viewModel::save, onRequestRemoval = viewModel::requestRemoval, onCancelRemoval = viewModel::cancelRemoval,
-                        onConfirmRemoval = viewModel::confirmRemoval, onChooseBudgets = {},
-                        onEditRequestLimit = viewModel::startEditingRequestLimit, onSaveRequestLimit = viewModel::saveRequestLimit,
-                        onResetRequestLimit = viewModel::resetRequestLimit, onCancelRequestLimit = viewModel::cancelRequestLimit,
-                        onFetch = viewModel::fetch, onConfirmFetch = viewModel::confirmFetch, onCancelFetch = viewModel::cancelFetch,
-                    )
-                }
+                ServicePage(viewModel)
             }
         }
 
@@ -67,11 +57,11 @@ class UC010AdjustSettingsScreenIT {
         val installed = InstrumentationRegistry.getInstrumentation().targetContext.installedAppVersion()
         assertTrue(installed.debugBuild, "the instrumented tests run the debug variant, slussen.app.debug")
         assertTrue(Regex("""\d+\.\d+\.\d+""").matches(installed.versionName), "the version name from VERSION: ${installed.versionName}")
-        val viewModel = ConnectionsViewModel(ScreenFixture(installed).services)
+        val viewModel = SettingsViewModel(ScreenFixture(installed).services)
         onMain { viewModel.load() }
         setContent {
             SlussenTheme {
-                viewModel.state.collectAsState().value?.let { SettingsScreen(it, onService = {}, onBankAccounts = {}, onSetUp = {}) }
+                viewModel.state.collectAsState().value?.let { SettingsScreen(it, onEntry = {}, onAccountMappings = {}, onRecentFetches = {}) }
             }
         }
 

@@ -1,5 +1,10 @@
 package slussen.app.ui
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import slussen.app.ui.service.ConnectActions
+import slussen.app.ui.service.ServicePageScreen
+import slussen.app.ui.service.ServicePageViewModel
 import slussen.testing.TestSlice
 import java.time.ZoneId
 
@@ -11,7 +16,7 @@ class ScreenFixture(appVersion: AppVersion = AppVersion.of(packageName = "slusse
     val slice = TestSlice()
     val services = UiServices(
         credentials = slice.credentials,
-        connections = slice.connections,
+        settingsOverview = slice.settingsOverview,
         connect = slice.connect,
         providerSettings = slice.providerSettings,
         mappings = slice.mappings,
@@ -21,4 +26,43 @@ class ScreenFixture(appVersion: AppVersion = AppVersion.of(packageName = "slusse
         clock = slice.clock,
         appVersion = appVersion,
     )
+}
+
+/** The page of [viewModel] with every action wired as `SlussenScreens` wires it; Map does [onMap]. */
+@Composable
+fun ServicePage(viewModel: ServicePageViewModel, onMap: () -> Unit = {}) {
+    viewModel.state.collectAsState().value?.let {
+        ServicePageScreen(
+            it, onBack = {}, onStartEntering = viewModel::startEntering, onCancelEntering = viewModel::cancelEntering,
+            onSave = viewModel::save, onRequestRemoval = viewModel::requestRemoval, onCancelRemoval = viewModel::cancelRemoval,
+            onConfirmRemoval = viewModel::confirmRemoval,
+            connect = ConnectActions(
+                onChooseBudgets = viewModel::chooseBudgets,
+                onToggleBudget = viewModel::toggleBudget,
+                onServeBudgets = viewModel::serveBudgets,
+                onCancelChoosing = viewModel::cancelChoosing,
+                onReceives = viewModel::setReceives,
+                onSwitchImport = viewModel::switchImport,
+                onUndo = viewModel::undo,
+                onMap = onMap,
+                onDismissSnack = viewModel::dismissSnack,
+            ),
+            onEditRequestLimit = viewModel::startEditingRequestLimit, onSaveRequestLimit = viewModel::saveRequestLimit,
+            onResetRequestLimit = viewModel::resetRequestLimit, onCancelRequestLimit = viewModel::cancelRequestLimit,
+            onFetch = viewModel::fetch, onConfirmFetch = viewModel::confirmFetch, onCancelFetch = viewModel::cancelFetch,
+        )
+    }
+}
+
+/** The Account Mappings of [viewModel] with every action wired as `SlussenScreens` wires them; a list line opens [onService]. */
+@Composable
+fun AccountMappings(viewModel: slussen.app.ui.mappings.AccountMappingsViewModel, onService: (slussen.core.port.ServiceKey) -> Unit = {}) {
+    viewModel.state.collectAsState().value?.let {
+        slussen.app.ui.mappings.AccountMappingsScreen(
+            it, onBack = {}, onMapAll = viewModel::mapAll, onMapOne = viewModel::mapOne, onService = onService,
+            card = slussen.app.ui.mappings.cardActionsOf(viewModel), onOpenTypeAndBank = viewModel::openTypeAndBank,
+            onSaveTypeAndBank = viewModel::saveTypeAndBank, onConfirmClearing = viewModel::confirmClearing,
+            onCancelClearing = viewModel::cancelClearing, onCancelTypeAndBank = viewModel::cancelTypeAndBank,
+        )
+    }
 }

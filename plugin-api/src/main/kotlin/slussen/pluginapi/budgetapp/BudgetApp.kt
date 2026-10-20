@@ -28,7 +28,7 @@ public interface BudgetApp {
  * optional capabilities, each with one fixed behaviour of the core when false (§4.2.2).
  */
 public data class BudgetAppProfile(
-    /** The name on its page in Connections (§4.6). */
+    /** The name on its entry in Settings and its page (§4.6). */
     val name: String,
     /** At least the length of every Import Identifier protocol version this build produces (ADR-008 §6). */
     val importIdentifierMaxLength: Int,

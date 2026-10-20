@@ -26,7 +26,7 @@ class UiFixture(
     val zone: ZoneId = ZoneId.of("Europe/Stockholm")
     val services = UiServices(
         credentials = slice.credentials,
-        connections = slice.connections,
+        settingsOverview = slice.settingsOverview,
         connect = slice.connect,
         providerSettings = slice.providerSettings,
         mappings = slice.mappings,

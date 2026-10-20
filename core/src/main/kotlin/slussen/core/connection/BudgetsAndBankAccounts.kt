@@ -32,11 +32,12 @@ import java.time.Clock
 import java.time.LocalDate
 
 /**
- * Connect Budgets and Bank Accounts (UC-013), `:core` `connection` (ADR-001 §7): the served Budgets; the two pairing
- * steps of S-38, choosing what to bring in with the numbers stated before the rest is left out (BR-011, BR-012), then one
- * Offered Bank Account at a time with the proposed Budget Account (BR-013); pairing it with a free Budget Account of the
- * same currency, the generated identifier, the proposed name and the Start Date; Manually Kept Accounts (BR-014),
- * Left-Out Bank Accounts brought back (A10); and Bank Accounts of a File Format.
+ * Connect Budgets and Bank Accounts (UC-013), `:core` `connection` (ADR-001 §7): the served Budgets and, under each, its
+ * Budget Accounts with the switch "Receives from Slussen" (BR-014, A9); each Data Provider's Offered Bank Accounts,
+ * imported by default, a Left-Out Bank Account recorded at once when its import is switched off and brought back when it
+ * is switched on (BR-011, BR-012, A10); the Bank Accounts to map, one at a time with the proposed Budget Account
+ * (BR-013); pairing with a free Budget Account of the same currency, the generated identifier, the proposed name and the
+ * Start Date; and Bank Accounts of a File Format, added and mapped on its page (A4, BR-006).
  */
 class BudgetsAndBankAccounts(
     private val plugins: RegisteredPlugins,
@@ -48,11 +49,6 @@ class BudgetsAndBankAccounts(
     private val random: RandomSource,
     private val clock: Clock,
 ) {
-    // UC-013 BR-008: Setting up starts with the service credentials of the Budget App and of the Data Providers.
-    suspend fun credentialSteps(): List<CredentialStep> = plugins.serviceKeys.map { service ->
-        CredentialStep(service, plugins.nameOf(service), service == ServiceKey.budgetApp, credentials.status(service))
-    }
-
     suspend fun readBudgets(): BudgetsRead {
         // UC-013 BR-008: Budgets are chosen once the Budget App's credentials are accepted; until then it is not contacted.
         val credential = credentials.stored(ServiceKey.budgetApp) ?: return BudgetsRead.BudgetAppCredentialsMissing
@@ -130,108 +126,124 @@ class BudgetsAndBankAccounts(
     }
 
     private val apart = LeftOutAndKept(plugins, offered, journal)
+    private val reads = ConnectionReads(plugins, store, offered)
 
-    /**
-     * Step 5: for each Source the Offered Bank Accounts that are neither added nor left out, grouped by Bank through
-     * their Bank's name (BR-002, BR-012), the proposed matches of A6 apart, the free Budget Accounts, and the Left-Out
-     * Bank Accounts (BR-011).
-     */
-    suspend fun pairing(): Pairing {
-        val budgets = store.budgets()
-        val bankAccounts = store.bankAccounts()
-        val banks = store.banks().associateBy { it.id }
-        val offeredAll = offered.offered()
-        val leftOut = store.leftOutBankAccounts()
-        val leftOutKeys = leftOut.map { it.dataProviderId to it.providerReference }.toSet()
-        val free = freeBudgetAccounts(budgets, bankAccounts)
-        val sources = plugins.dataProviders.mapNotNull { provider ->
-            val ofProvider = offeredAll.filter { it.dataProviderId == provider.stored.id }
-            val hasCredentials = credentials.status(provider.key) != CredentialStatus.Missing
-            if (!hasCredentials && ofProvider.isEmpty()) return@mapNotNull null
-            // UC-013 BR-011: A Left-Out Bank Account is not offered for pairing and never proposed as the match of an added Bank Account.
-            val undecided = ofProvider.filter { !isAdded(it, bankAccounts) && (it.dataProviderId to it.providerReference) !in leftOutKeys }
-            // UC-009 BR-004: An Offered Bank Account that is probably an added Bank Account is proposed for confirmation, never guessed.
-            val proposed = undecided.filter { it.proposedBankAccountId != null }
-            val toAdd = undecided.filter { it !in proposed }
-            SourcePairing(
-                dataProviderId = provider.stored.id,
-                name = provider.stored.name,
-                offered = toAdd.map { view(it, banks[it.bankId]?.name) },
-                proposedMatches = proposed.mapNotNull { offer ->
-                    bankAccounts.firstOrNull { it.id == offer.proposedBankAccountId }?.let {
-                        ProposedMatch(view(offer, banks[offer.bankId]?.name), it.id, it.name)
-                    }
-                },
-                remedy = when {
-                    ofProvider.isNotEmpty() -> null
-                    provider.stored.needsBankConsent -> OfferRemedy.GrantBankConsent
-                    else -> OfferRemedy.StartFetch
+    /** Step 4, BR-014: each served Budget with its Budget Accounts, each with "Receives from Slussen" or its Account Mapping. */
+    suspend fun servedBudgetAccounts(): List<ServedBudgetOnPage> {
+        val snapshot = reads.snapshot()
+        val mappedFrom = snapshot.bankAccounts.mapNotNull { bankAccount -> bankAccount.mapping?.let { it.budgetAccountId to bankAccount.name } }.toMap()
+        return snapshot.budgets.filter { it.served }.map { budget ->
+            ServedBudgetOnPage(
+                budgetId = budget.id,
+                name = budget.name,
+                currency = budget.currency,
+                budgetAccounts = budget.budgetAccounts.map { account ->
+                    val mapping = mappedFrom[account.id]
+                    BudgetAccountOnPage(
+                        budgetAccountId = account.id,
+                        name = account.name,
+                        balance = account.balance,
+                        // UC-013 BR-014: A Budget Account that receives through an Account Mapping shows it instead of a switch; every other one receives from Slussen unless it is a Manually Kept Account.
+                        receivesFromSlussen = if (mapping != null) null else !account.manuallyKept,
+                        mappedFrom = mapping,
+                    )
                 },
             )
         }
-        val stored = offeredAll.any { offer -> sources.any { it.dataProviderId == offer.dataProviderId } }
-        return Pairing(
-            sources = sources,
-            freeBudgetAccounts = free,
-            leftOut = leftOut.map(apart::view),
-            nothingToBringIn = stored && sources.all { it.offered.isEmpty() },
-        )
     }
 
-    /** The free Budget Accounts: of a served Budget, receiving through no Account Mapping, not a Manually Kept Account. */
-    private fun freeBudgetAccounts(budgets: List<StoredBudget>, bankAccounts: List<StoredBankAccount>): List<FreeBudgetAccount> {
-        val mapped = bankAccounts.mapNotNull { it.mapping?.budgetAccountId }.toSet()
-        // UC-013 BR-002: Only Budget Accounts of served Budgets that receive through no Account Mapping and are not Manually Kept Accounts are offered for pairing.
-        return budgets.filter { it.served }.flatMap { budget ->
-            budget.budgetAccounts.filter { !it.manuallyKept && it.id !in mapped }.map {
-                FreeBudgetAccount(it.id, budget.name, budget.currency, it.name, it.balance)
-            }
-        }
-    }
-
-    /** An Offered Bank Account that is an added Bank Account, or reports the balance of one (`LEFT_OUT_BANK_ACCOUNT` constraints). */
-    private fun isAdded(offer: StoredOfferedBankAccount, bankAccounts: List<StoredBankAccount>): Boolean = bankAccounts.any {
-        (it.dataProviderId == offer.dataProviderId && it.providerReference == offer.providerReference) ||
-            (it.balanceDataProviderId == offer.dataProviderId && it.balanceProviderReference == offer.providerReference)
-    }
-
-    /** Step 7, A12: how many of the shown Offered Bank Accounts are brought in and how many left out; nothing is stored. */
-    suspend fun bringInStatement(chosen: Set<Long>): BringInStatement {
-        val shown = pairing().sources.flatMap { it.offered }
-        // UC-013 BR-012: Before anything is left out, Slussen states how many are brought in and how many are left out.
-        return BringInStatement(shown.filter { it.offeredBankAccountId in chosen }, shown.filter { it.offeredBankAccountId !in chosen })
-    }
-
-    /**
-     * Steps 8-9, A12: the Operator confirmed the numbers stated for the [shown] Offered Bank Accounts with [chosen] brought
-     * in. Each shown one not chosen becomes a Left-Out Bank Account, all in one O-15 transaction, recorded by name; the
-     * chosen ones are taken one at a time in the order shown.
-     */
-    suspend fun bringIn(shown: List<Long>, chosen: Set<Long>): BringIn {
+    /** A9, BR-014: "Receives from Slussen" switched off marks the Budget Account as a Manually Kept Account; on unmarks it. */
+    suspend fun setReceivesFromSlussen(budgetAccountId: Long, receives: Boolean): KeepOutcome {
         val result = coordinator.run(OperationKind.BudgetAndBankAccountChange, StartedBy.Operator) {
-            val sources = pairing().sources
-            val current = sources.flatMap { source -> source.offered.map { it to source } }
-            // UC-013 BR-012: Nothing is left out unless the Operator confirmed the numbers stated for exactly the Offered Bank Accounts shown.
-            if (current.map { it.first.offeredBankAccountId }.toSet() != shown.toSet()) return@run BringIn.ShownChanged
-            val stored = offered.offered().associateBy { it.id }
-            val now = clock.instant()
-            val leftOut = current.filter { (view, _) -> view.offeredBankAccountId !in chosen }.map { (view, source) ->
-                val offer = stored.getValue(view.offeredBankAccountId)
-                NewLeftOutBankAccount(offer.dataProviderId, offer.providerReference, proposedName(offer, source.name), now)
-            }
-            // UC-013 BR-011: Each shown Offered Bank Account not chosen is remembered by its Data Provider and reference as a Left-Out Bank Account.
-            if (leftOut.isNotEmpty() && !store.leaveOut(leftOut)) return@run BringIn.ShownChanged
-            leftOut.forEach { apart.recordLeftOut(it.name, it.dataProviderId) }
-            BringIn.Confirmed(
-                queue = current.map { it.first.offeredBankAccountId }.filter { it in chosen },
-                leftOut = leftOut.size,
-            )
+            // UC-013 BR-014: Switched off, the Budget Account is marked as a Manually Kept Account; switched on again, it is unmarked and offered for pairing again.
+            apart.setManuallyKept(store.budgets(), budgetAccountId, manuallyKept = !receives, store::setManuallyKept)
         }
         return when (result) {
             is OperationResult.Ran -> result.value
-            is OperationResult.Refused -> BringIn.Unavailable(result.reason)
+            is OperationResult.Refused -> KeepOutcome.Unavailable(result.reason)
         }
     }
+
+    /**
+     * Steps 7-8, BR-012: for each Source the Bank Accounts to map, imported by default and neither added nor left out,
+     * the proposed matches of A6 apart, the free Budget Accounts, and the Left-Out Bank Accounts (BR-011).
+     */
+    suspend fun pairing(): Pairing {
+        val snapshot = reads.snapshot()
+        val sources = plugins.dataProviders.mapNotNull { provider ->
+            val ofProvider = snapshot.offered.filter { it.dataProviderId == provider.stored.id }
+            val hasCredentials = credentials.status(provider.key) != CredentialStatus.Missing
+            if (!hasCredentials && ofProvider.isEmpty()) return@mapNotNull null
+            val states = ofProvider.map { it to reads.stateOf(it, snapshot) }
+            SourcePairing(
+                dataProviderId = provider.stored.id,
+                name = provider.stored.name,
+                offered = states.filter { it.second == ImportState.ToMap }.map { reads.view(it.first, snapshot) },
+                proposedMatches = states.mapNotNull { (offer, state) ->
+                    (state as? ImportState.ProbablyAdded)?.let { ProposedMatch(reads.view(offer, snapshot), it.bankAccountId, it.bankAccountName) }
+                },
+                remedy = remedyOf(provider.stored.needsBankConsent, ofProvider.isEmpty()),
+            )
+        }
+        return Pairing(
+            sources = sources,
+            freeBudgetAccounts = reads.freeBudgetAccounts(snapshot),
+            leftOut = snapshot.leftOut.map(reads::leftOutView),
+        )
+    }
+
+    /** A3: a Fetch, or for a Data Provider that needs one a Bank Consent, while it offers nothing. */
+    private fun remedyOf(needsBankConsent: Boolean, nothingStored: Boolean): OfferRemedy? = when {
+        !nothingStored -> null
+        needsBankConsent -> OfferRemedy.GrantBankConsent
+        else -> OfferRemedy.StartFetch
+    }
+
+    /** Step 8, BR-012, UC-009 BR-014: the Bank Accounts to map of every Data Provider, one line each. */
+    suspend fun toMap(): List<BankAccountToMap> = reads.toMap(reads.snapshot())
+
+    /** Step 5, A3, A6, A11, BR-012: the Offered Bank Accounts of one Data Provider with how each stands. */
+    suspend fun offeredOf(dataProviderId: Long): OfferedOfProvider {
+        val provider = plugins.dataProviders.single { it.stored.id == dataProviderId }
+        val snapshot = reads.snapshot()
+        val ofProvider = snapshot.offered.filter { it.dataProviderId == dataProviderId }
+        val shown = ofProvider.map { OfferedOnPage(reads.view(it, snapshot), reads.stateOf(it, snapshot)) }
+        val delivered = ofProvider.map { it.providerReference }.toSet()
+        return OfferedOfProvider(
+            dataProviderId = dataProviderId,
+            name = provider.stored.name,
+            offered = shown,
+            // UC-013 BR-011: A Left-Out Bank Account is shown as not imported among its Data Provider's Offered Bank Accounts, also when the latest delivery does not hold it (A10 step 2).
+            leftOutNotDelivered = snapshot.leftOut.filter { it.dataProviderId == dataProviderId && it.providerReference !in delivered }.map(reads::leftOutView),
+            remedy = remedyOf(provider.stored.needsBankConsent, ofProvider.isEmpty()),
+            nothingNew = shown.isNotEmpty() && shown.none { it.state == ImportState.ToMap },
+        )
+    }
+
+    /** Steps 6-7, BR-011, BR-012: the import of one Offered Bank Account switched off makes it a Left-Out Bank Account at once. */
+    suspend fun switchImportOff(offeredBankAccountId: Long): ImportSwitchedOff {
+        val result = coordinator.run(OperationKind.BudgetAndBankAccountChange, StartedBy.Operator) {
+            val snapshot = reads.snapshot()
+            val offer = snapshot.offered.firstOrNull { it.id == offeredBankAccountId } ?: return@run ImportSwitchedOff.NoSwitch
+            // UC-013 BR-012: Only an imported Offered Bank Account has a switch that leaves it out; an added one, a proposed match, a balance source or one already left out has none.
+            if (reads.stateOf(offer, snapshot) != ImportState.ToMap) return@run ImportSwitchedOff.NoSwitch
+            val name = proposedName(offer, reads.sourceName(offer.dataProviderId))
+            // UC-013 BR-012: Switching the import off makes it a Left-Out Bank Account at once, with no confirmation and no statement of numbers.
+            val stored = store.leaveOut(listOf(NewLeftOutBankAccount(offer.dataProviderId, offer.providerReference, name, clock.instant())))
+            if (!stored) return@run ImportSwitchedOff.NoSwitch
+            // UC-013 BR-011: A Left-Out Bank Account is remembered by its Data Provider and reference and recorded by its name, never by the reference.
+            apart.recordLeftOut(name, offer.dataProviderId)
+            val leftOut = store.leftOutBankAccounts().single { it.dataProviderId == offer.dataProviderId && it.providerReference == offer.providerReference }
+            ImportSwitchedOff.LeftOut(leftOut.id, name)
+        }
+        return when (result) {
+            is OperationResult.Ran -> result.value
+            is OperationResult.Refused -> ImportSwitchedOff.Unavailable(result.reason)
+        }
+    }
+
+    /** Step 10: the free Budget Accounts of the served Budgets (BR-002, BR-013), also for a File Format's Bank Account (A4). */
+    suspend fun freeBudgetAccounts(): List<FreeBudgetAccount> = reads.freeBudgetAccounts(reads.snapshot())
 
     /**
      * Step 10: the card of an Offered Bank Account that is offered for pairing, or null when it is added, left out or no
@@ -262,18 +274,7 @@ class BudgetsAndBankAccounts(
         )
     }
 
-    /** A9: marks a free Budget Account as a Manually Kept Account, recorded in the Decision Journal (BR-014). */
-    suspend fun markManuallyKept(budgetAccountId: Long): KeepOutcome {
-        val result = coordinator.run(OperationKind.BudgetAndBankAccountChange, StartedBy.Operator) {
-            apart.setManuallyKept(store.budgets(), budgetAccountId, manuallyKept = true, store::setManuallyKept)
-        }
-        return when (result) {
-            is OperationResult.Ran -> result.value
-            is OperationResult.Refused -> KeepOutcome.Unavailable(result.reason)
-        }
-    }
-
-    /** A10: brings a Left-Out Bank Account back (BR-011). */
+    /** A10: the import of a Left-Out Bank Account switched on again brings it back (BR-011). */
     suspend fun bringBack(leftOutBankAccountId: Long): BroughtBack {
         val result = coordinator.run(OperationKind.BudgetAndBankAccountChange, StartedBy.Operator) {
             apart.bringBack(leftOutBankAccountId, store::bringBack)
@@ -286,24 +287,13 @@ class BudgetsAndBankAccounts(
 
     /** A4: the Offered Bank Accounts that can report the balance of a Bank Account of a File Format, also the Left-Out ones (BR-006). */
     suspend fun balanceSources(): List<BalanceSource> {
-        val banks = store.banks().associateBy { it.id }
-        val leftOutKeys = store.leftOutBankAccounts().map { it.dataProviderId to it.providerReference }.toSet()
+        val snapshot = reads.snapshot()
+        val leftOutKeys = snapshot.leftOut.map { it.dataProviderId to it.providerReference }.toSet()
         // UC-013 BR-006: The Offered Bank Accounts offered for the balance include the Left-Out ones.
-        return offered.offered().map { offer ->
-            BalanceSource(view(offer, banks[offer.bankId]?.name), apart.sourceName(offer.dataProviderId), (offer.dataProviderId to offer.providerReference) in leftOutKeys)
+        return snapshot.offered.map { offer ->
+            BalanceSource(reads.view(offer, snapshot), reads.sourceName(offer.dataProviderId), (offer.dataProviderId to offer.providerReference) in leftOutKeys)
         }
     }
-
-    // UC-013 BR-002: Each Offered Bank Account is shown with its name or product, kind, currency, last four digits and balance.
-    private fun view(offer: StoredOfferedBankAccount, bankName: String?) = OfferedForPairing(
-        offeredBankAccountId = offer.id,
-        nameOrProduct = offer.name,
-        kind = offer.bankAccountKind,
-        currency = offer.currency,
-        lastFourDigits = offer.lastFourDigits,
-        balance = offer.balance,
-        bankName = bankName,
-    )
 
     /** The Banks Slussen already knows, to choose from at step 11 and in A4 (BR-009). */
     suspend fun knownBanks(): List<KnownBank> = store.banks().map { KnownBank(it.id, it.name) }
@@ -464,10 +454,10 @@ class BudgetsAndBankAccounts(
         }
     }
 
-    // UC-013 BR-004: The proposed name is the Bank Account's name or product with the last four digits of its number.
+    // UC-013 BR-004: The proposed name is the name or product, followed by the last four digits only when it does not already end with them.
     private fun proposedName(offer: StoredOfferedBankAccount, sourceName: String): String {
         val described = offer.name ?: offer.bankAccountKind ?: sourceName
-        val digits = offer.lastFourDigits?.let { "••$it" }
+        val digits = offer.lastFourDigits?.takeUnless { described.trimEnd().endsWith(it) }?.let { "••$it" }
         return listOfNotNull(described, digits).joinToString(" ").take(NAME_MAX_LENGTH)
     }
 
@@ -484,6 +474,49 @@ class BudgetsAndBankAccounts(
 
     fun fileFormats(): List<FileFormatChoice> = plugins.fileFormats.map { FileFormatChoice(it.id, it.name) }
 
+    /** A4 step 1, BR-006: a File Format's page, with its Bank Accounts and whether one can be added (a served Budget is needed). */
+    suspend fun fileFormatPage(fileFormatId: Long): FileFormatPage {
+        val format = plugins.fileFormats.single { it.id == fileFormatId }
+        val snapshot = reads.snapshot()
+        val sources = balanceSources()
+        val free = reads.freeBudgetAccounts(snapshot)
+        val banks = knownBanks()
+        return FileFormatPage(
+            fileFormatId = fileFormatId,
+            name = format.name,
+            bankAccounts = snapshot.bankAccounts.filter { it.fileFormatId == fileFormatId }.map { bankAccount ->
+                FileFormatBankAccount(
+                    bankAccountId = bankAccount.id,
+                    name = bankAccount.name,
+                    bankName = snapshot.bankNames[bankAccount.bankId].orEmpty(),
+                    type = bankAccount.type,
+                    currency = bankAccount.currency,
+                    balanceFrom = sources.firstOrNull { source ->
+                        val offer = snapshot.offered.single { it.id == source.offered.offeredBankAccountId }
+                        offer.dataProviderId == bankAccount.balanceDataProviderId && offer.providerReference == bankAccount.balanceProviderReference
+                    },
+                    budgetAccountName = reads.added(bankAccount, snapshot).budgetAccountName,
+                )
+            },
+            // UC-013 BR-006: Adding a Bank Account of a File Format needs a served Budget, since it is mapped as it is added.
+            canAdd = snapshot.budgets.any { it.served },
+            freeBudgetAccounts = free,
+            balanceSources = sources,
+            types = BankAccountType.entries,
+            knownBanks = banks,
+        )
+    }
+
+    /**
+     * BR-010: the currency proposed for a Bank Account of a File Format: that of the Offered Bank Account that reports its
+     * balance when it states one, otherwise that of the chosen Budget Account; null while neither is chosen.
+     */
+    suspend fun proposedFileFormatCurrency(budgetAccountId: Long?, balanceOfferedBankAccountId: Long?): CurrencyCode? {
+        // UC-013 BR-010: Proposed is the currency of the Offered Bank Account that reports the balance when it states one, else that of the chosen Budget Account.
+        val balanceCurrency = balanceOfferedBankAccountId?.let { id -> offered.offered().firstOrNull { it.id == id }?.currency }
+        return balanceCurrency ?: budgetAccountId?.let { budgetAccountFor(it)?.first?.currency }
+    }
+
     /** A4: a Bank Account of a File Format, with the File Format, Bank Account type, Bank and name the Operator chose (BR-006, BR-009). */
     suspend fun addFromTransactionFiles(
         fileFormatId: Long,
@@ -493,6 +526,7 @@ class BudgetsAndBankAccounts(
         budgetAccountId: Long,
         name: String,
         startDate: LocalDate?,
+        currency: CurrencyCode?,
     ): PairOutcome {
         val result = coordinator.run(OperationKind.BudgetAndBankAccountChange, StartedBy.Operator) {
             // UC-013 BR-006: Slussen proposes no name, Bank Account type or Bank from a file; the Operator enters the name and chooses the others.
@@ -503,8 +537,9 @@ class BudgetsAndBankAccounts(
             val balanceOffer = balanceOfferedBankAccountId?.let { id ->
                 offered.offered().firstOrNull { it.id == id } ?: return@run PairOutcome.NotOffered
             }
-            val currency = balanceOffer?.currency ?: mappedInto.first.currency
-            refusal(mappedInto, currency, entered)?.let { return@run it }
+            // UC-013 BR-010: A Bank Account of a File Format has the currency the Operator states; none is added without one.
+            val stated = currency ?: return@run PairOutcome.CurrencyNotStated
+            refusal(mappedInto, stated, entered)?.let { return@run it }
             val leftOutBalance = balanceOffer?.let { offer ->
                 store.leftOutBankAccounts().firstOrNull { it.dataProviderId == offer.dataProviderId && it.providerReference == offer.providerReference }
             }
@@ -520,7 +555,7 @@ class BudgetsAndBankAccounts(
                     balanceDataProviderId = balanceOffer?.dataProviderId,
                     balanceProviderReference = balanceOffer?.providerReference,
                     name = entered,
-                    currency = currency,
+                    currency = stated,
                     type = requireNotNull(type),
                     providerReference = null,
                     bankAccountFingerprint = null,
@@ -543,25 +578,8 @@ class BudgetsAndBankAccounts(
     private fun validName(name: String): String? = name.trim().takeIf { it.isNotEmpty() && it.length <= NAME_MAX_LENGTH }
 
     suspend fun addedBankAccounts(): List<AddedBankAccount> {
-        val banks = store.banks().associateBy { it.id }
-        val accounts = store.budgets().flatMap { b -> b.budgetAccounts.map { it.id to (b to it) } }.toMap()
-        return store.bankAccounts().map { bankAccount ->
-            val mappedInto = bankAccount.mapping?.let { accounts[it.budgetAccountId] }
-            val sourceName = bankAccount.dataProviderId
-                ?.let { id -> plugins.dataProviders.single { it.stored.id == id }.stored.name }
-                ?: plugins.fileFormats.single { it.id == bankAccount.fileFormatId }.name
-            AddedBankAccount(
-                bankAccountId = bankAccount.id,
-                name = bankAccount.name,
-                bankName = banks[bankAccount.bankId]?.name.orEmpty(),
-                sourceName = sourceName,
-                type = bankAccount.type,
-                budgetName = mappedInto?.first?.name,
-                budgetAccountName = mappedInto?.second?.name,
-                startDate = bankAccount.startDate,
-                retired = bankAccount.retired,
-            )
-        }
+        val snapshot = reads.snapshot()
+        return snapshot.bankAccounts.map { reads.added(it, snapshot) }
     }
 
     private companion object {

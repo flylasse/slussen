@@ -36,13 +36,14 @@ class UC008CheckImportStatusScreenIT {
     @DisplayName("A8, A9: the open Recovery Check is shown; asking to confirm it says that it stays open")
     fun recoveryCheckIsShownAndStaysOpen() = compose.use {
         val fixture = ScreenFixture()
+        aBankAccountIsAdded(fixture)
         fixture.slice.recoveryStore.open(RecoveryCause.NewInstallation, fixture.slice.clock.instant())
         val viewModel = OverviewViewModel(fixture.services)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.load() }
         setContent {
             SlussenTheme {
                 viewModel.state.collectAsState().value?.let {
-                    OverviewScreen(it, onBudget = {}, onSetUp = {}, onConfirmRecoveryCheck = viewModel::confirmRecoveryCheck, onRecentFetches = {},
+                    OverviewScreen(it, onBudget = {}, onOpenSettings = {}, onConfirmRecoveryCheck = viewModel::confirmRecoveryCheck, onRecentFetches = {},
                         onFetchAll = {}, onConfirmFetch = {}, onCancelFetch = {})
                 }
             }
@@ -55,23 +56,29 @@ class UC008CheckImportStatusScreenIT {
     }
 
     @Test
-    @UseCase(id = "UC-008")
-    @DisplayName("Precondition: with no Bank Account added, the Overview offers to set Slussen up")
-    fun emptyFirstStartOffersSetUp() = compose.use {
+    @UseCase(id = "UC-008", scenario = "A10: No Bank Account Added Yet", businessRules = ["BR-011"])
+    @DisplayName("A10: with no Bank Account added, the Overview shows only the card that leads to Settings and names the next thing")
+    fun firstStartShowsOnlyTheCard() = compose.use {
         val fixture = ScreenFixture()
+        fixture.slice.recoveryStore.open(RecoveryCause.NewInstallation, fixture.slice.clock.instant())
+        var settingsOpened = false
         val viewModel = OverviewViewModel(fixture.services)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.load() }
         setContent {
             SlussenTheme {
                 viewModel.state.collectAsState().value?.let {
-                    OverviewScreen(it, onBudget = {}, onSetUp = {}, onConfirmRecoveryCheck = {}, onRecentFetches = {},
+                    OverviewScreen(it, onBudget = {}, onOpenSettings = { settingsOpened = true }, onConfirmRecoveryCheck = {}, onRecentFetches = {},
                         onFetchAll = {}, onConfirmFetch = {}, onCancelFetch = {})
                 }
             }
         }
 
-        onNodeWithText("No Bank Account added yet").assertExists()
-        onNodeWithText("Set up Slussen").assertIsEnabled()
+        onNodeWithText("Set up Slussen in Settings").assertExists()
+        onNodeWithText("Next: enter the ${slussen.testing.ExampleData.BUDGET_APP_NAME} credentials").assertExists()
+        onNodeWithText("Uploads blocked: Recovery Check open").assertDoesNotExist()
+        onNodeWithText("Fetch all Data Providers").assertDoesNotExist()
+        onNodeWithText("Open Settings").performClick()
+        org.junit.jupiter.api.Assertions.assertTrue(settingsOpened)
     }
 
     @Test
@@ -104,5 +111,18 @@ class UC008CheckImportStatusScreenIT {
         onNodeWithText("comes with Fetch Transactions").assertExists()
         onNodeWithText("Enter credentials").performClick()
         assertEquals(ServiceKey.dataProvider(1), opened)
+    }
+
+    /** UC-008 A10, BR-011: the overview is shown from the first added Bank Account on; here one of the File Format. */
+    private fun aBankAccountIsAdded(fixture: ScreenFixture) = kotlinx.coroutines.runBlocking {
+        val slice = fixture.slice
+        slice.enterCredentials()
+        val read = slice.connect.readBudgets() as slussen.core.connection.BudgetsRead.Listed
+        slice.connect.chooseBudgets(read.budgets, setOf("budget-care"))
+        val health = slice.connectionStore.budgets().single { it.served }.budgetAccounts.single().id
+        slice.connect.addFromTransactionFiles(
+            slice.plugins.fileFormats.single().id, slussen.core.port.BankAccountType.Savings,
+            slussen.core.port.BankChoice.Named("Harbor Health Trust"), null, health, "Harbor Health Savings", null, slussen.testing.ExampleData.USD,
+        )
     }
 }

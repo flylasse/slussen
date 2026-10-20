@@ -11,9 +11,8 @@ import de.mannodermaus.junit5.compose.createComposeExtension
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
-import slussen.app.ui.connections.ConnectionsViewModel
-import slussen.app.ui.connections.SettingsScreen
-import slussen.app.ui.service.ServicePageScreen
+import slussen.app.ui.settings.SettingsScreen
+import slussen.app.ui.settings.SettingsViewModel
 import slussen.app.ui.service.ServicePageViewModel
 import slussen.app.ui.theme.SlussenTheme
 import slussen.core.port.ServiceKey
@@ -31,21 +30,22 @@ class UC014ManageServiceCredentialsScreenIT {
 
     @Test
     @UseCase(id = "UC-014", scenario = "Main Success Scenario", businessRules = ["BR-007"])
-    @DisplayName("Step 1: Connections lists the services in use with their status and the Data Providers not set up")
-    fun connectionsListsTheServices() = compose.use {
+    @DisplayName("Step 1: Settings lists the Budget App and each Data Provider, also those not set up, each with its status")
+    fun settingsListsTheServices() = compose.use {
         val fixture = ScreenFixture()
-        val viewModel = ConnectionsViewModel(fixture.services)
+        val viewModel = SettingsViewModel(fixture.services)
         onMain { viewModel.load() }
         setContent {
             SlussenTheme {
-                viewModel.state.collectAsState().value?.let { SettingsScreen(it, onService = {}, onBankAccounts = {}, onSetUp = {}) }
+                viewModel.state.collectAsState().value?.let { SettingsScreen(it, onEntry = {}, onAccountMappings = {}, onRecentFetches = {}) }
             }
         }
 
-        onNodeWithText("${ExampleData.BUDGET_APP_NAME} · Budget App").assertExists()
-        onNodeWithText("Credentials missing").assertExists()
+        onNodeWithText(ExampleData.BUDGET_APP_NAME).assertExists()
+        onNodeWithText("Not set up · next: enter the ${ExampleData.BUDGET_APP_NAME} credentials").assertExists()
         onNodeWithText("Kestrel Feeds").assertExists()
         onNodeWithText("Wren Feeds").assertExists()
+        onNodeWithText("Not yet: enter the ${ExampleData.BUDGET_APP_NAME} credentials first").assertExists()
     }
 
     @Test
@@ -53,20 +53,11 @@ class UC014ManageServiceCredentialsScreenIT {
     @DisplayName("Steps 2-6: the declared form is filled in and the accepted credentials are shown as accepted")
     fun credentialsAreEnteredAndAccepted() = compose.use {
         val fixture = ScreenFixture()
-        val viewModel = ServicePageViewModel(fixture.services, ServiceKey.budgetApp, fromSetup = false)
+        val viewModel = ServicePageViewModel(fixture.services, ServiceKey.budgetApp)
         onMain { viewModel.load() }
         setContent {
             SlussenTheme {
-                viewModel.state.collectAsState().value?.let {
-                    ServicePageScreen(
-                        it, onBack = {}, onStartEntering = viewModel::startEntering, onCancelEntering = viewModel::cancelEntering,
-                        onSave = viewModel::save, onRequestRemoval = viewModel::requestRemoval, onCancelRemoval = viewModel::cancelRemoval,
-                        onConfirmRemoval = viewModel::confirmRemoval, onChooseBudgets = {},
-                        onEditRequestLimit = viewModel::startEditingRequestLimit, onSaveRequestLimit = viewModel::saveRequestLimit,
-                        onResetRequestLimit = viewModel::resetRequestLimit, onCancelRequestLimit = viewModel::cancelRequestLimit,
-                        onFetch = viewModel::fetch, onConfirmFetch = viewModel::confirmFetch, onCancelFetch = viewModel::cancelFetch,
-                    )
-                }
+                ServicePage(viewModel)
             }
         }
 
@@ -84,20 +75,11 @@ class UC014ManageServiceCredentialsScreenIT {
     fun removalAsksFirst() = compose.use {
         val fixture = ScreenFixture()
         kotlinx.coroutines.runBlocking { fixture.slice.enterCredentials() }
-        val viewModel = ServicePageViewModel(fixture.services, fixture.slice.feedsKey, fromSetup = false)
+        val viewModel = ServicePageViewModel(fixture.services, fixture.slice.feedsKey)
         onMain { viewModel.load() }
         setContent {
             SlussenTheme {
-                viewModel.state.collectAsState().value?.let {
-                    ServicePageScreen(
-                        it, onBack = {}, onStartEntering = viewModel::startEntering, onCancelEntering = viewModel::cancelEntering,
-                        onSave = viewModel::save, onRequestRemoval = viewModel::requestRemoval, onCancelRemoval = viewModel::cancelRemoval,
-                        onConfirmRemoval = viewModel::confirmRemoval, onChooseBudgets = {},
-                        onEditRequestLimit = viewModel::startEditingRequestLimit, onSaveRequestLimit = viewModel::saveRequestLimit,
-                        onResetRequestLimit = viewModel::resetRequestLimit, onCancelRequestLimit = viewModel::cancelRequestLimit,
-                        onFetch = viewModel::fetch, onConfirmFetch = viewModel::confirmFetch, onCancelFetch = viewModel::cancelFetch,
-                    )
-                }
+                ServicePage(viewModel)
             }
         }
 

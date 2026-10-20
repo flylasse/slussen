@@ -11,6 +11,11 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import slussen.testing.TestSlice
 import slussen.core.credential.CredentialStatus
+import slussen.core.settings.AccountMappingsEntry
+import slussen.core.settings.EntryKind
+import slussen.core.settings.EntryStatus
+import slussen.core.settings.MappingsWaitFor
+import slussen.core.settings.NextThing
 import slussen.core.operation.OperationRefusal
 import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
@@ -95,20 +100,23 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-008"])
-    @DisplayName("Step 1: shows for the Budget App and each Data Provider whether its credentials are entered and accepted")
-    fun credentialStepsShowEachService() = runTest {
-        slice.credentials.enter(ServiceKey.budgetApp, slice.input("token" to ExampleData.BUDGET_APP_TOKEN))
-
-        val steps = slice.connect.credentialSteps()
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-008", "BR-015"])
+    @DisplayName("Step 1: Settings lists the Budget App, each Data Provider and each File Format of the build, each with its status, then the Account Mappings, not yet available with the reason, and names what comes next")
+    fun stepOneListsEveryServiceAndTheAccountMappings() = runTest {
+        val top = slice.settingsOverview.entries()
 
         assertEquals(
-            listOf(ExampleData.BUDGET_APP_NAME, "Kestrel Feeds", "Aurora Open Banking", "Wren Feeds"),
-            steps.map { it.name },
+            listOf(ExampleData.BUDGET_APP_NAME, "Kestrel Feeds", "Aurora Open Banking", "Wren Feeds", "Harbor Health statement"),
+            top.entries.map { it.name },
         )
-        assertTrue(steps.first().isBudgetApp)
-        assertInstanceOf(CredentialStatus.Accepted::class.java, steps.first().status)
-        assertTrue(steps.drop(1).all { it.status == CredentialStatus.Missing })
+        assertEquals(
+            listOf(EntryKind.BudgetApp, EntryKind.DataProvider, EntryKind.DataProvider, EntryKind.DataProvider, EntryKind.FileFormat),
+            top.entries.map { it.kind },
+        )
+        assertEquals(List(4) { EntryStatus.NotSetUp } + EntryStatus.FileFormatBankAccounts(0), top.entries.map { it.status })
+        assertEquals(listOf(true, false, false, false, false), top.entries.map { it.isNext })
+        assertEquals(AccountMappingsEntry(available = false, toMap = 0, waitingFor = MappingsWaitFor.BudgetAppCredentials, isNext = false), top.accountMappings)
+        assertEquals(NextThing.EnterBudgetAppCredentials(ExampleData.BUDGET_APP_NAME), top.next)
     }
 
     @Test
@@ -149,8 +157,26 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     }
 
     @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-014"], requirements = ["C-012"])
+    @DisplayName("Step 4, BR-014: under each chosen Budget its Budget Accounts with their balances, each that receives through no Account Mapping with Receives from Slussen on, each mapped one with its Account Mapping instead of a switch")
+    fun stepFourShowsTheBudgetAccountsWithTheirSwitches() = runTest {
+        readyToPair()
+        pairAndAdd("acct-4410", "Checking", name = "Kestrel Checking")
+
+        val served = slice.connect.servedBudgetAccounts()
+
+        assertEquals(listOf("Household", "Summer House"), served.map { it.name })
+        assertEquals(EUR, served[1].currency)
+        val household = served.first().budgetAccounts
+        assertEquals(listOf("Checking", "Rewards Card", "Reserve Savings"), household.map { it.name })
+        assertEquals(BudgetAccountOnPage(budgetAccountId("Checking"), "Checking", amount(4140, 50), receivesFromSlussen = null, mappedFrom = "Kestrel Checking"), household[0])
+        assertEquals(BudgetAccountOnPage(budgetAccountId("Rewards Card"), "Rewards Card", amount(-1268, 400), receivesFromSlussen = true, mappedFrom = null), household[1])
+        assertTrue(served.flatMap { it.budgetAccounts }.none { it.name == "Health Savings" })
+    }
+
+    @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-002"])
-    @DisplayName("Step 5: each Offered Bank Account not yet added is shown with name, kind, currency, last four digits and balance, next to the free Budget Accounts of the chosen Budgets")
+    @DisplayName("Step 8, BR-002: each Bank Account to map is shown with name, kind, currency, last four digits and balance, next to the free Budget Accounts of the chosen Budgets")
     fun pairingShowsBothSides() = runTest {
         readyToPair()
 
@@ -175,7 +201,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-002"])
-    @DisplayName("Step 5, BR-002 (S-35): after one Offered Bank Account is added, the next Fetch reads only that one, and the Offered Bank Accounts not yet added keep showing the balance the Data Provider gave with the list")
+    @DisplayName("Step 8, BR-002 (S-35): after one Offered Bank Account is added, the next Fetch reads only that one, and the Bank Accounts to map keep showing the balance the Data Provider gave with the list")
     fun offeredKeepTheirBalanceAfterAnAddition() = runTest {
         readyToPair()
         val listed = listOf(
@@ -212,7 +238,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-002"])
-    @DisplayName("Step 5: a Budget Account that receives through an Account Mapping is not offered for pairing")
+    @DisplayName("Step 10, BR-002: a Budget Account that receives through an Account Mapping is not offered for pairing")
     fun mappedBudgetAccountIsNotOffered() = runTest {
         readyToPair()
         pairAndAdd("acct-4410", "Checking")
@@ -520,6 +546,10 @@ class UC013ConnectBudgetsAndBankAccountsTest {
         assertEquals(OfferRemedy.GrantBankConsent, sources.getValue("Aurora Open Banking").remedy)
         assertTrue(sources.getValue("Kestrel Feeds").offered.isEmpty())
         assertFalse("Wren Feeds" in sources)
+        assertEquals(OfferRemedy.StartFetch, slice.connect.offeredOf(slice.feedsId).remedy)
+        assertEquals(OfferRemedy.GrantBankConsent, slice.connect.offeredOf(slice.openBankingId).remedy)
+        assertTrue(slice.connect.offeredOf(slice.feedsId).offered.isEmpty())
+        assertFalse(slice.connect.offeredOf(slice.feedsId).nothingNew)
         assertEquals(0, slice.feeds.fetches)
     }
 
@@ -538,6 +568,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
             budgetAccountId = budgetAccountId("Reserve Savings"),
             name = "Harbor Health Savings",
             startDate = LocalDate.parse("2026-08-01"),
+            currency = USD,
         ) as PairOutcome.Added
 
         assertEquals("Harbor Health Savings", outcome.name)
@@ -564,10 +595,10 @@ class UC013ConnectBudgetsAndBankAccountsTest {
         val kestrel = BankChoice.Known(kestrelBankId())
         val checking = budgetAccountId("Checking")
 
-        val unnamed = slice.connect.addFromTransactionFiles(format.fileFormatId, BankAccountType.Savings, kestrel, null, checking, " ", null)
-        val untyped = slice.connect.addFromTransactionFiles(format.fileFormatId, null, kestrel, null, checking, "Health Savings", null)
-        val noBank = slice.connect.addFromTransactionFiles(format.fileFormatId, BankAccountType.Savings, null, null, checking, "Health Savings", null)
-        val outcome = slice.connect.addFromTransactionFiles(format.fileFormatId, BankAccountType.Savings, kestrel, null, checking, "Health Savings", null)
+        val unnamed = slice.connect.addFromTransactionFiles(format.fileFormatId, BankAccountType.Savings, kestrel, null, checking, " ", null, USD)
+        val untyped = slice.connect.addFromTransactionFiles(format.fileFormatId, null, kestrel, null, checking, "Health Savings", null, USD)
+        val noBank = slice.connect.addFromTransactionFiles(format.fileFormatId, BankAccountType.Savings, null, null, checking, "Health Savings", null, USD)
+        val outcome = slice.connect.addFromTransactionFiles(format.fileFormatId, BankAccountType.Savings, kestrel, null, checking, "Health Savings", null, USD)
 
         assertEquals(PairOutcome.NameNotValid, unnamed)
         assertEquals(PairOutcome.TypeNotChosen, untyped)
@@ -630,13 +661,14 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "A7: Budget App Credentials Not Entered", businessRules = ["BR-008"])
-    @DisplayName("A7: without accepted Budget App credentials the Budgets cannot be chosen and the Budget App is not contacted")
+    @UseCase(id = "UC-013", scenario = "A7: Budget App Credentials Not Entered", businessRules = ["BR-008", "BR-015"])
+    @DisplayName("A7: without accepted Budget App credentials the Budgets cannot be chosen, the Budget App is not contacted, and the Account Mappings wait for them")
     fun withoutBudgetAppCredentialsNoBudgetIsRead() = runTest {
         val read = slice.connect.readBudgets()
 
         assertEquals(BudgetsRead.BudgetAppCredentialsMissing, read)
         assertEquals(0, slice.budgetApp.reader.budgetReads)
+        assertEquals(MappingsWaitFor.BudgetAppCredentials, slice.settingsOverview.entries().accountMappings.waitingFor)
     }
 
     @Test
@@ -811,136 +843,138 @@ class UC013ConnectBudgetsAndBankAccountsTest {
         assertEquals(USD, slice.connectionStore.bankAccounts().single().currency)
     }
 
-    // S-38: the two pairing steps (steps 5-15), Left-Out Bank Accounts and Manually Kept Accounts (BR-011..BR-014).
+    // S-38 and S-40: imported by default and left out one at a time (steps 5-9, BR-011, BR-012), Manually Kept Accounts
+    // (BR-014), the File Format's page (A4) and the entries at the top of Settings (BR-008, BR-015).
 
-    private suspend fun shownIds(): List<Long> = slice.connect.pairing().sources.flatMap { it.offered }.map { it.offeredBankAccountId }
-
-    /** Steps 5-9: the Operator brings in the Offered Bank Accounts of [references] and confirms the stated numbers. */
-    private suspend fun bringIn(vararg references: String): BringIn.Confirmed {
-        val chosen = references.map { offeredId(it) }.toSet()
-        return slice.connect.bringIn(shownIds(), chosen) as BringIn.Confirmed
-    }
+    private suspend fun switchOff(vararg references: String) = references.forEach { slice.connect.switchImportOff(offeredId(it)) }
 
     private suspend fun leftOutReferences(): List<String> = slice.connectionStore.leftOutBankAccounts().map { it.providerReference }
 
+    private suspend fun toMapNames(): List<String?> =
+        slice.connect.pairing().sources.single { it.name == "Kestrel Feeds" }.offered.map { it.nameOrProduct }
+
+    private suspend fun fileFormatId(): Long = slice.connect.fileFormats().single().fileFormatId
+
+    private suspend fun addHarborHealthSavings(balanceFrom: String? = "acct-7731", budgetAccount: String = "Reserve Savings") =
+        slice.connect.addFromTransactionFiles(
+            fileFormatId(), BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), balanceFrom?.let { offeredId(it) },
+            budgetAccountId(budgetAccount), "Harbor Health Savings", null, USD,
+        )
+
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-011", "BR-012"])
-    @DisplayName("Step 5: the Offered Bank Accounts that are neither added nor left out are shown with their Bank, and the Left-Out Bank Accounts apart, by their name and Source")
-    fun stepFiveShowsTheUndecidedAndTheLeftOutApart() = runTest {
+    @DisplayName("Step 5: a Data Provider's page shows each Offered Bank Account with name or product, kind, currency, last four digits, balance and Bank: imported by default, a Left-Out one as not imported, an added one as added without a switch")
+    fun stepFiveShowsHowEachOfferedBankAccountStands() = runTest {
         readyToPair()
-        bringIn("acct-4410", "acct-1182")
+        pairAndAdd("acct-4410", "Checking", name = "Kestrel Checking")
+        switchOff("acct-5520")
 
-        val pairing = slice.connect.pairing()
+        val page = slice.connect.offeredOf(slice.feedsId)
 
-        val feeds = pairing.sources.single { it.name == "Kestrel Feeds" }
-        assertEquals(listOf("CHK", "Pinecrest Rewards Visa"), feeds.offered.map { it.nameOrProduct })
-        assertTrue(feeds.offered.all { it.bankName == "Kestrel Bank" })
-        assertEquals(listOf("Reserve Saver ••7731", "Aurora Dollar ••5520"), pairing.leftOut.map { it.name })
-        assertTrue(pairing.leftOut.all { it.sourceName == "Kestrel Feeds" && it.dataProviderId == slice.feedsId })
-        assertFalse(pairing.nothingToBringIn)
-    }
-
-    @Test
-    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-012"])
-    @DisplayName("Step 7: Slussen states how many of the shown Offered Bank Accounts are brought in and how many are left out, and leaves nothing out yet")
-    fun stepSevenStatesBothNumbers() = runTest {
-        readyToPair()
-
-        val statement = slice.connect.bringInStatement(setOf(offeredId("acct-4410"), offeredId("acct-7731")))
-
-        assertEquals(listOf("CHK", "Reserve Saver"), statement.broughtIn.map { it.nameOrProduct })
-        assertEquals(listOf("Pinecrest Rewards Visa", "Aurora Dollar"), statement.leftOut.map { it.nameOrProduct })
-        assertTrue(slice.connectionStore.leftOutBankAccounts().isEmpty())
-        assertTrue(slice.journalRecorder.entries.none { it.eventKind == JournalEventKind.AccountMappingChange })
+        assertEquals("Kestrel Feeds", page.name)
+        assertEquals(listOf("CHK", "Pinecrest Rewards Visa", "Reserve Saver", "Aurora Dollar"), page.offered.map { it.offered.nameOrProduct })
+        val added = slice.connectionStore.bankAccounts().single()
+        assertEquals(ImportState.Added(added.id, "Kestrel Checking", "Checking"), page.offered[0].state)
+        assertEquals(listOf(ImportState.ToMap, ImportState.ToMap), page.offered.subList(1, 3).map { it.state })
+        assertEquals(ImportState.NotImported(slice.connectionStore.leftOutBankAccounts().single().id), page.offered[3].state)
+        assertEquals(listOf(false, true, true, true), page.offered.map { it.hasImportSwitch })
+        assertEquals(
+            OfferedForPairing(offeredId("acct-1182"), "Pinecrest Rewards Visa", "credit card", USD, "1182", amount(-1268, 400), "Kestrel Bank"),
+            page.offered[1].offered,
+        )
+        assertEquals(3, page.imported)
+        assertEquals(4, page.importable)
+        assertFalse(page.nothingNew)
+        assertNull(page.remedy)
+        assertTrue(page.leftOutNotDelivered.isEmpty())
     }
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-011", "BR-012"])
-    @DisplayName("Steps 8-9: once confirmed, each shown Offered Bank Account not chosen is a Left-Out Bank Account, remembered by its Data Provider and reference, recorded by name, and the chosen ones are taken one at a time in the order shown")
-    fun stepsEightAndNineLeaveOutTheRest() = runTest {
+    @DisplayName("Steps 6-7: switching the import of one off makes it a Left-Out Bank Account at once, without a confirmation, remembered by its Data Provider and reference and recorded by name; the others stay imported and to map")
+    fun switchingOneOffLeavesItOutAtOnce() = runTest {
         readyToPair()
         slice.clock.advance(Duration.ofMinutes(5))
 
-        val confirmed = slice.connect.bringIn(shownIds(), setOf(offeredId("acct-7731"), offeredId("acct-4410")))
+        val outcome = slice.connect.switchImportOff(offeredId("acct-1182"))
 
-        assertEquals(BringIn.Confirmed(queue = listOf(offeredId("acct-4410"), offeredId("acct-7731")), leftOut = 2), confirmed)
-        val leftOut = slice.connectionStore.leftOutBankAccounts()
-        assertEquals(listOf("acct-1182", "acct-5520"), leftOut.map { it.providerReference })
-        assertTrue(leftOut.all { it.dataProviderId == slice.feedsId && it.leftOutAt == slice.clock.instant() })
-        assertEquals(listOf("Pinecrest Rewards Visa ••1182", "Aurora Dollar ••5520"), leftOut.map { it.name })
-        val recorded = slice.journalRecorder.entries.filter { it.eventKind == JournalEventKind.AccountMappingChange }
-        assertEquals(2, recorded.size)
-        assertTrue("Pinecrest Rewards Visa ••1182" in recorded[0].details, recorded[0].details)
-        assertTrue(recorded.none { "acct-" in it.details }, recorded.toString())
+        val leftOut = slice.connectionStore.leftOutBankAccounts().single()
+        assertEquals(ImportSwitchedOff.LeftOut(leftOut.id, "Pinecrest Rewards Visa ••1182"), outcome)
+        assertEquals("acct-1182", leftOut.providerReference)
+        assertEquals(slice.feedsId, leftOut.dataProviderId)
+        assertEquals(slice.clock.instant(), leftOut.leftOutAt)
+        assertEquals("Pinecrest Rewards Visa ••1182", leftOut.name)
+        assertEquals(listOf("CHK", "Reserve Saver", "Aurora Dollar"), toMapNames())
+        val recorded = slice.journalRecorder.entries.single { it.eventKind == JournalEventKind.AccountMappingChange }
+        assertTrue("Pinecrest Rewards Visa ••1182" in recorded.details, recorded.details)
+        assertFalse("acct-" in recorded.details, recorded.details)
         assertTrue(slice.connectionStore.bankAccounts().isEmpty())
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "A12: Nothing Brought In", businessRules = ["BR-011", "BR-012"])
-    @DisplayName("A12: with nothing chosen, Slussen states that none is brought in and how many are left out, and on confirmation leaves every shown one out")
-    fun nothingBroughtInLeavesEveryShownOneOut() = runTest {
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-012"])
+    @DisplayName("Steps 7-8, BR-012: every Offered Bank Account neither added nor left out is imported by default and a Bank Account to map, one line each with its Source; nothing is left out or fetched without the Operator")
+    fun everyOneIsImportedByDefault() = runTest {
         readyToPair()
 
-        val statement = slice.connect.bringInStatement(emptySet())
-        assertTrue(statement.broughtIn.isEmpty())
-        assertEquals(4, statement.leftOut.size)
-        val confirmed = slice.connect.bringIn(shownIds(), emptySet())
+        val toMap = slice.connect.toMap()
 
-        assertEquals(BringIn.Confirmed(queue = emptyList(), leftOut = 4), confirmed)
-        assertEquals(listOf("acct-4410", "acct-1182", "acct-7731", "acct-5520"), leftOutReferences())
-        assertTrue(slice.connect.pairing().sources.single { it.name == "Kestrel Feeds" }.offered.isEmpty())
+        assertEquals(listOf("CHK", "Pinecrest Rewards Visa", "Reserve Saver", "Aurora Dollar"), toMap.map { it.offered.nameOrProduct })
+        assertEquals("4410", toMap.first().offered.lastFourDigits)
+        assertTrue(toMap.all { it.sourceName == "Kestrel Feeds" && it.dataProviderId == slice.feedsId })
+        assertTrue(slice.connectionStore.leftOutBankAccounts().isEmpty())
+        assertTrue(slice.journalRecorder.entries.none { it.eventKind == JournalEventKind.AccountMappingChange })
+        assertEquals(0, slice.feeds.fetches)
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "A13: Go Back Before Confirming", businessRules = ["BR-012"])
-    @DisplayName("A13: going back after the statement leaves nothing out, and the choice made afterwards is the one confirmed")
-    fun goingBackLeavesNothingOut() = runTest {
+    @UseCase(id = "UC-013", scenario = "A12: Nothing Brought In", businessRules = ["BR-011", "BR-015"])
+    @DisplayName("A12: switching off every Offered Bank Account leaves each out at once and records each; nothing is to map, and the Account Mappings wait for an imported or added Bank Account")
+    fun switchingEveryOneOffLeavesNothingToMap() = runTest {
         readyToPair()
-        slice.connect.bringInStatement(setOf(offeredId("acct-4410")))
 
-        assertTrue(slice.connectionStore.leftOutBankAccounts().isEmpty())
-        slice.connect.bringIn(shownIds(), setOf(offeredId("acct-4410"), offeredId("acct-1182"), offeredId("acct-7731")))
-        assertEquals(listOf("acct-5520"), leftOutReferences())
+        switchOff("acct-4410", "acct-1182", "acct-7731", "acct-5520")
+
+        assertEquals(listOf("acct-4410", "acct-1182", "acct-7731", "acct-5520"), leftOutReferences())
+        assertEquals(4, slice.journalRecorder.entries.count { it.eventKind == JournalEventKind.AccountMappingChange })
+        assertTrue(slice.connect.toMap().isEmpty())
+        assertEquals(
+            AccountMappingsEntry(available = false, toMap = 0, waitingFor = MappingsWaitFor.ImportedBankAccount, isNext = false),
+            slice.settingsOverview.entries().accountMappings,
+        )
     }
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-012"])
-    @DisplayName("BR-012: when the Offered Bank Accounts changed after they were shown, nothing is left out and the Operator chooses again")
-    fun nothingIsLeftOutWhenTheShownOnesChanged() = runTest {
+    @DisplayName("BR-012: an added Bank Account, one already left out and one no longer stored have no import switch; switching it off leaves nothing out")
+    fun onlyAnImportedOneIsSwitchedOff() = runTest {
         readyToPair()
-        val shown = shownIds()
-        slice.offeredStore.replaceOffered(
-            slice.feedsId,
-            null,
-            listOf(ExampleData.offered("acct-3300", "Kestrel Auto Loan", "loan", USD, "3300", amount(-9000), kestrelBankId(), slice.clock.instant())),
-        )
+        pairAndAdd("acct-4410", "Checking")
+        switchOff("acct-1182")
 
-        val outcome = slice.connect.bringIn(shown, emptySet())
-
-        assertEquals(BringIn.ShownChanged, outcome)
-        assertTrue(slice.connectionStore.leftOutBankAccounts().isEmpty())
+        assertEquals(ImportSwitchedOff.NoSwitch, slice.connect.switchImportOff(offeredId("acct-4410")))
+        assertEquals(ImportSwitchedOff.NoSwitch, slice.connect.switchImportOff(offeredId("acct-1182")))
+        assertEquals(ImportSwitchedOff.NoSwitch, slice.connect.switchImportOff(-1))
+        assertEquals(listOf("acct-1182"), leftOutReferences())
     }
 
     @Test
     @UseCase(id = "UC-013", scenario = "A8: Skip for Now", businessRules = ["BR-012"])
-    @DisplayName("A8, BR-012: a chosen Offered Bank Account skipped for now, or not reached, is neither added nor left out and is offered again at step 5")
-    fun skippedOnesAreOfferedAgain() = runTest {
+    @DisplayName("A8, BR-012: a Bank Account to map that is skipped for now, or not reached, is neither added nor left out and stays imported and to map")
+    fun skippedOnesStayToMap() = runTest {
         readyToPair()
-        bringIn("acct-4410", "acct-1182", "acct-7731")
         pairAndAdd("acct-4410", "Checking")
 
-        val offered = slice.connect.pairing().sources.single { it.name == "Kestrel Feeds" }.offered
-
-        assertEquals(listOf("Pinecrest Rewards Visa", "Reserve Saver"), offered.map { it.nameOrProduct })
-        assertEquals(listOf("acct-5520"), leftOutReferences())
+        assertEquals(listOf("Pinecrest Rewards Visa", "Reserve Saver", "Aurora Dollar"), toMapNames())
+        assertTrue(leftOutReferences().isEmpty())
     }
 
     @Test
     @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-012"])
-    @DisplayName("BR-012: an Offered Bank Account that a later Fetch delivers is neither added nor left out and is offered at step 5, while the Left-Out ones stay left out")
-    fun aLaterDeliveryIsOfferedAndTheLeftOutStayLeftOut() = runTest {
+    @DisplayName("BR-012: an Offered Bank Account that a later Fetch delivers is imported by default and to map, while the Left-Out ones stay left out")
+    fun aLaterDeliveryIsImportedAndTheLeftOutStayLeftOut() = runTest {
         readyToPair()
-        bringIn("acct-4410")
+        switchOff("acct-1182", "acct-7731", "acct-5520")
         slice.feeds.fetchAnswer = {
             FetchResponse(
                 SourceOutcome.Completed,
@@ -953,8 +987,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
 
         slice.fetch.fetch(slice.feedsKey)
 
-        val offered = slice.connect.pairing().sources.single { it.name == "Kestrel Feeds" }.offered
-        assertEquals(listOf("Account acct-4410", "Account acct-3300"), offered.map { it.nameOrProduct })
+        assertEquals(listOf("Account acct-4410", "Account acct-3300"), toMapNames())
         assertEquals(listOf("acct-1182", "acct-7731", "acct-5520"), leftOutReferences())
     }
 
@@ -963,7 +996,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     @DisplayName("BR-011: a Left-Out Bank Account is never read: a Fetch never selects it and its balance is not stored, though it is still in the delivered list")
     fun aLeftOutBankAccountIsNeverRead() = runTest {
         readyToPair()
-        bringIn("acct-4410")
+        switchOff("acct-1182", "acct-7731", "acct-5520")
         pairAndAdd("acct-4410", "Checking")
         slice.feeds.fetchAnswer = { request ->
             val asked = (request.bankAccounts as BankAccountSelection.Selected).bankAccounts.map { it.providerReference }.toSet()
@@ -992,10 +1025,9 @@ class UC013ConnectBudgetsAndBankAccountsTest {
 
     @Test
     @UseCase(id = "UC-013", scenario = "A6: Offered Bank Account Probably Already Added", businessRules = ["BR-011", "BR-012"])
-    @DisplayName("A6, BR-011, BR-012: a proposed match is never left out, and a Left-Out Bank Account is never shown as the proposed match of an added Bank Account")
+    @DisplayName("A6, BR-011, BR-012: a proposed match has no import switch and is never left out or to map, and a Left-Out Bank Account is never shown as the proposed match of an added Bank Account")
     fun proposedMatchesAndLeftOutStayApart() = runTest {
         readyToPair()
-        bringIn("acct-4410")
         val added = pairAndAdd("acct-4410", "Checking") as PairOutcome.Added
         val bank = kestrelBankId()
         slice.offeredStore.replaceOffered(
@@ -1009,39 +1041,44 @@ class UC013ConnectBudgetsAndBankAccountsTest {
         )
 
         val feeds = slice.connect.pairing().sources.single { it.name == "Kestrel Feeds" }
-        slice.connect.bringIn(shownIds(), emptySet())
+        val page = slice.connect.offeredOf(slice.feedsId)
+        val switchedOff = slice.connect.switchImportOff(offeredId("acct-4410-new"))
+        switchOff("acct-3300")
 
-        assertEquals(listOf("CHK"), feeds.proposedMatches.map { it.offered.nameOrProduct })
+        assertEquals(listOf("CHK", "Pinecrest Rewards Visa"), feeds.proposedMatches.map { it.offered.nameOrProduct })
         assertEquals(listOf("Kestrel Auto Loan"), feeds.offered.map { it.nameOrProduct })
-        assertFalse("acct-4410-new" in leftOutReferences())
-        assertTrue("acct-3300" in leftOutReferences())
+        assertEquals(ImportState.ProbablyAdded(added.bankAccountId, "CHK ••4410"), page.offered.first().state)
+        assertFalse(page.offered.first().hasImportSwitch)
+        assertEquals(ImportSwitchedOff.NoSwitch, switchedOff)
+        assertEquals(listOf("acct-3300"), leftOutReferences())
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "A10: Bring Back a Left-Out Bank Account", businessRules = ["BR-011"])
-    @DisplayName("A10: a Left-Out Bank Account brought back is no longer left out, is recorded by name, and is offered again from the latest delivery that holds it")
-    fun aLeftOutBankAccountIsBroughtBack() = runTest {
+    @UseCase(id = "UC-013", scenario = "A10: Bring Back a Left-Out Bank Account", businessRules = ["BR-011", "BR-012"])
+    @DisplayName("A10: switching the import of a Left-Out Bank Account on again brings it back at once, recorded by name, and it is imported and to map again from the latest delivery that holds it")
+    fun switchingTheImportOnBringsItBack() = runTest {
         readyToPair()
-        bringIn("acct-4410")
-        val reserve = slice.connectionStore.leftOutBankAccounts().single { it.providerReference == "acct-7731" }
+        switchOff("acct-7731")
+        val reserve = slice.connectionStore.leftOutBankAccounts().single()
 
         val outcome = slice.connect.bringBack(reserve.id)
 
         assertEquals(BroughtBack.Offered("Reserve Saver ••7731", offeredNow = true), outcome)
-        assertEquals(listOf("acct-1182", "acct-5520"), leftOutReferences())
-        assertTrue("Reserve Saver" in slice.connect.pairing().sources.single { it.name == "Kestrel Feeds" }.offered.map { it.nameOrProduct })
+        assertTrue(leftOutReferences().isEmpty())
+        assertEquals(ImportState.ToMap, slice.connect.offeredOf(slice.feedsId).offered.single { it.offered.nameOrProduct == "Reserve Saver" }.state)
+        assertTrue("Reserve Saver" in toMapNames())
         val recorded = slice.journalRecorder.entries.last()
         assertEquals(JournalEventKind.AccountMappingChange, recorded.eventKind)
-        assertTrue("Reserve Saver ••7731" in recorded.details && "brought back" in recorded.details, recorded.details)
+        assertTrue("Reserve Saver ••7731" in recorded.details && "imported again" in recorded.details, recorded.details)
         assertFalse("acct-7731" in recorded.details)
     }
 
     @Test
     @UseCase(id = "UC-013", scenario = "A10: Bring Back a Left-Out Bank Account", businessRules = ["BR-011"])
-    @DisplayName("A10 step 2: a Left-Out Bank Account that the latest delivery no longer holds is offered from the next delivery that holds it")
+    @DisplayName("A10 step 2: a Left-Out Bank Account that the latest delivery no longer holds is still shown on its Data Provider's page, and switched on it is imported from the next delivery that holds it")
     fun broughtBackFromTheNextDelivery() = runTest {
         readyToPair()
-        bringIn("acct-4410")
+        switchOff("acct-5520")
         slice.offeredStore.replaceOffered(
             slice.feedsId,
             null,
@@ -1049,8 +1086,10 @@ class UC013ConnectBudgetsAndBankAccountsTest {
         )
         val dollar = slice.connectionStore.leftOutBankAccounts().single { it.providerReference == "acct-5520" }
 
+        assertEquals(listOf("Aurora Dollar ••5520"), slice.connect.offeredOf(slice.feedsId).leftOutNotDelivered.map { it.name })
         assertEquals(BroughtBack.Offered("Aurora Dollar ••5520", offeredNow = false), slice.connect.bringBack(dollar.id))
         assertEquals(BroughtBack.NotFound, slice.connect.bringBack(dollar.id))
+        assertTrue(slice.connect.offeredOf(slice.feedsId).leftOutNotDelivered.isEmpty())
     }
 
     @Test
@@ -1077,7 +1116,6 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     @DisplayName("BR-013: when exactly one free Budget Account is of the currency, it is proposed; the proposal is applied only when the Operator adds the Bank Account with it")
     fun theOnlyFreeBudgetAccountOfTheCurrencyIsProposed() = runTest {
         readyToPair()
-        bringIn("acct-4410", "acct-1182", "acct-7731")
         pairAndAdd("acct-1182", "Rewards Card")
         pairAndAdd("acct-7731", "Reserve Savings")
 
@@ -1126,7 +1164,7 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     @DisplayName("Step 10: an Offered Bank Account that is left out, added or no longer stored has no card")
     fun noCardForOneNotOffered() = runTest {
         readyToPair()
-        bringIn("acct-4410")
+        switchOff("acct-1182")
         pairAndAdd("acct-4410", "Checking")
 
         assertNull(slice.connect.card(offeredId("acct-4410")))
@@ -1135,30 +1173,71 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "A9: Mark a Budget Account Manually Kept", businessRules = ["BR-002", "BR-013", "BR-014"])
-    @DisplayName("A9: a free Budget Account marked as kept by hand is a Manually Kept Account, recorded in the Decision Journal, and no longer offered for pairing or proposed")
-    fun aBudgetAccountIsMarkedManuallyKept() = runTest {
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-004"])
+    @DisplayName("BR-004 (P9-04): the last four digits are added to the proposed name only when the name or product does not already end with them, so they never appear twice")
+    fun lastFourDigitsAreNotAddedTwice() = runTest {
+        slice.enterCredentials()
+        chooseHouseholdAndSummerHouse()
+        slice.offeredStore.replaceOffered(
+            slice.feedsId,
+            null,
+            listOf(
+                ExampleData.offered("acct-9034", "Pinecrest Business Visa-9034", "credit card", USD, "9034", amount(-88, 100), kestrelBankId(), slice.clock.instant()),
+                ExampleData.offered("acct-1182", "Pinecrest Rewards Visa", "credit card", USD, "1182", amount(-1268, 400), kestrelBankId(), slice.clock.instant()),
+            ),
+        )
+
+        assertEquals("Pinecrest Business Visa-9034", slice.connect.card(offeredId("acct-9034"))!!.proposedName)
+        assertEquals("Pinecrest Business Visa-9034", proposal("acct-9034", "Rewards Card").proposedName)
+        assertEquals("Pinecrest Rewards Visa ••1182", slice.connect.card(offeredId("acct-1182"))!!.proposedName)
+        val leftOut = slice.connect.switchImportOff(offeredId("acct-9034")) as ImportSwitchedOff.LeftOut
+        assertEquals("Pinecrest Business Visa-9034", leftOut.name)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A9: Mark or Unmark a Budget Account Manually Kept", businessRules = ["BR-002", "BR-013", "BR-014"])
+    @DisplayName("A9: Receives from Slussen switched off marks a free Budget Account as a Manually Kept Account at once, recorded in the Decision Journal, no longer offered for pairing or proposed")
+    fun switchingReceivesOffMarksIt() = runTest {
         readyToPair()
 
-        val outcome = slice.connect.markManuallyKept(budgetAccountId("Reserve Savings"))
+        val outcome = slice.connect.setReceivesFromSlussen(budgetAccountId("Reserve Savings"), receives = false)
 
         assertEquals(KeepOutcome.Marked, outcome)
         assertTrue(slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Reserve Savings" }.manuallyKept)
         assertTrue(slice.connect.pairing().freeBudgetAccounts.none { it.name == "Reserve Savings" })
         assertEquals(listOf("Checking", "Rewards Card"), slice.connect.card(offeredId("acct-7731"))!!.listed.map { it.name })
+        assertEquals(false, slice.connect.servedBudgetAccounts().first().budgetAccounts.single { it.name == "Reserve Savings" }.receivesFromSlussen)
         val recorded = slice.journalRecorder.entries.last()
         assertTrue("Reserve Savings" in recorded.details && "Manually Kept" in recorded.details, recorded.details)
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "A9: Mark a Budget Account Manually Kept", businessRules = ["BR-014"])
+    @UseCase(id = "UC-013", scenario = "A9: Mark or Unmark a Budget Account Manually Kept", businessRules = ["BR-014"])
+    @DisplayName("A9: Receives from Slussen switched on again unmarks it, recorded in the Decision Journal, and it is offered for pairing again; one not marked is not unmarked")
+    fun switchingReceivesOnUnmarksIt() = runTest {
+        readyToPair()
+        slice.connect.setReceivesFromSlussen(budgetAccountId("Reserve Savings"), receives = false)
+
+        val outcome = slice.connect.setReceivesFromSlussen(budgetAccountId("Reserve Savings"), receives = true)
+
+        assertEquals(KeepOutcome.Unmarked, outcome)
+        assertFalse(slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Reserve Savings" }.manuallyKept)
+        assertTrue(slice.connect.pairing().freeBudgetAccounts.any { it.name == "Reserve Savings" })
+        assertEquals(true, slice.connect.servedBudgetAccounts().first().budgetAccounts.single { it.name == "Reserve Savings" }.receivesFromSlussen)
+        val recorded = slice.journalRecorder.entries.last()
+        assertTrue("Reserve Savings" in recorded.details && "offered for pairing again" in recorded.details, recorded.details)
+        assertEquals(KeepOutcome.NotManuallyKept, slice.connect.setReceivesFromSlussen(budgetAccountId("Checking"), receives = true))
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A9: Mark or Unmark a Budget Account Manually Kept", businessRules = ["BR-014"])
     @DisplayName("BR-014: a Manually Kept Account is never paired, and only a free Budget Account can be marked: not one that receives through an Account Mapping")
     fun aManuallyKeptAccountIsNeverPaired() = runTest {
         readyToPair()
         pairAndAdd("acct-4410", "Checking")
-        slice.connect.markManuallyKept(budgetAccountId("Rewards Card"))
+        slice.connect.setReceivesFromSlussen(budgetAccountId("Rewards Card"), receives = false)
 
-        val mapped = slice.connect.markManuallyKept(budgetAccountId("Checking"))
+        val mapped = slice.connect.setReceivesFromSlussen(budgetAccountId("Checking"), receives = false)
         val p = slice.connect.card(offeredId("acct-1182"))!!
         val paired = slice.connect.add(
             p.offered.offeredBankAccountId, budgetAccountId("Rewards Card"), p.proposedName, p.proposedType,
@@ -1168,26 +1247,28 @@ class UC013ConnectBudgetsAndBankAccountsTest {
         assertEquals(KeepOutcome.StillReceives("CHK ••4410"), mapped)
         assertFalse(slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Checking" }.manuallyKept)
         assertEquals(PairOutcome.NotOffered, paired)
-        assertEquals(KeepOutcome.NotFree, slice.connect.markManuallyKept(budgetAccountId("Rewards Card")))
+        assertEquals(KeepOutcome.NotFree, slice.connect.setReceivesFromSlussen(budgetAccountId("Rewards Card"), receives = false))
         assertEquals(1, slice.connectionStore.bankAccounts().size)
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "A11: No Offered Bank Account Left to Decide")
-    @DisplayName("A11: when every stored Offered Bank Account is added, left out or a proposed match, there is nothing new to bring in; with none stored it is A3 instead")
-    fun nothingLeftToDecide() = runTest {
+    @UseCase(id = "UC-013", scenario = "A11: No Offered Bank Account Left to Decide", businessRules = ["BR-006", "BR-012"])
+    @DisplayName("A11: when every stored Offered Bank Account of a Data Provider is added, left out, a proposed match or the balance of a File Format's Bank Account, nothing new is to import and none of them is to map; with none stored it is A3 instead")
+    fun nothingNewToImport() = runTest {
         readyToPair()
-        assertFalse(slice.connect.pairing().nothingToBringIn)
-        bringIn("acct-4410")
+        assertFalse(slice.connect.offeredOf(slice.feedsId).nothingNew)
         pairAndAdd("acct-4410", "Checking")
+        switchOff("acct-1182", "acct-5520")
+        addHarborHealthSavings()
 
-        val pairing = slice.connect.pairing()
+        val page = slice.connect.offeredOf(slice.feedsId)
 
-        assertTrue(pairing.nothingToBringIn)
-        assertEquals(3, pairing.leftOut.size)
+        assertTrue(page.nothingNew)
+        assertTrue(slice.connect.toMap().isEmpty())
+        assertEquals(ImportState.ReportsBalance("Harbor Health Savings"), page.offered.single { it.offered.nameOrProduct == "Reserve Saver" }.state)
         val empty = TestSlice()
         empty.enterCredentials()
-        assertFalse(empty.connect.pairing().nothingToBringIn)
+        assertFalse(empty.connect.offeredOf(empty.feedsId).nothingNew)
     }
 
     @Test
@@ -1195,14 +1276,10 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     @DisplayName("A4, BR-006: the Offered Bank Accounts offered for a File Format's balance include the Left-Out ones; choosing one brings it back, recorded by name")
     fun aLeftOutBalanceSourceIsBroughtBack() = runTest {
         readyToPair()
-        bringIn("acct-4410")
-        val format = slice.connect.fileFormats().single()
+        switchOff("acct-1182", "acct-7731", "acct-5520")
 
         val sources = slice.connect.balanceSources()
-        val outcome = slice.connect.addFromTransactionFiles(
-            format.fileFormatId, BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), offeredId("acct-7731"),
-            budgetAccountId("Reserve Savings"), "Harbor Health Savings", null,
-        )
+        val outcome = addHarborHealthSavings()
 
         assertEquals(listOf("CHK", "Pinecrest Rewards Visa", "Reserve Saver", "Aurora Dollar"), sources.map { it.offered.nameOrProduct })
         assertEquals(listOf(false, true, true, true), sources.map { it.leftOut })
@@ -1212,20 +1289,172 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     }
 
     @Test
-    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-011", "BR-012"])
-    @DisplayName("BR-011: an Offered Bank Account that reports the balance of an added Bank Account is not shown to bring in, so it is never left out")
-    fun aBalanceSourceIsNotShownToBringIn() = runTest {
+    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-006", "BR-012"])
+    @DisplayName("BR-006, BR-012: an Offered Bank Account that reports the balance of a File Format's Bank Account has no import switch, is never to map and never left out")
+    fun aBalanceSourceHasNoImportSwitch() = runTest {
         readyToPair()
-        val format = slice.connect.fileFormats().single()
-        slice.connect.addFromTransactionFiles(
-            format.fileFormatId, BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), offeredId("acct-7731"),
-            budgetAccountId("Reserve Savings"), "Harbor Health Savings", null,
+        addHarborHealthSavings()
+
+        val switchedOff = slice.connect.switchImportOff(offeredId("acct-7731"))
+
+        assertEquals(ImportSwitchedOff.NoSwitch, switchedOff)
+        assertFalse(slice.connect.offeredOf(slice.feedsId).offered.single { it.offered.nameOrProduct == "Reserve Saver" }.hasImportSwitch)
+        assertTrue(slice.connect.toMap().none { it.offered.nameOrProduct == "Reserve Saver" })
+        assertTrue(leftOutReferences().isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-006"])
+    @DisplayName("A4 step 1, BR-006: a File Format's page opens at any time; while no Budget is served, a Bank Account can only be added once one is chosen, and adding is refused")
+    fun fileFormatPageWaitsForAServedBudget() = runTest {
+        slice.enterCredentials()
+        offerFeedsBankAccounts()
+
+        val page = slice.connect.fileFormatPage(fileFormatId())
+
+        assertEquals("Harbor Health statement", page.name)
+        assertTrue(page.bankAccounts.isEmpty())
+        assertFalse(page.canAdd)
+        assertTrue(page.freeBudgetAccounts.isEmpty())
+        assertEquals(
+            PairOutcome.NotOffered,
+            slice.connect.addFromTransactionFiles(fileFormatId(), BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), null, -1, "Harbor Health Savings", null, USD),
+        )
+        assertTrue(slice.connectionStore.bankAccounts().isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-006", "BR-012"])
+    @DisplayName("A4 steps 1-3: a Bank Account added on the File Format's page is listed there with its Bank, type, currency, balance source and Account Mapping, and with the Account Mappings, never among the Bank Accounts to map")
+    fun fileFormatPageListsItsBankAccounts() = runTest {
+        readyToPair()
+        addHarborHealthSavings()
+
+        val page = slice.connect.fileFormatPage(fileFormatId())
+
+        val added = slice.connectionStore.bankAccounts().single()
+        val balance = slice.connect.balanceSources().single { it.offered.nameOrProduct == "Reserve Saver" }
+        assertEquals(
+            listOf(FileFormatBankAccount(added.id, "Harbor Health Savings", "Harbor Health Trust", BankAccountType.Savings, USD, balance, "Reserve Savings")),
+            page.bankAccounts,
+        )
+        assertTrue(page.canAdd)
+        assertEquals(listOf("Checking", "Rewards Card", "Current", "Savings", "Card"), page.freeBudgetAccounts.map { it.name })
+        assertEquals(listOf(BankAccountType.Checking, BankAccountType.Savings, BankAccountType.CreditCard, BankAccountType.Other), page.types)
+        assertTrue(slice.connect.toMap().none { it.offered.nameOrProduct == "Reserve Saver" })
+        assertEquals("Reserve Savings", slice.connect.addedBankAccounts().single().budgetAccountName)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A4: Bank Account of a File Format", businessRules = ["BR-010"])
+    @DisplayName("BR-010: a File Format's Bank Account has the currency the Operator states, proposed from the Offered Bank Account that reports its balance when that one states one, otherwise from the chosen Budget Account")
+    fun fileFormatCurrencyIsProposedAndStated() = runTest {
+        readyToPair()
+
+        assertEquals(USD, slice.connect.proposedFileFormatCurrency(budgetAccountId("Current"), offeredId("acct-7731")))
+        assertEquals(EUR, slice.connect.proposedFileFormatCurrency(budgetAccountId("Current"), null))
+        assertNull(slice.connect.proposedFileFormatCurrency(null, null))
+        val outcome = addHarborHealthSavings()
+
+        assertInstanceOf(PairOutcome.Added::class.java, outcome)
+        assertEquals(USD, slice.connectionStore.bankAccounts().single().currency)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A5: Budget Account Already Mapped or in Another Currency", businessRules = ["BR-010"])
+    @DisplayName("A5, BR-010: a File Format's Bank Account in a currency other than its Budget's is refused, and none is added without a currency; no amount is converted")
+    fun fileFormatCurrencyIsChecked() = runTest {
+        readyToPair()
+
+        val otherCurrency = addHarborHealthSavings(balanceFrom = null, budgetAccount = "Current")
+        val noCurrency = slice.connect.addFromTransactionFiles(
+            fileFormatId(), BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), null, budgetAccountId("Reserve Savings"),
+            "Harbor Health Savings", null, currency = null,
         )
 
-        slice.connect.bringIn(shownIds(), emptySet())
+        assertEquals(PairOutcome.CurrencyDiffers("Current", EUR, "Harbor Health Savings", USD), otherCurrency)
+        assertEquals(PairOutcome.CurrencyNotStated, noCurrency)
+        assertTrue(slice.connectionStore.bankAccounts().isEmpty())
+    }
 
-        assertFalse("acct-7731" in leftOutReferences())
-        assertEquals(listOf("acct-4410", "acct-1182", "acct-5520"), leftOutReferences())
+    @Test
+    @UseCase(id = "UC-013", businessRules = ["BR-015"])
+    @DisplayName("BR-015: the Account Mappings wait first for the Budget App's credentials, then for a chosen Budget, then for an imported or added Bank Account, and are available from then on with the number to map")
+    fun accountMappingsBecomeAvailableInOrder() = runTest {
+        suspend fun mappings() = slice.settingsOverview.entries().accountMappings
+
+        assertEquals(MappingsWaitFor.BudgetAppCredentials, mappings().waitingFor)
+        slice.enterCredentials()
+        assertEquals(MappingsWaitFor.ChosenBudget, mappings().waitingFor)
+        chooseHouseholdAndSummerHouse()
+        assertEquals(MappingsWaitFor.ImportedBankAccount, mappings().waitingFor)
+        assertFalse(mappings().available)
+        offerFeedsBankAccounts()
+
+        assertEquals(AccountMappingsEntry(available = true, toMap = 4, waitingFor = null, isNext = true), mappings())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", businessRules = ["BR-006", "BR-015"])
+    @DisplayName("BR-015: a Bank Account added on a File Format's page makes the Account Mappings available, with nothing to map")
+    fun aFileFormatBankAccountMakesTheAccountMappingsAvailable() = runTest {
+        slice.enterCredentials()
+        chooseHouseholdAndSummerHouse()
+
+        slice.connect.addFromTransactionFiles(
+            fileFormatId(), BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), null, budgetAccountId("Reserve Savings"),
+            "Harbor Health Savings", null, USD,
+        )
+
+        assertEquals(AccountMappingsEntry(available = true, toMap = 0, waitingFor = null, isNext = false), slice.settingsOverview.entries().accountMappings)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", businessRules = ["BR-015"])
+    @DisplayName("BR-015: once available, the Account Mappings stay available when the Budget App's credentials are later refused or removed, so that the added Bank Accounts stay reachable")
+    fun accountMappingsStayAvailable() = runTest {
+        readyToPair()
+        pairAndAdd("acct-4410", "Checking")
+        switchOff("acct-1182", "acct-7731", "acct-5520")
+        assertEquals(AccountMappingsEntry(available = true, toMap = 0, waitingFor = null, isNext = false), slice.settingsOverview.entries().accountMappings)
+
+        slice.budgetApp.reader.readBudgetsAnswer = ReadResult.CredentialsRefused
+        slice.connect.readBudgets()
+        assertTrue(slice.settingsOverview.entries().accountMappings.available)
+        slice.credentials.remove(ServiceKey.budgetApp)
+
+        assertTrue(slice.settingsOverview.entries().accountMappings.available)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", businessRules = ["BR-008"])
+    @DisplayName("BR-008: Settings names what comes next on the first entry that still needs it: the Budget App's credentials, the Budgets, a Data Provider's credentials, its Fetch or Bank Consent, then the Bank Accounts to map; nothing once every one is mapped or left out")
+    fun whatComesNextFollowsTheOrderOfSettingUp() = runTest {
+        suspend fun marked(): List<String> {
+            val top = slice.settingsOverview.entries()
+            return top.entries.filter { it.isNext }.map { it.name } + listOfNotNull("Account Mappings".takeIf { top.accountMappings.isNext })
+        }
+        suspend fun next() = slice.settingsOverview.next()
+
+        assertEquals(NextThing.EnterBudgetAppCredentials(ExampleData.BUDGET_APP_NAME), next())
+        assertEquals(listOf(ExampleData.BUDGET_APP_NAME), marked())
+        slice.credentials.enter(ServiceKey.budgetApp, slice.input("token" to ExampleData.BUDGET_APP_TOKEN))
+        assertEquals(NextThing.ChooseBudgets(ExampleData.BUDGET_APP_NAME), next())
+        chooseHouseholdAndSummerHouse()
+        assertEquals(NextThing.EnterDataProviderCredentials, next())
+        assertEquals(listOf("Kestrel Feeds"), marked())
+        slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        assertEquals(NextThing.FetchOrGrantBankConsent(listOf("Kestrel Feeds"), listOf("Aurora Open Banking")), next())
+        assertEquals(listOf("Kestrel Feeds"), marked())
+        offerFeedsBankAccounts()
+        assertEquals(NextThing.MapBankAccounts(4), next())
+        assertEquals(listOf("Account Mappings"), marked())
+        pairAndAdd("acct-4410", "Checking")
+        switchOff("acct-1182", "acct-7731", "acct-5520")
+
+        assertNull(next())
+        assertTrue(marked().isEmpty())
     }
 
     @Test
@@ -1233,26 +1462,26 @@ class UC013ConnectBudgetsAndBankAccountsTest {
     @DisplayName("Precondition: while an Upload Plan awaits confirmation, nothing is left out, brought back or marked as kept by hand")
     fun leavingOutWaitsForTheUpload() = runTest {
         readyToPair()
-        bringIn("acct-4410", "acct-1182", "acct-7731")
+        switchOff("acct-5520")
         val dollar = slice.connectionStore.leftOutBankAccounts().single()
         slice.coordinatorStore.mode = CoordinatorMode.PlanOpen
         val refusal = OperationRefusal.UploadPlanAwaitingConfirmation
 
-        assertEquals(BringIn.Unavailable(refusal), slice.connect.bringIn(shownIds(), emptySet()))
+        assertEquals(ImportSwitchedOff.Unavailable(refusal), slice.connect.switchImportOff(offeredId("acct-4410")))
         assertEquals(BroughtBack.Unavailable(refusal), slice.connect.bringBack(dollar.id))
-        assertEquals(KeepOutcome.Unavailable(refusal), slice.connect.markManuallyKept(budgetAccountId("Checking")))
+        assertEquals(KeepOutcome.Unavailable(refusal), slice.connect.setReceivesFromSlussen(budgetAccountId("Checking"), receives = false))
         assertEquals(listOf("acct-5520"), leftOutReferences())
         assertTrue(slice.connectionStore.budgets().flatMap { it.budgetAccounts }.none { it.manuallyKept })
     }
 
     @Test
     @UseCase(id = "UC-013")
-    @DisplayName("Success postconditions: the added Bank Accounts, the Left-Out Bank Accounts not offered and never read, the skipped ones offered again, the Manually Kept Accounts not offered")
-    fun successPostconditionsOfTheTwoSteps() = runTest {
+    @DisplayName("Success postconditions: the added Bank Accounts, the Left-Out Bank Accounts not to map and never read, the imported ones not yet added still to map, the Manually Kept Accounts not offered")
+    fun successPostconditions() = runTest {
         readyToPair()
-        bringIn("acct-4410", "acct-1182")
+        switchOff("acct-7731", "acct-5520")
         pairAndAdd("acct-4410", "Checking")
-        slice.connect.markManuallyKept(budgetAccountId("Reserve Savings"))
+        slice.connect.setReceivesFromSlussen(budgetAccountId("Reserve Savings"), receives = false)
 
         val pairing = slice.connect.pairing()
 

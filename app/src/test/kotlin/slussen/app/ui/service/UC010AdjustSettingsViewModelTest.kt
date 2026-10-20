@@ -10,13 +10,14 @@ import org.junit.jupiter.api.extension.ExtendWith
 import slussen.app.ui.AppVersion
 import slussen.app.ui.MainDispatcherExtension
 import slussen.app.ui.UiFixture
-import slussen.app.ui.connections.ConnectionsViewModel
+import slussen.app.ui.settings.EntryPage
+import slussen.app.ui.settings.SettingsViewModel
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.ServiceKey
 import slussen.pluginapi.testfixtures.UseCase
 
 /**
- * The Request Limit of a Data Provider that publishes none, on its page in Connections (`connections.html#request-limit`),
+ * The Request Limit of a Data Provider that publishes none, on its page (`connections.html#request-limit`),
  * and the app's version on Settings (`settings.html#list-2`).
  */
 @ExtendWith(MainDispatcherExtension::class)
@@ -25,7 +26,7 @@ class UC010AdjustSettingsViewModelTest {
     private val fixture = UiFixture()
     private val slice = fixture.slice
 
-    private fun page(service: ServiceKey) = ServicePageViewModel(fixture.services, service, fromSetup = false).also { it.load() }
+    private fun page(service: ServiceKey) = ServicePageViewModel(fixture.services, service).also { it.load() }
 
     private fun ServicePageViewModel.ui() = state.value!!
 
@@ -135,10 +136,32 @@ class UC010AdjustSettingsViewModelTest {
         assertEquals(50, storedLimit())
     }
 
+    // ---- The services at the top of Settings (S-40) -----------------------------------------------------------------
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-010"])
+    @DisplayName("Step 1, BR-010: Settings lists the services directly at its top, the Budget App, each Data Provider and each File Format, each opening its own page, then the Account Mappings")
+    fun settingsListsTheServicesDirectly() {
+        val ui = SettingsViewModel(fixture.services).also { it.load() }.state.value!!
+
+        assertEquals(
+            listOf(
+                EntryPage.Service(slussen.core.port.ServiceKey.budgetApp),
+                EntryPage.Service(slice.feedsKey),
+                EntryPage.Service(slice.openBankingKey),
+                EntryPage.Service(slice.wrenKey),
+                EntryPage.FileFormat(slice.plugins.fileFormats.single().id),
+            ),
+            ui.entries.map { it.page },
+        )
+        assertEquals("File Format · Transaction Files", ui.entries.last().kind)
+        assertFalse(ui.accountMappings.available)
+    }
+
     // ---- The app's version on Settings (S-37) -------------------------------------------------------------------
 
     private fun settings(version: AppVersion) =
-        ConnectionsViewModel(UiFixture(appVersion = version).services).also { it.load() }.state.value!!
+        SettingsViewModel(UiFixture(appVersion = version).services).also { it.load() }.state.value!!
 
     @Test
     @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-011"])

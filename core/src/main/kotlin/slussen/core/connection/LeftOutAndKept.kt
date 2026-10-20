@@ -9,10 +9,9 @@ import slussen.core.port.StoredBudget
 import slussen.core.port.StoredLeftOutBankAccount
 
 /**
- * What UC-013 (A9, A10, BR-011, BR-014) and UC-009 (A15, A16, BR-013) share about the Left-Out Bank Accounts and the
- * Manually Kept Accounts: how they are shown, brought back, marked and unmarked, and how each change is recorded in the
- * Decision Journal, by name and never by the Data Provider's reference (NFR-012). Each use case calls it with its own
- * storage operation (O-15 or O-13).
+ * The Left-Out Bank Accounts and the Manually Kept Accounts of UC-013 (A9, A10, BR-011, BR-014), which UC-009 A15 and
+ * A16 also use since S-40: how they are brought back, marked and unmarked, and how each change is recorded in the
+ * Decision Journal, by name and never by the Data Provider's reference (NFR-012), with the storage operation of O-15.
  */
 internal class LeftOutAndKept(
     private val plugins: RegisteredPlugins,
@@ -22,26 +21,18 @@ internal class LeftOutAndKept(
     fun sourceName(dataProviderId: Long): String =
         plugins.dataProviders.firstOrNull { it.stored.id == dataProviderId }?.stored?.name.orEmpty()
 
-    fun view(leftOut: StoredLeftOutBankAccount) = LeftOutBankAccount(
-        leftOutBankAccountId = leftOut.id,
-        dataProviderId = leftOut.dataProviderId,
-        sourceName = sourceName(leftOut.dataProviderId),
-        name = leftOut.name.orEmpty(),
-        leftOutAt = leftOut.leftOutAt,
-    )
-
-    /** Steps 8-9 and A12 of UC-013: each Left-Out Bank Account recorded by its name. */
+    /** Steps 6-7 and A12 of UC-013: a Left-Out Bank Account recorded by its name. */
     suspend fun recordLeftOut(name: String?, dataProviderId: Long) {
         journal.record(
             JournalEventKind.AccountMappingChange,
-            "Offered Bank Account ${name.orEmpty()} of ${sourceName(dataProviderId)} left out: not imported and never read until brought back",
+            "Offered Bank Account ${name.orEmpty()} of ${sourceName(dataProviderId)} left out, its import switched off: not imported and never read until imported again",
         )
     }
 
     suspend fun recordBroughtBack(name: String?, dataProviderId: Long) {
         journal.record(
             JournalEventKind.AccountMappingChange,
-            "Left-Out Bank Account ${name.orEmpty()} of ${sourceName(dataProviderId)} brought back: offered for pairing again",
+            "Left-Out Bank Account ${name.orEmpty()} of ${sourceName(dataProviderId)} brought back: imported again",
         )
     }
 

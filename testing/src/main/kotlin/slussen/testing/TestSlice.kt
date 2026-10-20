@@ -14,7 +14,7 @@ import slussen.core.port.RandomSource
 import slussen.core.port.ServiceKey
 import slussen.core.port.StartKind
 import slussen.core.port.UnreadablePart
-import slussen.core.settings.ConnectionsOverview
+import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.status.ImportStatus
 import slussen.pluginapi.credential.CredentialInput
@@ -62,7 +62,7 @@ class TestSlice(
     val fetch = FetchTransactions(
         plugins, credentials, connectionStore, offeredStore, importStatusStore, providerRequests, coordinator, settings, clock,
     )
-    val connections = ConnectionsOverview(plugins, credentials, connectionStore, importStatusStore, settings, clock)
+    val settingsOverview = SettingsOverview(plugins, credentials, connectionStore, offeredStore, importStatusStore, settings, clock)
     val connect = BudgetsAndBankAccounts(
         plugins, credentials, connectionStore, offeredStore, coordinator, journal, random, clock,
     )
@@ -82,6 +82,7 @@ class TestSlice(
         settings = settings,
         journal = journal,
         clock = clock,
+        firstRunNext = { settingsOverview.next() },
     )
 
     val feedsKey: ServiceKey get() = plugins.dataProviders.single { it.plugin === feeds }.key

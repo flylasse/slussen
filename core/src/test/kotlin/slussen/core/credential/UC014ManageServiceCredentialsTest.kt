@@ -22,6 +22,8 @@ import slussen.core.port.StartedBy
 import slussen.core.port.StoredBackOff
 import slussen.core.port.StoredFetch
 import slussen.core.settings.RequestLimitShown
+import slussen.core.settings.EntryKind
+import slussen.core.settings.EntryStatus
 import slussen.core.settings.ServiceStatus
 import slussen.pluginapi.budgetapp.ReadResult
 import slussen.pluginapi.credential.CredentialCheck
@@ -84,22 +86,23 @@ class UC014ManageServiceCredentialsTest {
 
     @Test
     @UseCase(id = "UC-014", scenario = "Main Success Scenario", businessRules = ["BR-007"])
-    @DisplayName("Step 1: Connections lists the Budget App and each Data Provider in use with its status, and the Data Providers not set up")
-    fun connectionsListsServicesInUseAndNotSetUp() = runTest {
+    @DisplayName("Step 1: Settings lists the Budget App and each Data Provider of this build, also those not set up, each with one status line, with no level between")
+    fun settingsListsEveryServiceWithItsStatus() = runTest {
         slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
         serveHousehold()
         addBankAccountOf(slice.openBankingId)
 
-        val list = slice.connections.connections()
+        val entries = slice.settingsOverview.entries().entries.filter { it.service != null }
 
         assertEquals(
-            listOf(ExampleData.BUDGET_APP_NAME, "Kestrel Feeds", "Aurora Open Banking"),
-            list.inUse.map { it.name },
+            listOf(ExampleData.BUDGET_APP_NAME, "Kestrel Feeds", "Aurora Open Banking", "Wren Feeds"),
+            entries.map { it.name },
         )
-        assertEquals(ServiceStatus.CredentialsMissing, list.inUse[0].status)
-        assertInstanceOf(ServiceStatus.Connected::class.java, list.inUse[1].status)
-        assertEquals(ServiceStatus.CredentialsMissing, list.inUse[2].status)
-        assertEquals(listOf("Wren Feeds"), list.notSetUp.map { it.name })
+        assertEquals(listOf(ServiceKey.budgetApp, slice.feedsKey, slice.openBankingKey, slice.wrenKey), entries.map { it.service })
+        assertEquals(EntryStatus.CredentialsMissing(bankAccounts = null), entries[0].status)
+        assertEquals(EntryStatus.NothingOffered(needsBankConsent = false), entries[1].status)
+        assertEquals(EntryStatus.CredentialsMissing(bankAccounts = 1), entries[2].status)
+        assertEquals(EntryStatus.NotSetUp, entries[3].status)
     }
 
     @Test
@@ -134,7 +137,7 @@ class UC014ManageServiceCredentialsTest {
         assertFalse(ExampleData.SETUP_KEY in entry.details)
         assertFalse(ExampleData.EXCHANGED_ACCESS_CREDENTIAL in entry.details)
         assertEquals(CredentialStatus.Accepted(slice.clock.instant()), slice.credentials.status(slice.feedsKey))
-        assertInstanceOf(ServiceStatus.Connected::class.java, slice.connections.servicePage(slice.feedsKey).status)
+        assertInstanceOf(ServiceStatus.Connected::class.java, slice.settingsOverview.servicePage(slice.feedsKey).status)
     }
 
     @Test
@@ -275,7 +278,7 @@ class UC014ManageServiceCredentialsTest {
 
     @Test
     @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", businessRules = ["BR-005", "BR-007"])
-    @DisplayName("A3: removed credentials are deleted and recorded; a Data Provider with a Bank Account stays in use as credentials missing")
+    @DisplayName("A3: removed credentials are deleted and recorded; a Data Provider with a Bank Account keeps the status credentials missing, with its Bank Accounts")
     fun removedCredentialsLeaveTheDataProviderInUseAsCredentialsMissing() = runTest {
         serveHousehold()
         slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
@@ -285,9 +288,10 @@ class UC014ManageServiceCredentialsTest {
 
         assertEquals(RemovalOutcome.Removed, outcome)
         assertNull(slice.vault.read(slice.feedsKey))
-        val line = slice.connections.connections().inUse.single { it.service == slice.feedsKey }
-        assertEquals(ServiceStatus.CredentialsMissing, line.status)
-        val page = slice.connections.servicePage(slice.feedsKey)
+        val entry = slice.settingsOverview.entries().entries.single { it.service == slice.feedsKey }
+        assertEquals(EntryStatus.CredentialsMissing(bankAccounts = 1), entry.status)
+        assertEquals(ServiceStatus.CredentialsMissing, slice.settingsOverview.servicePage(slice.feedsKey).status)
+        val page = slice.settingsOverview.servicePage(slice.feedsKey)
         assertEquals(CredentialStatus.Missing, page.credentialStatus)
         assertEquals(listOf("Kestrel Checking"), page.bankAccounts.map { it.name })
         val removal = slice.journalRecorder.entries.last()
@@ -303,9 +307,8 @@ class UC014ManageServiceCredentialsTest {
 
         slice.credentials.remove(slice.feedsKey)
 
-        val list = slice.connections.connections()
-        assertTrue(list.inUse.none { it.service == slice.feedsKey })
-        assertTrue(list.notSetUp.any { it.service == slice.feedsKey })
+        assertEquals(EntryStatus.NotSetUp, slice.settingsOverview.entries().entries.single { it.service == slice.feedsKey }.status)
+        assertEquals(ServiceStatus.NotSetUp, slice.settingsOverview.servicePage(slice.feedsKey).status)
     }
 
     @Test
@@ -345,7 +348,7 @@ class UC014ManageServiceCredentialsTest {
     @DisplayName("BR-001: a new installation holds no credential of any service; each is entered in the app")
     fun noCredentialComesFromTheBuild() = runTest {
         slice.plugins.serviceKeys.forEach { assertEquals(CredentialStatus.Missing, slice.credentials.status(it)) }
-        assertEquals(ServiceStatus.CredentialsMissing, slice.connections.connections().inUse.single().status)
+        assertTrue(slice.settingsOverview.entries().entries.filter { it.service != null }.all { it.status == EntryStatus.NotSetUp })
     }
 
     @Test
@@ -366,11 +369,12 @@ class UC014ManageServiceCredentialsTest {
     @DisplayName("BR-004: credentials that are not there after a reinstall, or cannot be decrypted, are missing and must be entered again")
     fun lostCredentialsAreMissing() = runTest {
         slice.credentials.enter(ServiceKey.budgetApp, slice.input("token" to ExampleData.BUDGET_APP_TOKEN))
+        serveHousehold()
 
         slice.vault.remove(ServiceKey.budgetApp)
 
         assertEquals(CredentialStatus.Missing, slice.credentials.status(ServiceKey.budgetApp))
-        assertEquals(ServiceStatus.CredentialsMissing, slice.connections.servicePage(ServiceKey.budgetApp).status)
+        assertEquals(ServiceStatus.CredentialsMissing, slice.settingsOverview.servicePage(ServiceKey.budgetApp).status)
     }
 
     @Test
@@ -385,7 +389,7 @@ class UC014ManageServiceCredentialsTest {
         slice.connect.readBudgets()
 
         assertEquals(CredentialStatus.Refused, slice.credentials.status(ServiceKey.budgetApp))
-        assertEquals(ServiceStatus.CredentialsRefused, slice.connections.servicePage(ServiceKey.budgetApp).status)
+        assertEquals(ServiceStatus.CredentialsRefused, slice.settingsOverview.servicePage(ServiceKey.budgetApp).status)
         assertEquals(readsAfterRefusal, slice.budgetApp.reader.budgetReads)
 
         slice.credentials.enter(ServiceKey.budgetApp, slice.input("token" to ExampleData.BUDGET_APP_TOKEN))
@@ -402,11 +406,11 @@ class UC014ManageServiceCredentialsTest {
             1, slice.feedsId, slice.clock.instant(), StartedBy.Operator, FetchOutcome.CredentialsRefused, emptyList(),
         )
 
-        assertEquals(ServiceStatus.CredentialsRefused, slice.connections.servicePage(slice.feedsKey).status)
+        assertEquals(ServiceStatus.CredentialsRefused, slice.settingsOverview.servicePage(slice.feedsKey).status)
 
         slice.clock.advance(Duration.ofMinutes(1))
         slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
-        assertInstanceOf(ServiceStatus.Connected::class.java, slice.connections.servicePage(slice.feedsKey).status)
+        assertInstanceOf(ServiceStatus.Connected::class.java, slice.settingsOverview.servicePage(slice.feedsKey).status)
     }
 
     @Test
@@ -425,34 +429,62 @@ class UC014ManageServiceCredentialsTest {
 
     @Test
     @UseCase(id = "UC-014", businessRules = ["BR-007"])
-    @DisplayName("BR-007: the Budget App is always listed, with credentials missing until they are accepted, then connected with its Budgets in use")
+    @DisplayName("BR-007: the Budget App is always listed first, not set up until its credentials are accepted, then with the number of Budgets served")
     fun budgetAppIsAlwaysListed() = runTest {
-        assertEquals(ServiceStatus.CredentialsMissing, slice.connections.connections().inUse.first().status)
+        assertEquals(EntryStatus.NotSetUp, slice.settingsOverview.entries().entries.first().status)
+        assertEquals(ServiceStatus.NotSetUp, slice.settingsOverview.servicePage(ServiceKey.budgetApp).status)
 
         slice.credentials.enter(ServiceKey.budgetApp, slice.input("token" to ExampleData.BUDGET_APP_TOKEN))
         serveHousehold()
 
-        val line = slice.connections.connections().inUse.first()
-        assertTrue(line.isBudgetApp)
-        assertEquals(ServiceStatus.Connected(lastFetchAt = null, budgetsInUse = 1), line.status)
+        val entry = slice.settingsOverview.entries().entries.first()
+        assertEquals(EntryKind.BudgetApp, entry.kind)
+        assertEquals(EntryStatus.BudgetsServed(1), entry.status)
+        assertEquals(ServiceStatus.Connected(lastFetchAt = null, budgetsInUse = 1), slice.settingsOverview.servicePage(ServiceKey.budgetApp).status)
     }
 
     @Test
     @UseCase(id = "UC-014", businessRules = ["BR-007"])
-    @DisplayName("BR-007: a Data Provider's page shows its Bank Accounts, its Fetch Cooldown with the declared default and its Request Limit, also while credentials are missing")
+    @DisplayName("BR-007: a Data Provider's entry says how many of its Offered Bank Accounts are imported, with the time of its last Fetch; one that offers nothing yet says so; a File Format's entry the number of its Bank Accounts")
+    fun entriesSayHowManyAreImported() = runTest {
+        slice.credentials.enter(ServiceKey.budgetApp, slice.input("token" to ExampleData.BUDGET_APP_TOKEN))
+        serveHousehold()
+        slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        val fetchedAt = slice.clock.instant()
+        slice.importStatusStore.fetches += StoredFetch(1, slice.feedsId, fetchedAt, StartedBy.Operator, FetchOutcome.Fetched, emptyList())
+        val bank = slice.connectionStore.bankNamed("Kestrel Bank").id
+        slice.offeredStore.replaceOffered(
+            slice.feedsId,
+            null,
+            listOf("acct-1", "acct-2", "acct-3").map { ExampleData.offered(it, "Account $it", "savings", ExampleData.USD, null, null, bank, fetchedAt) },
+        )
+        addBankAccountOf(slice.feedsId)
+        slice.connect.switchImportOff(slice.offeredStore.offered().single { it.providerReference == "acct-3" }.id)
+
+        val entries = slice.settingsOverview.entries().entries
+
+        assertEquals(EntryStatus.Imported(imported = 2, of = 3, lastFetchAt = fetchedAt), entries.single { it.service == slice.feedsKey }.status)
+        assertEquals(EntryStatus.NothingOffered(needsBankConsent = true), entries.single { it.service == slice.openBankingKey }.status)
+        assertEquals(EntryStatus.FileFormatBankAccounts(0), entries.single { it.kind == EntryKind.FileFormat }.status)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", businessRules = ["BR-007"])
+    @DisplayName("BR-007: a Data Provider's page opens also while it is not set up, with its Bank Accounts, its Fetch Cooldown with the declared default and its Request Limit")
     fun dataProviderPageComesFromItsDeclarations() = runTest {
-        val page = slice.connections.servicePage(slice.feedsKey)
+        val page = slice.settingsOverview.servicePage(slice.feedsKey)
 
         assertEquals("Kestrel Feeds", page.name)
-        assertEquals(ServiceStatus.CredentialsMissing, page.status)
+        assertEquals(ServiceStatus.NotSetUp, page.status)
         assertEquals(ExampleData.feedsProfile.defaultFetchCooldownMinutes, page.fetchCooldownMinutes)
         assertEquals(ExampleData.feedsProfile.defaultFetchCooldownMinutes, page.defaultFetchCooldownMinutes)
         assertEquals(RequestLimitShown.Published(20, ExampleData.FEEDS_LIMIT_SOURCE), page.requestLimit)
         assertFalse(page.needsBankConsent)
-        assertTrue(slice.connections.servicePage(slice.openBankingKey).needsBankConsent)
+        assertTrue(slice.settingsOverview.servicePage(slice.openBankingKey).needsBankConsent)
         assertEquals(
             RequestLimitShown.NotPublished(requests = 50, defaultRequests = 50, range = 10..500),
-            slice.connections.servicePage(slice.openBankingKey).requestLimit,
+            slice.settingsOverview.servicePage(slice.openBankingKey).requestLimit,
         )
         assertEquals(slice.feeds.credentials.form.fields, page.credentialFields)
     }

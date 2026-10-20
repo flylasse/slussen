@@ -11,6 +11,7 @@ import slussen.app.ui.service.FetchWarningUi
 import slussen.core.fetch.FetchReport
 import slussen.core.fetch.FetchStart
 import slussen.core.status.BlockedReason
+import slussen.core.status.FirstRunCard
 import slussen.core.status.Overview
 import slussen.core.status.RecoveryConfirmation
 
@@ -23,7 +24,10 @@ data class BudgetLine(
     val blocked: List<String>,
 )
 
-/** What the Overview shows when Slussen opens (UC-008 steps 1-3, A1, A7, A8). */
+/** UC-008 A10, BR-011 (`overview.html#new-installation`, `#first-run-next`): the one card that leads to Settings. */
+data class FirstRunUi(val title: String, val next: String, val then: String?)
+
+/** What the Overview shows when Slussen opens (UC-008 steps 1-3, A1, A7, A8, A10). */
 data class OverviewUi(
     val heading: String,
     val budgetAppRead: String,
@@ -41,6 +45,8 @@ data class OverviewUi(
     val fetchMessages: List<String>,
     /** UC-001 A16: the warning of a Data Provider the Operator confirms before it is fetched, or null. */
     val fetchWarning: FetchWarningUi?,
+    /** A10, BR-011: while no Bank Account is added, the only thing shown; null from the first added Bank Account on. */
+    val firstRun: FirstRunUi? = null,
 )
 
 /** The Overview tab (UC-008), from stored data only. */
@@ -62,6 +68,11 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
     }
 
     private fun show(overview: Overview) {
+        val firstRun = overview.firstRun
+        if (firstRun != null) {
+            showFirstRun(overview, firstRun)
+            return
+        }
         val formats = services.formats
         mutableState.value = OverviewUi(
             heading = "Overview · ${formats.dateTime(services.clock.instant())} · device time",
@@ -102,6 +113,27 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
             canFetch = true,
             fetchMessages = fetchMessages,
             fetchWarning = pendingWarnings.firstOrNull(),
+        )
+    }
+
+    // UC-008 BR-011: While no Bank Account is added, the Overview shows nothing but the card that leads to Settings and names the next thing, not even a Recovery Check.
+    private fun showFirstRun(overview: Overview, card: FirstRunCard) {
+        val (next, then) = card.next?.let(Texts::next) ?: ("Next: open Settings" to null)
+        mutableState.value = OverviewUi(
+            heading = "Overview · ${services.formats.dateTime(services.clock.instant())} · device time",
+            budgetAppRead = "",
+            unreadableNotices = emptyList(),
+            recoveryCheck = null,
+            recoveryCause = null,
+            backupWarning = null,
+            expiringConsents = emptyList(),
+            budgets = emptyList(),
+            noBankAccountAdded = overview.noBankAccountAdded,
+            message = null,
+            canFetch = false,
+            fetchMessages = emptyList(),
+            fetchWarning = null,
+            firstRun = FirstRunUi("Set up Slussen in Settings", next, then),
         )
     }
 

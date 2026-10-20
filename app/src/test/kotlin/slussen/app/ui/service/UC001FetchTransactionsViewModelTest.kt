@@ -27,7 +27,7 @@ import slussen.testing.ExampleData.amount
 import java.time.Duration
 
 /**
- * Fetch Transactions (UC-001), the screens: the Fetch action on a Data Provider's page in Connections and the Fetch of
+ * Fetch Transactions (UC-001), the screens: the Fetch action on a Data Provider's page and the Fetch of
  * all Data Providers on the Overview (`connections.html`, `overview.html`, `budget.html#request-limit-warning`). The
  * rules themselves are tested in `UC001FetchTransactionsTest` of `:core`.
  */
@@ -37,7 +37,7 @@ class UC001FetchTransactionsViewModelTest {
     private val fixture = UiFixture()
     private val slice = fixture.slice
 
-    private fun page(service: ServiceKey) = ServicePageViewModel(fixture.services, service, fromSetup = false).also { it.load() }
+    private fun page(service: ServiceKey) = ServicePageViewModel(fixture.services, service).also { it.load() }
 
     private fun ServicePageViewModel.ui() = state.value!!
 
@@ -48,6 +48,25 @@ class UC001FetchTransactionsViewModelTest {
             DeliveredBankAccount("acct-1182", "Kestrel Bank", "Rewards", "credit card", USD, null, BankAccountResult.Read(emptyList(), amount(-1268, 400))),
         ).take(accounts)
         slice.feeds.fetchAnswer = { FetchResponse(outcome, emptyList(), listed) }
+    }
+
+    /**
+     * UC-008 A10, BR-011: the Overview offers the Fetch of all Data Providers only from the first added Bank Account on;
+     * here a Bank Account of the File Format, so that no Data Provider's delivery changes.
+     */
+    private fun aBankAccountIsAdded() = runBlocking {
+        val listed = ExampleData.budgetsRead().map { budget ->
+            slussen.core.port.BudgetToServe(
+                budget.reference, budget.name, budget.currency,
+                budget.budgetAccounts.map { slussen.core.port.BudgetAccountToStore(it.reference, it.name, it.balance) },
+            )
+        }
+        slice.connectionStore.serveBudgets(listed, setOf("budget-care"), slice.clock.instant())
+        val health = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Health Savings" }.id
+        slice.connect.addFromTransactionFiles(
+            slice.plugins.fileFormats.single().id, slussen.core.port.BankAccountType.Savings,
+            slussen.core.port.BankChoice.Named("Harbor Health Trust"), null, health, "Harbor Health Savings", null, ExampleData.USD,
+        )
     }
 
     @Test
@@ -226,6 +245,7 @@ class UC001FetchTransactionsViewModelTest {
             slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
         }
         answerFeeds()
+        aBankAccountIsAdded()
         val overview = OverviewViewModel(fixture.services).also { it.load() }
         assertTrue(overview.state.value!!.canFetch)
 
@@ -250,6 +270,7 @@ class UC001FetchTransactionsViewModelTest {
         slice.importStatusStore.backOffList += StoredBackOff(
             slice.feedsId, null, BackOffCause.RequestLimitWarning, slice.clock.instant(), slice.clock.instant().plus(Duration.ofHours(24)),
         )
+        aBankAccountIsAdded()
         val overview = OverviewViewModel(fixture.services).also { it.load() }
 
         overview.fetchAll()

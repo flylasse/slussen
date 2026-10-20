@@ -139,12 +139,12 @@ data class StoredLeftOutBankAccount(
     val id: Long,
     val dataProviderId: Long,
     val providerReference: String,
-    /** The Offered Bank Account's name or product with its last four digits, taken when it was left out. */
+    /** The Offered Bank Account's name or product, with its last four digits when it does not end with them (UC-013 BR-004). */
     val name: String?,
     val leftOutAt: Instant,
 )
 
-/** One Offered Bank Account the Operator did not choose, to remember as a Left-Out Bank Account (UC-013 steps 8-9). */
+/** One Offered Bank Account whose import the Operator switched off, to remember as a Left-Out Bank Account (UC-013 steps 6-7). */
 data class NewLeftOutBankAccount(val dataProviderId: Long, val providerReference: String, val name: String?, val leftOutAt: Instant)
 
 /** The outcome of marking or unmarking a Manually Kept Account in storage (O-15, O-13). */
@@ -191,7 +191,7 @@ interface ConnectionStore {
     suspend fun leftOutBankAccounts(): List<StoredLeftOutBankAccount>
 
     /**
-     * O-15 Leave out: one `left_out_bank_account` for each of [leftOut], all or none (UC-013 steps 8-9, A12). Refused,
+     * O-15 Leave out: one `left_out_bank_account` for each of [leftOut], all or none (UC-013 steps 6-7, A12). Refused,
      * storing nothing, when one is already left out or is the reference, or the balance reference, of a Bank Account of
      * that Data Provider (entity model `LEFT_OUT_BANK_ACCOUNT` constraints); returns whether they were stored.
      */

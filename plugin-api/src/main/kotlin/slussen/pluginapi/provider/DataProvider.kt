@@ -25,7 +25,7 @@ public interface DataProvider {
 }
 
 public data class DataProviderProfile(
-    /** `DATA_PROVIDER.name`; the name on its page in Connections (§4.6). */
+    /** `DATA_PROVIDER.name`; the name on its entry in Settings and its page (§4.6). */
     val name: String,
     /** `DATA_PROVIDER.source_key`; fixed forever once released (ADR-008 §2). */
     val sourceKey: String,

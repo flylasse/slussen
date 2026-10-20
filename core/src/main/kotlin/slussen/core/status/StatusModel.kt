@@ -18,6 +18,7 @@ import slussen.core.port.StoredDataProvider
 import slussen.core.port.StoredFileFormat
 import slussen.core.port.StoredPart
 import slussen.core.port.TransactionFileOutcome
+import slussen.core.settings.NextThing
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
 import java.time.Clock
@@ -162,10 +163,15 @@ data class Overview(
     val backupWarning: BackupWarning?,
     val expiringBankConsents: List<ExpiringBankConsent>,
     val budgets: List<BudgetSummary>,
-    /** The precondition is not met: no served Budget has a mapped Bank Account yet (UC-013). */
+    /** A10: no Bank Account is added yet. */
     val noBankAccountAdded: Boolean,
     val budgetAppName: String,
+    /** A10, BR-011: while no Bank Account is added, the one card that leads to Settings, with the next thing to do; else null. */
+    val firstRun: FirstRunCard? = null,
 )
+
+/** A10, BR-011: the only card shown while no Bank Account is added; it leads to Settings and names [next] (UC-013 BR-008). */
+data class FirstRunCard(val next: NextThing?)
 
 /** The workspace of one Budget (steps 4-8, BR-007). */
 data class BudgetWorkspace(

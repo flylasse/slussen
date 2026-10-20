@@ -11,12 +11,13 @@ import slussen.core.plugin.PluginRegistration
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.JournalEventKind
 import slussen.pluginapi.testfixtures.UseCase
+import slussen.testing.ExampleData
 import slussen.testing.TestSlice
 
 /**
- * The part of Adjust Settings (UC-010) that Phase 7a builds: the Request Limit of a Data Provider that publishes none,
- * an Operator Setting on the Data Provider's page in Connections (S-31). The other Operator Settings come with the
- * slice that builds UC-010.
+ * The part of Adjust Settings (UC-010) built so far: the services listed directly at the top of Settings (BR-010, S-40)
+ * and the Request Limit of a Data Provider that publishes none, an Operator Setting on the Data Provider's page (S-31).
+ * The other Operator Settings come with the slice that builds UC-010.
  */
 @DisplayName("UC-010: Adjust Settings, the Request Limit of a Data Provider")
 class UC010AdjustSettingsTest {
@@ -28,11 +29,31 @@ class UC010AdjustSettingsTest {
     @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-001", "BR-010"])
     @DisplayName("Step 1: the page of a Data Provider that publishes no Request Limit shows its value with the default and range its part declares; a published one with its source")
     fun pageShowsTheRequestLimit() = runTest {
-        val openBanking = slice.connections.servicePage(slice.openBankingKey)
-        val feeds = slice.connections.servicePage(slice.feedsKey)
+        val openBanking = slice.settingsOverview.servicePage(slice.openBankingKey)
+        val feeds = slice.settingsOverview.servicePage(slice.feedsKey)
 
         assertEquals(RequestLimitShown.NotPublished(requests = 50, defaultRequests = 50, range = 10..500), openBanking.requestLimit)
         assertEquals(RequestLimitShown.Published(requests = 20, source = "Kestrel Feeds developer guide, an invented source"), feeds.requestLimit)
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-010"])
+    @DisplayName("Step 1, BR-010: Settings lists the services directly at its top, in the order of setting up: the Budget App, each Data Provider and each File Format of the build, set up or not, then the Account Mappings; each entry comes from what its part declares")
+    fun settingsListsTheServicesDirectly() = runTest {
+        val top = slice.settingsOverview.entries()
+
+        assertEquals(
+            listOf(EntryKind.BudgetApp, EntryKind.DataProvider, EntryKind.DataProvider, EntryKind.DataProvider, EntryKind.FileFormat),
+            top.entries.map { it.kind },
+        )
+        assertEquals(
+            listOf(ExampleData.BUDGET_APP_NAME, "Kestrel Feeds", "Aurora Open Banking", "Wren Feeds", "Harbor Health statement"),
+            top.entries.map { it.name },
+        )
+        assertEquals(listOf(false, false, true, false, false), top.entries.map { it.needsBankConsent })
+        assertEquals(slice.plugins.fileFormats.single().id, top.entries.last().fileFormatId)
+        assertEquals(null, top.entries.last().service)
+        assertFalse(top.accountMappings.available)
     }
 
     @Test
@@ -44,7 +65,7 @@ class UC010AdjustSettingsTest {
         assertEquals(SettingOutcome.Stored(80), outcome)
         assertEquals(80, storedLimit())
         assertEquals(80, slice.plugins.dataProvider(slice.openBankingKey).stored.requestLimit)
-        assertEquals(80, slice.connections.servicePage(slice.openBankingKey).requestLimit?.requests)
+        assertEquals(80, slice.settingsOverview.servicePage(slice.openBankingKey).requestLimit?.requests)
         val entry = slice.journalRecorder.entries.single()
         assertEquals(JournalEventKind.ConfigurationChange, entry.eventKind)
         assertTrue("Request Limit" in entry.details && "Aurora Open Banking" in entry.details, entry.details)

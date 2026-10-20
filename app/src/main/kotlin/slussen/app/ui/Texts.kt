@@ -1,5 +1,6 @@
 package slussen.app.ui
 
+import slussen.core.connection.PairOutcome
 import slussen.core.credential.CredentialOutcome
 import slussen.core.credential.CredentialStatus
 import slussen.core.fetch.FetchReport
@@ -11,6 +12,7 @@ import slussen.core.port.RecoveryCause
 import slussen.core.port.StartedBy
 import slussen.core.port.StoredPart
 import slussen.core.port.TransactionFileOutcome
+import slussen.core.settings.NextThing
 import slussen.core.settings.ServiceStatus
 import slussen.core.status.Blocked
 import slussen.core.status.BlockedReason
@@ -64,6 +66,7 @@ object Texts {
     }
 
     fun serviceStatus(status: ServiceStatus, formats: Formats): String = when (status) {
+        ServiceStatus.NotSetUp -> "Not set up"
         is ServiceStatus.Connected -> when {
             status.budgetsInUse != null -> "Connected · ${status.budgetsInUse} Budgets in use"
             status.lastFetchAt != null -> "Connected · last Fetch ${formats.dateTime(status.lastFetchAt!!)}"
@@ -137,7 +140,7 @@ object Texts {
 
     fun fetch(outcome: FetchOutcome): String = outcome.text
 
-    /** What one Fetch of a Data Provider came to (UC-001), in one line, the way `budget.html` and `setup.html` show it. */
+    /** What one Fetch of a Data Provider came to (UC-001), in one line, the way `budget.html` and `connections.html` show it. */
     fun fetchReport(report: FetchReport, formats: Formats): String {
         val name = report.dataProviderName
         return when (report) {
@@ -194,4 +197,51 @@ object Texts {
     }
 
     fun fetchResult(outcome: FetchResultOutcome): String = outcome.text
+
+    /**
+     * UC-013 BR-008, UC-008 BR-011: the next thing to do in setting up Slussen, as the first-run card names it, and what
+     * follows it (`overview.html#new-installation`, `#first-run-next`).
+     */
+    fun next(next: NextThing): Pair<String, String?> = when (next) {
+        is NextThing.EnterBudgetAppCredentials ->
+            "Next: enter the ${next.budgetAppName} credentials" to "Then choose the Budgets, connect a Data Provider and map its Bank Accounts."
+        is NextThing.ChooseBudgets ->
+            "Next: choose the Budgets in ${next.budgetAppName}" to "Then connect a Data Provider and map its Bank Accounts."
+        NextThing.EnterDataProviderCredentials ->
+            "Next: enter the credentials of a Data Provider" to "Then fetch it or grant a Bank Consent, and map its Bank Accounts."
+        is NextThing.FetchOrGrantBankConsent -> {
+            val fetch = next.toFetch.joinToString(" or ").takeIf { it.isNotEmpty() }?.let { "fetch $it" }
+            val grant = next.toGrant.takeIf { it.isNotEmpty() }?.let { "grant a Bank Consent in ${it.joinToString(" or ")}" }
+            "Next: " + listOfNotNull(fetch, grant).joinToString(" or ") to "Its Bank Accounts are then imported and mapped in Account Mappings."
+        }
+        is NextThing.MapBankAccounts ->
+            "Next: map the ${next.count} imported Bank ${if (next.count == 1) "Account" else "Accounts"} in Account Mappings" to null
+    }
+
+    /** "1 Budget", "3 Bank Accounts": a count with its noun. */
+    fun count(count: Int, one: String, many: String): String = "$count ${if (count == 1) one else many}"
+
+    /** A Start Date as the Operator enters it: empty, or a date like 2026-09-01 (UC-013 BR-005). */
+    fun startDate(text: String): Result<java.time.LocalDate?> = try {
+        Result.success(text.trim().takeIf { it.isNotEmpty() }?.let(java.time.LocalDate::parse))
+    } catch (e: java.time.format.DateTimeParseException) {
+        Result.failure(e)
+    }
+
+    /** An ISO 4217 currency code: three capital letters (UC-013 BR-010). */
+    fun isCurrencyCode(text: String): Boolean = text.length == 3 && text.all { it in 'A'..'Z' }
+
+    /** Why a Bank Account was not added (UC-013 A5, BR-009, BR-010). */
+    fun pairRefusal(outcome: PairOutcome): String = when (outcome) {
+        is PairOutcome.BudgetAccountAlreadyMapped -> "${outcome.budgetAccountName} already receives ${outcome.bankAccountName} · not added"
+        is PairOutcome.CurrencyDiffers ->
+            "${outcome.budgetAccountName} is in ${outcome.budgetCurrency.code}, ${outcome.bankAccountName} in ${outcome.bankAccountCurrency.code} · not added"
+        PairOutcome.CurrencyNotStated -> "State the currency of the Bank Account · not added"
+        PairOutcome.NotOffered -> "Not offered for pairing"
+        PairOutcome.NameNotValid -> "A name is needed, at most 100 characters · not added"
+        PairOutcome.TypeNotChosen -> "Choose the Bank Account type · not added"
+        PairOutcome.BankNotChosen -> "Choose a Bank or name a new one · not added"
+        is PairOutcome.Unavailable -> refusal(outcome.reason)
+        is PairOutcome.Proposed, is PairOutcome.Added -> ""
+    }
 }

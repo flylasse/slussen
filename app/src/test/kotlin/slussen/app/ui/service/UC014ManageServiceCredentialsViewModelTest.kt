@@ -10,7 +10,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import slussen.app.ui.MainDispatcherExtension
 import slussen.app.ui.UiFixture
-import slussen.app.ui.connections.ConnectionsViewModel
+import slussen.app.ui.settings.EntryPage
+import slussen.app.ui.settings.SettingsViewModel
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.ServiceKey
 import slussen.pluginapi.credential.CredentialCheck
@@ -25,25 +26,39 @@ class UC014ManageServiceCredentialsViewModelTest {
     private val fixture = UiFixture()
     private val slice = fixture.slice
 
-    private fun page(service: ServiceKey, fromSetup: Boolean = false) =
-        ServicePageViewModel(fixture.services, service, fromSetup).also { it.load() }
+    private fun page(service: ServiceKey) =
+        ServicePageViewModel(fixture.services, service).also { it.load() }
 
     private fun ServicePageViewModel.ui() = state.value!!
 
     @Test
     @UseCase(id = "UC-014", scenario = "Main Success Scenario", businessRules = ["BR-007"])
-    @DisplayName("Step 1: Connections shows each service in use with one status line and the Data Providers not set up")
-    fun connectionsShowsServicesInUseAndNotSetUp() = runBlocking {
+    @DisplayName("Step 1: Settings lists the Budget App and each Data Provider, also those not set up, each with one status line and opening its page; there is no separate Set up action")
+    fun settingsListsEveryServiceWithItsStatus() = runBlocking {
         slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
-        val connections = ConnectionsViewModel(fixture.services).also { it.load() }
 
-        val ui = connections.state.value!!
+        val ui = SettingsViewModel(fixture.services).also { it.load() }.state.value!!
 
-        assertEquals(listOf(ExampleData.BUDGET_APP_NAME, "Kestrel Feeds"), ui.inUse.map { it.name })
-        assertEquals(listOf("Budget App", "Data Provider"), ui.inUse.map { it.kind })
-        assertEquals("Credentials missing", ui.inUse[0].status)
-        assertEquals("Connected · no Fetch yet", ui.inUse[1].status)
-        assertEquals(listOf("Aurora Open Banking", "Wren Feeds"), ui.notSetUp.map { it.name })
+        val services = ui.entries.filter { it.page is EntryPage.Service }
+        assertEquals(listOf(ExampleData.BUDGET_APP_NAME, "Kestrel Feeds", "Aurora Open Banking", "Wren Feeds"), services.map { it.name })
+        assertEquals(listOf("Budget App", "Data Provider", "Data Provider · needs Bank Consent", "Data Provider"), services.map { it.kind })
+        assertEquals("Not set up · next: enter the ${ExampleData.BUDGET_APP_NAME} credentials", services[0].status)
+        assertEquals("Nothing offered yet", services[1].status)
+        assertEquals("Not set up", services[2].status)
+        assertEquals(EntryPage.Service(slice.feedsKey), services[1].page)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", businessRules = ["BR-007"])
+    @DisplayName("BR-007: a service's page opens also while it is not set up, saying so, with the action that enters its credentials")
+    fun pageOfAServiceNotSetUp() {
+        val page = page(slice.wrenKey)
+
+        assertEquals("Wren Feeds", page.ui().name)
+        assertEquals("Data Provider · not set up", page.ui().kind)
+        assertEquals("Not set up", page.ui().status)
+        assertNull(page.ui().blocked)
+        assertFalse(page.ui().canRemove)
     }
 
     @Test
@@ -73,20 +88,7 @@ class UC014ManageServiceCredentialsViewModelTest {
         assertEquals("Accepted by ${ExampleData.BUDGET_APP_NAME}", ui.message)
         assertEquals("Connected · 0 Budgets in use", ui.status)
         assertNull(ui.blocked)
-        assertFalse(ui.returnToSetup)
         assertFalse(ExampleData.BUDGET_APP_TOKEN in ui.toString())
-    }
-
-    @Test
-    @UseCase(id = "UC-014", scenario = "Main Success Scenario")
-    @DisplayName("Step 6: when Connect Budgets and Bank Accounts started it, accepted credentials return there")
-    fun acceptedCredentialsReturnToSetup() {
-        val page = page(ServiceKey.budgetApp, fromSetup = true)
-        page.startEntering()
-
-        page.save(mapOf("token" to ExampleData.BUDGET_APP_TOKEN))
-
-        assertTrue(page.ui().returnToSetup)
     }
 
     @Test
@@ -138,10 +140,23 @@ class UC014ManageServiceCredentialsViewModelTest {
     }
 
     @Test
-    @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", businessRules = ["BR-005"])
-    @DisplayName("A3: removing asks first, stating the service is not contacted until new credentials are entered; confirming shows credentials missing")
+    @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", businessRules = ["BR-005", "BR-007"])
+    @DisplayName("A3: removing asks first, stating the service is not contacted until new credentials are entered; confirming shows credentials missing for a Data Provider that still has a Bank Account")
     fun removalAsksFirstAndShowsCredentialsMissing() = runBlocking {
-        slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        slice.enterCredentials()
+        val read = slice.connect.readBudgets() as slussen.core.connection.BudgetsRead.Listed
+        slice.connect.chooseBudgets(read.budgets, setOf("budget-household"))
+        val bank = slice.connectionStore.bankNamed("Kestrel Bank").id
+        slice.offeredStore.replaceOffered(
+            slice.feedsId,
+            null,
+            listOf(ExampleData.offered("acct-4410", "CHK", "checking", ExampleData.USD, "4410", null, bank, slice.clock.instant())),
+        )
+        val checking = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Checking" }.id
+        slice.connect.add(
+            slice.offeredStore.offered().single().id, checking, "Kestrel Checking", slussen.core.port.BankAccountType.Checking,
+            slussen.core.port.BankChoice.Known(bank), null,
+        )
         val page = page(slice.feedsKey)
 
         page.requestRemoval()
@@ -213,19 +228,19 @@ class UC014ManageServiceCredentialsViewModelTest {
 
     @Test
     @UseCase(id = "UC-014", businessRules = ["BR-007"])
-    @DisplayName("BR-007: a Data Provider's page shows its Fetch Cooldown with the declared default, its Request Limit and its Bank Accounts")
+    @DisplayName("BR-007: a Data Provider's page, also not set up, shows its Fetch Cooldown with the declared default, its Request Limit and its Bank Accounts")
     fun dataProviderPageShowsItsDeclarations() {
         val ui = page(slice.feedsKey).ui()
 
         assertEquals("Kestrel Feeds", ui.name)
-        assertEquals("Data Provider", ui.kind)
+        assertEquals("Data Provider · not set up", ui.kind)
         assertEquals("60 min · default 60, declared by its part · 0 to 1440 · 0 is off", ui.fetchCooldown)
         assertEquals(
             "20 per 24 hours · the Data Provider's own limit, published by Kestrel Feeds · source: Kestrel Feeds developer guide, an invented source · not a setting",
             ui.requestLimit,
         )
         assertFalse(ui.requestLimitEditable)
-        assertEquals("Blocked: credentials missing · Enter credentials", ui.blocked)
+        assertNull(ui.blocked)
         assertTrue(ui.bankAccounts.isEmpty())
         assertFalse(ui.uploadAsClearedShown)
     }
@@ -241,7 +256,7 @@ class UC014ManageServiceCredentialsViewModelTest {
         val ui = page(ServiceKey.budgetApp).ui()
 
         assertEquals("Budget App", ui.kind)
-        assertEquals(listOf("Household · USD", "Summer House · EUR"), ui.budgetsInUse)
+        assertEquals(listOf("Household · USD", "Summer House · EUR"), ui.budgets!!.inUse)
         assertTrue(ui.uploadAsClearedShown)
         assertNull(ui.fetchCooldown)
     }

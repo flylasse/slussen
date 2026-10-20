@@ -1,4 +1,4 @@
-package slussen.app.ui.bankaccounts
+package slussen.app.ui.mappings
 
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -9,9 +9,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import slussen.app.ui.MainDispatcherExtension
 import slussen.app.ui.UiFixture
-import slussen.app.ui.setup.FreeBudgetAccountLine
-import slussen.app.ui.setup.LeftOutLine
-import slussen.core.connection.BringIn
+import slussen.app.ui.service.ServicePageViewModel
 import slussen.core.connection.BudgetsRead
 import slussen.core.connection.PairOutcome
 import slussen.core.port.BankAccountType
@@ -22,16 +20,17 @@ import slussen.testing.ExampleData
 import slussen.testing.ExampleData.USD
 
 /**
- * Changing the Bank Account type or the Bank on the Bank Accounts screen (`account-mappings.html#type-and-bank`), and
- * Not imported and Kept by hand apart from the Bank Accounts (`#not-imported`, `#brought-back`, `#kept-by-hand`,
- * `#unmark-kept`).
+ * The Account Mappings (`account-mappings.html#map`): the Bank Accounts by Budget with their Bank Account type and Bank,
+ * changed in the sheet of `#type-and-bank` (A14), and Not imported and Kept by hand, read-only, leading to the service
+ * pages where they are brought back and marked (`#not-imported`, `#brought-back`, `#kept-by-hand`; A15, A16, BR-013,
+ * BR-014).
  */
 @ExtendWith(MainDispatcherExtension::class)
 @DisplayName("UC-009: Manage Account Mappings, the Bank Account type and the Bank, Not imported and Kept by hand on the screen")
 class UC009ManageAccountMappingsViewModelTest {
     private val fixture = UiFixture()
     private val slice = fixture.slice
-    private val screen = BankAccountsViewModel(fixture.services)
+    private val screen = AccountMappingsViewModel(fixture.services)
     private var checkingId = 0L
 
     private fun ui() = screen.state.value!!
@@ -170,7 +169,7 @@ class UC009ManageAccountMappingsViewModelTest {
         assertEquals(BankAccountType.Checking, stored().type)
     }
 
-    /** Kestrel Checking added; Kids Saver and Pinecrest Business Visa left out in UC-013 (BR-011). */
+    /** Kestrel Checking added; the import of Kids Saver and Pinecrest Business Visa switched off in UC-013 (BR-011, BR-012). */
     private fun withLeftOut() = runBlocking {
         kestrelChecking()
         val kestrel = slice.connectionStore.bankNamed("Kestrel Bank").id
@@ -184,100 +183,78 @@ class UC009ManageAccountMappingsViewModelTest {
                 ExampleData.offered("acct-9034", "Pinecrest Business Visa", "credit card", USD, "9034", null, pinecrest, slice.clock.instant()),
             ),
         )
-        val shown = slice.connect.pairing().sources.flatMap { it.offered }.map { it.offeredBankAccountId }
-        slice.connect.bringIn(shown, emptySet()) as BringIn.Confirmed
+        listOf("acct-2290", "acct-9034").forEach { reference ->
+            slice.connect.switchImportOff(slice.offeredStore.offered().single { it.providerReference == reference }.id)
+        }
         screen.load()
     }
 
     private fun budgetAccountId(name: String) = runBlocking { slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == name }.id }
 
     @Test
-    @UseCase(id = "UC-009", scenario = "Main Success Scenario", businessRules = ["BR-013"])
-    @DisplayName("Step 1, BR-013: below the Bank Accounts and apart from them, Not imported with the Left-Out Bank Accounts and Kept by hand with the Manually Kept Accounts")
-    fun notImportedAndKeptByHandAreShownApart() {
+    @UseCase(id = "UC-009", scenario = "Main Success Scenario", businessRules = ["BR-013", "BR-014"])
+    @DisplayName("Step 1, BR-013, BR-014: after the Bank Accounts, two short read-only lists: Not imported, each leading to its Data Provider's page, and Kept by hand, each leading to the Budget App's page")
+    fun notImportedAndKeptByHandAreReadOnlyLists() {
         withLeftOut()
-        runBlocking { slice.connect.markManuallyKept(budgetAccountId("Rewards Card")) }
+        runBlocking { slice.connect.setReceivesFromSlussen(budgetAccountId("Rewards Card"), receives = false) }
         screen.load()
 
-        val apart = ui().apart
-        assertEquals("Not imported · 2", apart.leftOutTitle)
+        val ui = ui()
+        assertEquals("Not imported · Left-Out Bank Accounts · 2", ui.leftOutTitle)
         assertEquals(
             listOf(
-                LeftOutLine(apart.leftOut[0].leftOutBankAccountId, "Kids Saver ••2290", "Kestrel Feeds · left out 2026-10-15"),
-                LeftOutLine(apart.leftOut[1].leftOutBankAccountId, "Pinecrest Business Visa ••9034", "Kestrel Feeds · left out 2026-10-15"),
+                LeftOutLine(ui.leftOut[0].leftOutBankAccountId, "Kids Saver ••2290 · Kestrel Feeds", slice.feedsKey),
+                LeftOutLine(ui.leftOut[1].leftOutBankAccountId, "Pinecrest Business Visa ••9034 · Kestrel Feeds", slice.feedsKey),
             ),
-            apart.leftOut,
+            ui.leftOut,
         )
-        assertEquals("Kept by hand · 1", apart.keptTitle)
-        assertEquals(listOf(KeptLine(budgetAccountId("Rewards Card"), "Rewards Card", "Household · USD · kept by hand · not offered for pairing")), apart.manuallyKept)
-        assertEquals(listOf(FreeBudgetAccountLine(budgetAccountId("Reserve Savings"), "Reserve Savings", "Household · USD", "12,000.00")), apart.markable)
-        assertEquals(listOf("Kestrel Checking"), ui().groups.flatMap { it.lines }.map { it.bankAccount })
+        assertEquals("Kept by hand · Manually Kept Accounts · 1", ui.keptTitle)
+        assertEquals(listOf(KeptLine(budgetAccountId("Rewards Card"), "Rewards Card", "Household · USD")), ui.kept)
+        assertTrue(ui.toMap.isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "Main Success Scenario", businessRules = ["BR-013", "BR-014"])
+    @DisplayName("BR-014 (P9-06): with none left out and none kept by hand, neither list is shown")
+    fun emptyListsAreNotShown() {
+        kestrelChecking()
+
+        assertTrue(ui().leftOut.isEmpty())
+        assertTrue(ui().kept.isEmpty())
+        assertEquals(1, ui().groups.single().lines.size)
     }
 
     @Test
     @UseCase(id = "UC-009", scenario = "A15: Bring Back a Left-Out Bank Account", businessRules = ["BR-013"])
-    @DisplayName("A15: Bring back asks nothing, removes it from Not imported and says it is offered for pairing again")
-    fun bringBackFromTheList() {
+    @DisplayName("A15: a Left-Out Bank Account shown as not imported is imported again on its Data Provider's page, without any confirmation; back in the Account Mappings it is to map and no longer under Not imported")
+    fun bringBackOnTheDataProvidersPage() {
         withLeftOut()
+        val kids = ui().leftOut.first()
+        val page = ServicePageViewModel(fixture.services, kids.service).also { it.load() }
+        val line = page.state.value!!.offered!!.banks.flatMap { it.rows }.single { it.leftOutBankAccountId == kids.leftOutBankAccountId }
 
-        screen.bringBack(ui().apart.leftOut.first().leftOutBankAccountId)
+        page.switchImport(line, on = true)
+        screen.load()
 
-        assertEquals("Kids Saver ••2290 brought back · offered for pairing again", ui().message)
-        assertEquals(listOf("Pinecrest Business Visa ••9034"), ui().apart.leftOut.map { it.title })
-        assertEquals("Not imported · 1", ui().apart.leftOutTitle)
-    }
-
-    @Test
-    @UseCase(id = "UC-009", scenario = "A15: Bring Back a Left-Out Bank Account")
-    @DisplayName("A15 step 2: brought back while the latest delivery does not hold it, it is offered from the next delivery that holds it")
-    fun bringBackFromTheNextDelivery() {
-        withLeftOut()
-        runBlocking { slice.offeredStore.replaceOffered(slice.feedsId, null, emptyList()) }
-
-        screen.bringBack(ui().apart.leftOut.first().leftOutBankAccountId)
-
-        assertEquals("Kids Saver ••2290 brought back · offered for pairing from the next delivery that holds it", ui().message)
+        assertEquals(listOf("Pinecrest Business Visa ••9034 · Kestrel Feeds"), ui().leftOut.map { it.title })
+        assertEquals(listOf("Kids Saver"), ui().toMap.map { it.title })
+        assertEquals("To map · imported, not yet added · 1", ui().toMapTitle)
     }
 
     @Test
     @UseCase(id = "UC-009", scenario = "A16: Mark or Unmark a Manually Kept Account", businessRules = ["BR-013"])
-    @DisplayName("A16: Keep by hand marks a free Budget Account at once; Unmark asks first, Cancel keeps it, Unmark offers it for pairing again")
-    fun markAndUnmark() {
+    @DisplayName("A16: a Budget Account switched off on the Budget App's page is listed as kept by hand; switched on again it leaves the list, with no question asked")
+    fun markAndUnmarkOnTheBudgetAppsPage() {
         kestrelChecking()
+        val page = ServicePageViewModel(fixture.services, slussen.core.port.ServiceKey.budgetApp).also { it.load() }
 
-        screen.markManuallyKept(budgetAccountId("Reserve Savings"))
-        assertEquals("Reserve Savings kept by hand · not offered for pairing", ui().message)
-        assertEquals(listOf("Reserve Savings"), ui().apart.manuallyKept.map { it.title })
-        screen.askUnmark(budgetAccountId("Reserve Savings"))
-        assertEquals(
-            UnmarkQuestion(budgetAccountId("Reserve Savings"), "Unmark Reserve Savings?", "Reserve Savings is offered for pairing again. Nothing in ${ExampleData.BUDGET_APP_NAME} changes."),
-            ui().apart.unmarkQuestion,
-        )
-        screen.cancelUnmark()
-        assertNull(ui().apart.unmarkQuestion)
-        assertEquals(1, ui().apart.manuallyKept.size)
-        screen.askUnmark(budgetAccountId("Reserve Savings"))
-        screen.confirmUnmark()
+        page.setReceives(budgetAccountId("Reserve Savings"), receives = false)
+        screen.load()
+        assertEquals(listOf("Reserve Savings"), ui().kept.map { it.title })
+        page.setReceives(budgetAccountId("Reserve Savings"), receives = true)
+        screen.load()
 
-        assertEquals("Reserve Savings unmarked · offered for pairing again", ui().message)
-        assertTrue(ui().apart.manuallyKept.isEmpty())
-        assertNull(ui().apart.unmarkQuestion)
-        assertEquals(listOf("Rewards Card", "Reserve Savings"), ui().apart.markable.map { it.title })
-    }
-
-    @Test
-    @UseCase(id = "UC-009", businessRules = ["BR-013"])
-    @DisplayName("BR-013: while an Upload Plan awaits confirmation, Bring back and Keep by hand show why they are unavailable")
-    fun apartChangesAreUnavailableWhileAPlanAwaitsConfirmation() {
-        withLeftOut()
-        slice.coordinatorStore.mode = CoordinatorMode.PlanOpen
-
-        screen.bringBack(ui().apart.leftOut.first().leftOutBankAccountId)
-        assertEquals("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", ui().message)
-        screen.markManuallyKept(budgetAccountId("Reserve Savings"))
-
-        assertEquals("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", ui().message)
-        assertEquals(2, ui().apart.leftOut.size)
-        assertTrue(ui().apart.manuallyKept.isEmpty())
+        assertTrue(ui().kept.isEmpty())
+        assertTrue(runBlocking { slice.connectionStore.budgets().flatMap { it.budgetAccounts }.none { it.manuallyKept } })
     }
 }

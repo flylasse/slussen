@@ -14,7 +14,7 @@ import slussen.core.mapping.AccountMappings
 import slussen.core.operation.OperationCoordinator
 import slussen.core.plugin.PluginRegistration
 import slussen.core.port.RandomSource
-import slussen.core.settings.ConnectionsOverview
+import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.status.ImportStatus
 import slussen.fileformat.hsacsv.HsaCsvFilePreprocessor
@@ -58,9 +58,12 @@ class CompositionRoot(log: SlussenLog) {
             registered, storage.credentialVault, coordinator, journal, storage.settings, storage.providerRequests,
             storage.fetches, CredentialRefusals(), clock,
         )
+        val settingsOverview = SettingsOverview(
+            registered, credentials, storage.connections, storage.offered, storage.importStatus, storage.settings, clock,
+        )
         return UiServices(
             credentials = credentials,
-            connections = ConnectionsOverview(registered, credentials, storage.connections, storage.importStatus, storage.settings, clock),
+            settingsOverview = settingsOverview,
             connect = BudgetsAndBankAccounts(
                 registered, credentials, storage.connections, storage.offered, coordinator, journal,
                 RandomSource { random.nextBytes(it) }, clock,
@@ -81,6 +84,7 @@ class CompositionRoot(log: SlussenLog) {
                 settings = storage.settings,
                 journal = journal,
                 clock = clock,
+                firstRunNext = { settingsOverview.next() },
             ),
             fetch = FetchTransactions(
                 registered, credentials, storage.connections, storage.offered, storage.fetches, storage.providerRequests,

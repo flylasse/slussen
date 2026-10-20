@@ -31,6 +31,7 @@ import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
 import slussen.pluginapi.testfixtures.UseCase
 import slussen.testing.ExampleData
+import slussen.testing.TestSlice
 import slussen.testing.ExampleData.USD
 import slussen.testing.ExampleData.amount
 import java.time.Duration
@@ -42,7 +43,7 @@ class UC008CheckImportStatusViewModelTest {
     private val slice = fixture.slice
 
     /** Household (USD) with Kestrel Checking paired through Kestrel Feeds, and Summer House (EUR) served. */
-    private fun household(): Long = runBlocking {
+    private fun household(slice: TestSlice = this.slice): Long = runBlocking {
         slice.enterCredentials()
         val listed = ExampleData.budgetsRead().map { budget ->
             BudgetToServe(budget.reference, budget.name, budget.currency, budget.budgetAccounts.map { BudgetAccountToStore(it.reference, it.name, it.balance) })
@@ -144,6 +145,7 @@ class UC008CheckImportStatusViewModelTest {
     @DisplayName("A1: a part that could not be read is named in a notice")
     fun unreadablePartIsNamed() {
         val damaged = UiFixture(unreadableParts = listOf(UnreadablePart(StoredPart.DecisionJournal, startedFromLastGoodCopy = false)))
+        household(damaged.slice)
 
         val ui = OverviewViewModel(damaged.services).also { it.load() }.state.value!!
 
@@ -152,10 +154,51 @@ class UC008CheckImportStatusViewModelTest {
     }
 
     @Test
-    @UseCase(id = "UC-008")
-    @DisplayName("Precondition: with no Bank Account added yet, the Overview leads to setting Slussen up")
-    fun withoutBankAccountsTheOverviewLeadsToSetUp() {
-        assertTrue(overview().noBankAccountAdded)
+    @UseCase(id = "UC-008", scenario = "A10: No Bank Account Added Yet", businessRules = ["BR-011"])
+    @DisplayName("A10: with no Bank Account added, the Overview shows only the card that leads to Settings and names the next thing, not even the Recovery Check a new installation opens")
+    fun firstRunShowsOnlyTheCard() {
+        slice.recoveryStore.open(RecoveryCause.NewInstallation, slice.clock.instant())
+
+        val ui = overview()
+
+        assertTrue(ui.noBankAccountAdded)
+        assertEquals(
+            FirstRunUi(
+                "Set up Slussen in Settings",
+                "Next: enter the ${ExampleData.BUDGET_APP_NAME} credentials",
+                "Then choose the Budgets, connect a Data Provider and map its Bank Accounts.",
+            ),
+            ui.firstRun,
+        )
+        assertNull(ui.recoveryCheck)
+        assertTrue(ui.budgets.isEmpty())
+        assertTrue(ui.expiringConsents.isEmpty())
+        assertFalse(ui.canFetch)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A10: No Bank Account Added Yet", businessRules = ["BR-011"])
+    @DisplayName("BR-011: later on the first run the card names the next thing, a Data Provider's Fetch or a Bank Consent; from the first added Bank Account on there is no card")
+    fun theCardFollowsWhatComesNext() {
+        runBlocking {
+            slice.enterCredentials()
+            slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+            val listed = ExampleData.budgetsRead().map { budget ->
+                BudgetToServe(budget.reference, budget.name, budget.currency, budget.budgetAccounts.map { BudgetAccountToStore(it.reference, it.name, it.balance) })
+            }
+            slice.connectionStore.serveBudgets(listed, setOf("budget-household"), slice.clock.instant())
+        }
+
+        assertEquals(
+            FirstRunUi(
+                "Set up Slussen in Settings",
+                "Next: fetch Kestrel Feeds or grant a Bank Consent in Aurora Open Banking",
+                "Its Bank Accounts are then imported and mapped in Account Mappings.",
+            ),
+            overview().firstRun,
+        )
+        household()
+        assertNull(overview().firstRun)
     }
 
     @Test

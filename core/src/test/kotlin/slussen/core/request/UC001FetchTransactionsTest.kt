@@ -438,7 +438,7 @@ class UC001FetchTransactionsTest {
         assertEquals(slice.clock.instant(), fetch.startedAt)
         assertEquals(StartedBy.Operator, fetch.startedBy)
         assertEquals(FetchOutcome.Fetched, fetch.outcome)
-        assertEquals(ServiceStatus.Connected(slice.clock.instant(), budgetsInUse = null), slice.connections.servicePage(slice.feedsKey).status)
+        assertEquals(ServiceStatus.Connected(slice.clock.instant(), budgetsInUse = null), slice.settingsOverview.servicePage(slice.feedsKey).status)
     }
 
     @Test
@@ -806,7 +806,7 @@ class UC001FetchTransactionsTest {
         assertTrue(slice.offeredStore.offered().isEmpty())
         assertEquals(FetchOutcome.CredentialsRefused, fetchesOfFeeds().single().outcome)
         assertEquals(CredentialStatus.Refused, slice.credentials.status(slice.feedsKey))
-        assertEquals(ServiceStatus.CredentialsRefused, slice.connections.servicePage(slice.feedsKey).status)
+        assertEquals(ServiceStatus.CredentialsRefused, slice.settingsOverview.servicePage(slice.feedsKey).status)
     }
 
     @Test

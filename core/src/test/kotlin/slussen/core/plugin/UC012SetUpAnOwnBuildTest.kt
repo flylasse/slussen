@@ -8,7 +8,10 @@ import org.junit.jupiter.api.Test
 import slussen.testing.TestSlice
 import slussen.core.credential.CredentialStatus
 import slussen.core.port.ServiceKey
-import slussen.core.settings.ConnectionsOverview
+import slussen.core.settings.EntryStatus
+import slussen.core.settings.NextThing
+import slussen.core.settings.SettingsOverview
+import slussen.core.status.FirstRunCard
 import slussen.core.settings.RequestLimitShown
 import slussen.core.settings.ServiceStatus
 import slussen.pluginapi.provider.RequestLimitDeclaration
@@ -27,7 +30,7 @@ import slussen.testing.InMemoryPluginRegistryStore
 class UC012SetUpAnOwnBuildTest {
     @Test
     @UseCase(id = "UC-012", scenario = "A2: Data Provider Missing", businessRules = ["BR-005", "BR-006"], requirements = ["C-010"])
-    @DisplayName("A2: a Data Provider added as its own part is registered from its declarations and gets its own page in Connections")
+    @DisplayName("A2: a Data Provider added as its own part is registered from its declarations and gets its own entry in Settings and its own page")
     fun addedDataProviderGetsItsOwnPage() = runTest {
         val slice = TestSlice()
         val added = FakeDataProvider(
@@ -44,8 +47,8 @@ class UC012SetUpAnOwnBuildTest {
             plugins, slice.vault, slice.coordinator, slice.journal, slice.settings, slice.providerRequests,
             slice.importStatusStore, slussen.core.credential.CredentialRefusals(), slice.clock,
         )
-        val connections = ConnectionsOverview(
-            plugins, credentials, slice.connectionStore, slice.importStatusStore, slice.settings, slice.clock,
+        val connections = SettingsOverview(
+            plugins, credentials, slice.connectionStore, slice.offeredStore, slice.importStatusStore, slice.settings, slice.clock,
         )
 
         val page = connections.servicePage(registered.key)
@@ -54,9 +57,11 @@ class UC012SetUpAnOwnBuildTest {
         assertEquals(RequestLimitShown.NotPublished(requests = 7, defaultRequests = 7, range = 5..40), page.requestLimit)
         assertEquals(ExampleData.wrenProfile.defaultFetchCooldownMinutes, page.defaultFetchCooldownMinutes)
         assertEquals(added.credentials.form.fields, page.credentialFields)
-        assertEquals(ServiceStatus.CredentialsMissing, page.status)
+        assertEquals(ServiceStatus.NotSetUp, page.status)
         assertTrue(registered.stored.givesStableReference == ExampleData.wrenProfile.givesStableReference)
-        assertTrue(connections.connections().notSetUp.any { it.name == "Osprey Feeds" })
+        val entry = connections.entries().entries.single { it.name == "Osprey Feeds" }
+        assertEquals(registered.key, entry.service)
+        assertEquals(EntryStatus.NotSetUp, entry.status)
     }
 
     @Test
@@ -96,6 +101,7 @@ class UC012SetUpAnOwnBuildTest {
         assertTrue(slice.connectionStore.budgets().isEmpty())
         assertTrue(slice.connectionStore.bankAccounts().isEmpty())
         assertTrue(slice.status.open().noBankAccountAdded)
+        assertEquals(FirstRunCard(NextThing.EnterBudgetAppCredentials(ExampleData.BUDGET_APP_NAME)), slice.status.open().firstRun)
         slice.enterCredentials()
         assertTrue(slice.credentials.status(ServiceKey.budgetApp) is CredentialStatus.Accepted)
     }
@@ -116,7 +122,7 @@ class UC012SetUpAnOwnBuildTest {
     fun budgetAppIsOnePart() = runTest {
         val slice = TestSlice()
 
-        val page = slice.connections.servicePage(ServiceKey.budgetApp)
+        val page = slice.settingsOverview.servicePage(ServiceKey.budgetApp)
 
         assertEquals(ExampleData.BUDGET_APP_NAME, page.name)
         assertEquals(slice.budgetApp.credentials.form.fields, page.credentialFields)

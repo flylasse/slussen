@@ -24,23 +24,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import slussen.app.SlussenApplication
-import slussen.app.ui.bankaccounts.apartActionsOf
-import slussen.app.ui.bankaccounts.BankAccountsScreen
-import slussen.app.ui.bankaccounts.BankAccountsViewModel
 import slussen.app.ui.budget.BudgetScreen
 import slussen.app.ui.budget.BudgetViewModel
 import slussen.app.ui.components.Muted
-import slussen.app.ui.connections.ConnectionsViewModel
-import slussen.app.ui.connections.SettingsScreen
 import slussen.app.ui.fetches.RecentFetchesScreen
 import slussen.app.ui.fetches.RecentFetchesViewModel
+import slussen.app.ui.fileformat.FileFormatScreen
+import slussen.app.ui.fileformat.FileFormatViewModel
+import slussen.app.ui.mappings.AccountMappingsScreen
+import slussen.app.ui.mappings.AccountMappingsViewModel
+import slussen.app.ui.mappings.cardActionsOf
 import slussen.app.ui.overview.OverviewScreen
 import slussen.app.ui.overview.OverviewViewModel
+import slussen.app.ui.service.ConnectActions
 import slussen.app.ui.service.ServicePageScreen
 import slussen.app.ui.service.ServicePageViewModel
-import slussen.app.ui.setup.pairingActionsOf
-import slussen.app.ui.setup.SetupScreen
-import slussen.app.ui.setup.SetupViewModel
+import slussen.app.ui.settings.EntryPage
+import slussen.app.ui.settings.SettingsScreen
+import slussen.app.ui.settings.SettingsViewModel
 import slussen.app.ui.theme.SlussenColors
 import slussen.app.ui.theme.SlussenTheme
 import slussen.core.port.ServiceKey
@@ -72,14 +73,18 @@ sealed interface Screen {
 
     data object Settings : Screen
 
-    data class Service(val service: ServiceKey, val fromSetup: Boolean) : Screen
+    data class Service(val service: ServiceKey) : Screen
 
-    data object Setup : Screen
+    data class FileFormat(val fileFormatId: Long) : Screen
 
-    data object BankAccounts : Screen
+    data object AccountMappings : Screen
 }
 
-/** The screens with their bottom navigation: Overview, one tab per Budget, Settings (`docs/mockups/overview.html`). */
+/**
+ * The screens with their bottom navigation: Overview, one tab per Budget, Settings (`docs/mockups/overview.html`). A fresh
+ * install opens on the Overview with the card that leads to Settings (UC-008 A10); every setting up starts at the top of
+ * Settings, whose entries open the service pages, the File Format pages and the Account Mappings (UC-013 BR-008, S-40).
+ */
 @Composable
 fun SlussenScreens(services: UiServices) {
     val stack = remember { mutableStateListOf<Screen>(Screen.Overview) }
@@ -121,7 +126,7 @@ fun SlussenScreens(services: UiServices) {
                         OverviewScreen(
                             ui = ui,
                             onBudget = { id -> go(Screen.Budget(id, ui.budgets.single { it.budgetId == id }.name)) },
-                            onSetUp = { go(Screen.Setup) },
+                            onOpenSettings = { tab(Screen.Settings) },
                             onConfirmRecoveryCheck = { overview.confirmRecoveryCheck() },
                             onRecentFetches = { go(Screen.RecentFetches) },
                             onFetchAll = overview::fetchAll,
@@ -134,7 +139,7 @@ fun SlussenScreens(services: UiServices) {
                     val vm: BudgetViewModel = viewModel(key = "budget-${current.budgetId}") { BudgetViewModel(services, current.budgetId) }
                     LaunchedEffect(current) { vm.load() }
                     vm.state.collectAsState().value?.let { ui ->
-                        BudgetScreen(ui) { action -> action.service?.let { go(Screen.Service(it, fromSetup = false)) } }
+                        BudgetScreen(ui) { action -> action.service?.let { go(Screen.Service(it)) } }
                     }
                 }
                 Screen.RecentFetches -> {
@@ -143,25 +148,28 @@ fun SlussenScreens(services: UiServices) {
                     vm.state.collectAsState().value?.let { RecentFetchesScreen(it, ::back) }
                 }
                 Screen.Settings -> {
-                    val vm: ConnectionsViewModel = viewModel(key = "connections") { ConnectionsViewModel(services) }
+                    val vm: SettingsViewModel = viewModel(key = "settings") { SettingsViewModel(services) }
                     LaunchedEffect(current) { vm.load() }
                     vm.state.collectAsState().value?.let { ui ->
                         SettingsScreen(
                             ui = ui,
-                            onService = { go(Screen.Service(it, fromSetup = false)) },
-                            onBankAccounts = { go(Screen.BankAccounts) },
-                            onSetUp = { go(Screen.Setup) },
+                            onEntry = { page ->
+                                when (page) {
+                                    is EntryPage.Service -> go(Screen.Service(page.service))
+                                    is EntryPage.FileFormat -> go(Screen.FileFormat(page.fileFormatId))
+                                }
+                            },
+                            onAccountMappings = { go(Screen.AccountMappings) },
+                            onRecentFetches = { go(Screen.RecentFetches) },
                         )
                     }
                 }
                 is Screen.Service -> {
-                    val vm: ServicePageViewModel = viewModel(key = "service-${current.service.dataProviderId}-${current.fromSetup}") {
-                        ServicePageViewModel(services, current.service, current.fromSetup)
+                    val vm: ServicePageViewModel = viewModel(key = "service-${current.service.dataProviderId}") {
+                        ServicePageViewModel(services, current.service)
                     }
                     LaunchedEffect(current) { vm.load() }
                     vm.state.collectAsState().value?.let { ui ->
-                        // Step 6 of UC-014: accepted credentials return to Connect Budgets and Bank Accounts when that started it.
-                        LaunchedEffect(ui.returnToSetup) { if (ui.returnToSetup) back() }
                         ServicePageScreen(
                             ui = ui,
                             onBack = ::back,
@@ -171,7 +179,17 @@ fun SlussenScreens(services: UiServices) {
                             onRequestRemoval = vm::requestRemoval,
                             onCancelRemoval = vm::cancelRemoval,
                             onConfirmRemoval = vm::confirmRemoval,
-                            onChooseBudgets = { go(Screen.Setup) },
+                            connect = ConnectActions(
+                                onChooseBudgets = vm::chooseBudgets,
+                                onToggleBudget = vm::toggleBudget,
+                                onServeBudgets = vm::serveBudgets,
+                                onCancelChoosing = vm::cancelChoosing,
+                                onReceives = vm::setReceives,
+                                onSwitchImport = vm::switchImport,
+                                onUndo = vm::undo,
+                                onMap = { go(Screen.AccountMappings) },
+                                onDismissSnack = vm::dismissSnack,
+                            ),
                             onEditRequestLimit = vm::startEditingRequestLimit,
                             onSaveRequestLimit = vm::saveRequestLimit,
                             onResetRequestLimit = vm::resetRequestLimit,
@@ -182,35 +200,38 @@ fun SlussenScreens(services: UiServices) {
                         )
                     }
                 }
-                Screen.Setup -> {
-                    val vm: SetupViewModel = viewModel(key = "setup") { SetupViewModel(services) }
+                is Screen.FileFormat -> {
+                    val vm: FileFormatViewModel = viewModel(key = "file-format-${current.fileFormatId}") {
+                        FileFormatViewModel(services, current.fileFormatId)
+                    }
                     LaunchedEffect(current) { vm.load() }
                     vm.state.collectAsState().value?.let { ui ->
-                        SetupScreen(
+                        FileFormatScreen(
                             ui = ui,
                             onBack = ::back,
-                            onStep = vm::goTo,
-                            onCredentials = { go(Screen.Service(it, fromSetup = true)) },
-                            onToggleBudget = vm::toggleBudget,
-                            onSaveBudgets = vm::saveBudgets,
-                            pairing = pairingActionsOf(vm),
+                            onOpenForm = vm::openForm,
+                            onCancelForm = vm::cancelForm,
+                            onChoose = vm::choose,
+                            onAdd = vm::add,
                         )
                     }
                 }
-                Screen.BankAccounts -> {
-                    val vm: BankAccountsViewModel = viewModel(key = "bank-accounts") { BankAccountsViewModel(services) }
+                Screen.AccountMappings -> {
+                    val vm: AccountMappingsViewModel = viewModel(key = "account-mappings") { AccountMappingsViewModel(services) }
                     LaunchedEffect(current) { vm.load() }
-                    vm.state.collectAsState().value?.let {
-                        BankAccountsScreen(
-                            ui = it,
+                    vm.state.collectAsState().value?.let { ui ->
+                        AccountMappingsScreen(
+                            ui = ui,
                             onBack = ::back,
-                            onAdd = { go(Screen.Setup) },
+                            onMapAll = vm::mapAll,
+                            onMapOne = vm::mapOne,
+                            onService = { go(Screen.Service(it)) },
+                            card = cardActionsOf(vm),
                             onOpenTypeAndBank = vm::openTypeAndBank,
                             onSaveTypeAndBank = vm::saveTypeAndBank,
                             onConfirmClearing = vm::confirmClearing,
                             onCancelClearing = vm::cancelClearing,
                             onCancelTypeAndBank = vm::cancelTypeAndBank,
-                            apartActions = apartActionsOf(vm),
                         )
                     }
                 }

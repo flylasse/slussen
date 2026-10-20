@@ -32,6 +32,7 @@ import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.StoredTransactionFile
 import slussen.core.port.TransactionFileOutcome
 import slussen.core.port.UnreadablePart
+import slussen.core.settings.NextThing
 import slussen.pluginapi.testfixtures.UseCase
 import slussen.pluginapi.value.CurrencyCode
 import slussen.testing.ExampleData
@@ -515,13 +516,43 @@ class UC008CheckImportStatusTest {
     }
 
     @Test
-    @UseCase(id = "UC-008")
-    @DisplayName("Precondition: without a served Budget with a mapped Bank Account, the overview says that no Bank Account is added yet")
-    fun withoutBankAccountsTheOverviewLeadsToSetUp() = runTest {
+    @UseCase(id = "UC-008", scenario = "A10: No Bank Account Added Yet", businessRules = ["BR-011"])
+    @DisplayName("A10: while no Bank Account is added, opening Slussen gives only the card that leads to Settings, naming the next thing to do, and records the start of the session")
+    fun withoutBankAccountsOpeningGivesTheFirstRunCard() = runTest {
         val overview = slice.status.open()
 
         assertTrue(overview.noBankAccountAdded)
+        assertEquals(FirstRunCard(NextThing.EnterBudgetAppCredentials(ExampleData.BUDGET_APP_NAME)), overview.firstRun)
         assertTrue(overview.budgets.isEmpty())
+        assertEquals(JournalEventKind.SessionStart, slice.journalRecorder.entries.single().eventKind)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A10: No Bank Account Added Yet", businessRules = ["BR-011"])
+    @DisplayName("BR-011: the card names the first thing UC-013 BR-008 recommends that is not yet done, here a Data Provider's Fetch once the Budgets are chosen")
+    fun theCardNamesTheNextThing() = runTest {
+        slice.enterCredentials()
+        val listed = ExampleData.budgetsRead().map { budget ->
+            BudgetToServe(budget.reference, budget.name, budget.currency, budget.budgetAccounts.map { BudgetAccountToStore(it.reference, it.name, it.balance) })
+        }
+        slice.connectionStore.serveBudgets(listed, setOf("budget-household"), now)
+
+        val overview = slice.status.open()
+
+        assertEquals(FirstRunCard(NextThing.FetchOrGrantBankConsent(listOf("Kestrel Feeds"), emptyList())), overview.firstRun)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A10: No Bank Account Added Yet", businessRules = ["BR-011"])
+    @DisplayName("BR-011: from the first added Bank Account on, opening Slussen shows the overview of the main success scenario, without the card")
+    fun fromTheFirstAddedBankAccountTheOverviewShows() = runTest {
+        household()
+
+        val overview = slice.status.open()
+
+        assertNull(overview.firstRun)
+        assertFalse(overview.noBankAccountAdded)
+        assertEquals(listOf("Household", "Summer House", "Care Fund"), overview.budgets.map { it.name })
     }
 
     @Test

@@ -10,7 +10,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
-import slussen.app.ui.service.ServicePageScreen
 import slussen.app.ui.service.ServicePageViewModel
 import slussen.app.ui.theme.SlussenTheme
 import slussen.pluginapi.provider.BankAccountResult
@@ -20,7 +19,7 @@ import slussen.pluginapi.provider.SourceOutcome
 import slussen.pluginapi.testfixtures.UseCase
 import slussen.testing.ExampleData
 
-/** Fetch Transactions (UC-001): the Fetch on a Data Provider's page in Connections, on a device or emulator. */
+/** Fetch Transactions (UC-001): the Fetch on a Data Provider's page, on a device or emulator. */
 @OptIn(ExperimentalTestApi::class)
 @DisplayName("UC-001: Fetch Transactions, the screens on a device")
 class UC001FetchTransactionsScreenIT {
@@ -48,24 +47,15 @@ class UC001FetchTransactionsScreenIT {
                 ),
             )
         }
-        val viewModel = ServicePageViewModel(fixture.services, fixture.slice.feedsKey, fromSetup = false)
+        val viewModel = ServicePageViewModel(fixture.services, fixture.slice.feedsKey)
         onMain { viewModel.load() }
         setContent {
             SlussenTheme {
-                viewModel.state.collectAsState().value?.let {
-                    ServicePageScreen(
-                        it, onBack = {}, onStartEntering = viewModel::startEntering, onCancelEntering = viewModel::cancelEntering,
-                        onSave = viewModel::save, onRequestRemoval = viewModel::requestRemoval, onCancelRemoval = viewModel::cancelRemoval,
-                        onConfirmRemoval = viewModel::confirmRemoval, onChooseBudgets = {},
-                        onEditRequestLimit = viewModel::startEditingRequestLimit, onSaveRequestLimit = viewModel::saveRequestLimit,
-                        onResetRequestLimit = viewModel::resetRequestLimit, onCancelRequestLimit = viewModel::cancelRequestLimit,
-                        onFetch = viewModel::fetch, onConfirmFetch = viewModel::confirmFetch, onCancelFetch = viewModel::cancelFetch,
-                    )
-                }
+                ServicePage(viewModel)
             }
         }
 
-        onNodeWithText("Fetch").performClick()
+        onNodeWithText("Fetch Kestrel Feeds").performClick()
 
         onNodeWithText("Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 1 · not added: 1").assertExists()
         onNodeWithText("Connected · last Fetch 2026-10-15 14:00").assertExists()

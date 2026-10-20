@@ -11,13 +11,13 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
-import slussen.app.ui.bankaccounts.BankAccountsScreen
-import slussen.app.ui.bankaccounts.BankAccountsViewModel
-import slussen.app.ui.bankaccounts.apartActionsOf
+import slussen.app.ui.mappings.AccountMappingsViewModel
 import slussen.app.ui.theme.SlussenTheme
 import slussen.core.connection.BudgetsRead
 import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
+import slussen.core.port.ServiceKey
+import org.junit.jupiter.api.Assertions.assertEquals
 import slussen.pluginapi.testfixtures.UseCase
 import slussen.testing.ExampleData
 
@@ -51,20 +51,9 @@ class UC009ManageAccountMappingsScreenIT {
                 slice.offeredStore.offered().single().id, checking, "Kestrel Checking", BankAccountType.Checking, BankChoice.Known(bank), null,
             )
         }
-        val viewModel = BankAccountsViewModel(fixture.services)
+        val viewModel = AccountMappingsViewModel(fixture.services)
         onMain { viewModel.load() }
-        setContent {
-            SlussenTheme {
-                viewModel.state.collectAsState().value?.let {
-                    BankAccountsScreen(
-                        it, onBack = {}, onAdd = {}, onOpenTypeAndBank = viewModel::openTypeAndBank,
-                        onSaveTypeAndBank = viewModel::saveTypeAndBank, onConfirmClearing = viewModel::confirmClearing,
-                        onCancelClearing = viewModel::cancelClearing, onCancelTypeAndBank = viewModel::cancelTypeAndBank,
-                        apartActions = apartActionsOf(viewModel),
-                    )
-                }
-            }
-        }
+        setContent { SlussenTheme { AccountMappings(viewModel) } }
 
         onNodeWithText("Kestrel Bank · Checking · Kestrel Feeds").performClick()
         onNodeWithText("Savings").performClick()
@@ -75,9 +64,9 @@ class UC009ManageAccountMappingsScreenIT {
     }
 
     @Test
-    @UseCase(id = "UC-009", scenario = "A16: Mark or Unmark a Manually Kept Account", businessRules = ["BR-013"])
-    @DisplayName("Step 1, A15, A16: Not imported and Kept by hand are shown apart; Bring back and Keep by hand act at once, Unmark asks first")
-    fun notImportedAndKeptByHand() = compose.use {
+    @UseCase(id = "UC-009", scenario = "A15: Bring Back a Left-Out Bank Account", businessRules = ["BR-013", "BR-014"])
+    @DisplayName("Step 1, A15, A16: Not imported and Kept by hand are short read-only lists, shown only when not empty, each line leading to the page where it is changed")
+    fun notImportedAndKeptByHandLeadToTheirPages() = compose.use {
         val fixture = ScreenFixture()
         val slice = fixture.slice
         runBlocking {
@@ -90,30 +79,22 @@ class UC009ManageAccountMappingsScreenIT {
                 null,
                 listOf(ExampleData.offered("acct-2290", "Kids Saver", "savings", ExampleData.USD, "2290", null, bank, slice.clock.instant())),
             )
-            slice.connect.bringIn(slice.offeredStore.offered().map { it.id }, emptySet())
+            slice.connect.switchImportOff(slice.offeredStore.offered().single().id)
+            val reserve = slice.connectionStore.budgets().single().budgetAccounts.single { it.name == "Reserve Savings" }.id
+            slice.connect.setReceivesFromSlussen(reserve, receives = false)
         }
-        val viewModel = BankAccountsViewModel(fixture.services)
+        var opened: ServiceKey? = null
+        val viewModel = AccountMappingsViewModel(fixture.services)
         onMain { viewModel.load() }
-        setContent {
-            SlussenTheme {
-                viewModel.state.collectAsState().value?.let {
-                    BankAccountsScreen(
-                        it, onBack = {}, onAdd = {}, onOpenTypeAndBank = viewModel::openTypeAndBank,
-                        onSaveTypeAndBank = viewModel::saveTypeAndBank, onConfirmClearing = viewModel::confirmClearing,
-                        onCancelClearing = viewModel::cancelClearing, onCancelTypeAndBank = viewModel::cancelTypeAndBank,
-                        apartActions = apartActionsOf(viewModel),
-                    )
-                }
-            }
-        }
+        setContent { SlussenTheme { AccountMappings(viewModel) { opened = it } } }
 
-        onNodeWithText("NOT IMPORTED · 1").assertExists()
-        onNodeWithText("Kids Saver ••2290").assertExists()
-        onNodeWithText("Bring back").performClick()
-        onNodeWithText("Kids Saver ••2290 brought back · offered for pairing again").assertExists()
-        onAllNodesWithText("Keep by hand")[0].performClick()
-        onNodeWithText("Checking kept by hand · not offered for pairing").assertExists()
-        onNodeWithText("Unmark").performClick()
-        onNodeWithText("Unmark Checking?").assertExists()
+        onNodeWithText("NOT IMPORTED · LEFT-OUT BANK ACCOUNTS · 1").assertExists()
+        onNodeWithText("KEPT BY HAND · MANUALLY KEPT ACCOUNTS · 1").assertExists()
+        onNodeWithText("Bring back").assertDoesNotExist()
+        onNodeWithText("Keep by hand").assertDoesNotExist()
+        onNodeWithText("Kids Saver ••2290 · Kestrel Feeds").performClick()
+        assertEquals(slice.feedsKey, opened)
+        onNodeWithText("Reserve Savings").performClick()
+        assertEquals(ServiceKey.budgetApp, opened)
     }
 }

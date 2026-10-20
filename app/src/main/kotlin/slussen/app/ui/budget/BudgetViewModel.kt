@@ -62,8 +62,8 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
         viewModelScope.launch {
             val formats = services.formats
             val workspace = services.status.workspace(budgetId)
-            val listed = services.connections.connections()
-            val serviceByName = (listed.inUse + listed.notSetUp).associate { it.name to it.service }
+            val serviceByName = services.settingsOverview.entries().entries
+                .mapNotNull { entry -> entry.service?.let { entry.name to it } }.toMap()
             fun lines(blocked: List<Blocked>) = blocked.map { BlockedLine(Texts.blocked(it, formats), action(it, serviceByName)) }
             mutableState.value = BudgetUi(
                 title = workspace.summary.name,

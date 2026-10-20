@@ -28,9 +28,9 @@ sealed interface SettingOutcome {
 }
 
 /**
- * The Operator Settings that belong to one Data Provider and are shown on its page in Connections (UC-010 step 1,
- * BR-010), `:core` `settings` (ADR-001 §7): here the Request Limit of a Data Provider that publishes none (UC-010 A11,
- * BR-002, UC-001 BR-007).
+ * The Operator Settings that belong to one Data Provider and are shown on its page, opened from its entry in Settings
+ * (UC-010 step 1, BR-010), `:core` `settings` (ADR-001 §7): here the Request Limit of a Data Provider that publishes
+ * none (UC-010 A11, BR-002, UC-001 BR-007).
  */
 class DataProviderSettings(
     private val plugins: RegisteredPlugins,

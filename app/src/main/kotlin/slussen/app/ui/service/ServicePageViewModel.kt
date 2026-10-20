@@ -7,6 +7,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import slussen.app.ui.Texts
 import slussen.app.ui.UiServices
+import slussen.core.connection.BroughtBack
+import slussen.core.connection.BudgetAccountOnPage
+import slussen.core.connection.BudgetChoice
+import slussen.core.connection.BudgetsRead
+import slussen.core.connection.ImportState
+import slussen.core.connection.ImportSwitchedOff
+import slussen.core.connection.KeepOutcome
+import slussen.core.connection.ListedBudget
+import slussen.core.connection.OfferRemedy
+import slussen.core.connection.OfferedOfProvider
+import slussen.core.connection.OfferedOnPage
 import slussen.core.credential.CredentialOutcome
 import slussen.core.credential.CredentialStatus
 import slussen.core.credential.RemovalOutcome
@@ -36,10 +47,69 @@ data class RequestLimitEditorUi(
     val unattendedNote: String?,
 )
 
+/** One Budget the Budget App lists, with whether the Operator chose it (UC-013 steps 2-3; `connections.html#choose-budgets`). */
+data class BudgetChoiceLine(val reference: String, val name: String, val currency: String, val chosen: Boolean)
+
+/** One Budget Account under its Budget, with "Receives from Slussen" or its Account Mapping (UC-013 step 4, BR-014). */
+data class BudgetAccountLine(
+    val budgetAccountId: Long,
+    val name: String,
+    val detail: String,
+    val balance: String,
+    /** The switch "Receives from Slussen"; null when it receives through an Account Mapping, shown instead. */
+    val receives: Boolean?,
+)
+
+data class BudgetAccountsGroup(val title: String, val lines: List<BudgetAccountLine>)
+
+/** The Budgets on the Budget App's page: in use, their choice, and the Budget Accounts of each (UC-013 steps 2-4, A1, A2, A7). */
+data class BudgetsSectionUi(
+    val inUse: List<String>,
+    /** A7: why the Budgets cannot be chosen yet, or null. */
+    val note: String?,
+    /** Steps 2-3: the Budgets the Budget App lists while the Operator chooses, or null. */
+    val choosing: List<BudgetChoiceLine>?,
+    val budgetAccounts: List<BudgetAccountsGroup>,
+)
+
+/** One Offered Bank Account on its Data Provider's page (UC-013 step 5, BR-002, BR-012; a Data Provider's page of `connections.html`). */
+data class OfferedLineUi(
+    val offeredBankAccountId: Long?,
+    val leftOutBankAccountId: Long?,
+    val title: String,
+    val detail: String,
+    val balance: String,
+    /** The import switch: on, off, or null when it has none (added, a proposed match, a balance source). */
+    val importOn: Boolean?,
+    /** What stands instead of a switch: where an added one goes, a proposed match, a balance source. */
+    val trailing: String?,
+)
+
+data class OfferedBankGroup(val name: String, val rows: List<OfferedLineUi>)
+
+/** The Offered Bank Accounts on a Data Provider's page (UC-013 steps 5-7, A3, A6, A10, A11). */
+data class OfferedSectionUi(
+    val heading: String,
+    val banks: List<OfferedBankGroup>,
+    /** A10 step 2: Left-Out Bank Accounts the latest delivery does not hold. */
+    val notDelivered: List<OfferedLineUi>,
+    /** A3: one sentence while nothing is offered (P9-05), or null. */
+    val emptyText: String?,
+    /** A11: nothing new to import, or null. */
+    val nothingNew: String?,
+    val footnote: String?,
+)
+
+/** What a switch did, with the action that follows it (`connections.html#switch-off`, `#switch-on`, `#kept-switch`). */
+enum class SnackAction { Undo, Map }
+
+data class SnackUi(val text: String, val action: SnackAction?)
+
 /**
  * The page of one service (UC-010 BR-010, UC-014 BR-007), generated from its declarations, with its credential form
- * (UC-014 steps 2-6, A1-A5), the Request Limit setting of a Data Provider that publishes none (UC-010 A11) and, for a
- * Data Provider, its Fetch (UC-001).
+ * (UC-014 steps 2-6, A1-A5), the Request Limit setting of a Data Provider that publishes none (UC-010 A11), for a Data
+ * Provider its Fetch (UC-001) and its Offered Bank Accounts with their import switches (UC-013 steps 5-7), and for the
+ * Budget App the Budgets and their Budget Accounts with "Receives from Slussen" (UC-013 steps 2-4, A9).
  */
 data class ServicePageUi(
     val name: String,
@@ -58,10 +128,12 @@ data class ServicePageUi(
     val requestLimitEditable: Boolean,
     val requestLimitEditor: RequestLimitEditorUi?,
     val bankAccounts: List<String>,
-    val budgetsInUse: List<String>,
     val uploadAsClearedShown: Boolean,
-    /** Set when accepted credentials return to Connect Budgets and Bank Accounts, which started this use case (step 6). */
-    val returnToSetup: Boolean,
+    /** The Budget App's page: its Budgets and their Budget Accounts; null on a Data Provider's page. */
+    val budgets: BudgetsSectionUi?,
+    /** A Data Provider's page: its Offered Bank Accounts; null on the Budget App's page. */
+    val offered: OfferedSectionUi?,
+    val snack: SnackUi?,
     /** A Data Provider's page offers its Fetch (UC-001 step 1). */
     val canFetch: Boolean,
     /** UC-001 A16: the warning the Operator confirms before the Fetch is made, or null. */
@@ -71,19 +143,115 @@ data class ServicePageUi(
 /** UC-001 A16 (`budget.html#request-limit-warning`): the warning, its end and the risk, before the Operator confirms. */
 data class FetchWarningUi(val service: ServiceKey, val title: String, val text: String, val risk: String)
 
-/** A service's page in Connections (UC-014). [fromSetup] when Connect Budgets and Bank Accounts started it. */
+/** A service's page, opened from its entry in Settings (UC-014, UC-013, UC-010 BR-010). */
 class ServicePageViewModel(
     private val services: UiServices,
     private val service: ServiceKey,
-    private val fromSetup: Boolean,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow<ServicePageUi?>(null)
     val state: StateFlow<ServicePageUi?> = mutableState
 
     private var page: ServicePage? = null
 
+    /** The Budget App's page: the Budgets and their Budget Accounts; a Data Provider's page: its Offered Bank Accounts. */
+    private var budgetsSection: BudgetsSectionUi? = null
+    private var offeredSection: OfferedSectionUi? = null
+    private var snack: SnackUi? = null
+
+    /** Steps 2-3: the Budgets the Budget App listed and the ones ticked, while the Operator chooses. */
+    private var listed: List<ListedBudget> = emptyList()
+    private val chosen = linkedSetOf<String>()
+    private var choosing = false
+
+    /** What Undo does: the last switch, switched back. */
+    private var undoAction: (suspend () -> Unit)? = null
+
     fun load() {
-        viewModelScope.launch { show(services.connections.servicePage(service)) }
+        snack = null
+        undoAction = null
+        viewModelScope.launch { reload() }
+    }
+
+    /** Reads the page, and what UC-013 shows on it, again. */
+    private suspend fun reload(message: String? = null) {
+        show(pageWithSections(), message = message)
+    }
+
+    private suspend fun pageWithSections(): ServicePage = services.settingsOverview.servicePage(service).also { page ->
+        if (page.isBudgetApp) {
+            val served = services.connect.servedBudgetAccounts()
+            budgetsSection = BudgetsSectionUi(
+                inUse = page.budgetsInUse.map { "${it.name} · ${it.currency.code}" },
+                // A7 of UC-013: the Budgets can be chosen once the Budget App's credentials are accepted.
+                note = if (page.credentialStatus == CredentialStatus.Missing) "Budgets can be chosen once the ${page.name} credentials are accepted." else null,
+                choosing = if (choosing) budgetLines() else null,
+                budgetAccounts = served.map { budget ->
+                    BudgetAccountsGroup("${budget.name} · ${budget.currency.code}", budget.budgetAccounts.map(::budgetAccountLine))
+                },
+            )
+        } else {
+            offeredSection = offeredSection(services.connect.offeredOf(requireNotNull(service.dataProviderId)), page.name)
+        }
+    }
+
+    private fun budgetLines() = listed.map { BudgetChoiceLine(it.budgetAppReference, it.name, it.currency.code, it.budgetAppReference in chosen) }
+
+    // UC-013 BR-014: Each Budget Account that receives through no Account Mapping has the switch "Receives from Slussen"; a mapped one shows its Account Mapping instead.
+    private fun budgetAccountLine(account: BudgetAccountOnPage) = BudgetAccountLine(
+        budgetAccountId = account.budgetAccountId,
+        name = account.name,
+        detail = when {
+            account.mappedFrom != null -> "receives from ${account.mappedFrom}"
+            account.receivesFromSlussen == true -> "receives from Slussen"
+            else -> "kept by hand · Manually Kept Account"
+        },
+        balance = account.balance?.let { services.formats.amount(it) }.orEmpty(),
+        receives = account.receivesFromSlussen,
+    )
+
+    private fun offeredSection(offered: OfferedOfProvider, name: String): OfferedSectionUi {
+        val rows = offered.offered.map { it to offeredLine(it) }
+        return OfferedSectionUi(
+            heading = "Offered Bank Accounts · import is on by default",
+            // UC-013 BR-002: The Offered Bank Accounts are shown on their Data Provider's page grouped by Bank.
+            banks = rows.groupBy({ it.first.offered.bankName.orEmpty() }, { it.second }).map { (bank, lines) -> OfferedBankGroup(bank, lines) },
+            notDelivered = offered.leftOutNotDelivered.map {
+                OfferedLineUi(null, it.leftOutBankAccountId, it.name, "not in the latest delivery · not imported", "", importOn = false, trailing = null)
+            },
+            // A3 of UC-013 (P9-05): one sentence while nothing is offered.
+            emptyText = when (offered.remedy) {
+                OfferRemedy.StartFetch -> "None yet · a Fetch lists the Bank Accounts $name offers; no transactions are fetched until a Bank Account is added"
+                OfferRemedy.GrantBankConsent -> "None yet · grant a Bank Consent of a Bank to see its Bank Accounts"
+                null -> null
+            },
+            nothingNew = if (offered.nothingNew) "Nothing new to import · every Offered Bank Account is added, not imported or reports a balance" else null,
+            footnote = if (offered.offered.isEmpty()) {
+                null
+            } else {
+                "Imported Bank Accounts are mapped in Account Mappings. Nothing is fetched for them until they are added."
+            },
+        )
+    }
+
+    // UC-013 BR-012: An imported Offered Bank Account has its import switch on, a Left-Out one off; an added one, a proposed match and a balance source have none.
+    private fun offeredLine(on: OfferedOnPage): OfferedLineUi {
+        val offer = on.offered
+        val detail = listOfNotNull(offer.kind, offer.currency?.code, offer.lastFourDigits?.let { "••$it" }).joinToString(" · ")
+        val balance = offer.balance?.let { services.formats.amount(it) }.orEmpty()
+        val title = offer.nameOrProduct ?: offer.kind.orEmpty()
+        return when (val state = on.state) {
+            ImportState.ToMap -> OfferedLineUi(offer.offeredBankAccountId, null, title, "$detail · to map", balance, importOn = true, trailing = null)
+            is ImportState.NotImported ->
+                OfferedLineUi(offer.offeredBankAccountId, state.leftOutBankAccountId, title, "$detail · not imported", balance, importOn = false, trailing = null)
+            is ImportState.Added ->
+                OfferedLineUi(offer.offeredBankAccountId, null, title, detail, balance, importOn = null, trailing = "Added → ${state.budgetAccountName ?: "not mapped"}")
+            is ImportState.ProbablyAdded -> OfferedLineUi(
+                offer.offeredBankAccountId, null, title, detail, balance, importOn = null,
+                trailing = "probably ${state.bankAccountName} · confirm in Account Mappings",
+            )
+            is ImportState.ReportsBalance ->
+                OfferedLineUi(offer.offeredBankAccountId, null, title, detail, balance, importOn = null, trailing = "balance of ${state.bankAccountName}")
+        }
     }
 
     private fun show(
@@ -91,7 +259,6 @@ class ServicePageViewModel(
         entering: Boolean = false,
         message: String? = null,
         removalQuestion: String? = null,
-        returnToSetup: Boolean = false,
         requestLimitEditor: RequestLimitEditorUi? = null,
         fetchWarning: FetchWarningUi? = null,
     ) {
@@ -100,7 +267,8 @@ class ServicePageViewModel(
         val missingOrRefused = page.status == ServiceStatus.CredentialsMissing || page.status == ServiceStatus.CredentialsRefused
         mutableState.value = ServicePageUi(
             name = page.name,
-            kind = if (page.isBudgetApp) "Budget App" else if (page.needsBankConsent) "Data Provider · needs Bank Consent" else "Data Provider",
+            kind = (if (page.isBudgetApp) "Budget App" else if (page.needsBankConsent) "Data Provider · needs Bank Consent" else "Data Provider") +
+                if (page.status == ServiceStatus.NotSetUp) " · not set up" else "",
             status = Texts.serviceStatus(page.status, formats),
             // Refused or missing credentials show their Blocked Reason with the action that enters them (UC-014 BR-005).
             blocked = if (missingOrRefused) {
@@ -137,9 +305,10 @@ class ServicePageViewModel(
                     else -> ""
                 }
             },
-            budgetsInUse = page.budgetsInUse.map { "${it.name} · ${it.currency.code}" },
             uploadAsClearedShown = page.supportsClearedMarker,
-            returnToSetup = returnToSetup,
+            budgets = if (page.isBudgetApp) budgetsSection else null,
+            offered = if (page.isBudgetApp) null else offeredSection,
+            snack = snack,
             canFetch = !page.isBudgetApp,
             fetchWarning = fetchWarning,
         )
@@ -160,10 +329,14 @@ class ServicePageViewModel(
         viewModelScope.launch {
             val input = CredentialInput(values.mapValues { Secret(it.value) })
             val outcome = services.credentials.enter(service, input)
-            val page = services.connections.servicePage(service)
+            val page = pageWithSections()
             val message = Texts.outcome(page.name, outcome, services.formats)
             when (outcome) {
-                is CredentialOutcome.Accepted -> show(page, message = message, returnToSetup = fromSetup)
+                is CredentialOutcome.Accepted -> {
+                    show(page, message = message)
+                    // Steps 1-2 of UC-013: once the Budget App accepts its credentials, the Budgets come next on the same page.
+                    if (page.isBudgetApp && page.budgetsInUse.isEmpty()) readBudgets(keptMessage = message)
+                }
                 // A1: use case continues at step 2; the form stays open.
                 CredentialOutcome.Refused -> show(page, entering = true, message = message)
                 // A2, A5: use case ends.
@@ -231,14 +404,14 @@ class ServicePageViewModel(
         val editor = mutableState.value?.requestLimitEditor
         val before = (page?.requestLimit as? RequestLimitShown.NotPublished)?.requests
         when (outcome) {
-            is SettingOutcome.Stored -> show(services.connections.servicePage(service), message = storedMessage)
+            is SettingOutcome.Stored -> show(pageWithSections(), message = storedMessage)
             // A1: refused with the allowed range; the editor stays open (use case continues at step 2).
             is SettingOutcome.OutsideRange -> mutableState.value = mutableState.value?.copy(
                 message = "$value is outside the allowed range · enter ${outcome.range.first} to ${outcome.range.last} · " +
                     "the Request Limit stays $before",
                 requestLimitEditor = editor,
             )
-            SettingOutcome.NotAnOperatorSetting -> show(services.connections.servicePage(service), message = "Published by the Data Provider · not a setting")
+            SettingOutcome.NotAnOperatorSetting -> show(pageWithSections(), message = "Published by the Data Provider · not a setting")
             is SettingOutcome.Unavailable -> mutableState.value = mutableState.value?.copy(message = Texts.refusal(outcome.reason))
         }
     }
@@ -257,7 +430,7 @@ class ServicePageViewModel(
     private fun startFetch(confirmedDespiteWarning: Boolean) {
         viewModelScope.launch {
             val start = services.fetch.fetch(service, confirmedDespiteWarning)
-            val page = services.connections.servicePage(service)
+            val page = pageWithSections()
             when (start) {
                 is FetchStart.Unavailable -> show(page, message = Texts.refusal(start.reason))
                 is FetchStart.Ran -> when (val report = start.reports.single()) {
@@ -285,11 +458,138 @@ class ServicePageViewModel(
     fun confirmRemoval() {
         viewModelScope.launch {
             val outcome = services.credentials.remove(service)
-            val page = services.connections.servicePage(service)
+            val page = pageWithSections()
             when (outcome) {
                 RemovalOutcome.Removed -> show(page, message = "Removed · recorded in the Decision Journal")
                 is RemovalOutcome.Unavailable -> show(page, message = Texts.refusal(outcome.reason))
             }
         }
+    }
+
+    /** UC-013 step 2: the Operator asks to choose the Budgets; Slussen reads them from the Budget App. */
+    fun chooseBudgets() {
+        viewModelScope.launch { readBudgets(keptMessage = null) }
+    }
+
+    private suspend fun readBudgets(keptMessage: String?) {
+        val name = page?.name.orEmpty()
+        val message = when (val read = services.connect.readBudgets()) {
+            is BudgetsRead.Listed -> {
+                listed = read.budgets
+                chosen.clear()
+                chosen += read.budgets.filter { it.served }.map { it.budgetAppReference }
+                choosing = true
+                keptMessage
+            }
+            BudgetsRead.BudgetAppCredentialsMissing -> "Budgets can be chosen once the $name credentials are accepted."
+            BudgetsRead.CredentialsRefused -> "Blocked: credentials refused · Enter credentials"
+            is BudgetsRead.CouldNotRead -> "$name could not be read: ${Texts.failure(read.kind)} · Budgets unchanged"
+            is BudgetsRead.Unavailable -> Texts.refusal(read.reason)
+        }
+        reload(message)
+    }
+
+    /** Step 3: the Operator ticks or unticks a Budget. */
+    fun toggleBudget(reference: String) {
+        if (!chosen.remove(reference)) chosen += reference
+        budgetsSection = budgetsSection?.copy(choosing = budgetLines())
+        mutableState.value = mutableState.value?.copy(budgets = budgetsSection)
+    }
+
+    /** Steps 3-4, A2: the ticked Budgets are served; refused while a Budget left out has mapped Bank Accounts. */
+    fun serveBudgets() {
+        viewModelScope.launch {
+            val message = when (val choice = services.connect.chooseBudgets(listed, chosen.toSet())) {
+                BudgetChoice.Stored -> {
+                    choosing = false
+                    null
+                }
+                is BudgetChoice.StillMapped ->
+                    "${choice.budgetName} has mapped Bank Accounts ${choice.bankAccountNames.joinToString(", ")} · remove their Account Mappings first"
+                is BudgetChoice.Unavailable -> Texts.refusal(choice.reason)
+            }
+            reload(message)
+        }
+    }
+
+    fun cancelChoosing() {
+        choosing = false
+        viewModelScope.launch { reload() }
+    }
+
+    /** A9, BR-014: "Receives from Slussen" switched off marks the Budget Account at once, with no dialog; on unmarks it. */
+    fun setReceives(budgetAccountId: Long, receives: Boolean) {
+        viewModelScope.launch { applyReceives(budgetAccountId, receives) }
+    }
+
+    private suspend fun applyReceives(budgetAccountId: Long, receives: Boolean) {
+        val name = services.connect.servedBudgetAccounts().flatMap { it.budgetAccounts }.firstOrNull { it.budgetAccountId == budgetAccountId }?.name.orEmpty()
+        var message: String? = null
+        when (val outcome = services.connect.setReceivesFromSlussen(budgetAccountId, receives)) {
+            KeepOutcome.Marked -> {
+                snack = SnackUi("$name kept by hand · not offered for pairing", SnackAction.Undo)
+                undoAction = { applyReceives(budgetAccountId, receives = true) }
+            }
+            KeepOutcome.Unmarked -> {
+                snack = SnackUi("$name receives from Slussen again · offered for pairing", null)
+                undoAction = null
+            }
+            is KeepOutcome.StillReceives -> message = "$name receives ${outcome.bankAccountName} · not kept by hand"
+            KeepOutcome.NotFree, KeepOutcome.NotManuallyKept -> Unit
+            is KeepOutcome.Unavailable -> message = Texts.refusal(outcome.reason)
+        }
+        reload(message)
+    }
+
+    /** Steps 6-7, A10, BR-012: the import switch of one Offered Bank Account: off leaves it out at once, on brings it back. */
+    fun switchImport(offered: OfferedLineUi, on: Boolean) {
+        viewModelScope.launch {
+            if (on) {
+                offered.leftOutBankAccountId?.let { switchOn(it) }
+                return@launch
+            }
+            val offeredBankAccountId = offered.offeredBankAccountId ?: return@launch
+            var message: String? = null
+            when (val outcome = services.connect.switchImportOff(offeredBankAccountId)) {
+                is ImportSwitchedOff.LeftOut -> {
+                    snack = SnackUi("${outcome.name} not imported · never read", SnackAction.Undo)
+                    undoAction = { switchOn(outcome.leftOutBankAccountId) }
+                }
+                ImportSwitchedOff.NoSwitch -> Unit
+                is ImportSwitchedOff.Unavailable -> message = Texts.refusal(outcome.reason)
+            }
+            reload(message)
+        }
+    }
+
+    // UC-013 BR-011: Switching the import of a Left-Out Bank Account on again brings it back; it is imported and to map.
+    private suspend fun switchOn(leftOutBankAccountId: Long) {
+        var message: String? = null
+        when (val outcome = services.connect.bringBack(leftOutBankAccountId)) {
+            is BroughtBack.Offered -> {
+                snack = if (outcome.offeredNow) {
+                    SnackUi("${outcome.name} imported · to map in Account Mappings", SnackAction.Map)
+                } else {
+                    SnackUi("${outcome.name} imported from the next delivery that holds it", null)
+                }
+                undoAction = null
+            }
+            BroughtBack.NotFound -> Unit
+            is BroughtBack.Unavailable -> message = Texts.refusal(outcome.reason)
+        }
+        reload(message)
+    }
+
+    /** The action of the last switch: Undo switches it back. */
+    fun undo() {
+        val action = undoAction ?: return
+        undoAction = null
+        viewModelScope.launch { action() }
+    }
+
+    fun dismissSnack() {
+        snack = null
+        undoAction = null
+        mutableState.value = mutableState.value?.copy(snack = null)
     }
 }

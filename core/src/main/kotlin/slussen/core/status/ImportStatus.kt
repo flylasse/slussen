@@ -30,6 +30,7 @@ import slussen.core.port.StoredRecoveryCheck
 import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.StoredTransactionFile
 import slussen.core.port.TransactionFileOutcome
+import slussen.core.settings.NextThing
 import slussen.pluginapi.value.Amount
 import java.time.Clock
 import java.time.Duration
@@ -54,6 +55,8 @@ class ImportStatus(
     private val settings: OperatorSettingsStore,
     private val journal: DecisionJournal,
     private val clock: Clock,
+    /** A10, BR-011: the next thing to do in setting up Slussen (UC-013 BR-008), read from the Settings read model. */
+    private val firstRunNext: suspend () -> NextThing? = { null },
 ) {
     private val dataProviders: List<StoredDataProvider> get() = currentDataProviders()
 
@@ -97,7 +100,7 @@ class ImportStatus(
         )
     }
 
-    /** Steps 1-3: the Operator opens Slussen; the start of the session is recorded in the Decision Journal. */
+    /** Steps 1-3, A10: the Operator opens Slussen; the start of the session is recorded in the Decision Journal. */
     suspend fun open(): Overview {
         journal.record(JournalEventKind.SessionStart, "Slussen opened")
         return overview()
@@ -107,15 +110,17 @@ class ImportStatus(
     suspend fun overview(): Overview {
         val snapshot = snapshot()
         val summaries = snapshot.budgets.map { summary(it, snapshot) }
-        val anyMapped = snapshot.budgets.any { budget -> accountsOf(budget, snapshot).isNotEmpty() }
+        // UC-008 BR-011: While no Bank Account is added, opening Slussen shows only the card that leads to Settings and names the next thing to do.
+        val noBankAccountAdded = connections.bankAccounts().isEmpty()
         return Overview(
             unreadable = startState.unreadableParts.map { UnreadableNotice(it.part, it.startedFromLastGoodCopy) },
             recoveryCheck = recoveryNotice(snapshot),
             backupWarning = backupWarning(snapshot),
             expiringBankConsents = expiringConsents(snapshot),
             budgets = summaries,
-            noBankAccountAdded = !anyMapped,
+            noBankAccountAdded = noBankAccountAdded,
             budgetAppName = budgetAppName,
+            firstRun = if (noBankAccountAdded) FirstRunCard(firstRunNext()) else null,
         )
     }
 
