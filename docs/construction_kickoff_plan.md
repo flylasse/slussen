@@ -411,7 +411,7 @@ Same rules as Phase 7. The operator chose to finish this round with the balances
 
 ### Phase 9 — Acceptance checklist (operator, on the phone, after Phase 8f)
 
-Agreed scope (2026-10-20). Report anything that fails or is unclear as P9-16 and onwards.
+Agreed scope (2026-10-20, revised the same day with the operator): **A** and **B 1-7, run once**; B 8-9 are optional, since earlier rounds on debug builds already went through them and they are covered by tests. Thorough end-to-end testing of every workflow moves to the plan that builds Bank Transactions, the Comparison and Uploads, where the evidence E-01..E-12 (ADR-005 §7) is required anyway. Report anything that fails or is unclear as P9-16 and onwards.
 
 **A. Upgrade keeps the data (debug build, NFR-017, S-39).** Install the Phase 8f debug build over the current debug install without clearing it. Expected: the credentials, chosen Budgets, Import and "Receives from Slussen" switches, Left-Out Bank Accounts and mappings are all still there (`slussen.db` version 2 to 3); Settings, This app shows the version and "debug build".
 
@@ -424,8 +424,8 @@ Agreed scope (2026-10-20). Report anything that fails or is unclear as P9-16 and
 5. Account Mappings: the Bank Accounts to map, one line each; open one: only the free Budget Accounts of its currency, one proposed when it is the only one (BR-013); name (no doubled last four digits, P9-04), type, Bank (one choice), Start Date; Add and continue; Skip for now; the summary.
 6. HSA CSV export's page: add the HSA Bank Account with its Bank Account type, Bank, the SimpleFIN Bank Account that reports its balance, and its Budget Account (UC-013 A4).
 7. Fetch (Overview, above the Budget cards, or SimpleFIN's page): a result line; then each mapped Bank Account shows its Account Balance from SimpleFIN next to YNAB's balance and when it was fetched (Phase 8f). A second Fetch within 60 minutes is served from the Fetch Cooldown.
-8. Enable Banking's page: credentials can be entered and are checked; it says plainly that Bank Consents are not in this build, and its Fetch is unavailable (P9-13).
-9. A device without network (airplane mode): entering or checking credentials and a Fetch say the service could not be reached; the app does not end (NFR-004).
+8. *(Optional)* Enable Banking's page: credentials can be entered and are checked; it says plainly that Bank Consents are not in this build, and its Fetch is unavailable (P9-13).
+9. *(Optional)* A device without network (airplane mode): entering or checking credentials and a Fetch say the service could not be reached; the app does not end (NFR-004).
 
 **Out of scope in this plan:** Bank Transactions (no transactions are fetched or shown; Eligible and waiting for a decision stay 0), the Comparison with YNAB and confirming the Recovery Check (uploads stay blocked), Uploads, Enable Banking's Bank Consent and Fetch (O-P2-73), importing a Transaction File (UC-002), Transfers, the Scheduled Fetch, the Journal Export.
 
