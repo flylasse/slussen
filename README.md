@@ -18,8 +18,8 @@ This repository follows Simon Martinelli's **AI Unified Process (AIUP)** combine
 
 ### Status
 
-**Stage: construction in progress.** The first slice (UC-012, UC-014, UC-013, UC-008) is built: own build, service credentials, Budgets and Bank Accounts, and the import status. Fetching, comparing and uploading come with later slices.  
-The living specification in `docs/` (vision, requirements, glossary, entity model and use cases UC-001..UC-014, all Approved) was bootstrapped from the predecessor `ynab-import-android` with AIUP. The closed bootstrap plan, with its methodology evaluation log and what is owed to construction, is archived at [`docs/archive/bootstrap_aiup_spec_plan.md`](docs/archive/bootstrap_aiup_spec_plan.md).
+**Stage: first installable version (0.1.1).** Setting up Slussen in the app works end to end: own release build, service credentials, Budgets, Bank Accounts with their switches and Account Mappings, a SimpleFIN Fetch that stores each Bank Account's balance, and the import status. Fetching and comparing Bank Transactions, uploading, and Enable Banking's Bank Consents come with later slices. The closed construction kickoff plan, with its methodology evaluation log, is archived at [`docs/archive/construction_kickoff_plan.md`](docs/archive/construction_kickoff_plan.md).  
+The living specification in `docs/` (vision, requirements, glossary, entity model and use cases UC-001..UC-014) was bootstrapped from the predecessor `ynab-import-android` with AIUP. The closed bootstrap plan, with its methodology evaluation log and what is owed to construction, is archived at [`docs/archive/bootstrap_aiup_spec_plan.md`](docs/archive/bootstrap_aiup_spec_plan.md).
 
 ## Set Up Your Own Slussen
 

@@ -8,7 +8,7 @@
 **Secondary Actors:** Budget App, Data Provider  
 **Goal:** Give Slussen valid service credentials for the Budget App and for each Data Provider the household uses, kept only on the phone, and change or remove them when needed  
 **Trigger:** Operator opens, from its entry in Settings, the page of the Budget App or of a Data Provider of this build, set up or not, and asks to enter, replace or remove its service credentials, or Connect Budgets and Bank Accounts reaches its credentials step  
-**Status:** Approved  
+**Status:** Implemented  
 
 **Requirements:** [FR-064, FR-066, FR-101, FR-102, FR-103, NFR-004, NFR-008, NFR-009, NFR-012, NFR-021, NFR-022, C-004, C-008](../requirements.md)
 
