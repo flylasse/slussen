@@ -283,7 +283,7 @@
 </head>
 <body>
 <main>
-<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html" class="here">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="connections.html">Connections</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a> <a href="setup.html">Setup</a> <a href="icons.html">Icons</a></nav>
+<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html" class="here">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="connections.html">Service pages</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="first-upload-matching.html">First Upload Matching</a> <a href="journal-export.html">Journal Export</a> <a href="icons.html">Icons</a></nav>
 <p class="eyebrow">Slussen · screen mockup · UC-007</p>
 <h1>Grant, renew or revoke a Bank Consent</h1>
 <p class="sub">One Strong Customer Authentication per Bank, valid until the expiry the Bank or Data Provider reports.</p>
@@ -292,7 +292,7 @@
 <p class="lede">Adopted from the predecessor: one sheet for granting and renewing, opened from every place that shows a missing or expiring Bank Consent, with the steps in order and the result in the sheet. Changed: the steps follow UC-007 without assuming how the result returns (no paste field), the Consent Request's one-time use and lifetime are stated, revoking is confirmed and deletes everything stored, and the covered Bank Accounts are identified or sent to confirmation.</p>
 <div class="flow">
 <div class="state" id="list">
-<div class="step-label"><span class="n">UC-007 1 · BR-008</span><p><b>Bank Consents on the Enable Banking page</b> in <a href="connections.html#enable-banking">Connections</a> (S-26). Grant, renew and revoke are also offered wherever Slussen shows a Bank Consent as missing, expiring or expired (UC-007 BR-003). Same state as that page, after Vesta Sparbank was renewed; the expired state is shown <a href="#expired">next</a>.</p></div>
+<div class="step-label"><span class="n">UC-007 1 · BR-008</span><p><b>Bank Consents on the <a href="connections.html#enable-banking">Enable Banking page</a></b>, opened from its entry in Settings (S-26, S-40). Grant, renew and revoke are also offered wherever Slussen shows a Bank Consent as missing, expiring or expired (UC-007 BR-003). Same state as that page, after Vesta Sparbank was renewed; the expired state is shown <a href="#expired">next</a>.</p></div>
 <div class="phone">
 <div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
@@ -414,13 +414,13 @@
 </div>
 </div>
 </section><section>
-<h2>During first setup</h2>
-<p class="lede">Reached from Set up Slussen when a Bank must offer its Bank Accounts before they can be paired (UC-013 A3, UC-007 step 1).</p>
+<h2>Before any Bank Account of the Bank is added</h2>
+<p class="lede">Reached from the <a href="connections.html#consent-first">Enable Banking page</a> when a Bank must offer its Bank Accounts before they can be imported and mapped (UC-013 A3, UC-007 step 1). There is no setup screen (S-40).</p>
 <div class="flow">
 <div class="state" id="grant-first-run">
-<div class="step-label"><span class="n">UC-007 1–7 · UC-013 A3</span><p><b>Granting during first setup</b>, from <a href="setup.html#consent-first">Bank Consent first</a>: the same sheet, for a Bank none of whose Bank Accounts is added yet.</p></div>
+<div class="step-label"><span class="n">UC-007 1–7 · UC-013 A3</span><p><b>Granting before anything is added</b>, from the <a href="connections.html#consent-first">Enable Banking page</a>: the same sheet, for a Bank none of whose Bank Accounts is added yet.</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="setup.html#consent-first">‹</a> Set up Slussen</div>
+<div class="screen-title"><a class="back" href="connections.html#consent-first">‹</a> Enable Banking</div>
 <p class="screen-sub">Pair Bank Accounts</p>
 <div class="body">
 <div class="ghost"><div class="sec-t">Enable Banking</div></div><div class="sheet blue"><div class="grab"></div><h4>Grant Bank Consent · Aurora Bank</h4><p class="ctx">Enable Banking · one sign-in for every Bank Account at the Bank</p><div class="stepn"><span class="i">1</span> <span><span class="t">Open Aurora Bank's Strong Customer Authentication</span> </span></div><span class="pair"><a class="cta-btn" href="#granted-first-run">Open my Bank</a></span><div class="stepn"><span class="i">2</span> <span><span class="t">Complete it with your Bank, for example with BankID</span></span></div><div class="stepn"><span class="i">3</span> <span><span class="t">Return to Slussen with the result</span> <span class="d">Until 09:24</span></span></div></div>
@@ -429,12 +429,12 @@
 </div>
 </div>
 <div class="state" id="granted-first-run">
-<div class="step-label"><span class="n">UC-007 8–10 · UC-013 A3</span><p><b>Granted during first setup</b>: the Bank Accounts the Bank Consent covers are offered for pairing; Done returns to pairing (UC-013 step 5).</p></div>
+<div class="step-label"><span class="n">UC-007 8–10 · UC-013 A3</span><p><b>Granted before anything is added</b>: the Bank Accounts the Bank Consent covers are offered and imported by default; Done returns to the Enable Banking page with their import switches (UC-013 step 5, BR-012).</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="setup.html#consent-first">‹</a> Set up Slussen</div>
+<div class="screen-title"><a class="back" href="connections.html#consent-first">‹</a> Enable Banking</div>
 <p class="screen-sub">Pair Bank Accounts</p>
 <div class="body">
-<div class="sheet teal"><div class="grab"></div><h4>✓ Bank Consent granted · Aurora Bank</h4><p class="ctx">Valid until 2027-04-14, the expiry date the Bank reported.</p><div class="kv"><span class="k">Bank Accounts offered</span> <span class="v">4 · none added yet</span></div><span class="pair" style="margin-top:8px"><a class="cta-btn" href="setup.html#pair">Done</a> <a class="cta-btn ghost" href="setup.html#consent-first">Another Bank</a></span></div>
+<div class="sheet teal"><div class="grab"></div><h4>✓ Bank Consent granted · Aurora Bank</h4><p class="ctx">Valid until 2027-04-14, the expiry date the Bank reported.</p><div class="kv"><span class="k">Bank Accounts offered</span> <span class="v">4 · none added yet</span></div><span class="pair" style="margin-top:8px"><a class="cta-btn" href="connections.html#enable-banking-offered">Done</a> <a class="cta-btn ghost" href="connections.html#consent-first">Another Bank</a></span></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>

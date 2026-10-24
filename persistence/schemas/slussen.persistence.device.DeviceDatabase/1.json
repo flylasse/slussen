@@ -1,0 +1,147 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "8d3894e685a41c01f8d22dd4e89815c4",
+    "entities": [
+      {
+        "tableName": "service_credential",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `data_provider_id` INTEGER, `secret` TEXT NOT NULL, `accepted_at` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataProviderId",
+            "columnName": "data_provider_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "secret",
+            "columnName": "secret",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "acceptedAt",
+            "columnName": "accepted_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_service_credential_data_provider_id",
+            "unique": true,
+            "columnNames": [
+              "data_provider_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_service_credential_data_provider_id` ON `${TABLE_NAME}` (`data_provider_id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "offered_bank_account",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `data_provider_id` INTEGER NOT NULL, `bank_id` INTEGER, `provider_reference` TEXT NOT NULL, `bank_account_fingerprint` TEXT, `name` TEXT, `bank_account_kind` TEXT, `currency` TEXT, `balance` INTEGER, `last_four_digits` TEXT, `proposed_bank_account_id` INTEGER, `offered_at` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataProviderId",
+            "columnName": "data_provider_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankId",
+            "columnName": "bank_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "providerReference",
+            "columnName": "provider_reference",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankAccountFingerprint",
+            "columnName": "bank_account_fingerprint",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bankAccountKind",
+            "columnName": "bank_account_kind",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "balance",
+            "columnName": "balance",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastFourDigits",
+            "columnName": "last_four_digits",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "proposedBankAccountId",
+            "columnName": "proposed_bank_account_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "offeredAt",
+            "columnName": "offered_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_offered_bank_account_data_provider_id_provider_reference",
+            "unique": true,
+            "columnNames": [
+              "data_provider_id",
+              "provider_reference"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_offered_bank_account_data_provider_id_provider_reference` ON `${TABLE_NAME}` (`data_provider_id`, `provider_reference`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8d3894e685a41c01f8d22dd4e89815c4')"
+    ]
+  }
+}

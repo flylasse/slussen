@@ -10,7 +10,7 @@
 **Trigger:** Operator asks to upload one Budget or one Bank Account  
 **Status:** Approved  
 
-**Requirements:** [FR-030, FR-031, FR-033, FR-034, FR-035, FR-036, FR-037, FR-038, FR-039, FR-041, FR-042, FR-044, FR-047, FR-051, FR-052, FR-053, FR-055, FR-064, FR-066, FR-074, FR-075, FR-077, FR-090, FR-094, FR-095, FR-100, NFR-001, NFR-002, NFR-003, NFR-004, NFR-010, NFR-015, NFR-016, NFR-017, C-009, C-011, C-012](../requirements.md)
+**Requirements:** [FR-030, FR-031, FR-033, FR-034, FR-035, FR-036, FR-037, FR-038, FR-039, FR-041, FR-042, FR-044, FR-047, FR-051, FR-052, FR-053, FR-055, FR-064, FR-066, FR-074, FR-075, FR-077, FR-090, FR-094, FR-095, FR-100, NFR-001, NFR-002, NFR-003, NFR-004, NFR-010, NFR-015, NFR-016, NFR-017, NFR-022, C-009, C-011, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -137,13 +137,13 @@
 1. Slussen keeps the reported outcomes of the Upload and shows that the Transaction Statuses will be updated at the next Comparison.
 2. Use case continues at step 12.
 
-### A13: Recovery Check Open
+### A13: First Upload Matching Open
 
-**Trigger:** A Recovery Check is open, because Slussen started from its last good copy of its Decision-Critical Data, from data restored from a device backup or from the empty data of a new installation, and the Operator has not confirmed it yet (step 2)  
+**Trigger:** A First Upload Matching is open, because Slussen started from its last good copy of its Decision-Critical Data, from data restored from a device backup or from the empty data of a new installation, and the Operator has not confirmed it yet (step 2)  
 **Flow:**
 
 1. Slussen prepares no Upload Plan.
-2. Slussen shows why: transactions sent after that data was saved are protected against a duplicate only by the Budget App's refusal of a reused Import Identifier and by the Comparison; and it offers the Recovery Check (UC-008).
+2. Slussen shows that Uploads wait for First Upload Matching, with its explanation and the reason of its cause (UC-008 BR-009), and offers to start First Upload Matching (UC-008 A9).
 3. Use case ends.
 
 ## Postconditions
@@ -222,7 +222,7 @@ Right after an Upload, Slussen compares the uploaded Budget with the Budget App 
 
 ### BR-014: Sent Record Kept Across a Reinstall, Restore or Upgrade
 
-The Sent Record is included in device backups, restored after a reinstall and kept on an upgrade of the same build, together with the stored Bank Transactions, the Bank Account identifications and Account Mappings (UC-009 BR-006) and the Review Decisions and Transfer Decisions. Bank Consents with their Bank Sessions and the service credentials are not restored (UC-007 BR-005, UC-014 BR-004). After a restore, Uploads wait for the Recovery Check (BR-017).
+The Sent Record is included in device backups, restored after a reinstall and kept on an upgrade of the same build, together with the stored Bank Transactions, the Bank Account identifications and Account Mappings (UC-009 BR-006) and the Review Decisions and Transfer Decisions. Bank Consents with their Bank Sessions and the service credentials are not restored (UC-007 BR-005, UC-014 BR-004). After a restore, Uploads wait for First Upload Matching (BR-017).
 
 ### BR-015: Long Payee and Memo
 
@@ -232,9 +232,9 @@ When a payee or memo is longer than the Budget App accepts (C-009), Slussen send
 
 An Upload Plan follows Upload as Cleared as it stands when the plan is prepared, and states whether its transactions arrive Cleared. While the setting is off, the plan lists no Transfer Counterpart to mark Cleared. Switching the setting changes only what later Upload Plans write and nothing already in the Budget App.
 
-### BR-017: Uploads Wait for the Recovery Check
+### BR-017: Uploads Wait for First Upload Matching
 
-While a Recovery Check is open, Slussen prepares no Upload Plan. A Recovery Check opens whenever Slussen starts from data that may lack what it last recorded: its last good copy after its Decision-Critical Data could not be read, data restored from a device backup, or the empty data of a new installation. It closes only when a Comparison has run after it opened (UC-003 BR-019) and the Operator has confirmed it (UC-008 BR-009). A warning alone is not enough: Sent Records written after that data was saved are missing, and the transactions they covered are then protected against a duplicate only by the Budget App's refusal of a reused Import Identifier and by the Comparison. Damage to data that is not Decision-Critical Data, such as the Decision Journal, opens no Recovery Check (UC-010 BR-004).
+While a First Upload Matching is open, Slussen prepares no Upload Plan. A First Upload Matching opens whenever Slussen starts from data that may lack what it last recorded: its last good copy after its Decision-Critical Data could not be read, data restored from a device backup, or the empty data of a new installation. It closes only when a Comparison has run after it opened (UC-003 BR-019) and the Operator has confirmed it (UC-008 BR-009). A warning alone is not enough: Sent Records written after that data was saved are missing, and the transactions they covered are then protected against a duplicate only by the Budget App's refusal of a reused Import Identifier and by the Comparison. Damage to data that is not Decision-Critical Data, such as the Decision Journal, opens no First Upload Matching (UC-010 BR-004).
 
 ### BR-018: Eligibility Is Fixed When the Plan Is Prepared
 

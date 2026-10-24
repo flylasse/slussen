@@ -10,7 +10,7 @@
 **Trigger:** Operator asks Slussen to read the Budget App again, or Fetch Transactions, Import a Transaction File or Upload to the Budget App reaches its Comparison step  
 **Status:** Approved  
 
-**Requirements:** [FR-009, FR-019, FR-020, FR-021, FR-023, FR-024, FR-025, FR-026, FR-027, FR-030, FR-031, FR-032, FR-038, FR-040, FR-046, FR-061, FR-066, FR-074, FR-075, FR-094, FR-095, NFR-002, NFR-004, NFR-015, NFR-016, NFR-020, FR-100, C-009, C-011, C-012](../requirements.md)
+**Requirements:** [FR-009, FR-019, FR-020, FR-021, FR-023, FR-024, FR-025, FR-026, FR-027, FR-030, FR-031, FR-032, FR-038, FR-040, FR-046, FR-061, FR-066, FR-074, FR-075, FR-094, FR-095, FR-100, NFR-002, NFR-004, NFR-015, NFR-016, NFR-020, NFR-022, C-009, C-011, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -25,7 +25,7 @@
 4. Slussen detects Transfers among the Bank Transactions (UC-005 BR-001, UC-005 BR-002) and gives their Transfer Legs their status (UC-005 BR-010).
 5. Slussen determines the Eligible Transactions (BR-014).
 6. Slussen records in the Decision Journal every Transaction Status that changed and what the Budget App reported for each transaction Slussen sent (UC-011 BR-001).
-7. Slussen shows for each Budget the Transaction Status of every Bank Transaction, the number of Eligible Transactions and the time of the read, and, while a Recovery Check is open and every Budget was read, records that this Comparison ran (BR-019).
+7. Slussen shows for each Budget the Transaction Status of every Bank Transaction, the number of Eligible Transactions and the time of the read, and, while a First Upload Matching is open and every Budget was read, records that this Comparison ran (BR-019).
 
 ## Alternative Flows
 
@@ -175,9 +175,9 @@ At every Comparison, a Sent Record whose outcome is not yet known or unknown is 
 
 A Bank Transaction that has not been sent and is dated before the Start Date the Operator set for its Bank Account is Before Start Date. It stays visible with that reason and is never offered for Upload, also not through a Review Decision. A Bank Account without a Start Date has no such limit; its transactions are bounded by the Upload Window only.
 
-### BR-019: Comparison for a Recovery Check
+### BR-019: Comparison for First Upload Matching
 
-While a Recovery Check is open (UC-006 BR-017), a Comparison that read every Budget with a mapped Bank Account records that it ran, so that the Operator can then confirm the Recovery Check (UC-008 BR-009). A Comparison in which a Budget could not be read records nothing for the Recovery Check.
+While a First Upload Matching is open (UC-006 BR-017), a Comparison that read every Budget with a mapped Bank Account records that it ran, so that the Operator can then confirm First Upload Matching (UC-008 BR-009). A Comparison in which a Budget could not be read records nothing for First Upload Matching.
 
 ### BR-020: What the Stored Copy Keeps
 

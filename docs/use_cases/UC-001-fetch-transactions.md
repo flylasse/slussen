@@ -10,7 +10,7 @@
 **Trigger:** Operator starts a Fetch of one Data Provider, of the Data Providers that have a Bank Account in one Budget, or of all Data Providers, or the time of a Scheduled Fetch arrives  
 **Status:** Approved  
 
-**Requirements:** [FR-001, FR-004, FR-005, FR-008, FR-009, FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-058, FR-064, FR-066, FR-076, FR-077, FR-078, FR-079, FR-080, FR-098, FR-102, NFR-002, NFR-004, NFR-007, NFR-008, NFR-016, NFR-018, NFR-020, C-006, C-007, C-012](../requirements.md)
+**Requirements:** [FR-001, FR-004, FR-005, FR-008, FR-009, FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-058, FR-064, FR-066, FR-076, FR-077, FR-078, FR-079, FR-080, FR-098, FR-102, FR-105, NFR-002, NFR-004, NFR-007, NFR-008, NFR-016, NFR-018, NFR-020, NFR-022, C-006, C-007, C-012](../requirements.md)
 
 ## Preconditions
 
@@ -21,7 +21,7 @@
 
 1. Operator starts a Fetch of a Data Provider.
 2. Slussen checks that the Data Provider is in no Back-off, is not within its Fetch Cooldown and has not reached its Request Limit.
-3. Slussen selects the Bank Accounts to read: every Bank Account the Operator added for the Data Provider (UC-013), and, for its balance only, every Bank Account whose transactions come from Transaction Files and whose balance the Operator chose to take from the Data Provider (BR-011), that has an Account Mapping, is not a Retired Account and whose Bank has a valid Bank Consent when the Data Provider needs one.
+3. Slussen selects the Bank Accounts to read: every Bank Account the Operator added for the Data Provider (UC-013), and, for its balance only, every Bank Account whose transactions come from Transaction Files and whose balance the Operator chose to take from the Data Provider (BR-011), that has an Account Mapping, is not a Retired Account and is covered by a valid Bank Consent when the Data Provider needs one (UC-007 BR-009).
 4. Slussen asks the Data Provider, with the Operator present, for the Bank Accounts it offers, also when no Bank Account is selected, and for the transactions and the balance of each selected Bank Account for the fetch period, only the balance for one whose transactions come from Transaction Files, and keeps each request as a Provider Request (BR-007).
 5. Data Provider delivers the transactions and the Account Balance of each selected Bank Account.
 6. Slussen keeps the delivered Bank Accounts as Offered Bank Accounts (UC-009 BR-009) and identifies each selected one with certainty as one of the Bank Accounts the Operator added.
@@ -55,17 +55,17 @@
 
 ### A3: Request Limit Reached
 
-**Trigger:** The Data Provider's Request Limit (declared by its part) is reached in the preceding 24 hours, the window of the Data Provider's own limit (step 2)  
+**Trigger:** The Data Provider's Request Limit (BR-007) is reached (step 2)  
 **Flow:**
 
 1. Slussen does not contact the Data Provider.
-2. Slussen shows the Blocked Reason "Request Limit reached" with the time the oldest counted Provider Request leaves the 24-hour window of the Data Provider's own limit.
+2. Slussen shows the Blocked Reason "Request Limit reached" with the time the oldest counted Provider Request leaves the 24-hour window.
 3. Slussen records the Fetch with outcome Request Limit Reached.
 4. Use case ends.
 
 ### A4: Bank Without Valid Bank Consent
 
-**Trigger:** The Bank of one or more Bank Accounts has no Bank Consent, or its Bank Consent has expired (step 3)  
+**Trigger:** The Bank the Data Provider names for one or more Bank Accounts has no Bank Consent, or its Bank Consent has expired (UC-007 BR-009) (step 3)  
 **Flow:**
 
 1. Slussen leaves those Bank Accounts out without contacting their Bank.
@@ -201,7 +201,7 @@
 **Trigger:** A delivered Bank Account matches none of the Bank Accounts the Operator added (step 6)  
 **Flow:**
 
-1. Slussen keeps it only as an Offered Bank Account that the Operator can add (UC-013) and uses none of its transactions.
+1. Slussen keeps it only as an Offered Bank Account, imported and to map until the Operator adds it (UC-013 BR-012), or, when it is a Left-Out Bank Account, not imported until the Operator imports it again (UC-013 BR-011), and uses none of its transactions.
 2. Use case continues at step 7 for the other Bank Accounts.
 
 ## Postconditions
@@ -248,11 +248,11 @@ A timeout, an outage or an unreadable answer starts no Back-off. Slussen shows t
 
 ### BR-006: Fetch Cooldown
 
-Each Data Provider has its own Fetch Cooldown, whose default comes with the Data Provider's part and which the Operator can change, reset to that default or set to 0 to switch off on the Data Provider's page in Connections (UC-010 A10, BR-010). During it, a new Fetch of that Data Provider, started by the Operator or as a Scheduled Fetch, is answered from the stored data without contacting it, and the Comparison still reads the Budget App (UC-003). A Fetch that delivered no Bank Account does not start a Fetch Cooldown. A Bank Account the Operator added, or whose identification the Operator confirmed or changed (UC-009), since the Data Provider's last successful Fetch is not served from the Fetch Cooldown, because nothing of it under that identification is stored yet: a Fetch within the Fetch Cooldown reads it from the Data Provider (A2). That read is kept as a Provider Request and counts against the Request Limit (BR-007), and in a Scheduled Fetch against the Unattended Access limit (BR-012), like any other request; it neither starts nor extends the Fetch Cooldown.
+Each Data Provider has its own Fetch Cooldown, whose default comes with the Data Provider's part and which the Operator can change, reset to that default or set to 0 to switch off on the Data Provider's page in Settings (UC-010 A10, BR-010). During it, a new Fetch of that Data Provider, started by the Operator or as a Scheduled Fetch, is answered from the stored data without contacting it, and the Comparison still reads the Budget App (UC-003). A Fetch that delivered no Bank Account does not start a Fetch Cooldown. A Bank Account the Operator added, or whose identification the Operator confirmed or changed (UC-009), since the Data Provider's last successful Fetch is not served from the Fetch Cooldown, because nothing of it under that identification is stored yet: a Fetch within the Fetch Cooldown reads it from the Data Provider (A2). That read is kept as a Provider Request and counts against the Request Limit (BR-007), and in a Scheduled Fetch against the Unattended Access limit (BR-012), like any other request; it neither starts nor extends the Fetch Cooldown.
 
 ### BR-007: Request Limit
 
-Slussen keeps every request it sends to a Data Provider as a Provider Request with its time, and sends a Data Provider at most its Request Limit of requests in the preceding 24 hours, the window of the Data Provider's own limit (declared by each Data Provider's part from the Data Provider's own limit, UC-012 BR-011). The count survives a restart of the app, does not depend on calendar day or time zone, and is not lifted by a Fetch the Operator starts. Times are shown in the device's local time.
+Slussen keeps every request it sends to a Data Provider as a Provider Request with its time, and sends a Data Provider at most its Request Limit of requests in the preceding 24 hours, the window of a Data Provider's own limit and of PSD2 (C-006). Each Data Provider's part declares its Request Limit (UC-012 BR-011): the limit the Data Provider publishes, fixed and named with its source, which the Operator cannot change because it protects the Data Provider's own limit; or, when the Data Provider publishes none, a cautious default that is an Operator Setting the Operator can change on the Data Provider's page in Settings within the range the part declares (UC-010 BR-002), shown as not published by the Data Provider. The count survives a restart of the app, does not depend on calendar day or time zone, and is not lifted by a Fetch the Operator starts. Times are shown in the device's local time.
 
 ### BR-008: No Contact Without Bank Consent
 

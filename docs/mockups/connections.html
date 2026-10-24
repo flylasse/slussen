@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Slussen Connections</title>
+<title>Slussen Service Pages</title>
 <style>
   :root {
     --page-bg: #f4f5f7; --page-ink: #1d2430; --page-ink-2: #5a6472; --page-line: #d9dde3;
@@ -278,126 +278,192 @@
   .icons .row { display: flex; gap: 12px; align-items: end; }
   .icons .row img.s { width: 48px; height: 48px; }
   .icons figcaption { font-size: 13px; color: var(--page-ink-2); margin-top: 10px; }
+  /* Guided pairing (S-38) */
+  .sw-row { display: flex; align-items: center; gap: 8px; padding: 7px 2px; border-top: 1px solid var(--app-line-soft); }
+  .sw-row .sw-txt { flex: 1 1 auto; min-width: 0; }
+  .sw-row .nm { font-weight: 600; font-size: 12.5px; display: block; }
+  .sw-row .meta { font-size: 10.5px; color: var(--app-text3); display: block; }
+  .sw-row .toggle { margin-left: 4px; flex: none; }
+  .bank-h { font-size: 10.5px; font-weight: 600; color: var(--app-text2); margin: 4px 2px 0; }
+  .prog { display: flex; align-items: center; gap: 8px; margin: 0 0 9px; }
+  .prog .bar { flex: 1; height: 4px; border-radius: 2px; background: var(--app-line); overflow: hidden; }
+  .prog .bar span { display: block; height: 100%; background: var(--app-blue); }
+  .pick .amt { margin-left: auto; }
+  .pick .kept { font-size: 9.5px; color: var(--app-text2); border: 1px solid var(--app-line); border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
+  /* Service entries, import switches and the Bank Accounts to map (S-40) */
+  .sw-row .amt { margin-left: auto; text-align: right; }
+  .sw-row .added { margin-left: 8px; font-size: 10px; color: var(--app-teal); white-space: nowrap; flex: none; }
+  .sw-row .why { margin-left: 8px; font-size: 10px; color: var(--app-text3); white-space: nowrap; flex: none; }
+  .svc { display: flex; align-items: center; gap: 8px; padding: 8px 2px; border-top: 1px solid var(--app-line-soft); font-size: 12.5px; }
+  .card > .svc:first-child { border-top: none; }
+  .svc .nm { flex: 1 1 auto; min-width: 0; font-weight: 600; }
+  .svc .nm .hint { display: block; font-size: 10.5px; font-weight: 400; color: var(--app-text3); }
+  .svc .st { font-size: 10.5px; color: var(--app-text2); text-align: right; white-space: nowrap; }
+  .svc .go { color: var(--app-text3); flex: none; }
+  .svc.off { opacity: .5; }
+  .svc.next { background: var(--app-blue-bg); border-radius: 8px; border-top-color: transparent; padding-left: 8px; padding-right: 8px; }
+  .svc.next .st { color: var(--app-blue); font-weight: 600; }
+  .tomap { display: flex; align-items: baseline; gap: 8px; padding: 7px 2px; border-top: 1px solid var(--app-line-soft); font-size: 12px; }
+  .card > .tomap:first-child { border-top: none; }
+  .tomap .nm { font-weight: 600; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tomap .meta { font-size: 10.5px; color: var(--app-text3); white-space: nowrap; }
+  .tomap .amt { flex: none; }
+  .tomap .go { color: var(--app-text3); flex: none; }
+  .ro { font-size: 11.5px; color: var(--app-text2); padding: 3px 0; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
 </head>
 <body>
 <main>
-<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="connections.html" class="here">Connections</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a> <a href="setup.html">Setup</a> <a href="icons.html">Icons</a></nav>
-<p class="eyebrow">Slussen · screen mockup · UC-014, UC-010, UC-007, UC-013</p>
-<h1>Connections</h1>
-<p class="sub">One section in Settings for the services Slussen uses, with one page per service. Each page and its settings are built from what the service's part declares; nothing per service is written into the screens (UC-010 BR-010).</p>
+<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="connections.html" class="here">Service pages</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="first-upload-matching.html">First Upload Matching</a> <a href="journal-export.html">Journal Export</a> <a href="icons.html">Icons</a></nav>
+<p class="eyebrow">Slussen · screen mockup · UC-013, UC-014, UC-010, UC-007</p>
+<h1>Service pages</h1>
+<p class="sub">One page per service and per File Format, each opened from its entry at the top of <a href="settings.html#list">Settings</a>; there is no Connections level and no setup screen (S-40). Each page and its settings are built from what the part declares; nothing per service is written into the screens (UC-010 BR-010).</p>
 <section>
-<h2>Connections and service pages</h2>
-<p class="lede">Changed: the Settings entries for service credentials and for Bank Consents become Connections. A Data Provider's page holds its status, credentials, Fetch Cooldown, Request Limit, Bank Accounts and, when it needs them, its Bank Consents; the Budget App's page holds its status, credentials, the Budgets in use and Upload as Cleared. The general Settings keep only what applies to everything.</p>
+<h2>The Budget App's page</h2>
+<p class="lede">Credentials, the choice of the Budgets Slussen serves, their Budget Accounts with <b>Receives from Slussen</b> (on by default; off makes a Manually Kept Account) and Upload as Cleared. On the first run it is the first entry Settings recommends.</p>
 <div class="flow">
-<div class="state" id="list">
-<div class="step-label"><span class="n">UC-014 1 · BR-007</span><p><b>Connections.</b> Each service in use with one status line, and the Data Providers of this build not set up, with neither credentials nor a Bank Account. Wren Feeds is an invented third Data Provider, as an Adopting Developer's build might add one (UC-012 A2).</p></div>
+<div class="state" id="ynab-token">
+<div class="step-label"><span class="n">UC-013 1 · BR-008 · UC-014 2–6</span><p><b>The YNAB page on the first run</b>, opened from its entry in <a href="settings.html#first-run">Settings</a>: not set up; the token is entered here and checked by listing the Budgets. Nothing else waits on this page.</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="settings.html#list">‹</a> Connections</div>
-<p class="screen-sub">Settings · services</p>
+<div class="screen-title"><a class="back" href="settings.html#first-run">‹</a> YNAB</div>
+<p class="screen-sub">Budget App · not set up</p>
 <div class="body">
-<div class="sec-t">In use</div><div class="card"><a class="cfg-row" href="#ynab"><span class="nm"><span class="dot"></span>YNAB <span class="hint">Budget App · connected · 3 Budgets in use</span></span> <span class="go">›</span></a> <a class="cfg-row" href="#simplefin"><span class="nm"><span class="dot"></span>SimpleFIN <span class="hint">Connected · last Fetch 13:21</span></span> <span class="go">›</span></a> <a class="cfg-row" href="#enable-banking"><span class="nm"><span class="dot amber"></span>Enable Banking <span class="hint">Connected · Bank Consent expires in 4 days, set by the Bank</span></span> <span class="go">›</span></a></div><div class="sec-t">Not set up</div><div class="card"><div class="cfg-row"><span class="nm">Wren Feeds <span class="hint">Data Provider in this build</span></span> <a class="btn primary" href="#set-up">Set up</a></div></div><p class="note">Each page is built from what its part declares.</p>
+<div class="card"><div class="src-row"><span class="dot grey"></span> <span class="nm">Not set up</span></div></div><div class="sheet blue"><div class="grab"></div><h4>YNAB credentials</h4><p class="ctx">Personal access token · from YNAB developer settings</p><div class="cfg-row"><span class="nm">Token</span> <span class="val ">••••••••3f9a</span></div><div class="tagrow"><span class="chip green">Checked: 4 Budgets found in YNAB</span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#choose-budgets-first">Save</a> <a class="cta-btn ghost" href="#cancel">Cancel</a></span></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
-<div class="state" id="simplefin">
-<div class="step-label"><span class="n">UC-010 1 · BR-010 · UC-014 6</span><p><b>A Data Provider's page</b>: status, credentials, its Fetch Cooldown with the default its part declares, its Request Limit (read-only) and its Bank Accounts.</p></div>
+<div class="state" id="choose-budgets-first">
+<div class="step-label"><span class="n">UC-013 2–4 · UC-014 6</span><p><b>Token accepted; the Budgets come next on the same page</b>: the list YNAB returns, none served yet. The Operator ticks three.</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="#list">‹</a> SimpleFIN</div>
-<p class="screen-sub">Data Provider</p>
+<div class="screen-title"><a class="back" href="settings.html#first-run">‹</a> YNAB</div>
+<p class="screen-sub">Budget App</p>
 <div class="body">
-<div class="card"><div class="src-row"><span class="dot "></span> <span class="nm">Connected</span> <span class="ok">Last Fetch 13:21</span></div></div><div class="sec-t">Credentials</div><div class="card"><div class="cfg-row"><span class="nm">Access credential <span class="hint">From a setup token · accepted 2026-09-02</span></span> <span class="chip green">Accepted</span></div><a class="btn" href="#simplefin-replace">Replace</a> <a class="btn danger" href="setup.html#remove-credentials">Remove</a></div><div class="sec-t">Fetching</div><div class="card"><a class="cfg-row" href="#fetch-cooldown"><span class="nm">Fetch Cooldown <span class="hint">Minutes · default 60, declared by its part · 0 to 1440 · 0 is off</span></span> <span class="val">60 min</span></a><div class="cfg-row"><span class="nm">Request Limit <span class="hint">Per 24 hours · from the Data Provider's own limit, declared by its part · not a setting</span></span> <span class="dim">20</span></div></div><div class="sec-t">Bank Accounts · 6</div><div class="card"><div class="acct-line">Kestrel Checking <span class="amt">••4410</span></div><div class="acct-line">Kestrel Reserve <span class="amt">••7731</span></div><div class="acct-line">Pinecrest Rewards Card <span class="amt">••1182</span></div><div class="acct-line">Pinecrest Home Card <span class="amt">••6620</span></div><div class="acct-line">Kestrel Old Savings <span class="dim">· not mapped</span> <span class="amt">••2209</span></div><div class="acct-line">Pinecrest Fuel Card <span class="dim">· Retired Account</span> <span class="amt">••5547</span></div><a class="btn" href="account-mappings.html#map">Account Mappings</a></div>
+<div class="card"><div class="src-row"><span class="dot "></span> <span class="nm">Connected · 4 Budgets in YNAB</span></div></div><div class="sec-t">Choose the Budgets Slussen serves</div><div class="card"><div class="pick sel"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Household</span> <span class="meta">USD</span></span></div><div class="pick sel"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Summer House</span> <span class="meta">EUR</span></span></div><div class="pick sel"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Care Fund</span> <span class="meta">USD</span></span></div><div class="pick"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Old Test Budget</span> <span class="meta">USD</span></span></div></div><a class="cta" href="#ynab-first">Serve the ticked Budgets</a>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
-<div class="state" id="enable-banking">
-<div class="step-label"><span class="n">UC-007 1 · BR-008 · UC-010 BR-010</span><p><b>A Data Provider that needs a Bank Consent</b>: its Bank Consents with status, expiry, renew and revoke are on its page.</p></div>
+<div class="state" id="ynab-first">
+<div class="step-label"><span class="n">UC-013 4 · BR-014</span><p><b>The Budgets chosen</b>: under each, its Budget Accounts, each with <b>Receives from Slussen</b>, on by default. Nothing is mapped yet. Back in <a href="settings.html#nothing-imported">Settings</a> the next thing is a Data Provider.</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="#list">‹</a> Enable Banking</div>
-<p class="screen-sub">Data Provider · needs Bank Consent</p>
+<div class="screen-title"><a class="back" href="settings.html#nothing-imported">‹</a> YNAB</div>
+<p class="screen-sub">Budget App</p>
 <div class="body">
-<div class="card"><div class="src-row"><span class="dot amber"></span> <span class="nm">Connected</span> <span class="warn">Bank Consent expires in 4 days, set by the Bank</span></div></div><div class="sec-t">Credentials</div><div class="card"><div class="cfg-row"><span class="nm">Application id <span class="hint">Your own Enable Banking application</span></span> <span class="val">3c9e2b7a-…</span></div><div class="cfg-row"><span class="nm">Key file <span class="hint">Chosen with Android's file picker</span></span> <span class="val">household-app.pem</span></div><a class="btn" href="#enable-banking-replace">Replace</a> <a class="btn danger" href="#enable-banking-remove">Remove</a></div><div class="sec-t">Bank Consents · 2</div><div class="card amber"><div class="src-row"><span class="dot amber"></span> <span class="nm">Aurora Bank</span> <span class="warn">Expires 2026-10-19</span></div><div class="src-note">Covers Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar</div><a class="btn primary" href="consent.html#grant">Renew</a> <a class="btn danger" href="consent.html#revoke">Revoke</a></div><div class="card"><div class="src-row"><span class="dot"></span> <span class="nm">Vesta Sparbank</span> <span class="ok">Valid until 2027-04-12</span></div><div class="src-note">Covers Vesta Card</div><a class="btn primary" href="consent.html#grant">Renew</a> <a class="btn danger" href="consent.html#revoke">Revoke</a></div><a class="btn primary" href="consent.html#grant" style="margin:0 0 9px">Grant Bank Consent for another Bank</a><div class="sec-t">Fetching</div><div class="card"><a class="cfg-row" href="#fetch-cooldown"><span class="nm">Fetch Cooldown <span class="hint">Minutes · default 360, declared by its part · 0 to 1440 · 0 is off</span></span> <span class="val">6 h</span></a><div class="cfg-row"><span class="nm">Request Limit <span class="hint">Per 24 hours · from the Data Provider's own limit, declared by its part · not a setting</span></span> <span class="dim">50</span></div></div><div class="sec-t">Bank Accounts · 5</div><div class="card"><div class="acct-line">Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar, Vesta Card</div><a class="btn" href="account-mappings.html#map">Account Mappings</a></div>
+<div class="card"><div class="src-row"><span class="dot "></span> <span class="nm">Connected · Budgets served: 3</span></div></div><div class="sec-t">Budget Accounts · switch off the ones you keep by hand</div><div class="card"><div class="bank-h">Household · USD</div><div class="sw-row"><span class="sw-txt"><span class="nm">Checking</span> <span class="meta">receives from Slussen</span></span> <span class="amt">4,140.05</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Reserve Savings</span> <span class="meta">receives from Slussen</span></span> <span class="amt">12,000.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Rewards Card</span> <span class="meta">receives from Slussen</span></span> <span class="amt">−1,268.40</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Home Card</span> <span class="meta">receives from Slussen</span></span> <span class="amt">−910.12</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Old Savings</span> <span class="meta">receives from Slussen</span></span> <span class="amt">0.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="bank-h">Summer House · EUR</div><div class="sw-row"><span class="sw-txt"><span class="nm">Current</span> <span class="meta">receives from Slussen</span></span> <span class="amt">3,402.30</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Savings</span> <span class="meta">receives from Slussen</span></span> <span class="amt">5,000.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Cash Box</span> <span class="meta">receives from Slussen</span></span> <span class="amt">120.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="bank-h">Care Fund · USD</div><div class="sw-row"><span class="sw-txt"><span class="nm">Health Savings</span> <span class="meta">receives from Slussen</span></span> <span class="amt">6,324.20</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Medical Reserve</span> <span class="meta">receives from Slussen</span></span> <span class="amt">2,045.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="ynab">
-<div class="step-label"><span class="n">UC-013 2 · UC-010 A9 · BR-010</span><p><b>The Budget App's page</b>: status, credentials, the Budgets in use and Upload as Cleared, shown because YNAB supports the Cleared marker.</p></div>
+<div class="step-label"><span class="n">UC-013 2–4 · BR-014 · UC-010 A9 · BR-010</span><p><b>The Budget App's page</b>, fully set up: credentials, the Budgets in use, their Budget Accounts (a mapped one shows its Account Mapping instead of a switch, since it cannot be kept by hand), and Upload as Cleared, shown because YNAB supports the Cleared marker.</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="#list">‹</a> YNAB</div>
+<div class="screen-title"><a class="back" href="settings.html#list">‹</a> YNAB</div>
 <p class="screen-sub">Budget App</p>
 <div class="body">
-<div class="card"><div class="src-row"><span class="dot "></span> <span class="nm">Connected</span> <span class="ok">Read 13:22</span></div></div><div class="sec-t">Credentials</div><div class="card"><div class="cfg-row"><span class="nm">Personal access token <span class="hint">From YNAB developer settings</span></span> <span class="val">••••••••3f9a</span></div><a class="btn" href="#ynab-replace">Replace</a> <a class="btn danger" href="#ynab-remove">Remove</a></div><div class="sec-t">Budgets in use · 3</div><div class="card"><div class="acct-line">Household <span class="amt">USD</span></div><div class="acct-line">Summer House <span class="amt">EUR</span></div><div class="acct-line">Care Fund <span class="amt">USD</span></div><a class="btn" href="#choose-budgets">Choose Budgets</a></div><div class="sec-t">Upload</div><div class="card"><div class="cfg-row"><span class="nm">Upload as Cleared <span class="hint">On by default · YNAB supports the Cleared marker</span></span> <a class="toggle" href="#upload-as-cleared"></a></div></div>
+<div class="card"><div class="src-row"><span class="dot "></span> <span class="nm">Connected</span> <span class="ok">Read 13:22</span></div></div><div class="sec-t">Credentials</div><div class="card"><div class="cfg-row"><span class="nm">Personal access token <span class="hint">From YNAB developer settings</span></span> <span class="val">••••••••3f9a</span></div><a class="btn" href="#ynab-replace">Replace</a> <a class="btn danger" href="#ynab-remove">Remove</a></div><div class="sec-t">Budgets in use · 3</div><div class="card"><div class="acct-line">Household · USD, Summer House · EUR, Care Fund · USD</div><a class="btn" href="#choose-budgets">Choose Budgets</a></div><div class="sec-t">Budget Accounts · switch off the ones you keep by hand</div><div class="card"><div class="bank-h">Household · USD</div><div class="sw-row"><span class="sw-txt"><span class="nm">Checking</span> <span class="meta">receives from Kestrel Checking</span></span> <span class="amt">4,140.05</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Reserve Savings</span> <span class="meta">receives from Kestrel Reserve</span></span> <span class="amt">12,000.00</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Rewards Card</span> <span class="meta">receives from Pinecrest Rewards Card</span></span> <span class="amt">−1,268.40</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Home Card</span> <span class="meta">receives from Pinecrest Home Card</span></span> <span class="amt">−910.12</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Bonus Savings</span> <span class="meta">receives from Slussen</span></span> <span class="amt">250.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Old Savings</span> <span class="meta">kept by hand · Manually Kept Account</span></span> <span class="amt">0.00</span> <a class="toggle off" href="#receive-again" aria-label="Receives from Slussen"></a></div><div class="bank-h">Summer House · EUR</div><div class="sw-row"><span class="sw-txt"><span class="nm">Current</span> <span class="meta">receives from Aurora Current</span></span> <span class="amt">3,402.30</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Savings</span> <span class="meta">receives from Aurora Savings</span></span> <span class="amt">5,000.00</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Garden Fund</span> <span class="meta">receives from Slussen</span></span> <span class="amt">640.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Cash Box</span> <span class="meta">kept by hand · Manually Kept Account</span></span> <span class="amt">120.00</span> <a class="toggle off" href="#receive-again" aria-label="Receives from Slussen"></a></div><div class="bank-h">Care Fund · USD</div><div class="sw-row"><span class="sw-txt"><span class="nm">Health Savings</span> <span class="meta">receives from Harbor Health Savings</span></span> <span class="amt">6,324.20</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Medical Reserve</span> <span class="meta">receives from Slussen</span></span> <span class="amt">2,045.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div></div><div class="sec-t">Upload</div><div class="card"><div class="cfg-row"><span class="nm">Upload as Cleared <span class="hint">On by default · YNAB supports the Cleared marker</span></span> <a class="toggle" href="#upload-as-cleared"></a></div></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
-</div>
-</section><section>
-<h2>Changing a service's settings</h2>
-<p class="lede"></p>
-<div class="flow">
-<div class="state" id="fetch-cooldown">
-<div class="step-label"><span class="n">UC-010 2–4 · A1 · A10</span><p><b>Editing a Fetch Cooldown</b> on the Data Provider's page: the value, the default its part declares, the range, and the reset to that default.</p></div>
+<div class="state" id="kept-switch">
+<div class="step-label"><span class="n">UC-013 A9 · BR-014 · UC-009 A16</span><p><b>Keep a Budget Account by hand</b>: Old Savings switched off. It becomes a Manually Kept Account at once, is no longer offered on the card in Account Mappings, and the change is recorded in the Decision Journal. No dialog: switching it on again undoes it.</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="#simplefin">‹</a> SimpleFIN</div>
-<p class="screen-sub">Data Provider</p>
+<div class="screen-title"><a class="back" href="settings.html#list">‹</a> YNAB</div>
+<p class="screen-sub">Budget App</p>
 <div class="body">
-<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">Fetch Cooldown</span> </div></div><div style="height:220px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Fetch Cooldown · SimpleFIN</h4><p><span class="cfg-row" style="display:flex"><span class="nm">New value · default 60 min</span> <span class="val">15 min</span></span></p><p><b>60 min by default</b>, declared by SimpleFIN's part. Enter <code>0</code> to <code>1440 min</code>; <code>0</code> switches it off.</p><p>A Fetch of SimpleFIN within 15 min of a successful one, the new Fetch Cooldown (an Operator Setting), is served from stored data; the Comparison still runs.</p><div class="actions"><a class="c" href="#simplefin">Reset to default</a> <a class="c" href="#simplefin">Cancel</a> <a class="ok" href="#simplefin">Save</a></div></div>
+<div class="snack" style="margin:0 0 9px"><span>Old Savings kept by hand · not offered for pairing</span> <a href="#receive-again"><b>Undo</b></a></div><div class="ghost"><div class="sec-t">Budgets in use · 3</div></div><div class="sec-t">Budget Accounts · switch off the ones you keep by hand</div><div class="card"><div class="bank-h">Household · USD</div><div class="sw-row"><span class="sw-txt"><span class="nm">Checking</span> <span class="meta">receives from Kestrel Checking</span></span> <span class="amt">4,140.05</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Reserve Savings</span> <span class="meta">receives from Kestrel Reserve</span></span> <span class="amt">12,000.00</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Rewards Card</span> <span class="meta">receives from Pinecrest Rewards Card</span></span> <span class="amt">−1,268.40</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Home Card</span> <span class="meta">receives from Pinecrest Home Card</span></span> <span class="amt">−910.12</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Bonus Savings</span> <span class="meta">receives from Slussen</span></span> <span class="amt">250.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Old Savings</span> <span class="meta">kept by hand · Manually Kept Account</span></span> <span class="amt">0.00</span> <a class="toggle off" href="#receive-again" aria-label="Receives from Slussen"></a></div><div class="bank-h">Summer House · EUR</div><div class="sw-row"><span class="sw-txt"><span class="nm">Current</span> <span class="meta">receives from Aurora Current</span></span> <span class="amt">3,402.30</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Savings</span> <span class="meta">receives from Aurora Savings</span></span> <span class="amt">5,000.00</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Garden Fund</span> <span class="meta">receives from Slussen</span></span> <span class="amt">640.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Cash Box</span> <span class="meta">kept by hand · Manually Kept Account</span></span> <span class="amt">120.00</span> <a class="toggle off" href="#receive-again" aria-label="Receives from Slussen"></a></div><div class="bank-h">Care Fund · USD</div><div class="sw-row"><span class="sw-txt"><span class="nm">Health Savings</span> <span class="meta">receives from Harbor Health Savings</span></span> <span class="amt">6,324.20</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Medical Reserve</span> <span class="meta">receives from Slussen</span></span> <span class="amt">2,045.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
-<div class="state" id="upload-as-cleared">
-<div class="step-label"><span class="n">UC-010 A9</span><p><b>Switching Upload as Cleared</b> on the Budget App's page.</p></div>
+<div class="state" id="receive-again">
+<div class="step-label"><span class="n">UC-013 A9 · UC-009 A16 1–3</span><p><b>Receives from Slussen again</b>: Cash Box switched on; it is unmarked and offered for pairing again. Old Savings stays kept by hand.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#list">‹</a> YNAB</div>
+<p class="screen-sub">Budget App</p>
+<div class="body">
+<div class="snack" style="margin:0 0 9px"><span>Cash Box receives from Slussen again · offered for pairing</span></div><div class="sec-t">Budget Accounts · switch off the ones you keep by hand</div><div class="card"><div class="bank-h">Household · USD</div><div class="sw-row"><span class="sw-txt"><span class="nm">Checking</span> <span class="meta">receives from Kestrel Checking</span></span> <span class="amt">4,140.05</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Reserve Savings</span> <span class="meta">receives from Kestrel Reserve</span></span> <span class="amt">12,000.00</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Rewards Card</span> <span class="meta">receives from Pinecrest Rewards Card</span></span> <span class="amt">−1,268.40</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Home Card</span> <span class="meta">receives from Pinecrest Home Card</span></span> <span class="amt">−910.12</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Bonus Savings</span> <span class="meta">receives from Slussen</span></span> <span class="amt">250.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Old Savings</span> <span class="meta">kept by hand · Manually Kept Account</span></span> <span class="amt">0.00</span> <a class="toggle off" href="#receive-again" aria-label="Receives from Slussen"></a></div><div class="bank-h">Summer House · EUR</div><div class="sw-row"><span class="sw-txt"><span class="nm">Current</span> <span class="meta">receives from Aurora Current</span></span> <span class="amt">3,402.30</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Savings</span> <span class="meta">receives from Aurora Savings</span></span> <span class="amt">5,000.00</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Garden Fund</span> <span class="meta">receives from Slussen</span></span> <span class="amt">640.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Cash Box</span> <span class="meta">receives from Slussen</span></span> <span class="amt">120.00</span> <a class="toggle" href="#receive-again" aria-label="Receives from Slussen"></a></div><div class="bank-h">Care Fund · USD</div><div class="sw-row"><span class="sw-txt"><span class="nm">Health Savings</span> <span class="meta">receives from Harbor Health Savings</span></span> <span class="amt">6,324.20</span> <span class="why">Account Mapping</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Medical Reserve</span> <span class="meta">receives from Slussen</span></span> <span class="amt">2,045.00</span> <a class="toggle" href="#kept-switch" aria-label="Receives from Slussen"></a></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="choose-budgets">
+<div class="step-label"><span class="n">UC-013 2–4 · A2</span><p><b>Choosing the Budgets in use again</b> on the YNAB page: the list YNAB returns, the Budgets served ticked. Save and Cancel return to the page; stopping a Budget with mapped Bank Accounts is refused (<a href="#stop-budget">refused</a>).</p></div>
 <div class="phone">
 <div class="screen-title"><a class="back" href="#ynab">‹</a> YNAB</div>
+<p class="screen-sub">Budget App · Budgets in use</p>
+<div class="body">
+<div class="card"><div class="pick sel"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Household</span> <span class="meta">USD</span></span></div><div class="pick sel"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Summer House</span> <span class="meta">EUR</span></span></div><div class="pick sel"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Care Fund</span> <span class="meta">USD</span></span></div><div class="pick"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Old Test Budget</span> <span class="meta">USD</span></span></div></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#ynab">Save</a> <a class="cta-btn ghost" href="#ynab">Cancel</a></span>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="stop-budget">
+<div class="step-label"><span class="n">UC-013 A2</span><p><b>Stop serving a Budget</b> with mapped Bank Accounts is refused; their Account Mappings are removed first.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#ynab">‹</a> YNAB</div>
+<p class="screen-sub">Budget App · choose Budgets</p>
+<div class="body">
+<div class="card"><div class="pick sel"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Household</span> <span class="meta">USD</span></span></div><div class="pick"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Summer House</span> <span class="meta">EUR</span></span></div><div class="pick sel"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Care Fund</span> <span class="meta">USD</span></span></div></div><div class="banner red"><span class="txt"><b>Summer House has mapped Bank Accounts</b> <span class="d">Aurora Current, Aurora Savings, Aurora Dollar, Vesta Card · remove their Account Mappings first</span></span> <a class="cta-btn" href="account-mappings.html#remove">Account Mappings</a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="token-refused">
+<div class="step-label"><span class="n">UC-014 A1 · UC-013 A1</span><p><b>Token refused</b> by YNAB: nothing stored, earlier credentials unchanged; try again.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#first-run">‹</a> YNAB</div>
+<p class="screen-sub">Budget App · not set up</p>
+<div class="body">
+<div class="sheet red"><div class="grab"></div><h4>YNAB credentials</h4><p class="ctx">Personal access token</p><div class="cfg-row"><span class="nm">Token</span> <span class="val bad">••••••••0b11</span></div><div class="banner red"><span class="txt"><b>Token refused by YNAB · nothing stored</b></span></div><span class="pair"><a class="cta-btn" href="#ynab-token">Try again</a></span></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="unreachable">
+<div class="step-label"><span class="n">UC-014 A2 · UC-013 A1</span><p><b>Service unreachable</b> while checking SimpleFIN's setup token: nothing stored.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#first-run">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider · not set up</p>
+<div class="body">
+<div class="sheet red"><div class="grab"></div><h4>SimpleFIN credentials</h4><p class="ctx">Setup token</p><div class="banner red"><span class="txt"><b>SimpleFIN could not be reached · nothing stored</b></span></div><a class="cta" href="settings.html#first-run">Back to Settings</a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="budgets-unreadable">
+<div class="step-label"><span class="n">UC-013 A1</span><p><b>YNAB can't be read while choosing Budgets</b>: the Budgets served stay unchanged.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#first-run">‹</a> YNAB</div>
 <p class="screen-sub">Budget App</p>
 <div class="body">
-<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">Upload as Cleared</span></div></div><div style="height:220px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Switch Upload as Cleared off?</h4><p>The change applies only to Upload Plans prepared from now on and changes nothing already in the Budget App.</p><p>While it is off, Slussen marks nothing Cleared, including Transfer Counterparts: clearing is left to you in the Budget App.</p><div class="actions"><a class="c" href="#ynab">Cancel</a> <a class="ok" href="#ynab">Switch off</a></div></div>
+<div class="banner red"><span class="txt"><b>YNAB could not be read · Budgets unchanged</b> <span class="d">No answer at 09:04</span></span> <a class="cta-btn" href="#choose-budgets-first">Try again</a></div><div class="sec-t">Details</div><div class="card"><div class="kv"><span class="k">Asked for</span> <span class="v">The list of Budgets</span></div><div class="kv"><span class="k">Answer</span> <span class="v">None within the request timeout, an Operator Setting</span></div><div class="kv"><span class="k">Stored</span> <span class="v">Nothing changed</span></div></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
-<div class="state" id="set-up">
-<div class="step-label"><span class="n">UC-014 2–6 · BR-002</span><p><b>Set up</b> a Data Provider not yet in use: the form is the one its part declares.</p></div>
+<div class="state" id="cancel">
+<div class="step-label"><span class="n">UC-014 A4</span><p><b>Cancelled</b>: nothing entered; the page shows the service as before.</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="#list">‹</a> Connections</div>
-<p class="screen-sub">Set up</p>
+<div class="screen-title"><a class="back" href="settings.html#first-run">‹</a> YNAB</div>
+<p class="screen-sub">Budget App · not set up</p>
 <div class="body">
-<div class="sheet blue"><div class="grab"></div><h4>Set up Wren Feeds</h4><p class="ctx">Data Provider · the fields its part asks for</p><div class="cfg-row"><span class="nm">Access key <span class="hint">From the Wren Feeds website › Apps</span></span> <span class="val">••••••••71c0</span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#list">Save</a> <a class="cta-btn ghost" href="#list">Cancel</a></span></div><p class="note">Checked with Wren Feeds before it is kept; then Wren Feeds gets its own page here.</p>
+<div class="banner grey"><span class="txt"><b>Nothing entered · earlier credentials unchanged</b></span></div><div class="card"><div class="src-row"><span class="dot grey"></span> <span class="nm">Not set up</span></div><a class="btn primary" href="#ynab-token">Enter credentials</a></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
-</div>
-</section><section>
-<h2>Credentials, Budgets and pauses from Connections</h2>
-<p class="lede">Entering, replacing and removing credentials on each service's page (UC-014 step 6, A3), choosing the Budgets in use on the YNAB page (UC-013 BR-008), a Data Provider whose credentials are missing (UC-014 BR-007) and setup paused while an Upload is being written (UC-006 BR-005).</p>
-<div class="flow">
-<div class="state" id="simplefin-replace">
-<div class="step-label"><span class="n">UC-014 2–6</span><p><b>Enter or replace SimpleFIN's credentials</b> on its page: Save and Cancel return to the page (step 6).</p></div>
+<div class="state" id="no-ynab">
+<div class="step-label"><span class="n">UC-013 A7 · BR-015</span><p><b>No accepted YNAB credentials</b>: Budgets can be chosen once they are, and the Account Mappings wait for a chosen Budget. The YNAB page says what is missing.</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="#simplefin">‹</a> SimpleFIN</div>
-<p class="screen-sub">Data Provider</p>
+<div class="screen-title"><a class="back" href="settings.html#first-run">‹</a> YNAB</div>
+<p class="screen-sub">Budget App · not set up</p>
 <div class="body">
-<div class="ghost"><div class="sec-t">Credentials</div></div><div class="sheet blue"><div class="grab"></div><h4>SimpleFIN credentials</h4><p class="ctx">Setup token · SimpleFIN Bridge › New connection</p><div class="cfg-row"><span class="nm">Setup token</span> <span class="val ">AHR0cHM6Ly9…</span></div><div class="tagrow"><span class="chip green">Accepted</span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#simplefin">Save</a> <a class="cta-btn ghost" href="#simplefin">Cancel</a></span></div><p class="note">The earlier credentials stay until the new ones are accepted.</p>
+<div class="card"><div class="src-row"><span class="dot grey"></span> <span class="nm">Not set up</span></div></div><div class="banner"><span class="txt"><b>Enter the YNAB token first</b> <span class="d">Then choose the Budgets Slussen serves</span></span> <a class="cta-btn" href="#ynab-token">Enter</a></div><div class="sec-t">Budgets in use</div><div class="card"><span class="cta dim">Choose Budgets</span><p class="note">Available once YNAB accepts the token.</p></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
-</div>
-</div>
-<div class="state" id="enable-banking-replace">
-<div class="step-label"><span class="n">UC-014 2–6</span><p><b>Replace Enable Banking's credentials</b> on its page: Save and Cancel return to the page.</p></div>
-<div class="phone">
-<div class="screen-title"><a class="back" href="#enable-banking">‹</a> Enable Banking</div>
-<p class="screen-sub">Data Provider · needs Bank Consent</p>
-<div class="body">
-<div class="ghost"><div class="sec-t">Credentials</div></div><div class="sheet blue"><div class="grab"></div><h4>Enable Banking credentials</h4><p class="ctx">Your own Enable Banking application</p><div class="cfg-row"><span class="nm">Application id</span> <span class="val ">3c9e2b7a-…</span></div><div class="cfg-row"><span class="nm">Key file <span class="hint">Chosen with Android's file picker</span></span> <span class="val">household-app-2.pem</span></div><div class="tagrow"><span class="chip green">Accepted</span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#enable-banking">Save</a> <a class="cta-btn ghost" href="#enable-banking">Cancel</a></span></div><p class="note">The earlier credentials stay until the new ones are accepted.</p>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="ynab-replace">
@@ -408,18 +474,7 @@
 <div class="body">
 <div class="ghost"><div class="sec-t">Credentials</div></div><div class="sheet blue"><div class="grab"></div><h4>YNAB credentials</h4><p class="ctx">Personal access token · from YNAB developer settings</p><div class="cfg-row"><span class="nm">Token</span> <span class="val ">••••••••c27e</span></div><div class="tagrow"><span class="chip green">Checked: 4 Budgets found in YNAB</span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#ynab">Save</a> <a class="cta-btn ghost" href="#ynab">Cancel</a></span></div><p class="note">The earlier credentials stay until the new ones are accepted.</p>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
-</div>
-</div>
-<div class="state" id="enable-banking-remove">
-<div class="step-label"><span class="n">UC-014 A3 1–2</span><p><b>Remove Enable Banking's credentials</b>: confirmation first. Removing leads to <a href="#enable-banking-removed">Enable Banking removed</a>.</p></div>
-<div class="phone">
-<div class="screen-title"><a class="back" href="#enable-banking">‹</a> Enable Banking</div>
-<p class="screen-sub">Data Provider · needs Bank Consent</p>
-<div class="body">
-<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">Enable Banking</span></div></div><div style="height:200px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Remove Enable Banking credentials?</h4><p>Enable Banking is not contacted until you enter new ones. Its Bank Consents can't be renewed until then.</p><div class="actions"><a class="c" href="#enable-banking">Cancel</a> <a class="x" href="#enable-banking-removed">Remove</a></div></div><div style="height:120px"></div>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="ynab-remove">
@@ -430,69 +485,322 @@
 <div class="body">
 <div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">YNAB</span></div></div><div style="height:200px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Remove the YNAB token?</h4><p>YNAB is not read or written until you enter a new one. No Upload Plan can be prepared until then.</p><div class="actions"><a class="c" href="#ynab">Cancel</a> <a class="x" href="#ynab-removed">Remove</a></div></div><div style="height:120px"></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
-</div>
-</div>
-<div class="state" id="enable-banking-removed">
-<div class="step-label"><span class="n">UC-014 A3 3–5 · BR-005 · BR-007</span><p><b>Enable Banking removed</b>: its page stays reachable with the Blocked Reason credentials missing; its Bank Consents stay listed but can't be renewed until credentials are entered.</p></div>
-<div class="phone">
-<div class="screen-title"><a class="back" href="#list">‹</a> Enable Banking</div>
-<p class="screen-sub">Data Provider · needs Bank Consent</p>
-<div class="body">
-<div class="card"><div class="src-row"><span class="dot amber"></span> <span class="nm">Credentials missing</span> <span class="warn">Not contacted</span></div></div><div class="banner"><span class="txt"><b>Blocked: credentials missing</b> <span class="d">Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar, Vesta Card</span></span></div><div class="sec-t">Credentials</div><div class="card"><div class="cfg-row"><span class="nm">Application id and key file <span class="hint">Removed · recorded in the Decision Journal</span></span> <span class="chip amber">Missing</span></div><a class="btn primary" href="#enable-banking-replace">Enter credentials</a></div><div class="sec-t">Bank Consents · 2</div><div class="card"><div class="src-row"><span class="dot amber"></span> <span class="nm">Aurora Bank</span> <span class="warn">Expires 2026-10-19</span></div><div class="src-row"><span class="dot"></span> <span class="nm">Vesta Sparbank</span> <span class="ok">Valid until 2027-04-12</span></div><div class="src-note">Renew after entering credentials</div></div><div class="sec-t">Fetching</div><div class="card"><a class="cfg-row" href="#fetch-cooldown"><span class="nm">Fetch Cooldown <span class="hint">Minutes · default 360, declared by its part · 0 to 1440 · 0 is off</span></span> <span class="val">6 h</span></a></div><div class="sec-t">Bank Accounts · 5</div><div class="card"><div class="acct-line">Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar, Vesta Card</div><a class="btn" href="account-mappings.html#map">Account Mappings</a></div>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="ynab-removed">
 <div class="step-label"><span class="n">UC-014 A3 3–5 · BR-005 · BR-007</span><p><b>YNAB removed</b>: the page stays reachable; every Budget shows the Blocked Reason credentials missing, and no Upload Plan can be prepared until a token is entered.</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="#list">‹</a> YNAB</div>
+<div class="screen-title"><a class="back" href="settings.html#list">‹</a> YNAB</div>
 <p class="screen-sub">Budget App</p>
 <div class="body">
 <div class="card"><div class="src-row"><span class="dot amber"></span> <span class="nm">Credentials missing</span> <span class="warn">Not read or written</span></div></div><div class="banner"><span class="txt"><b>Blocked: credentials missing</b> <span class="d">Household, Summer House, Care Fund</span></span></div><div class="sec-t">Credentials</div><div class="card"><div class="cfg-row"><span class="nm">Personal access token <span class="hint">Removed · recorded in the Decision Journal</span></span> <span class="chip amber">Missing</span></div><a class="btn primary" href="#ynab-replace">Enter token</a></div><div class="sec-t">Budgets in use · 3</div><div class="card"><div class="acct-line">Household <span class="amt">USD</span></div><div class="acct-line">Summer House <span class="amt">EUR</span></div><div class="acct-line">Care Fund <span class="amt">USD</span></div></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
-<div class="state" id="list-missing">
-<div class="step-label"><span class="n">UC-014 A3 · BR-007</span><p><b>After SimpleFIN's credentials were removed</b>: SimpleFIN still has Bank Accounts, so it stays in use with the status Credentials missing, and its page stays reachable. Only a Data Provider with neither credentials nor a Bank Account is not set up.</p></div>
-<div class="phone">
-<div class="screen-title"><a class="back" href="settings.html#list">‹</a> Connections</div>
-<p class="screen-sub">Settings · services</p>
-<div class="body">
-<div class="sec-t">In use</div><div class="card"><a class="cfg-row" href="#ynab"><span class="nm"><span class="dot"></span>YNAB <span class="hint">Budget App · connected · 3 Budgets in use</span></span> <span class="go">›</span></a> <a class="cfg-row" href="setup.html#removed"><span class="nm"><span class="dot amber"></span>SimpleFIN <span class="hint">Credentials missing · Bank Accounts: 6</span></span> <span class="go">›</span></a> <a class="cfg-row" href="#enable-banking"><span class="nm"><span class="dot amber"></span>Enable Banking <span class="hint">Connected · Bank Consent expires in 4 days, set by the Bank</span></span> <span class="go">›</span></a></div><div class="sec-t">Not set up</div><div class="card"><div class="cfg-row"><span class="nm">Wren Feeds <span class="hint">Data Provider in this build</span></span> <a class="btn primary" href="#set-up">Set up</a></div></div>
-</div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
-</div>
-</div>
-<div class="state" id="choose-budgets">
-<div class="step-label"><span class="n">UC-013 2–4 · BR-008</span><p><b>Choosing the Budgets in use</b> from the YNAB page: the list YNAB returns, the Budgets served ticked. Save and Cancel return to the page; stopping a Budget with mapped Bank Accounts is refused as in <a href="setup.html#stop-budget">setup</a>.</p></div>
+<div class="state" id="upload-as-cleared">
+<div class="step-label"><span class="n">UC-010 A9</span><p><b>Switching Upload as Cleared</b> on the Budget App's page.</p></div>
 <div class="phone">
 <div class="screen-title"><a class="back" href="#ynab">‹</a> YNAB</div>
-<p class="screen-sub">Budget App · Budgets in use</p>
+<p class="screen-sub">Budget App</p>
 <div class="body">
-<div class="card"><div class="pick sel"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Household</span> <span class="meta">USD</span></span></div><div class="pick sel"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Summer House</span> <span class="meta">EUR</span></span></div><div class="pick sel"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Care Fund</span> <span class="meta">USD</span></span></div><div class="pick"><span class="radio" style="border-radius:3px"></span> <span><span class="nm">Old Test Budget</span> <span class="meta">USD</span></span></div></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#ynab">Save</a> <a class="cta-btn ghost" href="#ynab">Cancel</a></span>
+<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">Upload as Cleared</span></div></div><div style="height:220px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Switch Upload as Cleared off?</h4><p>The change applies only to Upload Plans prepared from now on and changes nothing already in the Budget App.</p><p>While it is off, Slussen marks nothing Cleared, including Transfer Counterparts: clearing is left to you in the Budget App.</p><div class="actions"><a class="c" href="#ynab">Cancel</a> <a class="ok" href="#ynab">Switch off</a></div></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
-<div class="state" id="upload-running">
-<div class="step-label"><span class="n">UC-006 BR-005 · BR-019</span><p><b>Setup paused while an Upload is being written.</b> The Operator left the Upload of Household after confirming it; until it is written, credentials, Budgets, Bank Accounts, Account Mappings, Bank Consents and Operator Settings can be looked at but not changed.</p></div>
+</div>
+</section>
+<section>
+<h2>A Data Provider's page</h2>
+<p class="lede">Credentials, its Fetch with the Fetch Cooldown and the Request Limit, its Bank Consents when it needs them, and its Offered Bank Accounts by Bank: each one not added has an <b>import switch, on by default</b>; switched off it is a Left-Out Bank Account at once, switched on again it is brought back. Added ones show where they go. The S-38 choice of what to bring in, with its statement of how many are brought in and left out, is gone.</p>
+<div class="flow">
+<div class="state" id="simplefin-token">
+<div class="step-label"><span class="n">UC-014 2–6 · BR-002</span><p><b>SimpleFIN on the first run</b>, opened from its entry in Settings: the setup token is exchanged once and then discarded.</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="settings.html#list">‹</a> Connections</div>
-<p class="screen-sub">Settings · services</p>
+<div class="screen-title"><a class="back" href="settings.html#nothing-imported">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider · not set up</p>
 <div class="body">
-<a class="banner blue" href="upload-plan.html#writing"><span class="txt"><b>Setup paused until the Upload to Household is written</b></span> <span class="cta-btn">Upload</span></a><div class="sec-t">In use</div><div class="card"><a class="cfg-row" href="#ynab"><span class="nm"><span class="dot"></span>YNAB <span class="hint">Budget App · writing to Household</span></span> <span class="go">›</span></a> <a class="cfg-row" href="#simplefin"><span class="nm"><span class="dot"></span>SimpleFIN <span class="hint">Connected · last Fetch 13:21</span></span> <span class="go">›</span></a> <a class="cfg-row" href="#enable-banking"><span class="nm"><span class="dot amber"></span>Enable Banking <span class="hint">Connected · Bank Consent expires in 4 days, set by the Bank</span></span> <span class="go">›</span></a></div><div class="sec-t">Not set up</div><div class="card"><div class="cfg-row"><span class="nm">Wren Feeds <span class="hint">Data Provider in this build</span></span> <span class="btn primary blocked">Set up</span></div></div>
+<div class="card"><div class="src-row"><span class="dot grey"></span> <span class="nm">Not set up</span></div></div><div class="sheet blue"><div class="grab"></div><h4>SimpleFIN credentials</h4><p class="ctx">Setup token · SimpleFIN Bridge › New connection</p><div class="cfg-row"><span class="nm">Setup token</span> <span class="val ">AHR0cHM6Ly9…</span></div><div class="tagrow"><span class="chip green">Accepted</span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#first-fetch">Save</a> <a class="cta-btn ghost" href="#cancel">Cancel</a></span></div>
 </div>
-<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="first-fetch">
+<div class="step-label"><span class="n">UC-013 A3 · UC-001</span><p><b>Nothing offered yet</b>: SimpleFIN is connected but has not been fetched, so it offers no Bank Account. Its Fetch is on its page.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#nothing-imported">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider</p>
+<div class="body">
+<div class="card"><div class="src-row"><span class="dot "></span> <span class="nm">Connected · not fetched yet</span></div></div><div class="sec-t">Fetch</div><div class="card"><a class="btn primary" href="#simplefin-offered">Fetch SimpleFIN</a></div><div class="sec-t">Offered Bank Accounts</div><div class="card"><div class="small muted">None yet · a Fetch lists the Bank Accounts SimpleFIN offers; no transactions are fetched until a Bank Account is added</div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="simplefin-offered">
+<div class="step-label"><span class="n">UC-013 5–7 · BR-002 · BR-012 · BR-004</span><p><b>Fetched: every Offered Bank Account imported by default</b>, grouped by Bank, name and kind on the left, balance and the import switch on the right. The Operator has switched off two (Kids Saver, Pinecrest Business Visa-9034); each became a Left-Out Bank Account at once, with no dialog and no count to confirm. The name Pinecrest Business Visa-9034 already ends with its last four digits, so a proposed name would not add them again (BR-004).</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#to-map">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider</p>
+<div class="body">
+<div class="card"><div class="src-row"><span class="dot "></span> <span class="nm">Fetched 09:06 · 3 of 5 imported</span></div></div><div class="sec-t">Offered Bank Accounts · import is on by default</div><div class="card"><div class="bank-h">Kestrel Bank</div><div class="sw-row"><span class="sw-txt"><span class="nm">CHK 4410</span> <span class="meta">Checking · USD · ••4410</span></span> <span class="amt">4,140.05</span> <a class="toggle" href="#" aria-label="Import"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Reserve Saver</span> <span class="meta">Savings · USD · ••7731</span></span> <span class="amt">12,000.00</span> <a class="toggle" href="#" aria-label="Import"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Kids Saver</span> <span class="meta">Savings · USD · ••2290 · not imported</span></span> <span class="amt">310.00</span> <a class="toggle off" href="#switch-on" aria-label="Import"></a></div><div class="bank-h">Pinecrest Card Co.</div><div class="sw-row"><span class="sw-txt"><span class="nm">Pinecrest Rewards Visa</span> <span class="meta">Credit card · USD · ••1182</span></span> <span class="amt">−1,268.40</span> <a class="toggle" href="#" aria-label="Import"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Pinecrest Business Visa-9034</span> <span class="meta">Credit card · USD · ••9034 · not imported</span></span> <span class="amt">−88.10</span> <a class="toggle off" href="#switch-on" aria-label="Import"></a></div><div class="bank-h">Harbor Health Trust</div><div class="sw-row"><span class="sw-txt"><span class="nm">HSA</span> <span class="meta">Savings · USD · ••0907 · reports the balance of Harbor Health Savings (<a href="#hsa-csv">HSA CSV export</a>)</span></span> <span class="amt">6,324.20</span></div></div><p class="note">Imported Bank Accounts are mapped in <a href="account-mappings.html#to-map"><b>Account Mappings</b></a>. Nothing is fetched for them until they are added.</p>
+</div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="switch-off">
+<div class="step-label"><span class="n">UC-013 6–7 · BR-011 · BR-012</span><p><b>Switching one off</b>: Pinecrest Business Visa-9034 switched off. It is a Left-Out Bank Account at once, never read, recorded in the Decision Journal; the snack offers to switch it on again. Nothing is asked.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#to-map">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider</p>
+<div class="body">
+<div class="snack" style="margin:0 0 9px"><span>Pinecrest Business Visa-9034 ••9034 not imported · never read</span> <a href="#switch-on"><b>Undo</b></a></div><div class="sec-t">Offered Bank Accounts · import is on by default</div><div class="card"><div class="bank-h">Pinecrest Card Co.</div><div class="sw-row"><span class="sw-txt"><span class="nm">Pinecrest Business Visa-9034</span> <span class="meta">Credit card · USD · ••9034 · not imported</span></span> <span class="amt">−88.10</span> <a class="toggle off" href="#switch-on" aria-label="Import"></a></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="switch-on">
+<div class="step-label"><span class="n">UC-013 A10 · BR-011 · UC-009 A15</span><p><b>Bring back by switching on again</b>: Kids Saver switched on. It is no longer left out (recorded in the Decision Journal) and is a Bank Account to map in Account Mappings.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#list">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider</p>
+<div class="body">
+<div class="snack" style="margin:0 0 9px"><span>Kids Saver imported · to map in Account Mappings</span> <a href="account-mappings.html#to-map"><b>Map</b></a></div><div class="sec-t">Offered Bank Accounts · import is on by default</div><div class="card"><div class="bank-h">Kestrel Bank</div><div class="sw-row"><span class="sw-txt"><span class="nm">Kids Saver</span> <span class="meta">Savings · USD · ••2290 · to map</span></span> <span class="amt">310.00</span> <a class="toggle" href="#switch-off" aria-label="Import"></a></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="simplefin">
+<div class="step-label"><span class="n">UC-010 1 · BR-010 · UC-013 5 · BR-012 · UC-014 6</span><p><b>A Data Provider's page</b>, fully set up: status, credentials, its Fetch with the Fetch Cooldown and the Request Limit (published by SimpleFIN, read-only), and its Offered Bank Accounts: added ones show where they go, without a switch; Bonus Saver-5512 is imported and to map; two are not imported; HSA reports the balance of a Bank Account of the HSA CSV export and has no switch (BR-006).</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#list">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider</p>
+<div class="body">
+<div class="card"><div class="src-row"><span class="dot "></span> <span class="nm">Connected · last Fetch 13:21 · 6 of 9 imported</span></div></div><div class="sec-t">Credentials</div><div class="card"><div class="cfg-row"><span class="nm">Access credential <span class="hint">From a setup token · accepted 2026-09-02</span></span> <span class="chip green">Accepted</span></div><a class="btn" href="#simplefin-replace">Replace</a> <a class="btn danger" href="#simplefin-remove">Remove</a></div><div class="sec-t">Fetch</div><div class="card"><a class="btn primary" href="budget.html#fetch-states">Fetch SimpleFIN</a><a class="cfg-row" href="#fetch-cooldown"><span class="nm">Fetch Cooldown <span class="hint">Minutes · default 60, declared by its part · 0 to 1440 · 0 is off</span></span> <span class="val">60 min</span></a><div class="cfg-row"><span class="nm">Request Limit <span class="hint">Per 24 hours · the Data Provider's own limit, published by SimpleFIN · not a setting</span></span> <span class="dim">24</span></div></div><div class="sec-t">Offered Bank Accounts · import is on by default</div><div class="card"><div class="bank-h">Kestrel Bank</div><div class="sw-row"><span class="sw-txt"><span class="nm">Kestrel Checking</span> <span class="meta">Checking · USD · ••4410</span></span> <span class="amt">4,140.05</span> <span class="added">Added → Checking</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Kestrel Reserve</span> <span class="meta">Savings · USD · ••7731</span></span> <span class="amt">12,000.00</span> <span class="added">Added → Reserve Savings</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Kestrel Old Savings</span> <span class="meta">Savings · USD · ••2209</span></span> <span class="amt">0.00</span> <span class="added">Added → not mapped</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Bonus Saver-5512</span> <span class="meta">Savings · USD · ••5512 · to map</span></span> <span class="amt">250.00</span> <a class="toggle" href="#switch-off" aria-label="Import"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Kids Saver</span> <span class="meta">Savings · USD · ••2290 · not imported</span></span> <span class="amt">310.00</span> <a class="toggle off" href="#switch-on" aria-label="Import"></a></div><div class="bank-h">Pinecrest Card Co.</div><div class="sw-row"><span class="sw-txt"><span class="nm">Pinecrest Rewards Card</span> <span class="meta">Credit card · USD · ••1182</span></span> <span class="amt">−1,268.40</span> <span class="added">Added → Rewards Card</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Pinecrest Home Card</span> <span class="meta">Credit card · USD · ••6620</span></span> <span class="amt">−910.12</span> <span class="added">Added → Home Card</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Pinecrest Business Visa-9034</span> <span class="meta">Credit card · USD · ••9034 · not imported</span></span> <span class="amt">−88.10</span> <a class="toggle off" href="#switch-on" aria-label="Import"></a></div><div class="bank-h">Harbor Health Trust</div><div class="sw-row"><span class="sw-txt"><span class="nm">HSA ••0907</span> <span class="meta">USD · Savings</span></span> <span class="amt">6,324.20</span> <span class="why">balance of Harbor Health Savings</span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="probably-added">
+<div class="step-label"><span class="n">UC-013 A6 · BR-012</span><p><b>An Offered Bank Account that is probably already added</b> has no import switch: it goes to confirmation in Account Mappings and is neither to map nor left out.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#enable-banking">‹</a> Enable Banking</div>
+<p class="screen-sub">Data Provider · needs Bank Consent</p>
+<div class="body">
+<div class="sec-t">Offered Bank Accounts · import is on by default</div><div class="card amber"><div class="bank-h">Aurora Bank</div><div class="sw-row"><span class="sw-txt"><span class="nm">Joint Savings ••4471</span> <span class="meta">EUR · Savings · probably Aurora Joint, whose identification changed</span></span> <span class="amt">5,000.00</span> <span class="why"></span></div><a class="btn primary" href="account-mappings.html#confirm">Confirm in Account Mappings</a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="nothing-new">
+<div class="step-label"><span class="n">UC-013 A11</span><p><b>Nothing new to import</b>: every Bank Account SimpleFIN offers is added, not imported, or reports a balance. Fetch again for new ones; nothing of SimpleFIN is to map.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#list">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider</p>
+<div class="body">
+<div class="banner grey"><span class="txt"><b>Nothing new to import</b> <span class="d">Every Offered Bank Account is added, not imported or reports a balance</span></span></div><div class="card"><a class="btn primary" href="budget.html#fetch-states">Fetch SimpleFIN</a></div><div class="sec-t">Offered Bank Accounts</div><div class="card"><div class="bank-h">Kestrel Bank</div><div class="sw-row"><span class="sw-txt"><span class="nm">Kestrel Checking</span> <span class="meta">Checking · USD · ••4410</span></span> <span class="amt">4,140.05</span> <span class="added">Added → Checking</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Kids Saver</span> <span class="meta">Savings · USD · ••2290 · not imported</span></span> <span class="amt">310.00</span> <a class="toggle off" href="#switch-on" aria-label="Import"></a></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="simplefin-replace">
+<div class="step-label"><span class="n">UC-014 2–6</span><p><b>Enter or replace SimpleFIN's credentials</b> on its page: Save and Cancel return to the page (step 6).</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#simplefin">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider</p>
+<div class="body">
+<div class="ghost"><div class="sec-t">Credentials</div></div><div class="sheet blue"><div class="grab"></div><h4>SimpleFIN credentials</h4><p class="ctx">Setup token · SimpleFIN Bridge › New connection</p><div class="cfg-row"><span class="nm">Setup token</span> <span class="val ">AHR0cHM6Ly9…</span></div><div class="tagrow"><span class="chip green">Accepted</span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#simplefin">Save</a> <a class="cta-btn ghost" href="#simplefin">Cancel</a></span></div><p class="note">The earlier credentials stay until the new ones are accepted.</p>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="simplefin-request-limit">
+<div class="step-label"><span class="n">UC-014 A5 · BR-002</span><p><b>Request Limit reached</b>: the check of SimpleFIN's new credentials is not sent; nothing is stored, the earlier credentials stay, and the Operator can try again from the time shown.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#simplefin">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider</p>
+<div class="body">
+<div class="ghost"><div class="sec-t">Credentials</div></div><div class="sheet blue"><div class="grab"></div><h4>SimpleFIN credentials</h4><p class="ctx">Setup token · SimpleFIN Bridge › New connection</p><div class="cfg-row"><span class="nm">Setup token</span> <span class="val ">AHR0cHM6Ly9…</span></div><div class="banner"><span class="txt"><b>Blocked: Request Limit reached · not checked</b> <span class="d">Frees up from 21:14 · nothing stored</span></span></div><span class="pair" style="margin-top:10px"><a class="cta-btn ghost" href="#simplefin">Back</a></span></div><p class="note">The earlier credentials stay unchanged.</p>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="simplefin-remove">
+<div class="step-label"><span class="n">UC-014 A3 1–2</span><p><b>Remove credentials</b> on the SimpleFIN page: confirmation first.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#simplefin">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider</p>
+<div class="body">
+<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">SimpleFIN</span></div></div><div style="height:160px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Remove SimpleFIN credentials?</h4><p>SimpleFIN is not contacted until you enter new ones.</p><div class="actions"><a class="c" href="#simplefin">Cancel</a> <a class="x" href="#simplefin-removed">Remove</a></div></div><div style="height:100px"></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="simplefin-removed">
+<div class="step-label"><span class="n">UC-014 A3 3–5 · BR-005 · BR-007</span><p><b>Removed</b>: the SimpleFIN page stays reachable, with the Blocked Reason credentials missing and Enter credentials. In <a href="settings.html#list-missing">Settings</a> SimpleFIN keeps its entry with the status Credentials missing.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#list-missing">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider</p>
+<div class="body">
+<div class="card"><div class="src-row"><span class="dot amber"></span> <span class="nm">Credentials missing</span> <span class="warn">Not contacted</span></div></div><div class="banner"><span class="txt"><b>Blocked: credentials missing</b> <span class="d">Kestrel Checking, Kestrel Reserve, Pinecrest Rewards Card, Pinecrest Home Card</span></span></div><div class="sec-t">Credentials</div><div class="card"><div class="cfg-row"><span class="nm">Access credential <span class="hint">Removed · recorded in the Decision Journal</span></span> <span class="chip amber">Missing</span></div><a class="btn primary" href="#simplefin-replace">Enter credentials</a></div><div class="sec-t">Offered Bank Accounts · from the last Fetch</div><div class="card"><div class="bank-h">Kestrel Bank</div><div class="sw-row"><span class="sw-txt"><span class="nm">Kestrel Checking</span> <span class="meta">Checking · USD · ••4410</span></span> <span class="amt">4,140.05</span> <span class="added">Added → Checking</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Kestrel Reserve</span> <span class="meta">Savings · USD · ••7731</span></span> <span class="amt">12,000.00</span> <span class="added">Added → Reserve Savings</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Kestrel Old Savings</span> <span class="meta">Savings · USD · ••2209</span></span> <span class="amt">0.00</span> <span class="added">Added → not mapped</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Bonus Saver-5512</span> <span class="meta">Savings · USD · ••5512 · to map</span></span> <span class="amt">250.00</span> <a class="toggle" href="#switch-off" aria-label="Import"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Kids Saver</span> <span class="meta">Savings · USD · ••2290 · not imported</span></span> <span class="amt">310.00</span> <a class="toggle off" href="#switch-on" aria-label="Import"></a></div><div class="bank-h">Pinecrest Card Co.</div><div class="sw-row"><span class="sw-txt"><span class="nm">Pinecrest Rewards Card</span> <span class="meta">Credit card · USD · ••1182</span></span> <span class="amt">−1,268.40</span> <span class="added">Added → Rewards Card</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Pinecrest Home Card</span> <span class="meta">Credit card · USD · ••6620</span></span> <span class="amt">−910.12</span> <span class="added">Added → Home Card</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Pinecrest Business Visa-9034</span> <span class="meta">Credit card · USD · ••9034 · not imported</span></span> <span class="amt">−88.10</span> <a class="toggle off" href="#switch-on" aria-label="Import"></a></div><div class="bank-h">Harbor Health Trust</div><div class="sw-row"><span class="sw-txt"><span class="nm">HSA ••0907</span> <span class="meta">USD · Savings</span></span> <span class="amt">6,324.20</span> <span class="why">balance of Harbor Health Savings</span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="fetch-cooldown">
+<div class="step-label"><span class="n">UC-010 2–4 · A1 · A10</span><p><b>Editing a Fetch Cooldown</b> on the Data Provider's page: the value, the default its part declares, the range, and the reset to that default.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#simplefin">‹</a> SimpleFIN</div>
+<p class="screen-sub">Data Provider</p>
+<div class="body">
+<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">Fetch Cooldown</span> </div></div><div style="height:220px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Fetch Cooldown · SimpleFIN</h4><p><span class="cfg-row" style="display:flex"><span class="nm">New value · default 60 min</span> <span class="val">15 min</span></span></p><p><b>60 min by default</b>, declared by SimpleFIN's part. Enter <code>0</code> to <code>1440 min</code>; <code>0</code> switches it off.</p><p>A Fetch of SimpleFIN within 15 min of a successful one, the new Fetch Cooldown (an Operator Setting), is served from stored data; the Comparison still runs.</p><div class="actions"><a class="c" href="#simplefin">Reset to default</a> <a class="c" href="#simplefin">Cancel</a> <a class="ok" href="#simplefin">Save</a></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="request-limit">
+<div class="step-label"><span class="n">UC-010 2–4 · A1 · A11 · UC-001 BR-007</span><p><b>Editing a Request Limit the Data Provider does not publish</b>: the value, the default and range its part declares, and the reset to that default. A published Request Limit, such as SimpleFIN's, has no such dialog.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#enable-banking">‹</a> Enable Banking</div>
+<p class="screen-sub">Data Provider · needs Bank Consent</p>
+<div class="body">
+<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">Request Limit</span> </div></div><div style="height:220px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Request Limit · Enable Banking</h4><p><span class="cfg-row" style="display:flex"><span class="nm">New value · default 50</span> <span class="val">80</span></span></p><p><b>Not published by Enable Banking.</b> Its part declares 50 requests in any 24 hours by default, an Operator Setting. Enter <code>10</code> to <code>500</code>.</p><p>With the new value, an Operator Setting, Slussen sends Enable Banking at most 80 requests in any 24 hours. The limit PSD2 sets of 4 Unattended Accesses per Bank Account still applies.</p><div class="actions"><a class="c" href="#enable-banking">Reset to default</a> <a class="c" href="#enable-banking">Cancel</a> <a class="ok" href="#enable-banking">Save</a></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="set-up">
+<div class="step-label"><span class="n">UC-014 1–2 · BR-007 · UC-012 A2</span><p><b>A Data Provider of the build not set up</b>: Wren Feeds, an invented third Data Provider as an Adopting Developer's build might add one. Its entry in Settings opens this page, generated from what its part declares; there is no separate Set up action.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#list">‹</a> Wren Feeds</div>
+<p class="screen-sub">Data Provider · not set up</p>
+<div class="body">
+<div class="card"><div class="src-row"><span class="dot grey"></span> <span class="nm">Not set up</span></div></div><div class="sheet blue"><div class="grab"></div><h4>Wren Feeds credentials</h4><p class="ctx">Data Provider · the fields its part asks for</p><div class="cfg-row"><span class="nm">Access key <span class="hint">From the Wren Feeds website › Apps</span></span> <span class="val">••••••••71c0</span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="settings.html#list">Save</a> <a class="cta-btn ghost" href="settings.html#list">Cancel</a></span></div><p class="note">Checked with Wren Feeds before it is kept; then its Fetch and Offered Bank Accounts appear here.</p>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="enable-banking-token">
+<div class="step-label"><span class="n">UC-014 2–6 · BR-002</span><p><b>Enable Banking on the first run</b>: application id and key file.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#nothing-imported">‹</a> Enable Banking</div>
+<p class="screen-sub">Data Provider · not set up</p>
+<div class="body">
+<div class="card"><div class="src-row"><span class="dot grey"></span> <span class="nm">Not set up</span></div></div><div class="sheet blue"><div class="grab"></div><h4>Enable Banking credentials</h4><p class="ctx">Your own Enable Banking application</p><div class="cfg-row"><span class="nm">Application id</span> <span class="val ">3c9e2b7a-…</span></div><a class="cfg-row" href="#enable-banking-token"><span class="nm">Key file <span class="hint">Chosen with Android's file picker</span></span> <span class="val">household-app.pem</span></a><div class="tagrow"><span class="chip green">Accepted</span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#consent-first">Save</a> <a class="cta-btn ghost" href="#cancel">Cancel</a></span></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="consent-first">
+<div class="step-label"><span class="n">UC-013 A3 · UC-007 1</span><p><b>No Bank Consent yet</b>: Enable Banking offers nothing until a Bank Consent is granted for each Bank.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#nothing-imported">‹</a> Enable Banking</div>
+<p class="screen-sub">Data Provider · needs Bank Consent</p>
+<div class="body">
+<div class="card"><div class="src-row"><span class="dot "></span> <span class="nm">Connected · no Bank Consent yet</span></div></div><div class="sec-t">Bank Consents</div><div class="card amber"><div class="cfg-row"><span class="nm">Aurora Bank</span> <a class="btn primary" href="consent.html#grant-first-run">Grant Bank Consent</a></div><div class="cfg-row"><span class="nm">Vesta Sparbank</span> <a class="btn primary" href="consent.html#grant-first-run">Grant Bank Consent</a></div></div><div class="sec-t">Offered Bank Accounts</div><div class="card"><div class="small muted">None yet · each Bank offers its Bank Accounts with its Bank Consent</div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="enable-banking-offered">
+<div class="step-label"><span class="n">UC-013 5 · BR-012 · UC-007 9</span><p><b>After the Bank Consents of both Banks</b>: the Bank Accounts they cover, each imported by default; the Operator switched off two, which are not imported and never read.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#to-map">‹</a> Enable Banking</div>
+<p class="screen-sub">Data Provider · needs Bank Consent</p>
+<div class="body">
+<div class="card"><div class="src-row"><span class="dot "></span> <span class="nm">Connected · 2 of 4 imported</span></div></div><div class="sec-t">Offered Bank Accounts · import is on by default</div><div class="card"><div class="bank-h">Aurora Bank</div><div class="sw-row"><span class="sw-txt"><span class="nm">Everyday Current</span> <span class="meta">Checking · EUR · ••9902</span></span> <span class="amt">3,402.30</span> <a class="toggle" href="#" aria-label="Import"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Aurora Pension</span> <span class="meta">Savings · EUR · ••7004 · not imported</span></span> <span class="amt">18,250.00</span> <a class="toggle off" href="#switch-on" aria-label="Import"></a></div><div class="bank-h">Vesta Sparbank</div><div class="sw-row"><span class="sw-txt"><span class="nm">Vesta Card</span> <span class="meta">Credit card · EUR · ••3321</span></span> <span class="amt">−410.00</span> <a class="toggle" href="#" aria-label="Import"></a></div><div class="sw-row"><span class="sw-txt"><span class="nm">Vesta Travel Card</span> <span class="meta">Credit card · EUR · ••8840 · not imported</span></span> <span class="amt">0.00</span> <a class="toggle off" href="#switch-on" aria-label="Import"></a></div></div><p class="note">Imported Bank Accounts are mapped in <a href="account-mappings.html#to-map"><b>Account Mappings</b></a>.</p>
+</div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="enable-banking">
+<div class="step-label"><span class="n">UC-007 1 · BR-008 · UC-010 BR-010 · UC-013 5</span><p><b>A Data Provider that needs a Bank Consent</b>: its Bank Consents with status, expiry, renew and revoke, its Fetch and settings (Enable Banking publishes no Request Limit, so its part declares a default the Operator can change) and its Offered Bank Accounts with their import switches.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#list">‹</a> Enable Banking</div>
+<p class="screen-sub">Data Provider · needs Bank Consent</p>
+<div class="body">
+<div class="card"><div class="src-row"><span class="dot amber"></span> <span class="nm">Connected · 6 of 7 imported</span> <span class="warn">A Bank Consent expires in 4 days, set by the Bank</span></div></div><div class="sec-t">Credentials</div><div class="card"><div class="cfg-row"><span class="nm">Application id <span class="hint">Your own Enable Banking application</span></span> <span class="val">3c9e2b7a-…</span></div><div class="cfg-row"><span class="nm">Key file <span class="hint">Chosen with Android's file picker</span></span> <span class="val">household-app.pem</span></div><a class="btn" href="#enable-banking-replace">Replace</a> <a class="btn danger" href="#enable-banking-remove">Remove</a></div><div class="sec-t">Bank Consents · 2</div><div class="card amber"><div class="src-row"><span class="dot amber"></span> <span class="nm">Aurora Bank</span> <span class="warn">Expires 2026-10-19, set by the Bank</span></div><div class="src-note">Covers Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar, Aurora Pension</div><a class="btn primary" href="consent.html#grant">Renew</a> <a class="btn danger" href="consent.html#revoke">Revoke</a></div><div class="card"><div class="src-row"><span class="dot"></span> <span class="nm">Vesta Sparbank</span> <span class="ok">Valid until 2027-04-12</span></div><div class="src-note">Covers Vesta Card, Vesta Travel Card</div><a class="btn primary" href="consent.html#grant">Renew</a> <a class="btn danger" href="consent.html#revoke">Revoke</a></div><a class="btn primary" href="consent.html#grant" style="margin:0 0 9px">Grant Bank Consent for another Bank</a><div class="sec-t">Fetch</div><div class="card"><a class="btn primary" href="budget.html#fetch-states">Fetch Enable Banking</a><a class="cfg-row" href="#fetch-cooldown"><span class="nm">Fetch Cooldown <span class="hint">Minutes · default 360, declared by its part · 0 to 1440 · 0 is off</span></span> <span class="val">6 h</span></a><a class="cfg-row" href="#request-limit"><span class="nm">Request Limit <span class="hint">Per 24 hours · not published by Enable Banking · default 50 · 10 to 500</span></span> <span class="val">50</span></a></div><div class="sec-t">Offered Bank Accounts · import is on by default</div><div class="card"><div class="bank-h">Aurora Bank</div><div class="sw-row"><span class="sw-txt"><span class="nm">Aurora Current</span> <span class="meta">Checking · EUR · ••9902</span></span> <span class="amt">3,402.30</span> <span class="added">Added → Current</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Aurora Savings</span> <span class="meta">Savings · EUR · ••3310</span></span> <span class="amt">5,000.00</span> <span class="added">Added → Savings</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Aurora Dollar</span> <span class="meta">Savings · USD · ••5520</span></span> <span class="amt">1,520.00</span> <span class="added">Added → Dollar Reserve</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Joint Savings ••4471</span> <span class="meta">EUR · Savings</span></span> <span class="amt">5,000.00</span> <span class="why"><a href="account-mappings.html#confirm">probably Aurora Joint · confirm</a></span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Aurora Pension</span> <span class="meta">Savings · EUR · ••7004 · to map</span></span> <span class="amt">18,250.00</span> <a class="toggle" href="#enable-banking" aria-label="Import"></a></div><div class="bank-h">Vesta Sparbank</div><div class="sw-row"><span class="sw-txt"><span class="nm">Vesta Card</span> <span class="meta">Credit card · EUR · ••3321</span></span> <span class="amt">−410.00</span> <span class="added">Added → Vesta Card</span></div><div class="sw-row"><span class="sw-txt"><span class="nm">Vesta Travel Card</span> <span class="meta">Credit card · EUR · ••8840 · not imported</span></span> <span class="amt">0.00</span> <a class="toggle off" href="#switch-on" aria-label="Import"></a></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="enable-banking-replace">
+<div class="step-label"><span class="n">UC-014 2–6</span><p><b>Replace Enable Banking's credentials</b> on its page: Save and Cancel return to the page.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#enable-banking">‹</a> Enable Banking</div>
+<p class="screen-sub">Data Provider · needs Bank Consent</p>
+<div class="body">
+<div class="ghost"><div class="sec-t">Credentials</div></div><div class="sheet blue"><div class="grab"></div><h4>Enable Banking credentials</h4><p class="ctx">Your own Enable Banking application</p><div class="cfg-row"><span class="nm">Application id</span> <span class="val ">3c9e2b7a-…</span></div><div class="cfg-row"><span class="nm">Key file <span class="hint">Chosen with Android's file picker</span></span> <span class="val">household-app-2.pem</span></div><div class="tagrow"><span class="chip green">Accepted</span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#enable-banking">Save</a> <a class="cta-btn ghost" href="#enable-banking">Cancel</a></span></div><p class="note">The earlier credentials stay until the new ones are accepted.</p>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="enable-banking-remove">
+<div class="step-label"><span class="n">UC-014 A3 1–2</span><p><b>Remove Enable Banking's credentials</b>: confirmation first. Removing leads to <a href="#enable-banking-removed">Enable Banking removed</a>.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#enable-banking">‹</a> Enable Banking</div>
+<p class="screen-sub">Data Provider · needs Bank Consent</p>
+<div class="body">
+<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">Enable Banking</span></div></div><div style="height:200px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Remove Enable Banking credentials?</h4><p>Enable Banking is not contacted until you enter new ones. Its Bank Consents can't be renewed until then.</p><div class="actions"><a class="c" href="#enable-banking">Cancel</a> <a class="x" href="#enable-banking-removed">Remove</a></div></div><div style="height:120px"></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="enable-banking-removed">
+<div class="step-label"><span class="n">UC-014 A3 3–5 · BR-005 · BR-007</span><p><b>Enable Banking removed</b>: its page stays reachable with the Blocked Reason credentials missing; its Bank Consents stay listed but can't be renewed until credentials are entered.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#list">‹</a> Enable Banking</div>
+<p class="screen-sub">Data Provider · needs Bank Consent</p>
+<div class="body">
+<div class="card"><div class="src-row"><span class="dot amber"></span> <span class="nm">Credentials missing</span> <span class="warn">Not contacted</span></div></div><div class="banner"><span class="txt"><b>Blocked: credentials missing</b> <span class="d">Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar, Vesta Card</span></span></div><div class="sec-t">Credentials</div><div class="card"><div class="cfg-row"><span class="nm">Application id and key file <span class="hint">Removed · recorded in the Decision Journal</span></span> <span class="chip amber">Missing</span></div><a class="btn primary" href="#enable-banking-replace">Enter credentials</a></div><div class="sec-t">Bank Consents · 2</div><div class="card"><div class="src-row"><span class="dot amber"></span> <span class="nm">Aurora Bank</span> <span class="warn">Expires 2026-10-19</span></div><div class="src-row"><span class="dot"></span> <span class="nm">Vesta Sparbank</span> <span class="ok">Valid until 2027-04-12</span></div><div class="src-note">Renew after entering credentials</div></div><div class="sec-t">Fetching</div><div class="card"><a class="cfg-row" href="#fetch-cooldown"><span class="nm">Fetch Cooldown <span class="hint">Minutes · default 360, declared by its part · 0 to 1440 · 0 is off</span></span> <span class="val">6 h</span></a></div><div class="sec-t">Bank Accounts · 5</div><div class="card"><div class="acct-line">Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar, Vesta Card</div><a class="btn" href="account-mappings.html#map">Account Mappings</a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
+</section>
+<section>
+<h2>A File Format's page</h2>
+<p class="lede">The HSA CSV export: its Bank Accounts and the form that adds one, already mapped (UC-013 A4). This form lives only here, never in Account Mappings.</p>
+<div class="flow">
+<div class="state" id="hsa-csv">
+<div class="step-label"><span class="n">UC-013 A4 1 · BR-006 · UC-010 BR-010</span><p><b>A File Format's page</b>: HSA CSV export, the File Format of this build, opened from its entry in Settings. It lists the Bank Accounts of that File Format, each already mapped, and adds one. It never appears in Account Mappings' list to map.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#list">‹</a> HSA CSV export</div>
+<p class="screen-sub">File Format · Transaction Files</p>
+<div class="body">
+<div class="sec-t">Bank Accounts · 1</div><div class="card"><div class="sw-row"><span class="sw-txt"><span class="nm">Harbor Health Savings</span> <span class="meta">Harbor Health Trust · Savings · USD · balance from SimpleFIN HSA ••0907</span></span> <span class="added">Added → Health Savings</span></div></div><a class="cta" href="#file-account">Add a Bank Account of this File Format</a><p class="note">Its Transaction Files are imported from the Bank Account (<a href="import-file.html">Transaction File</a>). Its Account Mapping is changed in Account Mappings.</p>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="hsa-no-budget">
+<div class="step-label"><span class="n">UC-013 A4 1 · BR-006 · BR-015</span><p><b>Before a Budget is served</b>: the page opens at any time, but a Bank Account of a File Format is added together with its Account Mapping, so adding waits for a chosen Budget.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="settings.html#first-run">‹</a> HSA CSV export</div>
+<p class="screen-sub">File Format · Transaction Files</p>
+<div class="body">
+<div class="sec-t">Bank Accounts</div><div class="card"><div class="small muted">None yet</div></div><span class="cta dim">Add a Bank Account of this File Format</span><p class="note">Available once YNAB is set up and a Budget is chosen.</p>
+</div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#first-run"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="file-account">
+<div class="step-label"><span class="n">UC-013 A4 2–3 · BR-006 · BR-009 · BR-010 · UC-002 A7</span><p><b>Add a Bank Account of the File Format</b>, on its own page: Bank Account type, the Bank as a single choice, the Offered Bank Account that reports its balance (also a Left-Out one, which is then brought back), the Budget Account from the free ones, name, currency and optional Start Date; nothing is proposed from a file. Add checks it as at step 12 and adds it already mapped.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="#hsa-csv">‹</a> HSA CSV export</div>
+<p class="screen-sub">File Format · add a Bank Account</p>
+<div class="body">
+<div class="sheet blue"><div class="grab"></div><h4>Add a Bank Account</h4><p class="ctx">HSA CSV export · Transaction Files</p><div class="cfg-row"><span class="nm">Bank Account type</span> <span class="val ">Savings ▾</span></div><a class="cfg-row" href="account-mappings.html#pair-bank"><span class="nm">Bank <span class="hint">One Bank: choose a known one or name a new one</span></span> <span class="val ">Harbor Health Trust ▾</span></a><div class="cfg-row"><span class="nm">Balance from <span class="hint">Optional · an Offered Bank Account of a Data Provider</span></span> <span class="val ">SimpleFIN · HSA ••0907</span></div><div class="cfg-row"><span class="nm">Budget Account <span class="hint">Free Budget Accounts of the served Budgets</span></span> <span class="val ">Health Savings · Care Fund ▾</span></div><div class="cfg-row"><span class="nm">Name</span> <span class="val ">Harbor Health Savings</span></div><div class="cfg-row"><span class="nm">Currency <span class="hint">Stated by SimpleFIN for the balance</span></span> <span class="val ">USD</span></div><div class="cfg-row"><span class="nm">Start Date <span class="hint">Optional</span></span> <span class="val ">2026-06-01</span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#hsa-csv">Add</a> <a class="cta-btn ghost" href="#hsa-csv">Cancel</a></span></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 </div>
 </section>
 <p class="footnote">Mockup for the mockup gate of the construction kickoff plan. Every Budget, Bank, Bank Account,
-payee and amount is invented, and so are Wren Feeds and the Request Limit values, which each part declares from its
-Data Provider's own limit. The Approved use cases are normative; where this page and a use case disagree, the use
+payee and amount is invented. The Approved use cases are normative; where this page and a use case disagree, the use
 case wins.</p>
 </main>
 </body>

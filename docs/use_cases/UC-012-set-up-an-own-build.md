@@ -39,8 +39,8 @@
 **Trigger:** A Bank of the household is reached by no Data Provider of this build and offers no Transaction File (step 3)  
 **Flow:**
 
-1. Adopting Developer adds a Data Provider as its own part, declaring its name, whether it gives every transaction a Stable Reference, the credentials the Operator enters for it, its Request Limit, its default Fetch Cooldown and whether it needs a Bank Consent.
-2. Slussen applies its existing rules for comparing, reviewing and deciding to the new part's Bank Transactions, and gives the new Data Provider its own page and settings in Connections, generated from what its part declares, with no screen written for it (UC-010 BR-010).
+1. Adopting Developer adds a Data Provider as its own part, declaring its name, whether it gives every transaction a Stable Reference, the credentials the Operator enters for it, its Request Limit (the limit the Data Provider publishes, with its source, or, when it publishes none, a cautious default with the range within which the Operator can change it), its default Fetch Cooldown and whether it needs a Bank Consent.
+2. Slussen applies its existing rules for comparing, reviewing and deciding to the new part's Bank Transactions, and gives the new Data Provider its own entry in Settings, its own page and its settings, generated from what its part declares, with no screen written for it (UC-010 BR-010).
 3. Use case continues at step 3.
 
 ### A3: Bank Export Format Missing
@@ -132,7 +132,7 @@ The first Operator of Slussen is an Adopting Developer too: their own build foll
 
 ### BR-011: Nothing but the Signing Values Comes From Outside the App
 
-Apart from the signing values of an own release build, nothing about an installation is given to the build. The Request Limit and the default Fetch Cooldown of each Data Provider are declared by its part. The service credentials are entered in the app (UC-014), and the Budgets, Bank Accounts, Account Mappings and Start Dates are set in the app (UC-013, UC-009), so that none of them needs a rebuild. The default Card Payment and Bank Transfer Descriptions ship with the repository and the Operator edits them in the app (UC-010 BR-007).
+Apart from the signing values of an own release build, nothing about an installation is given to the build. The Request Limit of each Data Provider, published or a default the Operator can change (UC-001 BR-007), and its default Fetch Cooldown are declared by its part. The service credentials are entered in the app (UC-014), and the Budgets, Bank Accounts, Account Mappings and Start Dates are set in the app (UC-013, UC-009), so that none of them needs a rebuild. The default Card Payment and Bank Transfer Descriptions ship with the repository and the Operator edits them in the app (UC-010 BR-007).
 
 ### BR-012: No Credential in the Repository or the Built App
 

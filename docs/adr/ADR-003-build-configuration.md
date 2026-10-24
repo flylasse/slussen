@@ -73,8 +73,11 @@ Task `verifyReleaseSigning` in `build-logic/` is a dependency of every packaging
 `:app`, and of nothing else (UC-012 step 4, A1, BR-002):
 
 - **Debug and `check` need nothing.** Compiling, `gradlew check`, and packaging or installing the `debug` variant never
-  read the four properties and never fail for their absence (UC-012 A5). A `debug` package is signed with the
-  machine's default debug key (ADR-005 §6).
+  require the four properties, never fail for their absence (UC-012 A5), and never print, package or record their
+  values. A `debug` package is signed with the machine's default debug key (ADR-005 §6). Only the signing
+  configuration of the `release` variant and `verifyReleaseSigning` use the values. The Android Gradle Plugin takes its
+  signing configuration when the build is configured, so the build looks the properties up then, in every build;
+  looking them up uses no value outside the release signing.
 - **A release package needs all four.** When one or more of them is missing or empty, the task fails and names each
   missing property and where it goes, for example "Missing `slussenReleaseKeyAlias`: set it in
   `~/.gradle/gradle.properties` or as the environment variable `ORG_GRADLE_PROJECT_slussenReleaseKeyAlias`; see the
@@ -205,3 +208,6 @@ templates or its placement checks, S-23/S-24 or S-25 supersede them.
   environment variables; §2: only a release package needs them and fails clearly without them; §3: unchanged rule,
   `NoCredentialInAppTest` with properties instead of files; §4: the live-test credentials moved to Gradle properties,
   read only by the live-test task.
+- Phase 6 (2026-10-18): O-P2-41: §2 "never read" replaced by what the Android Gradle Plugin allows: debug and `check`
+  builds never require, fail on, print, package or record the signing values; only the release signing and
+  `verifyReleaseSigning` use them; the properties are looked up when the build is configured.

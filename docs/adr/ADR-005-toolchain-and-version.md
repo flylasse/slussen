@@ -97,7 +97,9 @@ and `:app` must never pass by not running.
 - `versionName` = the content of `VERSION`.
 - `versionCode` = major × 1,000,000 + minor × 1,000 + revision. So `0.1.0` is `1000`, and every bump of
   `VERSION` gives a higher `versionCode`, which Android needs to install an upgrade in place (NFR-017).
-- `VERSION` is read nowhere else. The app shows `versionName` from Android's package information.
+- `VERSION` is read nowhere else. The app shows `versionName` from Android's package information, on Settings
+  (S-37, UC-010 BR-011), and says "debug build" when its package is the `debug` variant (§5), told by the
+  `applicationIdSuffix` `.debug` of its package name; nothing else is generated or written for it.
 
 ### 5. Application identity
 
@@ -105,8 +107,10 @@ and `:app` must never pass by not running.
   package root (ADR-001 §1).
 - The `debug` variant has `applicationIdSuffix ".debug"`, so a debug build installs beside the release installation
   and can never replace it or its data.
-- The app ships for `arm64-v8a` only when it has native code; Slussen's own code has none, so no ABI split is
-  configured unless a library adds native code.
+- A `release` package holds native code for `arm64-v8a` only; a `debug` package keeps every ABI (O-P2-40).
+  Slussen's own code has no native code, but Compose BOM 2025.06.00 adds `libandroidx.graphics.path.so` for four
+  ABIs, and the device evidence of §7 runs a debug build on an `x86_64` emulator. The `slussen.android-application`
+  convention sets `ndk.abiFilters` on the `release` build type only.
 
 ### 6. Variant and signing (O-P1-08, O-P2-05; A-25)
 
@@ -119,7 +123,7 @@ and `:app` must never pass by not running.
   inside the repository working tree, or when it names no readable keystore; the message names each property and
   where it goes, never a value (ADR-003 §2, UC-012 A1, BR-002).
 - The Operator keeps a backup of the keystore and its passwords outside the device and outside the repository. A lost
-  keystore means a new installation (and with it a Recovery Check, ADR-002 §6), never an in-place upgrade.
+  keystore means a new installation (and with it First Upload Matching, ADR-002 §6), never an in-place upgrade.
 - A `debug` build needs no signing values (UC-012 A5, BR-001): it is signed with the machine's default debug key, is
   for trying out, and the Operator does not keep data in it (UC-012 BR-009): a debug key belongs to one machine, so
   losing it forces an uninstall, which deletes the app's local data, and a debug build is debuggable, so its private
@@ -140,17 +144,17 @@ phone and live items.
 |---|---|---|---|
 | E-01 | The last good copy is made at start, replaced atomically on each later start, and survives repeated starts | instrumented, API 26 and phone | ADR-002 §8 steps 1-2 |
 | E-02 | A failed copy (planted write failure) leaves the previous last good copy in place, and a leftover temporary file is removed | instrumented, API 26 | ADR-002 §8 step 2 |
-| E-03 | A `slussen.db` with planted garbage bytes, and one with a planted unknown `Values:` text, are kept unchanged with their journal, the last good copy is used, the notice is shown and a Recovery Check opens; the running-app path restarts and recovers. A damaged `journal.db` and a damaged `device.db` are kept unchanged and show the notice, and open **no** Recovery Check and block no Upload (S-13) | instrumented, API 26 and phone | ADR-002 §6, §8 steps 3-5; NFR-005, NFR-006 |
+| E-03 | A `slussen.db` with planted garbage bytes, and one with a planted unknown `Values:` text, are kept unchanged with their journal, the last good copy is used, the notice is shown and a First Upload Matching opens; the running-app path restarts and recovers. A damaged `journal.db` and a damaged `device.db` are kept unchanged and show the notice, and open **no** First Upload Matching and block no Upload (S-13) | instrumented, API 26 and phone | ADR-002 §6, §8 steps 3-5; NFR-005, NFR-006 |
 | E-04 | With no last good copy, an unreadable database starts empty with the default content | instrumented, API 26 | ADR-002 §8 step 3 |
 | E-05 | Each atomic operation O-1 to O-14 leaves nothing visible after a failure injected before its commit; a process killed between O-4 and O-5 leaves the Comparison pending and preparation refused until O-5 is committed (ADR-007 §3a); `confirmPlan` survives a killed process right after it returns | instrumented, API 26 | ADR-002 §3, §4 |
-| E-06 | Migration from every released schema version keeps every row | instrumented (`MigrationTestHelper`), API 26 | ADR-002 §7, NFR-017 |
-| E-07 | Backup and restore with `adb shell bmgr` (backup now, uninstall, reinstall, restore): `slussen.db` comes back, `device.db` and `journal.db` do not, the start is detected as Restored Backup, a Recovery Check blocks Uploads until a Comparison and confirmation | phone | ADR-002 §5, §6; NFR-009, NFR-010, FR-095 |
-| E-08 | A new installation opens a Recovery Check with cause New Installation | instrumented, API 26 | ADR-002 §6 |
+| E-06 | Migration from every committed schema version keeps every row (S-39) | instrumented (`MigrationTestHelper`), API 26 | ADR-002 §7, NFR-017 |
+| E-07 | Backup and restore with `adb shell bmgr` (backup now, uninstall, reinstall, restore): `slussen.db` comes back, `device.db` and `journal.db` do not, the start is detected as Restored Backup, First Upload Matching holds Uploads back until a Comparison and confirmation | phone | ADR-002 §5, §6; NFR-009, NFR-010, FR-095 |
+| E-08 | A new installation opens a First Upload Matching with cause New Installation | instrumented, API 26 | ADR-002 §6 |
 | E-09 | An in-place upgrade of the `release` variant built on a second checkout with the same keystore keeps every Sent Record, Account Mapping lock and decision | phone | §6, NFR-017 |
 | E-10 | The live tests against a throwaway YNAB Budget (C-011): a reused Import Identifier is refused and answered `AlreadyPresent`; matching to a Typed Entry within the Matching Date Window; a deletion and a merge are reported; a linked transfer carries both sides' links, `readTransaction` returns a just-created leg with its link, and the counterpart can be marked Cleared in the same Upload; created transactions await approval; YNAB's own Bank import writes Import Identifiers that do not match Slussen's marker | Operator's machine, `-PincludeLive` | ADR-001 §4.2.1, §4.2.2; ADR-008 §1; S-05 |
 | E-11 | The contract tests' timeout and cancellation cases pass against each plug-in (part of `check`) | JVM | ADR-001 §4.0 |
 | E-13 | Service credentials entered in the app are stored only as ciphertext in `device.db` under a non-exportable Android Keystore key; after a backup and restore with `adb shell bmgr` they are absent and "credentials missing" is shown; a planted ciphertext that cannot be decrypted is treated as missing credentials | instrumented, API 26 and phone | ADR-002 §2a, §5; NFR-021, UC-014 BR-003, BR-004 |
-| E-12 | The start sequence is interrupted (process killed) at each boundary of ADR-002 §6, for a restored backup, a new installation and a last good copy: every next start finds the start intent, finishes the work and opens a Recovery Check; none looks like a normal start | instrumented, API 26 | ADR-002 §6, FR-095 |
+| E-12 | The start sequence is interrupted (process killed) at each boundary of ADR-002 §6, for a restored backup, a new installation and a last good copy: every next start finds the start intent, finishes the work and opens a First Upload Matching; none looks like a normal start | instrumented, API 26 | ADR-002 §6, FR-095 |
 
 Each item's test or procedure is written in the slice that needs it, carries the markers of ADR-004, and its result
 (pass, device, date, commit) is recorded in that slice's plan. A failing item stops the slice; a mechanism that
@@ -166,7 +170,7 @@ fails on the device is changed by amending ADR-002, not worked around.
 - `VERSION` parts above 999 fail the build; at the pace of `AGENTS.md` §5 that limit is far away, and raising it is an
   amendment of this ADR.
 - The release keystore is the identity of the Operator's installation: its backup is the Operator's job, and losing it
-  costs a reinstall with restore (and a Recovery Check), never silent data loss.
+  costs a reinstall with restore (and First Upload Matching), never silent data loss.
 - Debug and release builds can be installed side by side, so trying a debug build never touches the Operator's data.
 
 ## Alternatives
@@ -213,3 +217,11 @@ fails on the device is changed by amending ADR-002, not worked around.
 - S-25 (2026-10-18, re-checked externally 2026-10-18): Context; §3 (`gradlew check` without signing values; no placement task); §6
   (the signing values are Gradle properties outside the repository, ADR-003 §1; a release package without them fails
   naming each; why a debug build does not hold the Operator's data); Consequences.
+- Phase 6 (2026-10-18): O-P2-40: §5 (a `release` package holds `arm64-v8a` native code only, a `debug` package every
+  ABI, for the `x86_64` emulator of §7).
+- Phase 9, first attempt (2026-10-19): S-37 (FR-104, UC-010 BR-011): §4 the app shows `versionName` and, for the
+  `debug` variant, that it is a debug build, on Settings.
+- Phase 9, first attempt (2026-10-19): S-39 (NFR-017, ADR-002 §7): §7 E-06 migrates from every committed schema
+  version, not only from released ones.
+- Phase 9 acceptance (2026-10-24): S-41 (P9-17, O-P2-75; the glossary term Recovery Check renamed First Upload
+  Matching): §6, §7 E-03, E-07, E-08, E-12 and Consequences renamed; no evidence changes.

@@ -7,10 +7,10 @@
 **Primary Actor:** Operator  
 **Secondary Actors:** Bank, Data Provider  
 **Goal:** Decide whether Slussen may read the Operator's Bank Accounts at one Bank through a Data Provider, by granting or renewing the Bank Consent once for that Bank until it expires, or by revoking it  
-**Trigger:** Operator asks to grant, renew or revoke the Bank Consent of a Bank, on the Data Provider's page in Connections or wherever Slussen shows the Bank Consent as missing, expiring or expired  
+**Trigger:** Operator asks to grant, renew or revoke the Bank Consent of a Bank, on the Data Provider's page, opened from its entry in Settings, or wherever Slussen shows the Bank Consent as missing, expiring or expired  
 **Status:** Approved  
 
-**Requirements:** [FR-010, FR-011, FR-042, FR-058, FR-082, FR-098, FR-103, NFR-008, NFR-009, NFR-013, C-006, C-007](../requirements.md)
+**Requirements:** [FR-010, FR-011, FR-042, FR-058, FR-082, FR-098, FR-103, NFR-004, NFR-008, NFR-009, NFR-013, NFR-022, C-006, C-007](../requirements.md)
 
 ## Preconditions
 
@@ -19,7 +19,7 @@
 
 ## Main Success Scenario
 
-1. Operator asks to grant the Bank Consent of a Bank that the Data Provider reaches, also before any of its Bank Accounts is added (UC-013), or to renew it, from the Data Provider's page in Connections, which shows each of its Bank Consents with its status and expiry date (BR-008), or from any place where Slussen shows that the Bank Consent is missing, expiring or expired.
+1. Operator asks to grant the Bank Consent of a Bank that the Data Provider reaches, also before any of its Bank Accounts is added (UC-013), or to renew it, where Slussen shows the Data Provider's Bank Consents, each with its status and expiry date (BR-008), or from any place where Slussen shows that the Bank Consent is missing, expiring or expired.
 2. Slussen starts a Consent Request for the Bank with the Data Provider, which makes every earlier Consent Request of this Bank unanswerable.
 3. Data Provider hands Slussen the way to the Bank's Strong Customer Authentication.
 4. Slussen sends the Operator to the Bank's Strong Customer Authentication.
@@ -27,8 +27,8 @@
 6. Bank confirms the consent to the Data Provider, and the Operator returns to Slussen with the result.
 7. Slussen checks that the result answers the most recent Consent Request for this Bank, arrives within the Consent Request lifetime and has not been used before (BR-002).
 8. Slussen stores the Bank Consent with the expiry date the Bank or Data Provider reports and the Bank Session it opens, replacing any earlier Bank Consent and Bank Session of this Bank (BR-004).
-9. Slussen keeps the Bank Accounts the Bank Consent covers as Offered Bank Accounts (UC-009 BR-009) and identifies each that the Operator already added (UC-009 BR-004); the others can be added (UC-013).
-10. Slussen shows the Bank Consent as valid, with its expiry date and the Bank Accounts it covers.
+9. Slussen keeps the Bank Accounts the Bank Consent covers as Offered Bank Accounts (UC-009 BR-009) and identifies each that the Operator already added (UC-009 BR-004); the others are imported and are Bank Accounts to map (UC-013 BR-012), except the Left-Out Bank Accounts, which stay not imported until the Operator imports them again (UC-013 BR-011).
+10. Slussen shows the Bank Consent as valid, with its expiry date and the Bank Accounts it covers (BR-009).
 
 ## Alternative Flows
 
@@ -142,4 +142,8 @@ Revoking a Bank Consent deletes the stored Bank Consent, its Bank Session and ev
 
 ### BR-008: Bank Consents Live on the Data Provider's Page
 
-The Bank Consents of a Data Provider that needs one are shown on that Data Provider's page in Connections (UC-010 BR-010), each with its Bank, status, expiry date and the Bank Accounts it covers, and with the actions to grant, renew and revoke. Whether a Data Provider needs a Bank Consent is declared by its part; a Data Provider that needs none has no Bank Consents on its page.
+The Bank Consents of a Data Provider that needs one are shown on that Data Provider's page, opened from its entry in Settings (UC-010 BR-010), each with its Bank, status, expiry date and the Bank Accounts it covers, and with the actions to grant, renew and revoke. Whether a Data Provider needs a Bank Consent is declared by its part; a Data Provider that needs none has no Bank Consents on its page.
+
+### BR-009: The Bank Consent Follows the Data Provider's Bank
+
+A Bank Consent covers every Bank Account that its Data Provider reads, for its transactions or for its balance, and names this Bank for: the Bank where the Bank Consent is granted. Slussen records that Bank for the Bank Account when the Bank Account is added (UC-013) or identified (UC-009, step 9). The Bank the Operator confirms or changes for a Bank Account (UC-013 BR-009, UC-009 A14, BR-012) is only how the Bank Account is named and grouped in Slussen; it never decides which Bank Consent covers the Bank Account or at which Bank a Bank Consent is granted. Wherever this use case and UC-001 speak of the Bank Accounts of a Bank, or of the Bank of a Bank Account, in connection with a Bank Consent, the Bank the Data Provider names is meant.

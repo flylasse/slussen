@@ -255,7 +255,7 @@ field(the Bank's reference as the Data Provider delivers it, empty when it names
   for this one.
 - An Import Identifier depends on nothing a build can change: not the Budget App's length limit, not a setting, not
   anything set in the app. A new installation that recomputes the Import Identifiers of the same Bank Transactions
-  finds Slussen's earlier Uploads in the Budget App (UC-003 BR-003), which the Recovery Check relies on (ADR-002 §6).
+  finds Slussen's earlier Uploads in the Budget App (UC-003 BR-003), which First Upload Matching relies on (ADR-002 §6).
 - Treating an absent and an empty payee or memo alike means two transactions that differ only in that respect are
   identical for identity and occurrence; they are told apart by `occurrence_number`, as UC-002 BR-003 intends.
 - A collision costs one transaction a review (or one file a rejection) instead of a silent merge or a duplicate.
@@ -313,3 +313,5 @@ field(the Bank's reference as the Data Provider delivers it, empty when it names
 - S-23/S-24 (2026-10-16, re-checked externally 2026-10-18): §6 (no Blocked Reason "configuration error"), §7 (the generated Bank
   Account identifier added, a random version 4 UUID meeting NFR-020; the configuration fingerprint removed, because
   there is no generated Build Configuration any more), Consequences.
+- Phase 9 acceptance (2026-10-24): S-41 (P9-17, O-P2-75; the glossary term Recovery Check renamed First Upload
+  Matching): Consequences renamed; the table `recovery_check` in §7 keeps its name (ADR-002 §2).

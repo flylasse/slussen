@@ -1,4 +1,4 @@
-# ADR-002: Persistence With Room, Atomic Storage Operations, the Sent Record, Backups and the Recovery Check
+# ADR-002: Persistence With Room, Atomic Storage Operations, the Sent Record, Backups and First Upload Matching
 
 ## Status
 
@@ -25,12 +25,15 @@ What the specification requires of storage:
   UC-006 BR-014, UC-009 BR-006, BR-008, UC-010 BR-006: the stored Bank Transactions, the Sent Record, how Slussen
   recognises each Bank Account with its generated identifier, name and Start Date, the chosen Budgets, the Account
   Mappings with the time of their first send, Funded By and Transfer Partner, the Review Decisions and Transfer Decisions, the Operator Settings, **as of the time the device
-  backup was made**, and in full on an upgrade.
+  backup was made**, and in full on an upgrade; since S-38 also the Left-Out Bank Accounts and the Manually Kept
+  Accounts (FR-105, FR-106, UC-013 BR-011, BR-014). Since S-39, NFR-017 covers every newer build installed over the
+  installed one, a release or a debug build signed with the same key, and every database: an upgrade loses 0 stored
+  data, the Decision Journal and what `device.db` holds included.
 - **What never leaves the device in a backup or device-to-device transfer.** NFR-009 (changed), UC-007 BR-005,
   `BANK_SESSION`, `OFFERED_BANK_ACCOUNT`, `SERVICE_CREDENTIAL`: no log, no service credential, no Bank Consent data,
   no Bank Session, no Consent Request in progress, no Offered Bank Account (NFR-021, UC-014 BR-003). NFR-011, UC-011 BR-004: no Decision Journal.
-- **The Recovery Check (S-06).** FR-095, NFR-005 (changed), UC-006 BR-017, A13, UC-008 A1, A8, A9, BR-009,
-  `RECOVERY_CHECK`: after Slussen starts from its last good copy, from data restored from a device backup or from the
+- **First Upload Matching (S-06, named by S-41).** FR-095, NFR-005 (changed), UC-006 BR-017, A13, UC-008 A1, A8, A9, BR-009,
+  `FIRST_UPLOAD_MATCHING`: after Slussen starts from its last good copy, from data restored from a device backup or from the
   empty data of a new installation, no Upload Plan is prepared until a Comparison has run and the Operator has
   confirmed.
 - **The backup size warning.** NFR-019, C-015, UC-008 A7, BR-010: Android backs up at most 25 MB of an app's data and
@@ -38,7 +41,7 @@ What the specification requires of storage:
   default, an Operator Setting).
 - **Unreadable stored data.** NFR-005, NFR-006, UC-008 A1, UC-010 BR-004 (changed by S-13): keep the unreadable
   original unchanged, start from the last good or default content, show a notice naming the part, do not crash; open a
-  Recovery Check only when the part holds Decision-Critical Data (glossary); damage to the Decision Journal or other
+  First Upload Matching only when the part holds Decision-Critical Data (glossary); damage to the Decision Journal or other
   data no decision depends on opens none and changes no Upload Plan or Upload.
 - **The stored Budget App copy (S-12).** UC-003 BR-020, BR-017, `BUDGET_APP_TRANSACTION` (`transfer_link_reference`,
   `merged_into_reference`, `cleared`, `approved`): each transaction is kept with the other side of its linked Transfer,
@@ -52,14 +55,14 @@ What the specification requires of storage:
   `BUDGET.served`, `BANK_ACCOUNT.generated_identifier` (replacing the Configuration Key and `configured` of S-03 and
   S-10), `ACCOUNT_MAPPING.first_sent_at` (replacing `locked_at`), `OFFERED_BANK_ACCOUNT.balance`, `SERVICE_CREDENTIAL`,
   `DATA_PROVIDER.request_limit` declared by the part, `FETCH.outcome` Credentials Refused.
-- **New entities of the architecture gate:** `BANK_SESSION` (S-02), `RECOVERY_CHECK` (S-06), `UNREADABLE_TRANSACTION` (S-07),
+- **New entities of the architecture gate:** `BANK_SESSION` (S-02), `FIRST_UPLOAD_MATCHING` (S-06), `UNREADABLE_TRANSACTION` (S-07),
   `OFFERED_BANK_ACCOUNT` (S-08), `BUDGET_APP_TRANSACTION.memo` (S-09), `OPERATOR_SETTINGS.file_upload_window_days`
   (S-01) and `backup_warning_percent` (NFR-019); `DATA_PROVIDER.fetch_cooldown_minutes` (S-22), the Fetch Cooldown of
   each Data Provider, an Operator Setting kept per Data Provider instead of in `OPERATOR_SETTINGS`.
 - **The Decision Journal never affects decisions.** NFR-006, UC-010 BR-004, UC-011 BR-002; size limit by dropping
   the oldest entries (`DECISION_JOURNAL_ENTRY` constraints, UC-010 BR-003).
-- **Counters that survive a restart.** `PROVIDER_REQUEST` is kept for at least 24 hours, the window set by the Data
-  Provider's own limit, over which the Request Limit is counted (glossary: Request Limit), and survives a restart of the app
+- **Counters that survive a restart.** `PROVIDER_REQUEST` is kept for at least 24 hours, the rolling window over which
+  the Request Limit is counted, the window of a Data Provider's own limit and of PSD2 (C-006) (glossary: Request Limit), and survives a restart of the app
   (UC-001 BR-007, BR-012).
 - The Operator decided (bootstrap plan O-09) that storage is Room, and (O-P1-03) that the Budget App read cursor stays
   technical, outside the entity model.
@@ -71,7 +74,7 @@ backup rule files that disagreed: one copy excluded the files holding Review Dec
 first.
 
 The Phase 2b re-review found that the read metadata had no durable storage (B-03), that an interrupted Comparison
-left old statuses usable (B-04), that process death during the start sequence could lose the Recovery Check (B-05),
+left old statuses usable (B-04), that process death during the start sequence could lose the First Upload Matching (B-05),
 that journal damage blocked Uploads (B-06), and that clearing items went through the Sent Record protocol and
 confirmation did not recheck expiry at the commit (B-02, B-07).
 
@@ -94,7 +97,7 @@ rules lives in different database files.
 | Journal | `journal.db` in `Context.noBackupFilesDir` | No | `decision_journal_entry` |
 
 `slussen.db` therefore holds: `budget`, `budget_account`, `budget_app_transaction`, `data_provider`, `file_format`,
-`bank`, `bank_account`, `account_mapping`, `fetch`, `fetch_result`, `back_off`, `provider_request`,
+`bank`, `bank_account`, `account_mapping`, `left_out_bank_account`, `fetch`, `fetch_result`, `back_off`, `provider_request`,
 `account_balance`, `transaction_file`, `bank_transaction`, `unreadable_transaction`, `review_decision`, `transfer`,
 `upload_plan`, `eligible_transaction`, `sent_record`, `transfer_counterpart`, `recovery_check`, `operator_settings`,
 `transfer_description`, and the technical tables `budget_read_state`, `coordinator_state` and `upload_plan_item`.
@@ -114,6 +117,9 @@ name.
 
 - One table per entity; table and column names are the entity and attribute names in lower case
   (`BANK_TRANSACTION.import_identifier` becomes `bank_transaction.import_identifier`).
+- One exception (S-41): `FIRST_UPLOAD_MATCHING` is stored in the table `recovery_check`, the name of committed schema
+  version 1; renaming the table would need a schema version for no gain (§7). Its columns keep the attribute names
+  (`cause`, `opened_at`, `compared_at`, `confirmed_at`), and no new schema version is added for the rename.
 - `Long` with `Primary Key, Sequence` becomes `@PrimaryKey(autoGenerate = true)`. Composite keys
   (`fetch_result`, `eligible_transaction`) become Room `primaryKeys`.
 - `Decimal 12,3` is stored as `INTEGER` thousandths of the currency unit (the `Amount` type of ADR-001 §4).
@@ -171,8 +177,30 @@ Configuration of them and no reconciliation by key:
   Sent Records keep their `budget_account_id` (UC-003 BR-021), except that a later retry of a Rejected send moves its
   record to the Budget Account of the current Account Mapping (§4 step 2; UC-006 BR-020, O-P2-34 (1)).
 - `offered_bank_account.balance` holds the balance the Data Provider reported with the delivery (UC-013 step 5).
-- `data_provider.request_limit` is not an Operator Setting: O-11 sets it at every start from the value the Data
-  Provider's part declares (`DataProviderProfile.requestLimit`, ADR-001 §4.1; FR-017).
+- `left_out_bank_account` (S-38) is a table of `slussen.db`, so it is backed up, restored and kept on an upgrade with
+  the Bank Accounts: it is the Operator's decision, while the Offered Bank Accounts it filters live in `device.db`,
+  are replaced at every delivery and are not restored (UC-013 BR-011). `data_provider_id` is a real foreign key to
+  `data_provider`; a unique index on (`data_provider_id`, `provider_reference`). O-15 inserts one row when the Operator
+  switches an Offered Bank Account's import off (UC-013 steps 6-7, BR-012; S-40) and deletes it when the import is
+  switched on again (UC-013 A10, UC-009 A15 leads there) or the Bank Account is chosen for a File Format's balance
+  (BR-006). O-2 and O-11 never touch it. The core matches the Offered Bank Accounts of `device.db` against it by
+  (`data_provider_id`, `provider_reference`), across the two databases: a match is not offered for pairing, gets no
+  `proposed_bank_account_id`, and is never selected for a Fetch (ADR-001 §4.1 `FetchRequest`). O-15 never adds a
+  Bank Account whose reference is left out; choosing a Left-Out one for a File Format's balance deletes its row in the
+  same transaction (UC-013 BR-006).
+- `budget_account.manually_kept` (S-38) is set and cleared by O-15 (UC-013 A9; UC-009 A16 leads there), refused while
+  the Budget Account receives through an Account Mapping; a read of the Budget Accounts from the Budget App (UC-013
+  step 4, O-4) keeps it unchanged. A Manually Kept Account is never offered for pairing (UC-013 BR-014).
+- `bank_account.provider_bank_id` (S-33) is set by O-15 when the Bank Account is added and by O-13 when it is
+  identified, from the `offered_bank_account.bank_id` it is identified with, and is never changed by a change of
+  `bank_account.bank_id` (UC-009 A14). It is kept in `slussen.db`, a real foreign key to `bank`, because the Offered
+  Bank Accounts in `device.db` are replaced at every delivery and not restored after a reinstall, while the Bank
+  Accounts a Bank Consent will cover must still be known when the Operator grants it again (UC-007 BR-005, BR-009).
+- `data_provider.request_limit` with `request_limit_published` (S-31): when the Data Provider's part declares a
+  published limit (`RequestLimitDeclaration.Published`, ADR-001 §4.1; FR-017), it is not an Operator Setting and O-11
+  sets it at every start from the part; when the part declares none published (`NotPublished`), it is an Operator
+  Setting kept per Data Provider beside `fetch_cooldown_minutes`, changed through O-13 within the range the part
+  declares (UC-010 BR-002, A11).
 - `fetch.outcome` has the value Credentials Refused (UC-001 A7); the Phase 1-2 value Configuration Error is gone.
 - A `funded_by_budget_account_id` or `transfer_partner_budget_account_id` whose Budget Account no longer receives
   through any Account Mapping of a Bank Account that is not a Retired Account is kept unchanged; the core treats it as
@@ -183,7 +211,11 @@ Configuration of them and no reconciliation by key:
 per Data Provider of the build and one `file_format` row per File Pre-processor, matched by `source_key`, in one
 transaction: a new `data_provider` row gets `fetch_cooldown_minutes` from the default its plug-in declares
 (`DataProviderProfile.defaultFetchCooldownMinutes`), an existing row keeps the value the Operator set, which is backed
-up and restored with the other Operator Settings (S-22, UC-001 BR-006); `request_limit` is always set from the part.
+up and restored with the other Operator Settings (S-22, UC-001 BR-006). For the Request Limit, a `Published`
+declaration always sets `request_limit` from the part with `request_limit_published` true; a `NotPublished` one gives
+a new row, or a row whose limit was published until now, the part's default with `request_limit_published` false, and
+an existing row keeps the Operator's value, backed up and restored like the Fetch Cooldown, while it lies in the
+declared range, and otherwise takes the default (S-31, UC-001 BR-007).
 Nothing is ever deleted by it.
 
 ### 2a. Service credentials, encrypted on the device (S-24)
@@ -204,7 +236,7 @@ NFR-021, UC-014 BR-003, BR-004, `SERVICE_CREDENTIAL`:
   removal (A3).
 - A ciphertext that cannot be decrypted (for example the Keystore key is gone) is treated as missing credentials: the
   row is deleted and the Blocked Reason "credentials missing" is shown (UC-014 BR-005). It is not Decision-Critical
-  Data and opens no Recovery Check (§6).
+  Data and opens no First Upload Matching (§6).
 - After a reinstall or on a new device, `device.db` and the key are not restored; the Operator enters the credentials
   again (UC-014 BR-004).
 
@@ -227,11 +259,11 @@ a step from two calls. Each operation that changes something an Upload Plan depe
 | O-8 | `UploadStore.recordOutcomes` | The reported outcomes of one Budget Account's transaction sends | UC-006 steps 8-9, A8, A9, BR-012 |
 | O-9 | `UploadStore.finishUpload` | The end of the Upload and the mode Normal | UC-006 step 12 |
 | O-10 | `ConsentStore.startRequest`, `consumeAnswer`, `replaceConsent`, `revoke` (`device.db`) | Start: a new Consent Request with its correlation, making earlier ones of the Bank unanswerable. Consume: the most-recent, lifetime and not-answered checks and `answered` set, together. Replace: the Bank Consent and its Bank Session in place of the earlier ones, refused when a newer Consent Request exists. Revoke: delete the Bank Consent, its Bank Session and every Consent Request of the Bank | UC-007 BR-002, BR-003, BR-004, BR-007; NFR-013 |
-| O-11 | `PluginRegistryStore.reconcile` | §2, the Data Providers and File Formats of the build, with the Request Limit and the default Fetch Cooldown their parts declare | FR-017, UC-001 BR-006, BR-007 |
-| O-12 | `RecoveryStore.openCheck`, `confirmChecks` | Open a Recovery Check with its cause; confirm every open check whose `compared_at` is filled, together with its Decision Journal record request | UC-006 BR-017, UC-008 A9, BR-009 |
-| O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses; setting a Funded By or Transfer Partner (also from a Transfer Decision) is refused unless the Budget Account is in the same Budget, differs from the Bank Account's own, and receives through an Account Mapping of a Bank Account that is not a Retired Account, never a Manually Kept Account (UC-005 BR-014, `BANK_ACCOUNT` constraints); `MappingStore.move`, `MappingStore.remove` and `MappingStore.identifyAgain` change or delete an Account Mapping or record a new identification of its Bank Account (with `identified_at`), refused while a `sent_record` of the Bank Account's transactions with the mapping's `budget_account_id` (also one sent through an earlier mapping to that Budget Account; `first_sent_at` does not decide) has an `outcome` other than Rejected, unless the call carries the Operator's confirmation of the stated number of those sent transactions and, separately, of the Rejected ones; each records the change, and a move resets `first_sent_at` (UC-009 A6-A8, A11, BR-003, BR-007); `MappingStore.mapAgain` stores, without confirmation, a new Account Mapping with `first_sent_at` empty for a Bank Account that has none, refused unless the Budget Account belongs to a served Budget in the Bank Account's currency and receives through no Account Mapping (UC-009 A8); confirming a proposed match records the identification with `identified_at` (UC-009 steps 4-6, A1); renaming and Start Date are single updates (UC-009 A12, A13); a Review Decision on a Transfer Leg also sets the statuses of the other Transfer Legs of its Transfer (Deferred, or Already In Budget App while an Already Present decision holds) in the same transaction | UC-004 BR-006, BR-009; UC-005 BR-013, BR-014; UC-009 BR-003, BR-007, BR-008, A6-A13, UC-010 |
+| O-11 | `PluginRegistryStore.reconcile` | §2, the Data Providers and File Formats of the build, with the Request Limit (published, or a default and range) and the default Fetch Cooldown their parts declare | FR-017, UC-001 BR-006, BR-007 |
+| O-12 | `FirstUploadMatchingStore.openCheck`, `confirmChecks` | Open a First Upload Matching with its cause; confirm every open one whose `compared_at` is filled, together with its Decision Journal record request | UC-006 BR-017, UC-008 A9, BR-009 |
+| O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses; setting a Funded By or Transfer Partner (also from a Transfer Decision) is refused unless the Budget Account is in the same Budget, differs from the Bank Account's own, and receives through an Account Mapping of a Bank Account that is not a Retired Account, never a Manually Kept Account (UC-005 BR-014, `BANK_ACCOUNT` constraints); `MappingStore.move`, `MappingStore.remove` and `MappingStore.identifyAgain` change or delete an Account Mapping or record a new identification of its Bank Account (with `identified_at`), refused while a `sent_record` of the Bank Account's transactions with the mapping's `budget_account_id` (also one sent through an earlier mapping to that Budget Account; `first_sent_at` does not decide) has an `outcome` other than Rejected, unless the call carries the Operator's confirmation of the stated number of those sent transactions and, separately, of the Rejected ones; each records the change, and a move resets `first_sent_at` (UC-009 A6-A8, A11, BR-003, BR-007); `MappingStore.mapAgain` stores, without confirmation, a new Account Mapping with `first_sent_at` empty for a Bank Account that has none, refused unless the Budget Account belongs to a served Budget in the Bank Account's currency and receives through no Account Mapping (UC-009 A8); confirming a proposed match records the identification with `identified_at` (UC-009 steps 4-6, A1); renaming and Start Date are single updates (UC-009 A12, A13); a Review Decision on a Transfer Leg also sets the statuses of the other Transfer Legs of its Transfer (Deferred, or Already In Budget App while an Already Present decision holds) in the same transaction | UC-004 BR-006, BR-009; UC-005 BR-013, BR-014; UC-009 BR-003, BR-007, BR-008, A6-A14, UC-010 |
 | O-14 | `UploadStore.recordClearing` | The result of one clearing (ADR-007 §6 step 8): a new `transfer_counterpart` with the leg's `sent_record_id`, its `budget_app_reference` and `state` Cleared (with `cleared_at`) or Uncleared; or an existing one set to Cleared with `cleared_at`. It never inserts, resets or changes a `sent_record` | UC-006 steps 10, BR-009, BR-010, BR-011, A11 |
-| O-15 | `ConnectionStore.serveBudgets`, `ConnectionStore.addBankAccount` | Serve: set `budget.served` for the chosen Budgets, refused for a Budget into which a Bank Account is mapped (UC-013 A2). Add: a new `bank_account` with its generated identifier, proposed name, optional Start Date, how the Source identifies it, `identified_at`, for a File Format the optional `balance_data_provider_id` with the `balance_provider_reference` of the Offered Bank Account chosen for its balance (UC-013 A4, BR-006), and its `account_mapping`, refused when the Budget Account already receives through an Account Mapping or its Budget has another currency (UC-013 A5) | UC-013 steps 3-10, BR-001, BR-003, A2, A4, A5; FR-097, FR-098 |
+| O-15 | `ConnectionStore.serveBudgets`, `ConnectionStore.leaveOut`, `ConnectionStore.addBankAccount`, `ConnectionStore.bringBack`, `ConnectionStore.setManuallyKept` | Serve: set `budget.served` for the chosen Budgets, refused for a Budget into which a Bank Account is mapped (UC-013 A2). Leave out: one `left_out_bank_account` for the Offered Bank Account whose import the Operator switched off, at once and without a confirmation, or one for each of them when the Operator switches off every one (UC-013 steps 6-7, A12, BR-011, BR-012). Add: a new `bank_account` with its generated identifier, proposed name, optional Start Date, how the Source identifies it, `identified_at`, for a File Format the optional `balance_data_provider_id` with the `balance_provider_reference` of the Offered Bank Account chosen for its balance, deleting its `left_out_bank_account` when it was left out (UC-013 A4, BR-006), and its `account_mapping`, refused when the Budget Account already receives through an Account Mapping, its Budget has another currency (UC-013 A5) or it is a Manually Kept Account (BR-014). Bring back: delete one `left_out_bank_account` when its import is switched on again (UC-013 A10). Mark and unmark: set or clear `budget_account.manually_kept` when the Operator switches "Receives from Slussen" off or on, setting refused while it receives through an Account Mapping (UC-013 A9, BR-014) | UC-013 steps 3-13, BR-001, BR-003, BR-011, BR-012, BR-014, A2, A4, A5, A9, A10, A12; FR-097, FR-098, FR-105, FR-106 |
 | O-16 | `CredentialStore.replace`, `CredentialStore.remove` (`device.db`) | Replace: the encrypted `service_credential` of one service, only after the service accepted it, in place of the earlier one. Remove: delete it (§2a) | UC-014 steps 4, A1, A3; NFR-021 |
 
 A crash at any point leaves each operation either complete or absent. Each has an instrumented test that injects a
@@ -322,18 +354,18 @@ Android documentation as its source). At every opening, when the size reaches `b
 **What a backup can and cannot give (A-04).** Android decides when it makes a backup; Slussen cannot force a fresh
 one, cannot see whether the last one succeeded, and gets none at all above the limit. NFR-010 (changed) promises the
 data "that existed when Android made the backup", not the data of the last moment. Everything after that point is
-covered by the Recovery Check (§6), not by the backup.
+covered by First Upload Matching (§6), not by the backup.
 
 Tests that prove it: a JVM test in `:persistence` parses both XML files and checks that the include list is exactly
 `slussen.db` in every section and that no rule names `device.db` or `journal.db`; a test checks that the `device.db`
 and `journal.db` paths are under `noBackupFilesDir`; the restore evidence of ADR-005 §7 (E-07) checks it on a device.
 
-### 6. The start sequence and the Recovery Check (S-06; A-03, A-04)
+### 6. The start sequence and First Upload Matching (S-06; A-03, A-04)
 
 At every start, before Room opens `slussen.db` and before any operation is admitted, `:persistence` runs the start
 sequence and reports its result through `StartState` (ADR-001 §3):
 
-| `installation.id` in `noBackupFilesDir` | `slussen.db` | Start | Recovery Check opened with cause |
+| `installation.id` in `noBackupFilesDir` | `slussen.db` | Start | First Upload Matching opened with cause |
 |---|---|---|---|
 | present | present and readable | normal | none |
 | absent | absent or empty | new installation | New Installation |
@@ -341,50 +373,82 @@ sequence and reports its result through `StartState` (ADR-001 §3):
 | present | absent | data cleared while the marker survived | New Installation |
 | any | unreadable, started from the last good copy or empty (§8) | last good copy | Last Good Copy |
 
-**Only Decision-Critical Data opens a Recovery Check (S-13, B-06).** `slussen.db` holds all Decision-Critical Data
+**Only Decision-Critical Data opens a First Upload Matching (S-13, B-06).** `slussen.db` holds all Decision-Critical Data
 (the Bank Transactions with their statuses, the Sent Record, the chosen Budgets, the Bank Accounts with their
 identifications, names and Start Dates, the Account Mappings with the time of their first send, the Review and Transfer Decisions, the Operator Settings), so damage to it, wherever in the file,
 opens one. Damage to `device.db` (service credentials, Bank Consents, Bank Sessions, Consent Requests, Offered Bank
 Accounts) or to
-`journal.db` (the Decision Journal) shows the notice of UC-008 A1 only, opens no Recovery Check and changes no Upload
+`journal.db` (the Decision Journal) shows the notice of UC-008 A1 only, opens no First Upload Matching and changes no Upload
 Plan or Upload (NFR-005, NFR-006, UC-010 BR-004).
 
 **The start intent survives process death (B-05).** A database transaction cannot cover file renames and a file
-outside the database, so the start sequence makes the obligation to open a Recovery Check durable before it changes
+outside the database, so the start sequence makes the obligation to open a First Upload Matching durable before it changes
 anything:
 
 1. **Resume.** When `slussen.start-intent` exists, its cause is used and steps 2 and 3 are skipped; the sequence
    continues at step 4.
 2. **Classify** by the table above.
-3. **Record the intent.** For every start that opens a Recovery Check, the sequence writes its cause to
+3. **Record the intent.** For every start that opens a First Upload Matching, the sequence writes its cause to
    `slussen.start-intent` (written to a temporary file, flushed, renamed, and the directory flushed) **before** it
    writes `installation.id`, before it renames an unreadable `slussen.db` or copies the last good copy (§8), and before
    Room opens the database. A normal start writes no intent.
 4. **Do the work of the cause.** For Last Good Copy: §8 step 3, which is safe to repeat (a `slussen.db` that still
    fails the checks of §8 step 1 is the unreadable original and is set aside again; one that passes is the
    replacement). Then `installation.id` is written when it is absent.
-5. **Open the check.** One transaction of O-12 opens the Recovery Check with the cause and resets `coordinator_state`
+5. **Open First Upload Matching.** One transaction of O-12 opens the First Upload Matching with the cause and resets `coordinator_state`
    as ADR-007 §8 says.
 6. **Clear the intent.** `slussen.start-intent` is deleted and the directory flushed, only after step 5 committed.
 
 A process that dies between any two steps restarts at step 1 with the intent present and finishes the same work; it
-can never look like a normal start. Dying between steps 5 and 6 opens a second Recovery Check at the next start, which
+can never look like a normal start. Dying between steps 5 and 6 opens a second First Upload Matching at the next start, which
 the entity model allows ("also when an earlier one is still open") and which the same Comparison and confirmation close.
 Each boundary is tested by an interruption (ADR-005 §7, E-12).
 
-While any Recovery Check is open, the coordinator prepares no Upload Plan (ADR-007 §3); UC-008 A8 shows why. A
+While any First Upload Matching is open, the coordinator prepares no Upload Plan (ADR-007 §3); UC-008 A8 shows why. A
 Comparison that read every Budget with a mapped Bank Account fills `compared_at` (O-5, UC-003 BR-019), and only then
 can the Operator confirm (O-12, UC-008 A9). This is how the data a backup or a last good copy lacks (Sent Records,
 first sends, decisions written after it was made) is dealt with: the Comparison finds every transaction Slussen sent by its
 Import Identifier (ADR-008), which no build can change, and the Operator checks the Budget App before any Upload.
 Uploads never go ahead on a Sent Record that may be incomplete; a warning alone is not used.
 
-### 7. Upgrades keep the data
+**What UC-008 BR-009 shows comes from `cause` alone (S-41).** The reason line Slussen shows for each open First Upload
+Matching is chosen by its `cause`: New Installation, Restored Backup or Last Good Copy. Nothing stored says when the
+data Slussen started from was saved: Slussen cannot see when Android made the backup it restored (§5), and the date of
+the last good copy (§8) is not recorded; `opened_at` is the time of the start, not of that data. So no reason line
+names a date. A start from the last good copy that found none and started from the default content (§8 step 3) has
+the same cause and shows the same line.
 
-- `exportSchema = true`; every schema version of each database is committed under `persistence/schemas/`.
-- Every schema change has a hand-written Room `Migration` and a `MigrationTestHelper` test from every schema version
-  that was released (released = present in a merged `VERSION` bump, ADR-005).
-- A migration never rewrites `import_identifier`, `configuration_key` or `occurrence` values (ADR-008 §4).
+### 7. Upgrades keep the data (S-39)
+
+NFR-017: installing a newer build over the installed one, a release or a debug build signed with the same key
+(ADR-005 §6), loses 0 stored data, in all three databases; every change to how Slussen stores data upgrades the
+stored data, and none deletes it.
+
+- `exportSchema = true`. Room writes the schema it generates for each database into the build directory
+  (`room.schemaLocation` under `persistence/build/`), never over the committed files; the committed files under
+  `persistence/schemas/` are the reference.
+- **A committed schema version is final.** Every schema version of each database committed under
+  `persistence/schemas/` is final from its commit on, because a build that holds it may be installed: the Operator's
+  phone holds one from Phase 9 on. The baseline is version 1 of `slussen.db`, `device.db` and `journal.db` as
+  committed at `96712aa`. A committed version is never changed in place. This replaces the earlier rule that only
+  a version "released" in a merged `VERSION` bump needed a Migration; construction changed version 1 of `slussen.db`
+  in place under that rule, which ends with the baseline.
+- **A schema change adds the next version.** Every change to a table, column, index or foreign key of a database,
+  also a table that a later slice adds for an entity it builds, raises that database's version by one, commits the
+  new version's schema file in the same commit, and adds a hand-written Room `Migration` from the previous version.
+  The first after the baseline is `slussen.db` version 2 with `left_out_bank_account` (S-38).
+- **Migration tests from every committed version.** For each database, a `MigrationTestHelper` test creates the
+  database at every committed version with invented rows in every table, migrates it to the current version, and
+  checks that every row and value is kept. It runs instrumented (§11; ADR-005 §7 E-06) and, where Room's JVM support
+  allows it for these databases, also as a JVM test in `check`.
+- **The schema check in the gate.** A JVM test in `:persistence`, run by `gradlew check`, compares for each database
+  the schema the build generates for its current version with the committed file of that version by Room's identity
+  hash. It fails, naming the database and the version, when they differ (an entity changed without a new version: an
+  in-place change) and when the current version has no committed file (a new version not committed). A planted
+  violation proves it (ADR-001 §6.6).
+- A migration never rewrites `import_identifier`, `configuration_key` or `occurrence` values (ADR-008 §4), and never
+  deletes a row or a value of stored data; a column that is no longer needed is kept, or its values are moved, in the
+  same Migration.
 - Destructive fallback is never used (Konsist K-09 in ADR-001).
 - Installing an older build over a newer one is refused by Android (lower `versionCode`, ADR-005), so no downgrade
   migration exists. An in-place upgrade needs the same signing key (ADR-005 §6).
@@ -408,8 +472,8 @@ is closed:
    ADR-008 §7 says, and the rename never overwrites an existing file; `slussen.lastgood.db` is copied to
    `slussen.db`, or, without one, an empty database with the default content (one `operator_settings` record with
    every default, the default Transfer Descriptions of UC-010 BR-007, and, through O-11 at the same start, one
-   `data_provider` row per Data Provider with its declared default Fetch Cooldown) is created; the part is reported to the core,
-   which shows the notice of UC-008 A1; a Recovery Check is opened (§6).
+   `data_provider` row per Data Provider with its declared default Fetch Cooldown and Request Limit) is created; the part is reported to the core,
+   which shows the notice of UC-008 A1; a First Upload Matching is opened (§6).
 4. **Unreadable while running.** A `TypeConverter` that meets an unknown text, or a failed foreign key, throws
    `UnreadableStoredData`. The app does not continue on that data: for `slussen.db` it writes the start intent with
    cause Last Good Copy (§6, step 3 of the start sequence) and restarts its process; the next start sequence resumes
@@ -418,7 +482,7 @@ is closed:
    Room's `onCorruption` callback does the same instead of SQLite's default, which deletes the file.
 5. `device.db` and `journal.db` get no last good copy: starting with no Bank Consent is safe (the Operator grants
    again), and losing the journal changes nothing (NFR-006). Their unreadable originals are kept the same way, they
-   start empty, the notice of UC-008 A1 names the part, and no Recovery Check is opened (S-13).
+   start empty, the notice of UC-008 A1 names the part, and no First Upload Matching is opened (S-13).
 
 The parts are named for the Operator: `slussen.db` "stored transactions, decisions and settings", `device.db` "service
 credentials, Bank Consents and Offered Bank Accounts", `journal.db` "Decision Journal". The copy, the replacement, the logical check,
@@ -464,18 +528,22 @@ run with JUnit 5 (ADR-004, ADR-005).
   Bank Consents, Bank Sessions, Offered Bank Accounts and the Decision Journal start empty: the Operator enters the
   credentials again (UC-014 BR-004), the Bank Accounts of Banks that need a Bank Consent show "missing consent" until
   the Operator grants again (FR-042), and UC-009 A10 applies until the next Fetch.
-- After a restore, a new installation or a last good copy, Uploads wait for the Recovery Check. The Operator can see
+- After a restore, a new installation or a last good copy, Uploads wait for First Upload Matching. The Operator can see
   the Transaction Statuses at once; only Uploads wait.
 - Cross-database references are checked by the core, not by SQLite.
 - `TRUNCATE` journal mode writes more slowly than WAL, and the last good copy costs one file copy per start. The data
   is a household's transactions, so neither is noticeable; the backup size warning watches the file's growth.
 - An Offered Bank Account cannot be confirmed after a reinstall until the next Fetch or grant (UC-009 A10).
 - Damage to the Decision Journal or to `device.db` never blocks an Upload; damage to `slussen.db` always does until
-  the Recovery Check is confirmed (S-13).
+  First Upload Matching is confirmed (S-13).
+- From the baseline on (S-39), every schema change costs a new version, a Migration and its tests, also during
+  construction; in exchange the Operator's phone keeps its data from Phase 9 on. The schema check sees only the
+  current version of each database; an edit of an older committed file is caught by the migration tests from that
+  version and by review, not by the check.
 - The stored copy of the Budget App grows by four attributes per transaction (S-12); in exchange, a linked Upload
   whose answer was lost is settled from stored data alone after any restart.
 - A crash during the start sequence or between the two halves of a Comparison costs at most a repeated step or a
-  second open Recovery Check, never a skipped one.
+  second open First Upload Matching, never a skipped one.
 
 ## Alternatives
 
@@ -499,11 +567,11 @@ run with JUnit 5 (ADR-004, ADR-005).
   Account.
 - **Warning the Operator after a restore and continuing to upload.** Rejected by S-06: a warning alone does not
   protect a Sent Record that may be incomplete.
-- **Opening a Recovery Check for damage to any database.** Rejected by S-13 (B-06): it let Decision Journal damage
+- **Opening a First Upload Matching for damage to any database.** Rejected by S-13 (B-06): it let Decision Journal damage
   block Uploads, against NFR-006.
 - **Making the Comparison's read and conclusions one transaction.** Not chosen (B-04): the `comparison_pending` marker
   gives the same guarantee and keeps the network read outside a transaction (ADR-007 §3a).
-- **Writing `installation.id` first and opening the Recovery Check after.** Rejected (B-05): a crash between the two
+- **Writing `installation.id` first and opening First Upload Matching after.** Rejected (B-05): a crash between the two
   would make the next start look normal; the start intent is written first instead.
 - **Detecting a restore from Android's backup agent callbacks.** Not chosen: Auto Backup restores files without a
   callback the app can rely on; the missing `installation.id` is a fact the start sequence can read.
@@ -565,3 +633,17 @@ run with JUnit 5 (ADR-004, ADR-005).
     keep theirs), §4 "What this guarantees"; ADR-007 §4, UC-006 BR-020.
 - Mockup gate follow-up (2026-10-18): §2 and §3 O-13 (no confirmation to move or remove an Account Mapping whose Sent Records are all Rejected; `first_sent_at` keeps its meaning; UC-009 A8, A11, BR-003).
 - Pre-Phase-6 review follow-up (2026-10-18): §2 and §3 O-13, O-15 (`bank_account.identified_at`, so the Fetch Cooldown never serves a Bank Account added or identified again, UC-001 BR-006; the confirmation to move, remove or identify again rests on the non-Rejected `sent_record`s alone, not on `first_sent_at`, and states the Rejected ones separately; mapping a Bank Account again; the balance Data Provider's reference stored on adding; UC-009 A6-A8, A11, BR-003, BR-007; UC-013 A4).
+- Phase 7 (2026-10-18): S-33 (O-P2-48; UC-007 BR-009): §2 (`bank_account.provider_bank_id`, the Bank the Data Provider names, which decides the Bank Consent that covers the Bank Account; `bank_account.bank_id` names and groups only).
+- Phase 7 (2026-10-18): S-31 (O-P2-42; FR-017, UC-001 BR-007, UC-010 A11, BR-002): Context and §2 (`data_provider.request_limit_published`; a Request Limit the Data Provider does not publish is an Operator Setting kept per Data Provider like the Fetch Cooldown; O-11 sets a published one from the part and keeps the Operator's value otherwise), §3 O-11, §8 step 3 (default content).
+- Phase 9, second attempt (2026-10-19): S-38 (FR-105, FR-106, UC-013 BR-011..BR-014, A8-A13, UC-009 A15, A16, BR-013): Context; §1 (`left_out_bank_account` in `slussen.db`); §2 (`left_out_bank_account`, backed up with the Bank Accounts, matched against the Offered Bank Accounts of `device.db`; `budget_account.manually_kept` set by the Operator only); §3 O-13 and O-15 (leave out, bring back, mark and unmark). S-39 (NFR-017 widened): Context; §7 rewritten (every committed schema version is final from the baseline `96712aa`; a schema change adds the next version with a Migration and tests from every committed version; the schema check by identity hash in `check`; the "released" rule replaced); Consequences.
+- Phase 9 acceptance (2026-10-19): S-40 (UC-013 steps 6-7, A9, A10, A12, BR-012, BR-014; A13 retired): §3 O-15 (a Left-Out Bank Account is recorded one at a time when its import is switched off, without the statement of numbers; marking and unmarking from the Budget App's page). No schema change.
+- Phase 8f (2026-10-20): O-P2-72: §2 and §3 O-13 no longer name `MappingStore.bringBack` and `setManuallyKept`; since
+  S-40, UC-009 A15 and A16 lead to the service pages and run through O-15; §2 `left_out_bank_account` updated for
+  S-40 (one row per switch, no statement).
+- Phase 9 acceptance (2026-10-24): S-41 (P9-17, O-P2-75; the glossary term Recovery Check renamed First Upload
+  Matching, entity `RECOVERY_CHECK` renamed `FIRST_UPLOAD_MATCHING`): title, Context, §2 (the entity stays in the
+  table `recovery_check` of committed schema version 1, an explicit exception to the naming rule; no new schema
+  version), §2a, §3 O-12, §5, §6 (renamed; the reason lines of UC-008 BR-009 come from `cause`, and no date of a backup
+  or of a last good copy is stored), §8, Consequences, Alternatives. The entries above keep the name of their time.
+- S-41 follow-up (2026-10-24): §3 O-12 `RecoveryStore` renamed `FirstUploadMatchingStore`; the table keeps its name
+  `recovery_check` (§2).
