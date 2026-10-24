@@ -35,7 +35,7 @@ _None — opening Slussen before any Bank Account is added is handled by A10._
 
 1. Slussen keeps the unreadable original unchanged and starts that part from its last good content, or from its default content when there is none.
 2. Slussen shows a notice naming the part that could not be read.
-3. When the part holds Decision-Critical Data, Slussen opens a Recovery Check, so that no Upload Plan is prepared until the Operator has confirmed it (BR-009); damage to any other part, such as the Decision Journal, opens none and changes no Upload Plan or Upload.
+3. When the part holds Decision-Critical Data, Slussen opens a First Upload Matching, so that no Upload Plan is prepared until the Operator has confirmed it (BR-009); damage to any other part, such as the Decision Journal, opens none and changes no Upload Plan or Upload.
 4. Use case continues at step 2.
 
 ### A2: Account Balance Outdated
@@ -86,23 +86,23 @@ _None — opening Slussen before any Bank Account is added is handled by A10._
 1. Slussen shows a warning with the current size of the backed-up data and Android's limit, and that Android makes no backup at all once the limit is passed (BR-010).
 2. Use case continues at step 2.
 
-### A8: Recovery Check Open
+### A8: First Upload Matching Open
 
-**Trigger:** A Recovery Check is open (step 1)  
+**Trigger:** A First Upload Matching is open (step 1)  
 **Flow:**
 
-1. Slussen shows that Uploads are blocked until the Operator confirms the Recovery Check, and why: transactions sent after the data Slussen started from was saved are protected against a duplicate only by the Budget App's refusal of a reused Import Identifier and by the Comparison (BR-009).
+1. Slussen shows that Uploads wait for First Upload Matching, with its explanation, the reason line of the cause of each open one and the action "Start First Upload Matching", as information and not as an error (BR-009).
 2. Use case continues at step 2.
 
-### A9: Operator Confirms the Recovery Check
+### A9: Operator Confirms First Upload Matching
 
-**Trigger:** Operator chooses the action of the Blocked Reason "Recovery Check open" (step 8)  
+**Trigger:** Operator chooses the action "Start First Upload Matching" of the Blocked Reason "Uploads wait for First Upload Matching" (step 8)  
 **Flow:**
 
-1. Slussen starts Compare With the Budget App (UC-003) when no Comparison that read every Budget has run since the Recovery Check opened; when the Budget App cannot be read, the Recovery Check stays open and the use case ends.
-2. Slussen shows the Transaction Statuses of every Budget and asks the Operator to confirm that they have checked the Budget App for transactions Slussen sent after the data it started from was saved.
+1. Slussen starts Compare With the Budget App (UC-003) when no Comparison that read every Budget has run since First Upload Matching opened; when the Budget App cannot be read, First Upload Matching stays open and the use case ends.
+2. Slussen shows the result, the Transaction Statuses of every Budget with every Bank Transaction the Budget App already holds marked, and asks the Operator to confirm that they have looked at it and checked the Budget App.
 3. Operator confirms, or cancels and the use case ends.
-4. Slussen closes the Recovery Check, so that Uploads are available again, and records the confirmation in the Decision Journal.
+4. Slussen closes First Upload Matching, so that Uploads are available again, and records the confirmation in the Decision Journal.
 5. Use case ends.
 
 ### A10: No Bank Account Added Yet
@@ -124,7 +124,7 @@ _None — opening Slussen before any Bank Account is added is handled by A10._
 
 - No Source and no Bank is contacted, and nothing is written to the Budget App.
 - Unreadable stored data is kept unchanged and is never shown as valid.
-- A Recovery Check is never closed without a Comparison that read every Budget and the Operator's confirmation.
+- A First Upload Matching is never closed without a Comparison that read every Budget and the Operator's confirmation.
 
 ## Business Rules
 
@@ -150,7 +150,7 @@ The difference is the Account Balance minus the balance of the Budget Account as
 
 ### BR-006: Blocked Reasons and Their Remedies
 
-Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; a failed Fetch, the time of the failure and the action that fetches again (UC-001); Request Limit reached or access limit reached, the time the limit frees up; credentials refused or missing, enter them (UC-014); currency mismatch, move the Account Mapping (UC-009 A8); Recovery Check open, compare with the Budget App and confirm (BR-009).
+Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; a failed Fetch, the time of the failure and the action that fetches again (UC-001); Request Limit reached or access limit reached, the time the limit frees up; credentials refused or missing, enter them (UC-014); currency mismatch, move the Account Mapping (UC-009 A8); Uploads wait for First Upload Matching, start First Upload Matching: compare with the Budget App and confirm (BR-009).
 
 ### BR-007: One Budget at a Time
 
@@ -160,9 +160,15 @@ Each Budget, with its own currency, is shown as its own workspace with only its 
 
 Slussen keeps the most recent Fetches with Source, time, who started them and outcome: 60 by default, a number the Operator can change (UC-010). Every time Slussen shows is in the device's local time.
 
-### BR-009: Recovery Check
+### BR-009: First Upload Matching
 
-After Slussen starts from Decision-Critical Data that may lack what it last recorded (UC-006 BR-017), every opening shows that Uploads are blocked and why, until the Operator confirms the Recovery Check. The Operator can confirm it only after a Comparison that read every Budget has run since the check opened (UC-003 BR-019). The confirmation is recorded in the Decision Journal.
+After Slussen starts from Decision-Critical Data that may lack what it last recorded (UC-006 BR-017), every opening shows that Uploads wait for First Upload Matching, until the Operator confirms it. Its short name is First Upload Matching, its Blocked Reason reads "Uploads wait for First Upload Matching", and its action reads "Start First Upload Matching". It holds Uploads back and is not a failure, so it is always shown as information and never as an error: as plain information after a new installation, and as a caution after a restore from a device backup or a start from the last good copy, also while one of those is open beside one of a new installation.
+
+The explanation is the same in every case, with the Budget App's name where it says the Budget App: "Before Slussen uploads anything, it compares the transactions it fetched with what is already in the Budget App and marks every match, so that no transaction ends up in the Budget App twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual."
+
+Below it, Slussen shows one reason line for what it started from. After a new installation: "This is a new installation. Your earlier importer, the Budget App's own bank import or you by hand may already have added some of these transactions to the Budget App." After a restore from a device backup: "Slussen was restored from a backup. It may have uploaded transactions after the backup was made that its records no longer show." After a start from the last good copy: "Slussen's records could not be read, so it started from its last good copy, or from empty records when it had none. Anything uploaded after that copy was made is not in its records." Slussen knows neither the date of the backup nor the date of the last good copy, so no line names a date. While more than one First Upload Matching is open, the line of each cause is shown once.
+
+The Operator can confirm First Upload Matching only after a Comparison that read every Budget has run since it opened (UC-003 BR-019); one confirmation closes every open one. The confirmation is recorded in the Decision Journal.
 
 ### BR-010: Backup Size Warning
 
@@ -170,4 +176,4 @@ Android backs up at most 25 MB of an app's data and makes no backup at all when 
 
 ### BR-011: First Opening Leads to Settings
 
-While no Bank Account is added, opening Slussen shows nothing but one card that leads to Settings, where setting up Slussen starts (UC-013 BR-008), and names the next thing to do there, the first one UC-013 BR-008 recommends that is not yet done: for example entering the Budget App's credentials, choosing the Budgets, fetching a Data Provider or granting a Bank Consent, or mapping the imported Bank Accounts. Nothing else is shown, not even a Recovery Check that a new installation opens (A8, UC-006 BR-017), since nothing can be prepared for Upload before a Bank Account is added. From the first added Bank Account on, opening Slussen shows the overview of the main success scenario.
+While no Bank Account is added, opening Slussen shows nothing but one card that leads to Settings, where setting up Slussen starts (UC-013 BR-008), and names the next thing to do there, the first one UC-013 BR-008 recommends that is not yet done: for example entering the Budget App's credentials, choosing the Budgets, fetching a Data Provider or granting a Bank Consent, or mapping the imported Bank Accounts. Nothing else is shown, not even the First Upload Matching that a new installation opens (A8, UC-006 BR-017), since nothing can be prepared for Upload before a Bank Account is added. From the first added Bank Account on, opening Slussen shows the overview of the main success scenario.

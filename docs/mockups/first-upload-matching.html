@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Slussen Recovery Check</title>
+<title>Slussen First Upload Matching</title>
 <style>
   :root {
     --page-bg: #f4f5f7; --page-ink: #1d2430; --page-ink-2: #5a6472; --page-line: #d9dde3;
@@ -283,32 +283,43 @@
 </head>
 <body>
 <main>
-<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="connections.html">Service pages</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html" class="here">Recovery Check</a> <a href="journal-export.html">Journal Export</a> <a href="icons.html">Icons</a></nav>
+<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="connections.html">Service pages</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="first-upload-matching.html" class="here">First Upload Matching</a> <a href="journal-export.html">Journal Export</a> <a href="icons.html">Icons</a></nav>
 <p class="eyebrow">Slussen · screen mockup · UC-008 A8, A9</p>
-<h1>Recovery Check</h1>
-<p class="sub">Before any Upload after Slussen starts from data that may lack what it last recorded: a Comparison of every Budget, then the Operator's confirmation.</p>
+<h1>First Upload Matching</h1>
+<p class="sub">Before any Upload after Slussen starts from data that may lack what it last recorded: a Comparison of every Budget, then the Operator's confirmation. Information, never an error: blue after a new installation, amber after a restore or damaged data, never red.</p>
 <section>
-<h2>Recovery Check</h2>
-<p class="lede">New screen; the predecessor had none. Required by UC-006 BR-017 and UC-008 A8, A9.</p>
+<h2>First Upload Matching</h2>
+<p class="lede">New screen; the predecessor had none. Required by UC-006 BR-017 and UC-008 A8, A9, BR-009. The explanation is the same in every case; one reason line names what Slussen started from (the cause; no date is stored for a backup or a last good copy, ADR-002 §6).</p>
 <div class="flow">
 <div class="state" id="open">
-<div class="step-label"><span class="n">UC-008 A8, A9 1</span><p><b>The Recovery Check</b>, reached from the Overview banner or from Review Upload Plan.</p></div>
+<div class="step-label"><span class="n">UC-008 A8, A9 1 · BR-009</span><p><b>First Upload Matching after a restore</b> (cause Restored Backup), reached from the Overview card or from Review Upload Plan. Amber: a caution, not an error. <i>Build state, not part of the use case:</i> while the Comparison (UC-003) is not built, the card adds the line “Matching with YNAB comes in a later version; until then nothing is uploaded.” and Compare now is unavailable (O-P2-09).</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="overview.html#recovery">‹</a> Recovery Check</div>
-<p class="screen-sub">Cause: Restored Backup</p>
+<div class="screen-title"><a class="back" href="overview.html#recovery">‹</a> First Upload Matching</div>
+<p class="screen-sub">Restored from a backup</p>
 <div class="body">
-<div class="banner red"><span class="txt"><b>Uploads blocked: Recovery Check open</b> <span class="d">Restored backup 09:02 · sends after it unknown</span></span></div><div class="card"><div class="stepn"><span class="i">1</span> <span><span class="t">Compare every Budget with the Budget App</span> <span class="d">Not done since the Recovery Check opened.</span></span></div><span class="pair"><a class="cta-btn" href="#comparing">Compare now</a></span><div class="stepn"><span class="i">2</span> <span><span class="t">Check the Budget App yourself</span> </span></div><div class="stepn"><span class="i">3</span> <span><span class="t">Confirm the Recovery Check</span> <span class="d">Available after step 1.</span></span></div></div>
+<div class="banner"><span class="txt"><b>Uploads wait for First Upload Matching</b> <span class="d">Before Slussen uploads anything, it compares the transactions it fetched with what is already in YNAB and marks every match, so that no transaction ends up in YNAB twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual.</span> <span class="d">Slussen was restored from a backup. It may have uploaded transactions after the backup was made that its records no longer show.</span></span></div><div class="card"><div class="stepn"><span class="i">1</span> <span><span class="t">Compare with YNAB</span> <span class="d">Not done since First Upload Matching started.</span></span></div><span class="pair"><a class="cta-btn" href="#comparing">Compare now</a></span><div class="stepn"><span class="i">2</span> <span><span class="t">Look at the result</span> <span class="d">Every transaction YNAB already has is marked.</span></span></div><div class="stepn"><span class="i">3</span> <span><span class="t">Confirm First Upload Matching</span> <span class="d">Available after step 1.</span></span></div></div>
 </div>
 
 </div>
 </div>
 <div class="state" id="new-installation">
-<div class="step-label"><span class="n">UC-008 A8 · UC-006 BR-017</span><p><b>Cause New Installation</b>: the empty data of a new installation; earlier sends from this phone, or from an earlier installation, are unknown. Reached from the Overview banner at first start.</p></div>
+<div class="step-label"><span class="n">UC-008 A8, A9 1 · BR-009 · UC-006 BR-017</span><p><b>Cause New Installation</b>: the empty data of a new installation. Blue: plain information. Reached from the Overview card once the first Bank Accounts are added. <i>Build state:</i> while the Comparison (UC-003) is not built, the card adds “Matching with YNAB comes in a later version; until then nothing is uploaded.”</p></div>
 <div class="phone">
-<div class="screen-title"><a class="back" href="overview.html#new-installation">‹</a> Recovery Check</div>
-<p class="screen-sub">Cause: New Installation</p>
+<div class="screen-title"><a class="back" href="overview.html#first-added">‹</a> First Upload Matching</div>
+<p class="screen-sub">New installation</p>
 <div class="body">
-<div class="banner red"><span class="txt"><b>Uploads blocked: Recovery Check open</b> <span class="d">New installation · earlier sends unknown</span></span></div><div class="card"><div class="stepn"><span class="i">1</span> <span><span class="t">Compare every Budget with the Budget App</span> <span class="d">Not done since the Recovery Check opened.</span></span></div><span class="pair"><a class="cta-btn" href="#comparing">Compare now</a></span><div class="stepn"><span class="i">2</span> <span><span class="t">Check the Budget App yourself</span> </span></div><div class="stepn"><span class="i">3</span> <span><span class="t">Confirm the Recovery Check</span> <span class="d">Available after step 1.</span></span></div></div>
+<div class="banner blue"><span class="txt"><b>Uploads wait for First Upload Matching</b> <span class="d">Before Slussen uploads anything, it compares the transactions it fetched with what is already in YNAB and marks every match, so that no transaction ends up in YNAB twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual.</span> <span class="d">This is a new installation. Your earlier importer, YNAB's own bank import or you by hand may already have added some of these transactions to YNAB.</span></span></div><div class="card"><div class="stepn"><span class="i">1</span> <span><span class="t">Compare with YNAB</span> <span class="d">Not done since First Upload Matching started.</span></span></div><span class="pair"><a class="cta-btn" href="#comparing">Compare now</a></span><div class="stepn"><span class="i">2</span> <span><span class="t">Look at the result</span> <span class="d">Every transaction YNAB already has is marked.</span></span></div><div class="stepn"><span class="i">3</span> <span><span class="t">Confirm First Upload Matching</span> <span class="d">Available after step 1.</span></span></div></div>
+</div>
+
+</div>
+</div>
+<div class="state" id="last-good-copy">
+<div class="step-label"><span class="n">UC-008 A1, A8, A9 1 · BR-009</span><p><b>Cause Last Good Copy</b>: Decision-Critical Data could not be read and Slussen started from its last good copy. Amber: a caution, not an error. Reached from the Overview card after the notice of A1.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="overview.html#damaged-critical">‹</a> First Upload Matching</div>
+<p class="screen-sub">Started from the last good copy</p>
+<div class="body">
+<div class="banner"><span class="txt"><b>Uploads wait for First Upload Matching</b> <span class="d">Before Slussen uploads anything, it compares the transactions it fetched with what is already in YNAB and marks every match, so that no transaction ends up in YNAB twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual.</span> <span class="d">Slussen's records could not be read, so it started from its last good copy, or from empty records when it had none. Anything uploaded after that copy was made is not in its records.</span></span></div><div class="card"><div class="stepn"><span class="i">1</span> <span><span class="t">Compare with YNAB</span> <span class="d">Not done since First Upload Matching started.</span></span></div><span class="pair"><a class="cta-btn" href="#comparing">Compare now</a></span><div class="stepn"><span class="i">2</span> <span><span class="t">Look at the result</span> <span class="d">Every transaction YNAB already has is marked.</span></span></div><div class="stepn"><span class="i">3</span> <span><span class="t">Confirm First Upload Matching</span> <span class="d">Available after step 1.</span></span></div></div>
 </div>
 
 </div>
@@ -316,32 +327,32 @@
 <div class="state" id="comparing">
 <div class="step-label"><span class="n">UC-008 A9 1</span><p><b>Comparing</b> (UC-003).</p></div>
 <div class="phone">
-<div class="screen-title">Recovery Check</div>
-<p class="screen-sub">Cause: Restored Backup</p>
+<div class="screen-title">First Upload Matching</div>
+<p class="screen-sub">Restored from a backup</p>
 <div class="body">
-<div class="banner red"><span class="txt"><b>Uploads blocked: Recovery Check open</b> <span class="d">Restored backup 09:02 · sends after it unknown</span></span></div><div class="banner blue"><span class="txt"><b>Reading every Budget with a mapped Bank Account…</b> <span class="d">Household read · Summer House reading · Care Fund waiting</span></span></div>
+<div class="banner"><span class="txt"><b>Uploads wait for First Upload Matching</b></span></div><div class="banner blue"><span class="txt"><b>Comparing every Budget with YNAB…</b> <span class="d">Household read · Summer House reading · Care Fund waiting</span></span></div>
 </div>
 
 </div>
 </div>
 <div class="state" id="confirm">
-<div class="step-label"><span class="n">UC-008 A9 2–3</span><p><b>Confirming</b>, after a Comparison that read every Budget.</p></div>
+<div class="step-label"><span class="n">UC-008 A9 2–3</span><p><b>Confirming</b>, after a Comparison that read every Budget: the result, with what YNAB already holds marked.</p></div>
 <div class="phone">
-<div class="screen-title">Recovery Check</div>
-<p class="screen-sub">Cause: Restored Backup</p>
+<div class="screen-title">First Upload Matching</div>
+<p class="screen-sub">Restored from a backup</p>
 <div class="body">
-<div class="banner red"><span class="txt"><b>Uploads blocked: Recovery Check open</b> <span class="d">Restored backup 09:02 · sends after it unknown</span></span></div><div class="card"><div class="kv"><span class="k">Household</span> <span class="v">Read 09:14 · Eligible 9 · waiting for a decision 9</span></div><div class="kv"><span class="k">Summer House</span> <span class="v">Read 09:14 · Eligible 2 · waiting for a decision 2</span></div><div class="kv"><span class="k">Care Fund</span> <span class="v">Read 09:14 · Eligible 0 · waiting for a decision 1</span></div><a class="small" style="color:var(--app-blue)" href="budget.html#household">See the Transaction Statuses ›</a></div><div class="card"><div class="pick sel"><span class="radio"></span> <span><span class="nm">I have checked the Budget App for transactions Slussen sent after the data it started from was saved.</span></span></div><span class="pair" style="margin-top:8px"><a class="cta-btn" href="#closed">Confirm Recovery Check</a> <a class="cta-btn ghost" href="#open">Cancel</a></span></div>
+<div class="banner"><span class="txt"><b>Uploads wait for First Upload Matching</b></span></div><div class="card"><div class="kv"><span class="k">Household</span> <span class="v">Read 09:14 · already in YNAB 41 · Eligible 9 · waiting for a decision 9</span></div><div class="kv"><span class="k">Summer House</span> <span class="v">Read 09:14 · already in YNAB 12 · Eligible 2 · waiting for a decision 2</span></div><div class="kv"><span class="k">Care Fund</span> <span class="v">Read 09:14 · already in YNAB 6 · Eligible 0 · waiting for a decision 1</span></div><a class="small" style="color:var(--app-blue)" href="budget.html#household">See the Transaction Statuses ›</a></div><div class="card"><div class="pick sel"><span class="radio"></span> <span><span class="nm">I have looked at the result and checked YNAB.</span></span></div><span class="pair" style="margin-top:8px"><a class="cta-btn" href="#closed">Confirm First Upload Matching</a> <a class="cta-btn ghost" href="#open">Cancel</a></span></div>
 </div>
 
 </div>
 </div>
 <div class="state" id="budget-app-unreadable">
-<div class="step-label"><span class="n">UC-008 A9 1</span><p><b>A Budget could not be read</b>: the check stays open (UC-003 BR-019).</p></div>
+<div class="step-label"><span class="n">UC-008 A9 1</span><p><b>A Budget could not be read</b>: First Upload Matching stays open (UC-003 BR-019).</p></div>
 <div class="phone">
-<div class="screen-title">Recovery Check</div>
-<p class="screen-sub">Cause: Restored Backup</p>
+<div class="screen-title">First Upload Matching</div>
+<p class="screen-sub">Restored from a backup</p>
 <div class="body">
-<div class="banner red"><span class="txt"><b>Uploads blocked: Recovery Check open</b> <span class="d">Restored backup 09:02 · sends after it unknown</span></span></div><div class="banner"><span class="txt"><b>The Budget App could not be read for Summer House</b> <span class="d">Still open · try again later</span></span></div>
+<div class="banner"><span class="txt"><b>Uploads wait for First Upload Matching</b></span></div><div class="banner"><span class="txt"><b>YNAB could not be read for Summer House</b> <span class="d">First Upload Matching stays open · try again later</span></span></div>
 </div>
 
 </div>
@@ -349,10 +360,10 @@
 <div class="state" id="closed">
 <div class="step-label"><span class="n">UC-008 A9 4–5</span><p><b>Closed.</b></p></div>
 <div class="phone">
-<div class="screen-title">Recovery Check</div>
+<div class="screen-title">First Upload Matching</div>
 <p class="screen-sub"></p>
 <div class="body">
-<div class="banner grey"><span class="txt"><b>Recovery Check confirmed</b> <span class="d">Uploads available again</span></span></div><a class="cta" href="budget.html#household">Back to Household</a>
+<div class="banner grey"><span class="txt"><b>First Upload Matching confirmed</b> <span class="d">Uploads available again</span></span></div><a class="cta" href="budget.html#household">Back to Household</a>
 </div>
 
 </div>

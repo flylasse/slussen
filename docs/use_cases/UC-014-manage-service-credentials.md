@@ -99,7 +99,7 @@ Credentials are stored only on the device, encrypted with a key that never leave
 
 ### BR-004: Entered Again After a Reinstall
 
-Credentials are not restored after a reinstall or on a new device: the Operator enters them again, as each Bank Consent is granted again (UC-007 BR-005). Uploads after a restore still wait for the Recovery Check (UC-006 BR-017).
+Credentials are not restored after a reinstall or on a new device: the Operator enters them again, as each Bank Consent is granted again (UC-007 BR-005). Uploads after a restore still wait for First Upload Matching (UC-006 BR-017).
 
 ### BR-005: Refused or Missing Credentials
 

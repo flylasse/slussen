@@ -150,7 +150,7 @@ The Decision Journal stays within its size limit by removing its oldest entries,
 
 ### BR-004: Journal Never Affects Decisions
 
-Switching off, clearing, filling, losing or damaging the Decision Journal changes no Transaction Status, Upload Plan or Upload and opens no Recovery Check, because the Decision Journal is not Decision-Critical Data; and a failure to record an entry never fails or delays an Operator action.
+Switching off, clearing, filling, losing or damaging the Decision Journal changes no Transaction Status, Upload Plan or Upload and opens no First Upload Matching, because the Decision Journal is not Decision-Critical Data; and a failure to record an entry never fails or delays an Operator action.
 
 ### BR-005: Detailed Logging Boundaries
 

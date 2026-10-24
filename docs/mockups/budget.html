@@ -283,7 +283,7 @@
 </head>
 <body>
 <main>
-<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html" class="here">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="connections.html">Service pages</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="recovery-check.html">Recovery Check</a> <a href="journal-export.html">Journal Export</a> <a href="icons.html">Icons</a></nav>
+<nav class="site"><a href="index.html">Index</a> <a href="overview.html">Overview</a> <a href="budget.html" class="here">Budget</a> <a href="bank-account.html">Bank Account</a> <a href="review-decision.html">Review Decision</a> <a href="transfers.html">Transfers</a> <a href="transfer-budget-account.html">Other Budget Account</a> <a href="upload-plan.html">Upload Plan</a> <a href="upload-outcome.html">Upload Outcome</a> <a href="import-file.html">Transaction File</a> <a href="consent.html">Bank Consents</a> <a href="account-mappings.html">Account Mappings</a> <a href="settings.html">Settings</a> <a href="connections.html">Service pages</a> <a href="transfer-descriptions.html">Transfer Descriptions</a> <a href="fetch-history.html">Recent Fetches</a> <a href="first-upload-matching.html">First Upload Matching</a> <a href="journal-export.html">Journal Export</a> <a href="icons.html">Icons</a></nav>
 <p class="eyebrow">Slussen · screen mockup · UC-008, UC-001, UC-002, UC-003, UC-006</p>
 <h1>Budget workspace</h1>
 <p class="sub">One tab per Budget. Everything shown comes from stored data until the Operator starts a Fetch, a Transaction File import or a read of the Budget App.</p>
@@ -893,7 +893,7 @@
 <div class="body">
 <div class="card"><div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span></div>
 <div class="bh"><span class="meta">No Bank Transactions yet. Start a Fetch to bring them in.</span></div>
-<a class="cta-btn big dim" href="#recovery-blocked">Review Upload Plan · Recovery Check open</a></div>
+<a class="cta-btn big dim" href="#recovery-blocked">Review Upload Plan · Uploads wait for First Upload Matching</a></div>
 <div class="card">
   <div class="src-h">Sources</div>
   <div class="src-row"><span class="dot grey"></span> <span class="nm">SimpleFIN</span> <span class="gran">Data Provider</span></div>
@@ -922,16 +922,16 @@
 </div>
 </div>
 <div class="state" id="recovery-blocked">
-<div class="step-label"><span class="n">UC-006 A13</span><p><b>Review Upload Plan while a Recovery Check is open.</b></p></div>
+<div class="step-label"><span class="n">UC-006 A13 · UC-008 BR-006, BR-009</span><p><b>Review Upload Plan while First Upload Matching is open</b>, here after a restore: the Blocked Reason “Uploads wait for First Upload Matching” with its explanation, the reason line and the action “Start First Upload Matching”. Amber after a restore or damaged data, blue after a new installation; never red.</p></div>
 <div class="phone">
 <div class="screen-title">Household</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
 <div class="body">
-<div class="banner red"><span class="txt"><b>No Upload Plan prepared: Recovery Check open</b> <span class="d">Data may lack recent sends · check the Budget App, then confirm</span></span> <a class="cta-btn" href="recovery-check.html#open">Recovery Check</a></div>
+<div class="banner"><span class="txt"><b>Uploads wait for First Upload Matching</b> <span class="d">Before Slussen uploads anything, it compares the transactions it fetched with what is already in YNAB and marks every match, so that no transaction ends up in YNAB twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual.</span> <span class="d">Slussen was restored from a backup. It may have uploaded transactions after the backup was made that its records no longer show.</span></span> <a class="cta-btn" href="first-upload-matching.html#open">Start First Upload Matching</a></div>
 <div class="card">
   <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="meta r">YNAB · read 13:21 <a href="#budget-app-read" style="color:var(--app-blue)">⟳</a></span></div>
   <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
-  <span class="cta-btn big dim">Review Upload Plan · Recovery Check open</span>
+  <span class="cta-btn big dim">Review Upload Plan · Uploads wait for First Upload Matching</span>
 </div>
 <a class="card amber" href="transfers.html#list" style="display:block"><span class="small muted">Review Transfers ›</span> <span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">Waiting for a decision: 9</span></a>
 <div class="card">

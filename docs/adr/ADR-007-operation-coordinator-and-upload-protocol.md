@@ -10,7 +10,7 @@ Operator's decision O-P2-34 (1) (a Rejected send follows the current Account Map
 are listed under "Review findings addressed".
 
 This ADR is new. The Phase 2 review showed that the Upload pause, the check before writing, retries of unknown
-outcomes and the Recovery Check all need one shared protocol that decides which operation may run when, what an Upload
+outcomes and First Upload Matching all need one shared protocol that decides which operation may run when, what an Upload
 Plan captures and what happens after the process dies (A-01, A-08). Spread over ADR-001 (modules) and ADR-002
 (storage), it was not decided anywhere; it gets its own record.
 
@@ -31,7 +31,7 @@ Plan captures and what happens after the process dies (A-01, A-08). Spread over 
   plug-in declares that the Budget App refuses a reused Import Identifier; otherwise it waits for the Operator's Review
   Decision (UC-004 BR-008). A rejected send stays available for Upload (A9) and, because nothing was written, goes to
   the Budget Account of the current Account Mapping, also after a move (UC-006 BR-020, UC-009 BR-003; O-P2-34 (1)).
-- UC-006 BR-017, A13, FR-095, `RECOVERY_CHECK` (S-06): while a Recovery Check is open, no Upload Plan is prepared.
+- UC-006 BR-017, A13, FR-095, `FIRST_UPLOAD_MATCHING` (S-06): while a First Upload Matching is open, no Upload Plan is prepared.
 - UC-006 BR-001, UC-001 BR-013: nothing is uploaded automatically or by a Scheduled Fetch.
 - UC-006 A10, BR-008, BR-009, BR-016: how a Transfer, the Cleared marker and approval are written; the plan states
   whether its transactions arrive Cleared and which Transfer Counterparts it marks Cleared.
@@ -80,7 +80,7 @@ plan is being written).
 | Review Decision, Transfer Decision (UC-004, UC-005) | admitted | admitted; the plan is replaced (§5) | refused until the Upload ends |
 | Prepare an Upload Plan (UC-006) | admitted only when §3 allows it | refused (one plan at a time) | refused |
 | Confirm the plan, cancel or leave (UC-006 steps 4-5, A2, BR-019) | not applicable | admitted for that plan only | refused (no second confirmation) |
-| Confirm a Recovery Check (UC-008 A9) | admitted | refused | refused |
+| Confirm First Upload Matching (UC-008 A9) | admitted | refused | refused |
 
 "Refused" returns a typed reason that the screen shows; nothing is half started. A deferred Scheduled Fetch is
 remembered in `coordinator_state` and started when the mode returns to Normal (UC-006 BR-005), also after a restart.
@@ -91,7 +91,7 @@ Preparation is admitted only when all of these hold; otherwise the reason is sho
 
 - the mode is Normal and the request comes from the Operator (origin `Schedule` is always refused: UC-006 BR-001,
   UC-001 BR-013);
-- no Recovery Check is open (`RECOVERY_CHECK.confirmed_at` empty for none; UC-006 BR-017, A13);
+- no First Upload Matching is open (`FIRST_UPLOAD_MATCHING.confirmed_at` empty for none; UC-006 BR-017, A13);
 - no Consent Request is unanswered and within its lifetime, so that the return from Strong Customer Authentication
   can never arrive while a plan is open (the Operator can abandon the Consent Request to proceed);
 - no Comparison is pending (§3a);
@@ -281,7 +281,7 @@ coordinator reads `coordinator_state`:
   Unknown; the next Comparison settles every one whose Import Identifier its Budget Account holds (UC-003 BR-017), and
   the others follow §4 at the next preparation. Clearings not stored as Cleared stay uncleared; the next Comparison
   reconciles their Transfer Counterparts and the next plan clears them (UC-006 A11). The mode becomes Normal.
-- **A start that opens a Recovery Check** (ADR-002 §6) resets the mode to Normal in the same way, because
+- **A start that opens a First Upload Matching** (ADR-002 §6) resets the mode to Normal in the same way, because
   `coordinator_state` came from older data.
 - **Comparison pending** (§3a): the Comparison is recomputed locally and committed (O-5) before preparation is
   admitted.
@@ -400,3 +400,6 @@ is listed in ADR-005 §7.
     UC-009 BR-003, ADR-002 §4.
 - Mockup gate follow-up (2026-10-18): §4 and §9 (no confirmation to move or remove an Account Mapping whose Sent Records are all Rejected; UC-009 A8, A11, BR-003).
 - Pre-Phase-6 review follow-up (2026-10-18): §4 and §9 (identifying again guarded like a move or removal; the guard counts Sent Records to the mapping's Budget Account also through an earlier mapping, the Rejected ones stated separately; mapping a Bank Account again never asks; UC-009 A6-A8, A11, BR-003, BR-007).
+- Phase 9 acceptance (2026-10-24): S-41 (P9-17, O-P2-75; the glossary term Recovery Check renamed First Upload
+  Matching, entity `FIRST_UPLOAD_MATCHING`): Status note, Context, §2 admission table, §3, §8 renamed; no protocol
+  change.

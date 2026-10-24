@@ -54,7 +54,7 @@ erDiagram
     BANK_TRANSACTION |o--o| TRANSFER_COUNTERPART : "settles"
     DECISION_JOURNAL_ENTRY
     OPERATOR_SETTINGS
-    RECOVERY_CHECK
+    FIRST_UPLOAD_MATCHING
     TRANSFER_DESCRIPTION
 ```
 
@@ -658,24 +658,24 @@ The other side of a Transfer that the Budget App created itself when Slussen sen
 - `cleared_at` is filled exactly when `state` is Cleared.
 - When the counterpart is Changed In Budget App, the arriving Bank Transaction of that side gets `status` Transfer Counterpart Changed and is shown for review instead of being held back.
 
-### RECOVERY_CHECK
+### FIRST_UPLOAD_MATCHING
 
 The check Slussen requires before any Upload after it started from data that may lack what it last recorded, done when a Comparison has run and the Operator has confirmed it.
 
 | Attribute    | Description                                                                                          | Data Type | Length/Precision | Validation Rules      |
 |--------------|------------------------------------------------------------------------------------------------------|-----------|------------------|-----------------------|
 | id           | Unique identifier                                                                                    | Long      | 19               | Primary Key, Sequence |
-| cause        | What Slussen started from                                                                            | String    | 30               | Not Null, Values: Last Good Copy, Restored Backup, New Installation |
-| opened_at    | Time Slussen started from that data and opened the check                                             | DateTime  | -                | Not Null              |
-| compared_at  | Time a Comparison that read every Budget with a mapped Bank Account first completed after the check opened, empty until then | DateTime  | -                | Optional              |
-| confirmed_at | Time the Operator confirmed the check, empty until then                                               | DateTime  | -                | Optional              |
+| cause        | What Slussen started from, which decides the reason Slussen shows for First Upload Matching (UC-008 BR-009) | String    | 30               | Not Null, Values: Last Good Copy, Restored Backup, New Installation |
+| opened_at    | Time Slussen started from that data and opened First Upload Matching                                 | DateTime  | -                | Not Null              |
+| compared_at  | Time a Comparison that read every Budget with a mapped Bank Account first completed after First Upload Matching opened, empty until then | DateTime  | -                | Optional              |
+| confirmed_at | Time the Operator confirmed First Upload Matching, empty until then                                   | DateTime  | -                | Optional              |
 
 #### Constraints
 
-- While a Recovery Check has no `confirmed_at`, no Upload Plan is prepared (FR-095).
+- While a First Upload Matching has no `confirmed_at`, no Upload Plan is prepared (FR-095).
 - `confirmed_at` is filled only after `compared_at` is filled.
-- Damage to stored data that is not Decision-Critical Data, such as the Decision Journal, opens no Recovery Check.
-- A Recovery Check is opened at every start from the last good copy after Decision-Critical Data could not be read, from data restored from a device backup, or from the empty data of a new installation, also when an earlier one is still open.
+- Damage to stored data that is not Decision-Critical Data, such as the Decision Journal, opens no First Upload Matching.
+- A First Upload Matching is opened at every start from the last good copy after Decision-Critical Data could not be read, from data restored from a device backup, or from the empty data of a new installation, also when an earlier one is still open.
 
 ### DECISION_JOURNAL_ENTRY
 
