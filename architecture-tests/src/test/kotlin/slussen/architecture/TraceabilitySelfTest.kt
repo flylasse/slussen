@@ -26,6 +26,17 @@ class TraceabilitySelfTest {
     }
 
     @Test
+    @DisplayName("ADR-001 section 6.2: only a module's src tree is read, never an IDE or build output folder such as bin/")
+    fun onlyTheSourceTreeIsRead() {
+        assertTrue(source("core/src/main/kotlin/slussen/core/A.kt", "package slussen.core").inSourceTree)
+        assertTrue(source("build-logic/src/main/kotlin/slussen/buildlogic/B.kt", "package slussen.buildlogic").inSourceTree)
+        assertTrue(!source("core/bin/main/slussen/core/A.kt", "package slussen.core").inSourceTree)
+        assertTrue(!source("app/build/generated/source/C.kt", "package slussen.app").inSourceTree)
+        assertTrue(Sources.all.none { !it.inSourceTree }, "a file outside a module's src tree was read")
+        assertTrue(Sources.scope.files.all { SourceFile.inSourceTree(it.path) }, "the Konsist scope holds a file outside a src tree")
+    }
+
+    @Test
     @DisplayName("T-01 finds a test without @UseCase and an id that is not the class's")
     fun t01FindsPlantedViolations() {
         val planted = source(

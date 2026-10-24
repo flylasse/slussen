@@ -32,15 +32,20 @@ object Sources {
     val scope: KoScope by lazy {
         val konsistRoot = File(Konsist.projectRootPath).canonicalFile
         check(konsistRoot == repositoryRoot) { "Konsist reads $konsistRoot, not the repository $repositoryRoot." }
-        Konsist.scopeFromProject()
+        // Only the modules' src trees: an ignored IDE or build output folder such as bin/ can hold stale copies of the
+        // sources, and every rule reads this scope (ADR-001 §6.2).
+        Konsist.scopeFromProject().slice { SourceFile.inSourceTree(it.path) }
     }
 
-    /** Every Kotlin source file of the repository's modules and of build-logic. */
+    /**
+     * Every Kotlin source file of the repository's modules and of build-logic: only what lies in a module's `src` tree,
+     * never an ignored IDE or build output folder such as `bin/` or `build/`, which can hold stale copies (ADR-001 §6.2).
+     */
     val all: List<SourceFile> by lazy {
         scope.files
             .filter { it.path.endsWith(".kt") }
             .map { SourceFile(it.path, it.text) }
-            .filter { it.module in appModules || it.module == "build-logic" }
+            .filter { it.inSourceTree && (it.module in appModules || it.module == "build-logic") }
     }
 
     val prod: List<SourceFile> by lazy { all.filter { it.isProduction && it.module != "build-logic" } }
@@ -68,6 +73,16 @@ class SourceFile(absolutePath: String, val text: String) {
     val relativePath: String = File(absolutePath).canonicalFile.relativeTo(Sources.repositoryRoot).invariantSeparatorsPath
     val module: String = relativePath.substringBefore('/')
     val sourceSet: String = relativePath.split('/').let { parts -> parts.getOrElse(parts.indexOf("src") + 1) { "" } }
+
+    /** The file lies in its module's source tree, `<module>/src/…`. */
+    val inSourceTree: Boolean = relativePath.split('/').getOrNull(1) == "src"
+
+    companion object {
+        /** Whether the file at [absolutePath] lies in a module's source tree, `<module>/src/…`. */
+        fun inSourceTree(absolutePath: String): Boolean =
+            File(absolutePath).canonicalFile.relativeTo(Sources.repositoryRoot).invariantSeparatorsPath
+                .split('/').getOrNull(1) == "src"
+    }
 
     /** `:testing` is test-only (ADR-001 §1), so its main source set belongs to the Test scope. */
     val isProduction: Boolean = sourceSet == "main" && module != "testing" && module != "architecture-tests"
