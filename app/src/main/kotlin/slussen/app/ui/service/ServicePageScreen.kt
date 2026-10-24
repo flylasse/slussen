@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import slussen.app.ui.components.AccountLine
 import slussen.app.ui.components.Banner
+import slussen.app.ui.components.FetchButton
+import slussen.app.ui.components.FetchResultLine
 import slussen.app.ui.components.Muted
 import slussen.app.ui.components.ScreenTitle
 import slussen.app.ui.components.SectionTitle
@@ -108,14 +110,15 @@ fun ServicePageScreen(
             if (ui.fetchCooldown != null) {
                 SectionTitle("Fetch")
                 SlussenCard {
-                    if (ui.canFetch) {
-                        Button(onClick = onFetch) { Text("Fetch ${ui.name}") }
-                        Muted("Starts a Fetch of this Data Provider, with you present")
-                    } else if (ui.fetchUnavailable != null) {
-                        // P9-13: the Fetch is shown unavailable, with the reason in plain words.
-                        Button(onClick = onFetch, enabled = false) { Text("Fetch ${ui.name}") }
-                        Muted(ui.fetchUnavailable)
+                    val fetchButton = ui.fetchButton
+                    if (fetchButton != null) {
+                        // P9-16: the button shows the Fetch while it runs, and the result of each tap below it.
+                        FetchButton(fetchButton, onFetch)
+                        if (ui.canFetch) Muted("Starts a Fetch of this Data Provider, with you present")
+                        ui.fetchResult?.let { FetchResultLine(it) }
                     }
+                    // P9-13: the Fetch is shown unavailable, with the reason in plain words.
+                    if (ui.fetchUnavailable != null) Muted(ui.fetchUnavailable)
                     Text("Fetch Cooldown", fontSize = 13.sp)
                     Muted(ui.fetchCooldown)
                     Text("Request Limit", fontSize = 13.sp)

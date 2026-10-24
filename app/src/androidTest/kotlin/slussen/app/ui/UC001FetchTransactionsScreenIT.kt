@@ -58,7 +58,9 @@ class UC001FetchTransactionsScreenIT {
 
         onNodeWithText("Fetch Kestrel Feeds").performClick()
 
-        onNodeWithText("Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 1 · not added: 1").assertExists()
+        // P9-16: the result of the tap, marked, with what was fetched.
+        onNodeWithText("Fetched 14:00").assertExists()
+        onNodeWithText("Bank Accounts offered: 1 · not added: 1").assertExists()
         onNodeWithText("Connected · last Fetch 2026-10-15 14:00").assertExists()
     }
     @Test

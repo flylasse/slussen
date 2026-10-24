@@ -127,7 +127,7 @@ fun SlussenScreens(services: UiServices) {
                             ui = ui,
                             onBudget = { id -> go(Screen.Budget(id, ui.budgets.single { it.budgetId == id }.name)) },
                             onOpenSettings = { tab(Screen.Settings) },
-                            onConfirmRecoveryCheck = { overview.confirmRecoveryCheck() },
+                            onStartFirstUploadMatching = { overview.startFirstUploadMatching() },
                             onRecentFetches = { go(Screen.RecentFetches) },
                             onFetchAll = overview::fetchAll,
                             onConfirmFetch = overview::confirmFetch,
@@ -139,7 +139,11 @@ fun SlussenScreens(services: UiServices) {
                     val vm: BudgetViewModel = viewModel(key = "budget-${current.budgetId}") { BudgetViewModel(services, current.budgetId) }
                     LaunchedEffect(current) { vm.load() }
                     vm.state.collectAsState().value?.let { ui ->
-                        BudgetScreen(ui) { action -> action.service?.let { go(Screen.Service(it)) } }
+                        BudgetScreen(
+                            ui,
+                            onRemedy = { action -> action.service?.let { go(Screen.Service(it)) } },
+                            onStartFirstUploadMatching = { overview.startFirstUploadMatching() },
+                        )
                     }
                 }
                 Screen.RecentFetches -> {

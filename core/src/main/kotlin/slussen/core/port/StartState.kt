@@ -35,26 +35,29 @@ interface BackupSizeMonitor {
     val limitBytes: Long
 }
 
-/** The `Values:` of `RECOVERY_CHECK.cause`. */
-enum class RecoveryCause(val text: String) {
+/**
+ * The `Values:` of `FIRST_UPLOAD_MATCHING.cause` (stored in the table `recovery_check`, ADR-002 §2), which decides the
+ * reason shown for First Upload Matching (UC-008 BR-009).
+ */
+enum class FirstUploadMatchingCause(val text: String) {
     LastGoodCopy("Last Good Copy"),
     RestoredBackup("Restored Backup"),
     NewInstallation("New Installation"),
 }
 
-/** `RECOVERY_CHECK` (entity model) as stored. */
-data class StoredRecoveryCheck(
+/** `FIRST_UPLOAD_MATCHING` (entity model) as stored. */
+data class StoredFirstUploadMatching(
     val id: Long,
-    val cause: RecoveryCause,
+    val cause: FirstUploadMatchingCause,
     val openedAt: Instant,
     val comparedAt: Instant?,
     val confirmedAt: Instant?,
 )
 
-/** The Recovery Checks (ADR-002 §3, O-12). The start sequence of `:persistence` opens them (ADR-002 §6). */
-interface RecoveryStore {
-    /** Every Recovery Check without `confirmed_at`, oldest first. */
-    suspend fun openChecks(): List<StoredRecoveryCheck>
+/** The First Upload Matchings (ADR-002 §3, O-12). The start sequence of `:persistence` opens them (ADR-002 §6). */
+interface FirstUploadMatchingStore {
+    /** Every First Upload Matching without `confirmed_at`, oldest first. */
+    suspend fun openChecks(): List<StoredFirstUploadMatching>
 }
 
 /** The coordinator's mode, kept in `coordinator_state` so that a restart sees it (ADR-007 §2). */

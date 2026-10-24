@@ -13,11 +13,14 @@ import slussen.app.ui.UiFixture
 import slussen.app.ui.budget.BudgetViewModel
 import slussen.app.ui.budget.RemedyAction
 import slussen.app.ui.fetches.RecentFetchesViewModel
+import slussen.app.ui.components.FirstUploadMatchingChip
+import slussen.app.ui.components.FirstUploadMatchingUi
+import slussen.core.firstupload.FirstUploadMatchingTone
 import slussen.core.port.BudgetAccountToStore
 import slussen.core.port.BudgetToServe
 import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
-import slussen.core.port.RecoveryCause
+import slussen.core.port.FirstUploadMatchingCause
 import slussen.core.port.StartedBy
 import slussen.core.port.StoredAccountBalance
 import slussen.core.port.StoredBankConsent
@@ -102,37 +105,102 @@ class UC008CheckImportStatusViewModelTest {
         assertEquals(listOf("Bank Consent of Aurora Bank through Aurora Open Banking expires 2026-10-19 · Renew"), overview().expiringConsents)
     }
 
+    /** UC-008 BR-009: the explanation, the same in every case, with the Budget App's name. */
+    private val explanation =
+        "Before Slussen uploads anything, it compares the transactions it fetched with what is already in Example Budget App " +
+            "and marks every match, so that no transaction ends up in Example Budget App twice. You look at the result and " +
+            "confirm; until then nothing is uploaded. Fetching works as usual."
+
+    private val newInstallationLine =
+        "This is a new installation. Your earlier importer, Example Budget App's own bank import or you by hand may already " +
+            "have added some of these transactions to Example Budget App."
+    private val restoredBackupLine =
+        "Slussen was restored from a backup. It may have uploaded transactions after the backup was made that its records " +
+            "no longer show."
+    private val lastGoodCopyLine =
+        "Slussen's records could not be read, so it started from its last good copy, or from empty records when it had " +
+            "none. Anything uploaded after that copy was made is not in its records."
+
+    /** O-P2-09, `first-upload-matching.html#open`: the build state while the Comparison (UC-003) is not built. */
+    private val matchingComesLater = "Matching with Example Budget App comes in a later version; until then nothing is uploaded."
+
+    private fun firstUploadMatching(tone: FirstUploadMatchingTone, vararg reasons: String) = FirstUploadMatchingUi(
+        title = "Uploads wait for First Upload Matching",
+        explanation = explanation,
+        reasons = reasons.toList(),
+        tone = tone,
+        action = "Start First Upload Matching",
+        actionAvailable = false,
+        buildNote = matchingComesLater,
+    )
+
     @Test
-    @UseCase(id = "UC-008", scenario = "A8: Recovery Check Open", businessRules = ["BR-009"])
-    @DisplayName("A8: an open Recovery Check is shown at every opening with why Uploads are blocked")
-    fun openRecoveryCheckIsShown() {
+    @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009", "BR-006"])
+    @DisplayName("A8, BR-006, BR-009 (P9-17, overview.html#first-added): after a new installation the Overview shows Uploads wait for First Upload Matching with the explanation, the reason line and the action, as plain information; while the Comparison is not built the action is unavailable and the build line says why; each Budget shows the Blocked Reason in the same tone")
+    fun firstUploadMatchingOfANewInstallationIsShown() {
         household()
-        slice.recoveryStore.open(RecoveryCause.NewInstallation, slice.clock.instant())
+        slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, slice.clock.instant())
 
         val ui = overview()
 
-        assertEquals("Uploads blocked: Recovery Check open", ui.recoveryCheck)
-        assertEquals("New installation · earlier sends unknown · check the Budget App, then confirm", ui.recoveryCause)
-        assertEquals(listOf("Blocked: Recovery Check open"), ui.budgets.first().blocked)
+        assertEquals(firstUploadMatching(FirstUploadMatchingTone.Information, newInstallationLine), ui.firstUploadMatching)
+        assertEquals(
+            FirstUploadMatchingChip("Uploads wait for First Upload Matching", FirstUploadMatchingTone.Information),
+            ui.budgets.first().firstUploadMatching,
+        )
+        assertEquals(emptyList<String>(), ui.budgets.first().blocked)
     }
 
     @Test
-    @UseCase(id = "UC-008", scenario = "A9: Operator Confirms the Recovery Check", businessRules = ["BR-009"])
-    @DisplayName("A9: confirming is unavailable until a Comparison can run; the Recovery Check stays open and says so")
-    fun confirmingTheRecoveryCheckIsUnavailable() {
+    @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009"])
+    @DisplayName("BR-009 (overview.html#recovery, #damaged-critical): after a restore the reason line of a restore is a caution; with a last good copy beside a new installation each line is shown once and the caution wins")
+    fun firstUploadMatchingAfterARestoreIsACaution() {
         household()
-        slice.recoveryStore.open(RecoveryCause.NewInstallation, slice.clock.instant())
-        val viewModel = OverviewViewModel(fixture.services).also { it.load() }
+        slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.RestoredBackup, slice.clock.instant())
+        assertEquals(firstUploadMatching(FirstUploadMatchingTone.Caution, restoredBackupLine), overview().firstUploadMatching)
+        assertEquals(FirstUploadMatchingTone.Caution, overview().budgets.first().firstUploadMatching!!.tone)
 
-        viewModel.confirmRecoveryCheck()
+        val other = UiFixture()
+        household(other.slice)
+        other.slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, other.slice.clock.instant())
+        other.slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.LastGoodCopy, other.slice.clock.instant())
+        other.slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, other.slice.clock.instant())
 
-        // P9-14: the note in plain words, saying that only Uploads wait and a Fetch still works.
         assertEquals(
-            "The Recovery Check stays open: it can be confirmed only after Slussen has compared every Budget with the " +
-                "Budget App, and comparing is not in this build yet. Only Uploads wait for it; a Fetch still works.",
-            viewModel.state.value!!.message,
+            firstUploadMatching(FirstUploadMatchingTone.Caution, newInstallationLine, lastGoodCopyLine),
+            OverviewViewModel(other.services).also { it.load() }.state.value!!.firstUploadMatching,
         )
-        assertEquals(1, runBlocking { slice.recoveryStore.openChecks().size })
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009"])
+    @DisplayName("BR-009 (budget.html#recovery-blocked): the Budget tab shows the same First Upload Matching with its explanation, reason line and action")
+    fun budgetTabShowsFirstUploadMatching() {
+        household()
+        slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.RestoredBackup, slice.clock.instant())
+
+        val ui = BudgetViewModel(fixture.services, budgetId("Household")).also { it.load() }.state.value!!
+
+        assertEquals(firstUploadMatching(FirstUploadMatchingTone.Caution, restoredBackupLine), ui.firstUploadMatching)
+        val none = UiFixture()
+        household(none.slice)
+        val household = runBlocking { none.slice.connectionStore.budgets().single { it.name == "Household" }.id }
+        assertNull(BudgetViewModel(none.services, household).also { it.load() }.state.value!!.firstUploadMatching)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A9: Operator Confirms First Upload Matching", businessRules = ["BR-009"])
+    @DisplayName("A9: Start First Upload Matching is unavailable while the Comparison is not built (O-P2-09); asked anyway it says why, and First Upload Matching stays open")
+    fun startingFirstUploadMatchingIsUnavailable() {
+        household()
+        slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, slice.clock.instant())
+        val viewModel = OverviewViewModel(fixture.services).also { it.load() }
+        assertFalse(viewModel.state.value!!.firstUploadMatching!!.actionAvailable)
+
+        viewModel.startFirstUploadMatching()
+
+        assertEquals(matchingComesLater, viewModel.state.value!!.message)
+        assertEquals(1, runBlocking { slice.firstUploadMatchingStore.openChecks().size })
     }
 
     @Test
@@ -158,14 +226,14 @@ class UC008CheckImportStatusViewModelTest {
         val ui = OverviewViewModel(damaged.services).also { it.load() }.state.value!!
 
         assertEquals(listOf("Stored data could not be read: Decision Journal · started empty"), ui.unreadableNotices)
-        assertNull(ui.recoveryCheck)
+        assertNull(ui.firstUploadMatching)
     }
 
     @Test
     @UseCase(id = "UC-008", scenario = "A10: No Bank Account Added Yet", businessRules = ["BR-011"])
-    @DisplayName("A10: with no Bank Account added, the Overview shows only the card that leads to Settings and names the next thing, not even the Recovery Check a new installation opens")
+    @DisplayName("A10: with no Bank Account added, the Overview shows only the card that leads to Settings and names the next thing, not even First Upload Matching a new installation opens")
     fun firstRunShowsOnlyTheCard() {
-        slice.recoveryStore.open(RecoveryCause.NewInstallation, slice.clock.instant())
+        slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, slice.clock.instant())
 
         val ui = overview()
 
@@ -178,7 +246,7 @@ class UC008CheckImportStatusViewModelTest {
             ),
             ui.firstRun,
         )
-        assertNull(ui.recoveryCheck)
+        assertNull(ui.firstUploadMatching)
         assertTrue(ui.budgets.isEmpty())
         assertTrue(ui.expiringConsents.isEmpty())
         assertFalse(ui.canFetch)
@@ -319,16 +387,17 @@ class UC008CheckImportStatusViewModelTest {
     }
 
     @Test
-    @UseCase(id = "UC-008", scenario = "A8: Recovery Check Open", businessRules = ["BR-009"])
-    @DisplayName("A8 (P9-14): with the Recovery Check open, the Overview says in plain words that only Uploads wait for it and a Fetch still works, and still offers the Fetch")
-    fun recoveryCheckSaysAFetchStillWorks() {
+    @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009"])
+    @DisplayName("A8 (P9-14, P9-17): with First Upload Matching open, its explanation says in plain words that nothing is uploaded until then and that fetching works as usual, and the Overview still offers the Fetch")
+    fun firstUploadMatchingSaysFetchingWorksAsUsual() {
         household()
-        slice.recoveryStore.open(RecoveryCause.NewInstallation, slice.clock.instant())
+        slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, slice.clock.instant())
 
         val ui = overview()
 
-        assertEquals("Only Uploads wait for the Recovery Check; a Fetch still works.", ui.recoveryNote)
+        assertEquals(explanation, ui.firstUploadMatching!!.explanation)
         assertTrue(ui.canFetch)
+        assertTrue(ui.fetchButton.enabled)
     }
 
     @Test

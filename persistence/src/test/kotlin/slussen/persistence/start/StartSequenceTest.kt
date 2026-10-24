@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import slussen.core.port.RecoveryCause
+import slussen.core.port.FirstUploadMatchingCause
 import slussen.core.port.StartKind
 import slussen.core.port.StoredPart
 import slussen.core.port.UnreadablePart
@@ -31,12 +31,12 @@ class StartSequenceTest {
     private fun sequence() = StartSequence(files, readable, readable, readable, MutableClock())
 
     @Test
-    @UseCase(id = "UC-008", scenario = "A8: Recovery Check Open", businessRules = ["BR-009"])
-    @DisplayName("A new installation opens a Recovery Check with cause New Installation (E-08); the next start is normal")
-    fun newInstallationOpensARecoveryCheck() {
+    @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009"])
+    @DisplayName("A new installation opens a First Upload Matching with cause New Installation (E-08); the next start is normal")
+    fun newInstallationOpensAFirstUploadMatching() {
         val first = sequence().run()
 
-        assertEquals(StartOutcome(StartKind.NewInstallation, RecoveryCause.NewInstallation, emptyList()), first)
+        assertEquals(StartOutcome(StartKind.NewInstallation, FirstUploadMatchingCause.NewInstallation, emptyList()), first)
         assertTrue(files.installationId.exists())
         assertTrue(files.intent.exists())
         sequence().finish()
@@ -46,17 +46,17 @@ class StartSequenceTest {
     }
 
     @Test
-    @UseCase(id = "UC-008", scenario = "A8: Recovery Check Open", businessRules = ["BR-009"])
-    @DisplayName("Data restored from a backup, which never restores the installation marker, opens a Recovery Check with cause Restored Backup")
-    fun restoredBackupOpensARecoveryCheck() {
+    @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009"])
+    @DisplayName("Data restored from a backup, which never restores the installation marker, opens a First Upload Matching with cause Restored Backup")
+    fun restoredBackupOpensAFirstUploadMatching() {
         files.main.writeText("restored transactions")
 
-        assertEquals(RecoveryCause.RestoredBackup, sequence().run().recoveryCause)
+        assertEquals(FirstUploadMatchingCause.RestoredBackup, sequence().run().firstUploadMatchingCause)
     }
 
     @Test
     @UseCase(id = "UC-008", scenario = "A1: Stored Data Cannot Be Read", requirements = ["NFR-005"])
-    @DisplayName("A1: unreadable Decision-Critical Data is kept unchanged with its journal, the last good copy takes its place, and a Recovery Check is due")
+    @DisplayName("A1: unreadable Decision-Critical Data is kept unchanged with its journal, the last good copy takes its place, and a First Upload Matching is due")
     fun unreadableMainDataStartsFromTheLastGoodCopy() {
         files.main.writeText("good transactions")
         sequence().run()
@@ -68,7 +68,7 @@ class StartSequenceTest {
         val outcome = sequence().run()
 
         assertEquals(StartKind.LastGoodCopy, outcome.kind)
-        assertEquals(RecoveryCause.LastGoodCopy, outcome.recoveryCause)
+        assertEquals(FirstUploadMatchingCause.LastGoodCopy, outcome.firstUploadMatchingCause)
         assertEquals(listOf(UnreadablePart(StoredPart.TransactionsDecisionsAndSettings, startedFromLastGoodCopy = true)), outcome.unreadableParts)
         assertEquals("good transactions", files.main.readText())
         val keptAside = databases.listFiles()!!.filter { it.name.startsWith("slussen.db.unreadable-") }
@@ -92,8 +92,8 @@ class StartSequenceTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A1: Stored Data Cannot Be Read", requirements = ["NFR-005"])
-    @DisplayName("A1: damage to the Decision Journal or to device.db is only named; it opens no Recovery Check")
-    fun damagedJournalOrDeviceDataOpensNoRecoveryCheck() {
+    @DisplayName("A1: damage to the Decision Journal or to device.db is only named; it opens no First Upload Matching")
+    fun damagedJournalOrDeviceDataOpensNoFirstUploadMatching() {
         files.main.writeText("good transactions")
         files.installationId.writeText("marker")
         files.journal.writeText("GARBAGE journal")
@@ -101,7 +101,7 @@ class StartSequenceTest {
 
         val outcome = sequence().run()
 
-        assertNull(outcome.recoveryCause)
+        assertNull(outcome.firstUploadMatchingCause)
         assertEquals(StartKind.Normal, outcome.kind)
         assertEquals(
             listOf(StoredPart.CredentialsConsentsAndOfferedBankAccounts, StoredPart.DecisionJournal),
@@ -113,16 +113,16 @@ class StartSequenceTest {
     }
 
     @Test
-    @UseCase(id = "UC-008", scenario = "A8: Recovery Check Open", businessRules = ["BR-009"])
+    @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009"])
     @DisplayName("A start interrupted after its intent was recorded finishes the same work at the next start and never looks normal (E-12)")
     fun interruptedStartResumesFromItsIntent() {
         val interrupted = sequence().run()
-        assertEquals(RecoveryCause.NewInstallation, interrupted.recoveryCause)
+        assertEquals(FirstUploadMatchingCause.NewInstallation, interrupted.firstUploadMatchingCause)
         files.main.writeText("created by Room before the process died")
 
         val resumed = sequence().run()
 
-        assertEquals(RecoveryCause.NewInstallation, resumed.recoveryCause)
+        assertEquals(FirstUploadMatchingCause.NewInstallation, resumed.firstUploadMatchingCause)
         assertTrue(files.intent.exists())
     }
 }

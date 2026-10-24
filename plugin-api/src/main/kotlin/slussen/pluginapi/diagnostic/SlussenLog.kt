@@ -65,7 +65,7 @@ public enum class RecordKind {
     EligibleTransaction,
     SentRecord,
     TransferCounterpart,
-    RecoveryCheck,
+    FirstUploadMatching,
     DecisionJournalEntry,
     OperatorSettings,
     TransferDescription,

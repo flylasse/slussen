@@ -1,6 +1,6 @@
 package slussen.persistence.start
 
-import slussen.core.port.RecoveryCause
+import slussen.core.port.FirstUploadMatchingCause
 import slussen.core.port.StartKind
 import slussen.core.port.StoredPart
 import slussen.core.port.UnreadablePart
@@ -32,14 +32,14 @@ class StartFiles(databaseDirectory: File, noBackupDirectory: File) {
 /** What the start sequence found and did, before Room opens any database. */
 data class StartOutcome(
     val kind: StartKind,
-    /** The cause of the Recovery Check to open, or null for a normal start. */
-    val recoveryCause: RecoveryCause?,
+    /** The cause of First Upload Matching to open, or null for a normal start. */
+    val firstUploadMatchingCause: FirstUploadMatchingCause?,
     val unreadableParts: List<UnreadablePart>,
 )
 
 /**
  * The start sequence of ADR-002 §6 and the last good copy of ADR-002 §8, on plain files, before Room opens a database.
- * It makes the obligation to open a Recovery Check durable (the start intent) before it changes anything, so that a
+ * It makes the obligation to open a First Upload Matching durable (the start intent) before it changes anything, so that a
  * process that dies between two steps finishes the same work at its next start.
  */
 class StartSequence(
@@ -56,16 +56,16 @@ class StartSequence(
         // Step 1: resume an interrupted start from its intent.
         val resumed = readIntent()
         val cause = resumed ?: classify()
-        // UC-006 BR-017: The obligation to open a Recovery Check is stored before anything is changed.
+        // UC-006 BR-017: The obligation to open a First Upload Matching is stored before anything is changed.
         if (resumed == null && cause != null) writeIntent(cause)
         val unreadable = mutableListOf<UnreadablePart>()
-        if (cause == RecoveryCause.LastGoodCopy) {
+        if (cause == FirstUploadMatchingCause.LastGoodCopy) {
             val startedFromLastGood = replaceUnreadableMain()
             unreadable += UnreadablePart(StoredPart.TransactionsDecisionsAndSettings, startedFromLastGood)
         }
         if (!files.installationId.exists()) writeDurably(files.installationId, newRandomText())
         if (present(files.main) && mainCheck.isReadable(files.main)) makeLastGoodCopy()
-        // Damage to a part that holds no Decision-Critical Data is set aside and only named; it opens no Recovery Check (UC-008 A1).
+        // Damage to a part that holds no Decision-Critical Data is set aside and only named; it opens no First Upload Matching (UC-008 A1).
         if (present(files.device) && !deviceCheck.isReadable(files.device)) {
             setAside(files.device, files.deviceJournal)
             unreadable += UnreadablePart(StoredPart.CredentialsConsentsAndOfferedBankAccounts, startedFromLastGoodCopy = false)
@@ -76,14 +76,14 @@ class StartSequence(
         }
         val kind = when (cause) {
             null -> StartKind.Normal
-            RecoveryCause.NewInstallation -> StartKind.NewInstallation
-            RecoveryCause.RestoredBackup -> StartKind.RestoredBackup
-            RecoveryCause.LastGoodCopy -> StartKind.LastGoodCopy
+            FirstUploadMatchingCause.NewInstallation -> StartKind.NewInstallation
+            FirstUploadMatchingCause.RestoredBackup -> StartKind.RestoredBackup
+            FirstUploadMatchingCause.LastGoodCopy -> StartKind.LastGoodCopy
         }
         return StartOutcome(kind, cause, unreadable)
     }
 
-    /** Step 6: deletes the start intent, only after the Recovery Check and the coordinator reset are committed. */
+    /** Step 6: deletes the start intent, only after First Upload Matching and the coordinator reset are committed. */
     fun finish() {
         files.intent.delete()
     }
@@ -91,16 +91,16 @@ class StartSequence(
     private fun present(file: File) = file.exists() && file.length() > 0
 
     /** Step 2, the table of ADR-002 §6. */
-    private fun classify(): RecoveryCause? {
+    private fun classify(): FirstUploadMatchingCause? {
         val marker = files.installationId.exists()
         val main = present(files.main)
         return when {
-            // Decision-Critical Data that cannot be read is started from its last good copy and opens a Recovery Check (UC-008 A1, BR-009).
-            main && !mainCheck.isReadable(files.main) -> RecoveryCause.LastGoodCopy
-            !marker && !main -> RecoveryCause.NewInstallation
-            // UC-006 BR-017: Data restored from a device backup may lack what Slussen last recorded; Uploads wait for the Recovery Check.
-            !marker && main -> RecoveryCause.RestoredBackup
-            marker && !main -> RecoveryCause.NewInstallation
+            // Decision-Critical Data that cannot be read is started from its last good copy and opens a First Upload Matching (UC-008 A1, BR-009).
+            main && !mainCheck.isReadable(files.main) -> FirstUploadMatchingCause.LastGoodCopy
+            !marker && !main -> FirstUploadMatchingCause.NewInstallation
+            // UC-006 BR-017: Data restored from a device backup may lack what Slussen last recorded; Uploads wait for First Upload Matching.
+            !marker && main -> FirstUploadMatchingCause.RestoredBackup
+            marker && !main -> FirstUploadMatchingCause.NewInstallation
             else -> null
         }
     }
@@ -133,13 +133,13 @@ class StartSequence(
         if (rollbackJournal.exists()) rollbackJournal.renameTo(File(rollbackJournal.path + suffix))
     }
 
-    private fun readIntent(): RecoveryCause? {
+    private fun readIntent(): FirstUploadMatchingCause? {
         if (!files.intent.exists()) return null
         val text = files.intent.readText(Charsets.UTF_8).trim()
-        return RecoveryCause.entries.firstOrNull { it.text == text } ?: RecoveryCause.LastGoodCopy
+        return FirstUploadMatchingCause.entries.firstOrNull { it.text == text } ?: FirstUploadMatchingCause.LastGoodCopy
     }
 
-    private fun writeIntent(cause: RecoveryCause) {
+    private fun writeIntent(cause: FirstUploadMatchingCause) {
         writeDurably(files.intentTemporary, cause.text)
         check(files.intentTemporary.renameTo(files.intent)) { "Could not record the start intent." }
     }

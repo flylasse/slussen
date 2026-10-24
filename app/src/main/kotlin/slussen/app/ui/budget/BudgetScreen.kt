@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import slussen.app.ui.components.BlockedReasonLine
+import slussen.app.ui.components.FirstUploadMatchingBanner
 import slussen.app.ui.components.Muted
 import slussen.app.ui.components.ScreenTitle
 import slussen.app.ui.components.SectionTitle
@@ -18,14 +19,16 @@ import slussen.app.ui.theme.SlussenColors
 /**
  * One Budget's workspace (UC-008 steps 4-8, A2-A4, A6; `docs/mockups/budget.html`): its Sources with Source Health and
  * Freshness apart, its Bank Accounts with the Source Health and Freshness of their last Fetch Result and the Account
- * Balance next to the Budget Account's, every Blocked Reason with its remedy, and what this build does not show yet
- * (P9-15).
+ * Balance next to the Budget Account's, every Blocked Reason with its remedy, First Upload Matching while it is open
+ * (A8, BR-009, `#recovery-blocked`), and what this build does not show yet (P9-15).
  */
 @Composable
-fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit) {
+fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit, onStartFirstUploadMatching: () -> Unit) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
             ScreenTitle(ui.title, ui.subtitle)
+            // UC-008 BR-009: First Upload Matching is shown as information or a caution, never in an error colour (`budget.html#recovery-blocked`).
+            ui.firstUploadMatching?.let { FirstUploadMatchingBanner(it, onStartFirstUploadMatching) }
             Muted(ui.counts)
             if (ui.note != null) Muted(ui.note)
             SectionTitle("Sources")

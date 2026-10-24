@@ -105,6 +105,8 @@ class FetchTransactions(
         val key = provider.key
         val stored = provider.stored
         val name = stored.name
+        // P9-16, ADR-007 §1: the screens show which Data Provider the running Fetch reads now.
+        permit.workingOn(name)
         // UC-014 BR-005: Without entered credentials the Data Provider is not contacted; credentials missing is shown.
         val credential = credentials.stored(key) ?: return FetchReport.CredentialsMissing(key, name)
         // UC-014 BR-005: A Data Provider that refused Slussen's credentials is not contacted until new ones are accepted.

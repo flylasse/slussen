@@ -130,7 +130,7 @@ internal class SimpleFinFetch(private val http: OkHttpClient, private val allowP
             throw UnreadableAccountSet()
         }
         val accounts = ((set as? JsonObject)?.get("accounts") as? JsonArray) ?: throw UnreadableAccountSet()
-        val connections = ((set as JsonObject)["connections"] as? JsonArray).orEmpty()
+        val connections = (set["connections"] as? JsonArray).orEmpty()
             .mapNotNull { it as? JsonObject }
             .mapNotNull { connection -> connection.text("conn_id")?.let { it to connection } }
             .toMap()

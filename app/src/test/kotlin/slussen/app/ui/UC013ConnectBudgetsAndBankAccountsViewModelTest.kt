@@ -385,7 +385,8 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
 
         feedsPage.fetch()
 
-        assertEquals("Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 1 · not added: 1", feedsPage.ui().message)
+        assertEquals("Fetched 14:00", feedsPage.ui().fetchResult!!.text)
+        assertEquals("Bank Accounts offered: 1 · not added: 1", feedsPage.ui().fetchResult!!.detail)
         assertEquals(listOf("CHK"), feedsPage.ui().offered!!.banks.flatMap { it.rows }.map { it.title })
         assertEquals(true, offeredLine("CHK").importOn)
     }

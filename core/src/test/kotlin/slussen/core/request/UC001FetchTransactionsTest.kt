@@ -51,6 +51,7 @@ import java.time.Instant
 import java.time.LocalDate
 import slussen.core.operation.OperationKind
 import slussen.core.operation.OperationResult
+import slussen.core.operation.RunningOperation
 import slussen.core.plugin.PluginRegistration
 import slussen.core.port.ServiceKey
 import slussen.core.port.StartedBy
@@ -947,6 +948,32 @@ class UC001FetchTransactionsTest {
         assertInstanceOf(FetchReport.Fetched::class.java, reports[1])
         assertEquals(1, slice.offeredStore.offered().count { it.dataProviderId == slice.wrenKey.dataProviderId })
         assertEquals(0, slice.openBanking.fetches)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A11: Fetch of Several Data Providers", businessRules = ["BR-010"])
+    @DisplayName("A11 (P9-16): while the Fetch runs, the operation coordinator shows it with the Data Provider it reads now, one after the other; once it ends nothing runs")
+    fun runningFetchNamesTheDataProviderItReads() = runTest {
+        ready()
+        slice.credentials.enter(slice.wrenKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        val seen = mutableListOf<RunningOperation?>()
+        slice.feeds.fetchAnswer = {
+            seen += slice.coordinator.running.value
+            FetchResponse(SourceOutcome.Completed, emptyList(), listed)
+        }
+        slice.wren.fetchAnswer = {
+            seen += slice.coordinator.running.value
+            FetchResponse(SourceOutcome.Completed, emptyList(), listOf(delivered("wren-1", "Wren Everyday")))
+        }
+        assertNull(slice.coordinator.running.value)
+
+        slice.fetch.fetchAll()
+
+        assertEquals(
+            listOf(RunningOperation(OperationKind.Fetch, "Kestrel Feeds"), RunningOperation(OperationKind.Fetch, "Wren Feeds")),
+            seen,
+        )
+        assertNull(slice.coordinator.running.value)
     }
 
     @Test

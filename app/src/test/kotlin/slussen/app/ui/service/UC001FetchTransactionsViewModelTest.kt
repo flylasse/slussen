@@ -1,5 +1,6 @@
 package slussen.app.ui.service
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -10,6 +11,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import slussen.app.ui.MainDispatcherExtension
 import slussen.app.ui.UiFixture
+import slussen.app.ui.components.FetchButtonUi
+import slussen.app.ui.components.FetchResultKind
+import slussen.app.ui.components.FetchResultUi
 import slussen.app.ui.overview.OverviewViewModel
 import slussen.core.port.BackOffCause
 import slussen.core.port.CoordinatorMode
@@ -80,15 +84,20 @@ class UC001FetchTransactionsViewModelTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario")
-    @DisplayName("Steps 1-6, 11: fetching from the page shows what was fetched and the page shows the last Fetch")
+    @DisplayName("Steps 1-6, 11 (P9-16): fetching from the page shows the result of the tap, Fetched with its time, and what was fetched; the page shows the last Fetch")
     fun fetchFromThePageShowsTheResult() {
         runBlocking { slice.enterCredentials() }
         answerFeeds()
         val page = page(slice.feedsKey)
+        assertEquals(FetchButtonUi("Fetch Kestrel Feeds", enabled = true, running = false), page.ui().fetchButton)
+        assertNull(page.ui().fetchResult)
 
         page.fetch()
 
-        assertEquals("Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 3 · not added: 3", page.ui().message)
+        assertEquals(
+            FetchResultUi("Fetched 14:00", "Bank Accounts offered: 3 · not added: 3", FetchResultKind.Fetched, tap = 1),
+            page.ui().fetchResult,
+        )
         assertEquals("Connected · last Fetch 2026-10-15 14:00", page.ui().status)
         assertEquals(1, slice.feeds.fetches)
     }
@@ -106,14 +115,17 @@ class UC001FetchTransactionsViewModelTest {
 
         page.fetch()
 
-        assertEquals("Blocked: Kestrel Feeds, waiting for the provider · until 2026-10-15 19:00", page.ui().message)
+        assertEquals(
+            FetchResultUi("Not fetched: waiting for the provider until 2026-10-15 19:00", null, FetchResultKind.NotFetched, tap = 1),
+            page.ui().fetchResult,
+        )
         assertNull(page.ui().fetchWarning)
         assertEquals(0, slice.feeds.fetches)
     }
 
     @Test
     @UseCase(id = "UC-001", scenario = "A2: Within the Fetch Cooldown", businessRules = ["BR-006"])
-    @DisplayName("A2: within the Fetch Cooldown the page says the data comes from the last Fetch and when a Fetch contacts the Data Provider again")
+    @DisplayName("A2 (P9-16): a tap within the Fetch Cooldown gets its own result: not fetched again, the data comes from the last Fetch, fresh until a Fetch contacts the Data Provider again")
     fun cooldownIsShown() {
         runBlocking { slice.enterCredentials() }
         answerFeeds()
@@ -123,7 +135,14 @@ class UC001FetchTransactionsViewModelTest {
 
         page.fetch()
 
-        assertEquals("Kestrel Feeds · Served from the Fetch of 14:00 · next 15:00", page.ui().message)
+        assertEquals(
+            FetchResultUi(
+                "Not fetched again: the Fetch of 14:00 is still fresh until 15:00 (Fetch Cooldown)", null, FetchResultKind.Cooldown, tap = 2,
+            ),
+            page.ui().fetchResult,
+        )
+        page.fetch()
+        assertEquals(3, page.ui().fetchResult!!.tap)
     }
 
     @Test
@@ -135,7 +154,10 @@ class UC001FetchTransactionsViewModelTest {
 
         page.fetch()
 
-        assertEquals("Blocked: Kestrel Feeds, Request Limit reached · frees up from 2026-10-16 14:00", page.ui().message)
+        assertEquals(
+            FetchResultUi("Not fetched: Request Limit reached · frees up from 2026-10-16 14:00", null, FetchResultKind.NotFetched, tap = 1),
+            page.ui().fetchResult,
+        )
     }
 
     @Test
@@ -149,11 +171,16 @@ class UC001FetchTransactionsViewModelTest {
         page.fetch()
 
         assertEquals(
-            "Kestrel Feeds could not be read: no answer within the request timeout, an Operator Setting · 14:00 · " +
-                "stored data unchanged · Fetch again",
-            page.ui().message,
+            FetchResultUi(
+                "Failed 14:00: no answer within the request timeout, an Operator Setting",
+                "Stored data unchanged · you can fetch again at any time",
+                FetchResultKind.Failed,
+                tap = 1,
+            ),
+            page.ui().fetchResult,
         )
         assertTrue(page.ui().canFetch)
+        assertTrue(page.ui().fetchButton!!.enabled)
     }
 
     @Test
@@ -166,7 +193,10 @@ class UC001FetchTransactionsViewModelTest {
 
         page.fetch()
 
-        assertEquals("Blocked: Kestrel Feeds, credentials refused · Enter credentials", page.ui().message)
+        assertEquals(
+            FetchResultUi("Not fetched: credentials refused · enter them again", null, FetchResultKind.Failed, tap = 1),
+            page.ui().fetchResult,
+        )
         assertEquals("Blocked: credentials refused · Enter credentials", page.ui().blocked)
     }
 
@@ -176,12 +206,20 @@ class UC001FetchTransactionsViewModelTest {
     fun missingCredentialsAndOpenPlanAreShown() {
         val page = page(slice.feedsKey)
         page.fetch()
-        assertEquals("Blocked: Kestrel Feeds, credentials missing · Enter credentials", page.ui().message)
+        assertEquals(
+            FetchResultUi("Not fetched: credentials missing · enter them", null, FetchResultKind.NotFetched, tap = 1),
+            page.ui().fetchResult,
+        )
 
         runBlocking { slice.enterCredentials() }
         slice.coordinatorStore.mode = CoordinatorMode.PlanOpen
         page.fetch()
-        assertEquals("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", page.ui().message)
+        assertEquals(
+            FetchResultUi(
+                "Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", null, FetchResultKind.NotFetched, tap = 2,
+            ),
+            page.ui().fetchResult,
+        )
         assertEquals(0, slice.feeds.fetches)
     }
 
@@ -215,7 +253,10 @@ class UC001FetchTransactionsViewModelTest {
 
         assertNull(page.ui().fetchWarning)
         assertEquals(1, slice.feeds.fetches)
-        assertEquals("Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 3 · not added: 3", page.ui().message)
+        assertEquals(
+            FetchResultUi("Fetched 14:00", "Bank Accounts offered: 3 · not added: 3", FetchResultKind.Fetched, tap = 3),
+            page.ui().fetchResult,
+        )
     }
 
     @Test
@@ -229,10 +270,15 @@ class UC001FetchTransactionsViewModelTest {
         page.fetch()
 
         assertEquals(
-            "Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 3 · not added: 3 · Kestrel Feeds warned that Slussen is " +
-                "near its Request Limit · Scheduled Fetches leave it alone until 2026-10-16 14:00 · further requests can get " +
-                "Slussen's access to Kestrel Feeds disabled",
-            page.ui().message,
+            FetchResultUi(
+                "Fetched 14:00",
+                "Bank Accounts offered: 3 · not added: 3 · Kestrel Feeds warned that Slussen is near its Request Limit · " +
+                    "Scheduled Fetches leave it alone until 2026-10-16 14:00 · further requests can get Slussen's access " +
+                    "to Kestrel Feeds disabled",
+                FetchResultKind.Fetched,
+                tap = 1,
+            ),
+            page.ui().fetchResult,
         )
     }
 
@@ -253,11 +299,16 @@ class UC001FetchTransactionsViewModelTest {
 
         assertEquals(
             listOf(
-                "Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 3 · not added: 3",
+                FetchResultUi("Kestrel Feeds · Fetched 14:00", "Bank Accounts offered: 3 · not added: 3", FetchResultKind.Fetched, tap = 1),
                 // P9-13: said plainly, without naming a feature this build does not have.
-                "Aurora Open Banking · not fetched · Bank Consents are not in this build yet; Aurora Open Banking cannot fetch until they are",
+                FetchResultUi(
+                    "Aurora Open Banking · Not fetched: Bank Consents are not in this build yet; Aurora Open Banking cannot fetch until they are",
+                    null,
+                    FetchResultKind.NotFetched,
+                    tap = 1,
+                ),
             ),
-            overview.state.value!!.fetchMessages,
+            overview.state.value!!.fetchResults,
         )
         assertEquals(0, slice.openBanking.fetches)
     }
@@ -279,8 +330,68 @@ class UC001FetchTransactionsViewModelTest {
         overview.confirmFetch()
 
         assertNull(overview.state.value!!.fetchWarning)
-        assertEquals(listOf("Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 3 · not added: 3"), overview.state.value!!.fetchMessages)
+        assertEquals(
+            listOf(FetchResultUi("Kestrel Feeds · Fetched 14:00", "Bank Accounts offered: 3 · not added: 3", FetchResultKind.Fetched, tap = 2)),
+            overview.state.value!!.fetchResults,
+        )
     }
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("Step 1 (P9-16, budget.html#fetch-states): while the Fetch runs, its button shows Fetching with the Data Provider, with progress, and is disabled, here and on the Overview; another tap starts nothing; the earlier result goes; afterwards the button is ready again with the result of the tap")
+    fun runningFetchIsShownOnItsButton() {
+        runBlocking { slice.enterCredentials() }
+        answerFeeds()
+        aBankAccountIsAdded()
+        val gate = CompletableDeferred<Unit>()
+        val page = page(slice.feedsKey)
+        val overview = OverviewViewModel(fixture.services).also { it.load() }
+        page.fetch()
+        slice.clock.advance(Duration.ofHours(2))
+        slice.feeds.beforeAnswer = { gate.await() }
+
+        page.fetch()
+
+        assertEquals(FetchButtonUi("Fetching Kestrel Feeds…", enabled = false, running = true), page.ui().fetchButton)
+        assertNull(page.ui().fetchResult)
+        assertEquals(FetchButtonUi("Fetching Kestrel Feeds…", enabled = false, running = true), overview.state.value!!.fetchButton)
+        page.fetch()
+        overview.fetchAll()
+        assertEquals(2, slice.feeds.fetches)
+
+        gate.complete(Unit)
+
+        assertEquals(FetchButtonUi("Fetch Kestrel Feeds", enabled = true, running = false), page.ui().fetchButton)
+        assertEquals(FetchButtonUi("Fetch all Data Providers", enabled = true, running = false), overview.state.value!!.fetchButton)
+        assertEquals(
+            FetchResultUi("Fetched 16:00", "Bank Accounts offered: 3 · not added: 3", FetchResultKind.Fetched, tap = 2),
+            page.ui().fetchResult,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A11: Fetch of Several Data Providers", businessRules = ["BR-010"])
+    @DisplayName("A11 (P9-16): while the Overview fetches all Data Providers, its button shows the Data Provider being fetched and is disabled; the results of the tap follow, one per Data Provider")
+    fun overviewShowsWhichDataProviderIsFetched() {
+        runBlocking { slice.enterCredentials() }
+        answerFeeds()
+        aBankAccountIsAdded()
+        val gate = CompletableDeferred<Unit>()
+        slice.feeds.beforeAnswer = { gate.await() }
+        val overview = OverviewViewModel(fixture.services).also { it.load() }
+        assertEquals(FetchButtonUi("Fetch all Data Providers", enabled = true, running = false), overview.state.value!!.fetchButton)
+
+        overview.fetchAll()
+
+        assertEquals(FetchButtonUi("Fetching Kestrel Feeds…", enabled = false, running = true), overview.state.value!!.fetchButton)
+        assertEquals(emptyList<FetchResultUi>(), overview.state.value!!.fetchResults)
+        gate.complete(Unit)
+        assertEquals(FetchButtonUi("Fetch all Data Providers", enabled = true, running = false), overview.state.value!!.fetchButton)
+        assertEquals(
+            listOf(FetchResultUi("Kestrel Feeds · Fetched 14:00", "Bank Accounts offered: 3 · not added: 3", FetchResultKind.Fetched, tap = 1)),
+            overview.state.value!!.fetchResults,
+        )
+    }
+
     @Test
     @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
     @DisplayName("A4, BR-008 (P9-13): the page of a Data Provider that needs a Bank Consent says plainly that Bank Consents are not in this build, and its Fetch is unavailable with that reason")
@@ -330,8 +441,13 @@ class UC001FetchTransactionsViewModelTest {
         page.fetch()
 
         assertEquals(
-            "Kestrel Feeds · Fetched 14:00 · Bank Accounts offered: 1 · added and identified: 1 · failed: Kestrel Checking, stored data unchanged",
-            page.ui().message,
+            FetchResultUi(
+                "Fetched 14:00",
+                "Bank Accounts offered: 1 · added and identified: 1 · failed: Kestrel Checking, stored data unchanged",
+                FetchResultKind.Fetched,
+                tap = 1,
+            ),
+            page.ui().fetchResult,
         )
     }
 

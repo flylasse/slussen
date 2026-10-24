@@ -158,6 +158,9 @@ class FakeDataProvider(
     /** What the Data Provider answers once the gate admitted the request. */
     var fetchAnswer: (FetchRequest) -> FetchResponse = { error("No Fetch answer scripted (UC-001).") }
 
+    /** Runs after the gate admitted the request and before [fetchAnswer]: a test can hold the Fetch here while it looks at the screen. */
+    var beforeAnswer: suspend () -> Unit = {}
+
     override val bankConsent: BankConsentCapability? = null
 
     override suspend fun fetch(request: FetchRequest, context: RequestContext): FetchResponse {
@@ -169,6 +172,7 @@ class FakeDataProvider(
             return FetchResponse(SourceOutcome.StoppedByGate(admission.reason), emptyList(), emptyList())
         }
         requestsSent++
+        beforeAnswer()
         return fetchAnswer(request)
     }
 

@@ -20,7 +20,7 @@ import slussen.app.ui.budget.SourceCard
 import slussen.app.ui.overview.OverviewScreen
 import slussen.app.ui.overview.OverviewViewModel
 import slussen.app.ui.theme.SlussenTheme
-import slussen.core.port.RecoveryCause
+import slussen.core.port.FirstUploadMatchingCause
 import slussen.core.port.ServiceKey
 import slussen.pluginapi.testfixtures.UseCase
 
@@ -32,31 +32,31 @@ class UC008CheckImportStatusScreenIT {
     val compose = createComposeExtension()
 
     @Test
-    @UseCase(id = "UC-008", scenario = "A8: Recovery Check Open", businessRules = ["BR-009"])
-    @DisplayName("A8, A9: the open Recovery Check is shown; asking to confirm it says that it stays open")
-    fun recoveryCheckIsShownAndStaysOpen() = compose.use {
+    @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009", "BR-006"])
+    @DisplayName("A8, A9 (P9-17): First Upload Matching is shown with its explanation and reason line; Start First Upload Matching is unavailable while the Comparison is not built, and the build line says why")
+    fun firstUploadMatchingIsShownAndCannotStartYet() = compose.use {
         val fixture = ScreenFixture()
         aBankAccountIsAdded(fixture)
-        fixture.slice.recoveryStore.open(RecoveryCause.NewInstallation, fixture.slice.clock.instant())
+        fixture.slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, fixture.slice.clock.instant())
         val viewModel = OverviewViewModel(fixture.services)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.load() }
         setContent {
             SlussenTheme {
                 viewModel.state.collectAsState().value?.let {
-                    OverviewScreen(it, onBudget = {}, onOpenSettings = {}, onConfirmRecoveryCheck = viewModel::confirmRecoveryCheck, onRecentFetches = {},
+                    OverviewScreen(it, onBudget = {}, onOpenSettings = {}, onStartFirstUploadMatching = viewModel::startFirstUploadMatching, onRecentFetches = {},
                         onFetchAll = {}, onConfirmFetch = {}, onCancelFetch = {})
                 }
             }
         }
 
-        onNodeWithText("Uploads blocked: Recovery Check open").assertExists()
-        onNodeWithText("New installation", substring = true).assertExists()
-        // P9-14: in plain words, only Uploads wait; the Fetch stays offered with what it does in this build.
-        onNodeWithText("Only Uploads wait for the Recovery Check; a Fetch still works.").assertExists()
+        onNodeWithText("Uploads wait for First Upload Matching").assertExists()
+        onNodeWithText("Before Slussen uploads anything", substring = true).assertExists()
+        onNodeWithText("This is a new installation.", substring = true).assertExists()
+        onNodeWithText("Matching with ${slussen.testing.ExampleData.BUDGET_APP_NAME} comes in a later version; until then nothing is uploaded.").assertExists()
+        onNodeWithText("Start First Upload Matching").assertIsNotEnabled()
+        // P9-14: the Fetch stays offered with what it does in this build.
         onNodeWithText("Fetch all Data Providers").assertIsEnabled()
         onNodeWithText("In this build a Fetch lists the Bank Accounts", substring = true).assertExists()
-        onNodeWithText("Recovery Check").performClick()
-        onNodeWithText("The Recovery Check stays open", substring = true).assertExists()
     }
 
     @Test
@@ -64,14 +64,14 @@ class UC008CheckImportStatusScreenIT {
     @DisplayName("A10: with no Bank Account added, the Overview shows only the card that leads to Settings and names the next thing")
     fun firstStartShowsOnlyTheCard() = compose.use {
         val fixture = ScreenFixture()
-        fixture.slice.recoveryStore.open(RecoveryCause.NewInstallation, fixture.slice.clock.instant())
+        fixture.slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, fixture.slice.clock.instant())
         var settingsOpened = false
         val viewModel = OverviewViewModel(fixture.services)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.load() }
         setContent {
             SlussenTheme {
                 viewModel.state.collectAsState().value?.let {
-                    OverviewScreen(it, onBudget = {}, onOpenSettings = { settingsOpened = true }, onConfirmRecoveryCheck = {}, onRecentFetches = {},
+                    OverviewScreen(it, onBudget = {}, onOpenSettings = { settingsOpened = true }, onStartFirstUploadMatching = {}, onRecentFetches = {},
                         onFetchAll = {}, onConfirmFetch = {}, onCancelFetch = {})
                 }
             }
@@ -79,7 +79,7 @@ class UC008CheckImportStatusScreenIT {
 
         onNodeWithText("Set up Slussen in Settings").assertExists()
         onNodeWithText("Next: enter the ${slussen.testing.ExampleData.BUDGET_APP_NAME} credentials").assertExists()
-        onNodeWithText("Uploads blocked: Recovery Check open").assertDoesNotExist()
+        onNodeWithText("Uploads wait for First Upload Matching").assertDoesNotExist()
         onNodeWithText("Fetch all Data Providers").assertDoesNotExist()
         onNodeWithText("Open Settings").performClick()
         org.junit.jupiter.api.Assertions.assertTrue(settingsOpened)
@@ -111,7 +111,7 @@ class UC008CheckImportStatusScreenIT {
             bankAccounts = emptyList(),
             note = "Bank Transactions are not fetched in this build yet: a Fetch stores the Account Balances, so the counts stay at 0.",
         )
-        setContent { SlussenTheme { BudgetScreen(ui) { opened = it.service } } }
+        setContent { SlussenTheme { BudgetScreen(ui, onRemedy = { opened = it.service }, onStartFirstUploadMatching = {}) } }
 
         onNodeWithText("Grant Bank Consent").assertIsNotEnabled()
         onNodeWithText("Bank Consents are not in this build yet").assertExists()

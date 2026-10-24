@@ -1,6 +1,7 @@
 package slussen.core.status
 
 import slussen.core.credential.CredentialStatusReader
+import slussen.core.firstupload.FirstUploadMatchingNotice
 import slussen.core.journal.DecisionJournal
 import slussen.core.port.BackupSizeMonitor
 import slussen.core.port.BankAccountType
@@ -10,8 +11,6 @@ import slussen.core.port.FetchResultOutcome
 import slussen.core.port.ImportStatusStore
 import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.ProviderRequestStore
-import slussen.core.port.RecoveryCause
-import slussen.core.port.RecoveryStore
 import slussen.core.port.StartState
 import slussen.core.port.StartedBy
 import slussen.core.port.StoredDataProvider
@@ -36,7 +35,7 @@ enum class BlockedReason {
     CredentialsRefused,
     CredentialsMissing,
     CurrencyMismatch,
-    RecoveryCheckOpen,
+    UploadsWaitForFirstUploadMatching,
 }
 
 /** The action that removes a Blocked Reason (UC-008 BR-006, A6). */
@@ -59,8 +58,8 @@ enum class Remedy {
     /** Move the Account Mapping (UC-009 A8). */
     MoveAccountMapping,
 
-    /** Compare with the Budget App and confirm the Recovery Check (BR-009). */
-    CompareAndConfirm,
+    /** "Start First Upload Matching": compare with the Budget App and confirm (BR-006, BR-009, A9). */
+    StartFirstUploadMatching,
 }
 
 /** One Blocked Reason of a Source, a Bank Account or a Budget, with its remedy and the time it ends or happened. */
@@ -149,9 +148,6 @@ data class BudgetSummary(
 /** A Bank Consent that expires within the consent warning lead time (step 2, BR-002), with its renew action. */
 data class ExpiringBankConsent(val bankName: String, val dataProviderName: String, val expiresAt: Instant)
 
-/** A8, BR-009: Uploads are blocked until the Operator confirms the Recovery Check, and why. */
-data class RecoveryNotice(val cause: RecoveryCause, val openedAt: Instant)
-
 /** A7, BR-010: the backed-up data nears Android's backup limit. */
 data class BackupWarning(val backedUpBytes: Long, val limitBytes: Long)
 
@@ -161,7 +157,8 @@ data class UnreadableNotice(val part: StoredPart, val startedFromLastGoodCopy: B
 /** What opening Slussen shows (steps 1-3, A1, A7, A8). */
 data class Overview(
     val unreadable: List<UnreadableNotice>,
-    val recoveryCheck: RecoveryNotice?,
+    /** A8, BR-009: Uploads wait for First Upload Matching; null while none is open. */
+    val firstUploadMatching: FirstUploadMatchingNotice?,
     val backupWarning: BackupWarning?,
     val expiringBankConsents: List<ExpiringBankConsent>,
     val budgets: List<BudgetSummary>,
@@ -180,19 +177,10 @@ data class BudgetWorkspace(
     val summary: BudgetSummary,
     val sources: List<SourceStatus>,
     val bankAccounts: List<BankAccountStatus>,
+    /** A8, BR-009 (`budget.html#recovery-blocked`): Uploads of this Budget wait for First Upload Matching; null while none is open. */
+    val firstUploadMatching: FirstUploadMatchingNotice?,
+    val budgetAppName: String,
 )
 
 /** One of the most recent Fetches (A5, BR-008). */
 data class RecentFetch(val sourceName: String, val startedAt: Instant, val startedBy: StartedBy, val outcome: FetchOutcome)
-
-/** The outcome of asking to confirm the Recovery Check (A9). */
-sealed interface RecoveryConfirmation {
-    /** No Recovery Check is open. */
-    data object NoneOpen : RecoveryConfirmation
-
-    /**
-     * A9 step 1: Compare With the Budget App (UC-003) must run first, and no slice has built it yet (O-P2-09); the
-     * Recovery Check stays open.
-     */
-    data object ComparisonNotAvailable : RecoveryConfirmation
-}

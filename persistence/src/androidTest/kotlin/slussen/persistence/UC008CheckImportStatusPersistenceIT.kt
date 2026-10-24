@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import slussen.core.port.RecoveryCause
+import slussen.core.port.FirstUploadMatchingCause
 import slussen.core.port.StartKind
 import slussen.core.port.StoredPart
 import slussen.persistence.start.SqliteDatabaseCheck
@@ -18,7 +18,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 
 /**
- * The start sequence (ADR-002 §6), the platform SQLite check of the last good copy (ADR-002 §8) and the Recovery Check
+ * The start sequence (ADR-002 §6), the platform SQLite check of the last good copy (ADR-002 §8) and First Upload Matching
  * of a new installation (E-08) on a device or emulator.
  */
 @DisplayName("UC-008: Check Import Status, on the device")
@@ -29,19 +29,19 @@ class UC008CheckImportStatusPersistenceIT {
     fun fresh() = DeviceFiles.wipe()
 
     @Test
-    @UseCase(id = "UC-008", scenario = "A8: Recovery Check Open", businessRules = ["BR-009"])
-    @DisplayName("E-08: a new installation opens a Recovery Check with cause New Installation; the next start opens none")
-    fun newInstallationOpensOneRecoveryCheck() = runBlocking {
+    @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009"])
+    @DisplayName("E-08: a new installation opens a First Upload Matching with cause New Installation; the next start opens none")
+    fun newInstallationOpensOneFirstUploadMatching() = runBlocking {
         val first = SlussenStorage.open(DeviceFiles.context, clock)
         assertEquals(StartKind.NewInstallation, first.startState.startKind)
-        assertEquals(listOf(RecoveryCause.NewInstallation), first.recovery.openChecks().map { it.cause })
+        assertEquals(listOf(FirstUploadMatchingCause.NewInstallation), first.firstUploadMatching.openChecks().map { it.cause })
         assertEquals(slussen.core.port.OperatorSettings.DEFAULT, first.settings.current())
         first.main.close(); first.device.close(); first.journal.close()
 
         val next = SlussenStorage.open(DeviceFiles.context, clock)
 
         assertEquals(StartKind.Normal, next.startState.startKind)
-        assertEquals(1, next.recovery.openChecks().size)
+        assertEquals(1, next.firstUploadMatching.openChecks().size)
         assertTrue(java.io.File(DeviceFiles.context.noBackupFilesDir, "slussen.lastgood.db").exists())
         next.main.close(); next.device.close(); next.journal.close()
     }
@@ -73,7 +73,7 @@ class UC008CheckImportStatusPersistenceIT {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A1: Stored Data Cannot Be Read", businessRules = ["BR-009"], requirements = ["NFR-005"])
-    @DisplayName("A1: a damaged slussen.db is set aside, the last good copy is used, the part is named and a Recovery Check opens")
+    @DisplayName("A1: a damaged slussen.db is set aside, the last good copy is used, the part is named and a First Upload Matching opens")
     fun damagedMainDatabaseStartsFromTheLastGoodCopy() = runBlocking {
         SlussenStorage.open(DeviceFiles.context, clock).also { it.main.close(); it.device.close(); it.journal.close() }
         SlussenStorage.open(DeviceFiles.context, clock).also { it.main.close(); it.device.close(); it.journal.close() }
@@ -86,7 +86,7 @@ class UC008CheckImportStatusPersistenceIT {
 
         assertEquals(StartKind.LastGoodCopy, storage.startState.startKind)
         assertEquals(StoredPart.TransactionsDecisionsAndSettings, storage.startState.unreadableParts.single().part)
-        assertTrue(storage.recovery.openChecks().any { it.cause == RecoveryCause.LastGoodCopy })
+        assertTrue(storage.firstUploadMatching.openChecks().any { it.cause == FirstUploadMatchingCause.LastGoodCopy })
         assertTrue(mainFile.parentFile!!.listFiles()!!.any { it.name.startsWith("slussen.db.unreadable-") })
         storage.main.close(); storage.device.close(); storage.journal.close()
     }

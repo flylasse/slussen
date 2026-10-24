@@ -20,6 +20,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import slussen.app.ui.components.Banner
+import slussen.app.ui.components.FetchButton
+import slussen.app.ui.components.FetchResultLine
+import slussen.app.ui.components.FirstUploadMatchingBanner
+import slussen.app.ui.components.toneColours
 import slussen.app.ui.components.Muted
 import slussen.app.ui.components.ScreenTitle
 import slussen.app.ui.components.SlussenCard
@@ -28,16 +32,18 @@ import slussen.app.ui.theme.SlussenColors
 /**
  * The Overview tab (UC-008 steps 1-3, A1, A7, A8, A10; `docs/mockups/overview.html`): while no Bank Account is added,
  * only the card that leads to Settings (`#new-installation`, `#first-run-next`); otherwise the notices that appear at
- * every opening (the Recovery Check with what it holds back, P9-14), the Fetch of all Data Providers above the Budget
- * cards with one line on what a Fetch does in this build (UC-001 A11, with the confirmation of a warning, A16; P9-14),
- * the expiring Bank Consents, and every Budget with its counts and blocked states.
+ * every opening (First Upload Matching with its explanation, reason lines and action, in its tone, never an error: A8,
+ * BR-009, `#first-added`, `#recovery`, `#damaged-critical`), the Fetch of all Data Providers above the Budget cards with
+ * its state while it runs and the result of each tap (P9-16, `budget.html#fetch-states`) and one line on what a Fetch
+ * does in this build (UC-001 A11, with the confirmation of a warning, A16; P9-14), the expiring Bank Consents, and every
+ * Budget with its counts and blocked states.
  */
 @Composable
 fun OverviewScreen(
     ui: OverviewUi,
     onBudget: (Long) -> Unit,
     onOpenSettings: () -> Unit,
-    onConfirmRecoveryCheck: () -> Unit,
+    onStartFirstUploadMatching: () -> Unit,
     onRecentFetches: () -> Unit,
     onFetchAll: () -> Unit,
     onConfirmFetch: () -> Unit,
@@ -65,21 +71,20 @@ fun OverviewScreen(
             Muted(ui.budgetAppRead)
         }
         items(ui.unreadableNotices) { Banner(it, null) }
-        if (ui.recoveryCheck != null) {
-            item {
-                Banner(ui.recoveryCheck, ui.recoveryCause, SlussenColors.RedBackground, SlussenColors.Red)
-                if (ui.recoveryNote != null) Muted(ui.recoveryNote)
-                OutlinedButton(onClick = onConfirmRecoveryCheck) { Text("Recovery Check") }
-            }
+        val firstUploadMatching = ui.firstUploadMatching
+        if (firstUploadMatching != null) {
+            // UC-008 BR-009: information or a caution, never an error colour.
+            item { FirstUploadMatchingBanner(firstUploadMatching, onStartFirstUploadMatching) }
         }
         if (ui.message != null) item { Banner(ui.message, null, SlussenColors.Surface2, SlussenColors.Text) }
         if (ui.backupWarning != null) item { Banner(ui.backupWarning, null) }
         // P9-14: the Fetch action stands above the Budget cards, where it is seen without scrolling.
         item {
             Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Button(onClick = onFetchAll, enabled = ui.canFetch) { Text("Fetch all Data Providers") }
+                FetchButton(ui.fetchButton, onFetchAll)
+                // P9-16: the result of each tap, marked, one per Data Provider.
+                ui.fetchResults.forEach { FetchResultLine(it) }
                 if (ui.fetchNote != null) Muted(ui.fetchNote)
-                ui.fetchMessages.forEach { Muted(it) }
             }
         }
         items(ui.expiringConsents) { Banner(it, ui.expiringConsentNote) }
@@ -91,7 +96,8 @@ fun OverviewScreen(
                     Text(budget.currency, color = SlussenColors.Text2, fontSize = 12.sp)
                 }
                 Muted(budget.counts)
-                if (budget.blocked.isEmpty()) {
+                budget.firstUploadMatching?.let { chip -> Text(chip.text, color = toneColours(chip.tone).second, fontSize = 12.sp) }
+                if (budget.blocked.isEmpty() && budget.firstUploadMatching == null) {
                     Text("Nothing blocked", color = SlussenColors.Green, fontSize = 12.sp)
                 } else {
                     budget.blocked.forEach { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }

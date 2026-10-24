@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import slussen.app.ui.Formats
 import slussen.app.ui.Texts
 import slussen.app.ui.UiServices
+import slussen.app.ui.components.FirstUploadMatchingUi
 import slussen.core.port.ServiceKey
 import slussen.core.status.BalanceComparison
 import slussen.core.status.Blocked
@@ -53,6 +54,8 @@ data class BudgetUi(
     val bankAccounts: List<BankAccountCard>,
     /** P9-15: what this build does not show yet. */
     val note: String? = null,
+    /** UC-008 A8, BR-006, BR-009 (`budget.html#recovery-blocked`): Uploads wait for First Upload Matching; null while none is open. */
+    val firstUploadMatching: FirstUploadMatchingUi? = null,
 )
 
 /** A Budget tab (UC-008 steps 4-8), from stored data only. */
@@ -95,6 +98,8 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                 },
                 // P9-15: while a Fetch asks for balances only (O-P2-54), the tab says why the counts stay at 0.
                 note = Texts.TRANSACTIONS_NOT_IN_THIS_BUILD,
+                // UC-008 BR-009: The Budget shows that its Uploads wait for First Upload Matching, as information, never as an error.
+                firstUploadMatching = workspace.firstUploadMatching?.let { Texts.firstUploadMatching(it, workspace.budgetAppName) },
             )
         }
     }
@@ -118,7 +123,8 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
             Remedy.GrantBankConsent -> RemedyAction(title, available = false, service = null, note = Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD)
             Remedy.IdentifyBankAccount, Remedy.MoveAccountMapping ->
                 RemedyAction(title, available = false, service = null, note = "comes with Manage Account Mappings")
-            Remedy.CompareAndConfirm ->
+            // A9 of UC-008: Start First Upload Matching needs Compare With the Budget App (UC-003), not in this build yet (O-P2-09).
+            Remedy.StartFirstUploadMatching ->
                 RemedyAction(title, available = false, service = null, note = "Comparing with the Budget App is not in this build yet")
             Remedy.WaitUntilItEnds -> null
         }

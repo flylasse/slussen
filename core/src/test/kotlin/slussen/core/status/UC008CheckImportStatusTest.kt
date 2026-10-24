@@ -9,6 +9,9 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import slussen.testing.TestSlice
 import slussen.core.fetch.FetchStart
+import slussen.core.firstupload.FirstUploadMatchingNotice
+import slussen.core.firstupload.FirstUploadMatchingStart
+import slussen.core.firstupload.FirstUploadMatchingTone
 import slussen.pluginapi.provider.BankAccountResult
 import slussen.pluginapi.provider.DeliveredBankAccount
 import slussen.pluginapi.provider.FetchResponse
@@ -22,7 +25,7 @@ import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
 import slussen.core.port.JournalEventKind
 import slussen.core.port.ProviderRequestKind
-import slussen.core.port.RecoveryCause
+import slussen.core.port.FirstUploadMatchingCause
 import slussen.core.port.StartKind
 import slussen.core.port.StartedBy
 import slussen.core.port.StoredAccountBalance
@@ -371,31 +374,36 @@ class UC008CheckImportStatusTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A1: Stored Data Cannot Be Read", requirements = ["NFR-005"])
-    @DisplayName("A1: a part that could not be read is named in a notice; damage to the Decision Journal opens no Recovery Check")
+    @DisplayName("A1: a part that could not be read is named in a notice; damage to the Decision Journal opens no First Upload Matching")
     fun unreadablePartIsNamed() = runTest {
         val damaged = TestSlice(unreadableParts = listOf(UnreadablePart(StoredPart.DecisionJournal, startedFromLastGoodCopy = false)))
 
         val overview = damaged.status.open()
 
         assertEquals(listOf(UnreadableNotice(StoredPart.DecisionJournal, startedFromLastGoodCopy = false)), overview.unreadable)
-        assertNull(overview.recoveryCheck)
+        assertNull(overview.firstUploadMatching)
     }
 
     @Test
     @UseCase(id = "UC-008", scenario = "A1: Stored Data Cannot Be Read", businessRules = ["BR-009"], requirements = ["NFR-005"])
-    @DisplayName("A1: Decision-Critical Data that could not be read is named, started from the last good copy, and its Recovery Check is shown")
-    fun unreadableDecisionCriticalDataShowsTheRecoveryCheck() = runTest {
+    @DisplayName("A1, BR-009: Decision-Critical Data that could not be read is named, started from the last good copy, and its First Upload Matching is shown as a caution with the reason of its cause")
+    fun unreadableDecisionCriticalDataShowsFirstUploadMatching() = runTest {
         val damaged = TestSlice(
             startKind = StartKind.LastGoodCopy,
             unreadableParts = listOf(UnreadablePart(StoredPart.TransactionsDecisionsAndSettings, startedFromLastGoodCopy = true)),
         )
-        damaged.recoveryStore.open(RecoveryCause.LastGoodCopy, damaged.clock.instant())
+        damaged.firstUploadMatchingStore.open(FirstUploadMatchingCause.LastGoodCopy, damaged.clock.instant())
 
         val overview = damaged.status.open()
 
         assertEquals(StoredPart.TransactionsDecisionsAndSettings, overview.unreadable.single().part)
         assertTrue(overview.unreadable.single().startedFromLastGoodCopy)
-        assertEquals(RecoveryNotice(RecoveryCause.LastGoodCopy, damaged.clock.instant()), overview.recoveryCheck)
+        assertEquals(
+            FirstUploadMatchingNotice(
+                listOf(FirstUploadMatchingCause.LastGoodCopy), FirstUploadMatchingTone.Caution, damaged.clock.instant(), canStart = false,
+            ),
+            overview.firstUploadMatching,
+        )
     }
 
     @Test
@@ -491,34 +499,85 @@ class UC008CheckImportStatusTest {
     }
 
     @Test
-    @UseCase(id = "UC-008", scenario = "A8: Recovery Check Open", businessRules = ["BR-009", "BR-006"])
-    @DisplayName("A8: while a Recovery Check is open, every opening shows that Uploads are blocked and why, and each Budget shows it as Blocked Reason")
-    fun openRecoveryCheckIsShown() = runTest {
+    @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009", "BR-006"])
+    @DisplayName("A8, BR-006, BR-009: while First Upload Matching is open, every opening shows it with the reason of its cause, as plain information after a new installation, and each Budget shows Uploads wait for First Upload Matching with the action Start First Upload Matching")
+    fun openFirstUploadMatchingIsShown() = runTest {
         household()
         val openedAt = now.minus(Duration.ofDays(1))
-        slice.recoveryStore.open(RecoveryCause.NewInstallation, openedAt)
+        slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, openedAt)
+        val expected = FirstUploadMatchingNotice(
+            listOf(FirstUploadMatchingCause.NewInstallation), FirstUploadMatchingTone.Information, openedAt, canStart = false,
+        )
 
         val overview = slice.status.open()
 
-        assertEquals(RecoveryNotice(RecoveryCause.NewInstallation, openedAt), overview.recoveryCheck)
+        assertEquals(expected, overview.firstUploadMatching)
         overview.budgets.forEach { budget ->
-            assertTrue(budget.blocked.any { it.reason == BlockedReason.RecoveryCheckOpen && it.remedy == Remedy.CompareAndConfirm })
+            assertTrue(
+                budget.blocked.contains(
+                    Blocked(BlockedReason.UploadsWaitForFirstUploadMatching, Remedy.StartFirstUploadMatching, openedAt, budget.name),
+                ),
+            )
         }
+        assertEquals(expected, slice.status.workspace(budgetId("Household")).firstUploadMatching)
     }
 
     @Test
-    @UseCase(id = "UC-008", scenario = "A9: Operator Confirms the Recovery Check", businessRules = ["BR-009"])
-    @DisplayName("A9: the Recovery Check cannot be confirmed without a Comparison that read every Budget, which no slice builds yet (O-P2-09)")
-    fun recoveryCheckStaysOpenWithoutAComparison() = runTest {
+    @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009"])
+    @DisplayName("BR-009: a restore from a device backup is a caution; while several are open, the line of each cause is shown once and a caution wins beside a new installation; with none open nothing is shown")
+    fun eachCauseIsShownOnceAndACautionWins() = runTest {
         household()
-        assertEquals(RecoveryConfirmation.NoneOpen, slice.status.confirmRecoveryCheck())
-        slice.recoveryStore.open(RecoveryCause.NewInstallation, now)
+        assertNull(slice.status.open().firstUploadMatching)
+        assertTrue(slice.status.open().budgets.none { budget -> budget.blocked.any { it.reason == BlockedReason.UploadsWaitForFirstUploadMatching } })
+        val first = now.minus(Duration.ofDays(3))
+        slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.RestoredBackup, first)
+        assertEquals(
+            FirstUploadMatchingNotice(listOf(FirstUploadMatchingCause.RestoredBackup), FirstUploadMatchingTone.Caution, first, canStart = false),
+            slice.status.open().firstUploadMatching,
+        )
+        slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, now.minus(Duration.ofDays(2)))
+        slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.RestoredBackup, now.minus(Duration.ofDays(1)))
 
-        val confirmation = slice.status.confirmRecoveryCheck()
+        val shown = slice.status.open().firstUploadMatching
 
-        assertEquals(RecoveryConfirmation.ComparisonNotAvailable, confirmation)
-        assertEquals(1, slice.recoveryStore.openChecks().size)
-        assertTrue(slice.journalRecorder.entries.none { "Recovery Check" in it.details })
+        assertEquals(
+            FirstUploadMatchingNotice(
+                listOf(FirstUploadMatchingCause.RestoredBackup, FirstUploadMatchingCause.NewInstallation),
+                FirstUploadMatchingTone.Caution,
+                now.minus(Duration.ofDays(1)),
+                canStart = false,
+            ),
+            shown,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009"])
+    @DisplayName("BR-009: two First Upload Matchings of a new installation show its line once, as plain information")
+    fun twoNewInstallationsShowOneLine() = runTest {
+        household()
+        slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, now.minus(Duration.ofHours(2)))
+        slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, now)
+
+        assertEquals(
+            FirstUploadMatchingNotice(listOf(FirstUploadMatchingCause.NewInstallation), FirstUploadMatchingTone.Information, now, canStart = false),
+            slice.status.open().firstUploadMatching,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A9: Operator Confirms First Upload Matching", businessRules = ["BR-009"])
+    @DisplayName("A9: First Upload Matching cannot be confirmed without a Comparison that read every Budget, which no slice builds yet (O-P2-09); it stays open and nothing is recorded")
+    fun firstUploadMatchingStaysOpenWithoutAComparison() = runTest {
+        household()
+        assertEquals(FirstUploadMatchingStart.NoneOpen, slice.status.startFirstUploadMatching())
+        slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, now)
+
+        val start = slice.status.startFirstUploadMatching()
+
+        assertEquals(FirstUploadMatchingStart.ComparisonNotAvailable, start)
+        assertEquals(1, slice.firstUploadMatchingStore.openChecks().size)
+        assertTrue(slice.journalRecorder.entries.none { "First Upload Matching" in it.details })
     }
 
     @Test

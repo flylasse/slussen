@@ -2,6 +2,9 @@ package slussen.core.status
 
 import slussen.core.credential.CredentialStatus
 import slussen.core.credential.CredentialStatusReader
+import slussen.core.firstupload.FirstUploadMatching
+import slussen.core.firstupload.FirstUploadMatchingNotice
+import slussen.core.firstupload.FirstUploadMatchingStart
 import slussen.core.journal.DecisionJournal
 import slussen.core.port.BackupSizeMonitor
 import slussen.core.port.ConnectionStore
@@ -13,7 +16,6 @@ import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.ProviderRequestKind
 import slussen.core.port.ProviderRequestStore
-import slussen.core.port.RecoveryStore
 import slussen.core.port.ServiceKey
 import slussen.core.port.StartState
 import slussen.core.port.StoredAccountBalance
@@ -26,7 +28,6 @@ import slussen.core.port.StoredDataProvider
 import slussen.core.port.StoredFetch
 import slussen.core.port.StoredFileFormat
 import slussen.core.port.StoredProviderRequest
-import slussen.core.port.StoredRecoveryCheck
 import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.StoredTransactionFile
 import slussen.core.port.TransactionFileOutcome
@@ -37,7 +38,7 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * Check Import Status (UC-008), `:core` `status` and `recovery` (ADR-001 §7): built only from stored data, never from a
+ * Check Import Status (UC-008), `:core` `status`, with First Upload Matching from `:core` `firstupload` (ADR-001 §7): built only from stored data, never from a
  * Source or the Budget App (BR-001, Konsist K-08).
  */
 class ImportStatus(
@@ -49,7 +50,7 @@ class ImportStatus(
     private val stored: ImportStatusStore,
     private val providerRequests: ProviderRequestStore,
     private val credentials: CredentialStatusReader,
-    private val recovery: RecoveryStore,
+    private val firstUploadMatching: FirstUploadMatching,
     private val startState: StartState,
     private val backupSize: BackupSizeMonitor,
     private val settings: OperatorSettingsStore,
@@ -74,7 +75,7 @@ class ImportStatus(
         val files: List<StoredTransactionFile>,
         val counts: Map<Long, StoredTransactionCounts>,
         val requests: List<StoredProviderRequest>,
-        val openChecks: List<StoredRecoveryCheck>,
+        val firstUploadMatching: FirstUploadMatchingNotice?,
         val credentials: Map<ServiceKey, CredentialStatus>,
     )
 
@@ -95,7 +96,7 @@ class ImportStatus(
             files = stored.latestTransactionFiles(),
             counts = stored.transactionCounts().associateBy { it.bankAccountId },
             requests = providerRequests.sentSince(now.minus(LIMIT_WINDOW)),
-            openChecks = recovery.openChecks(),
+            firstUploadMatching = firstUploadMatching.notice(),
             credentials = services.associateWith { credentials.status(it) },
         )
     }
@@ -114,7 +115,7 @@ class ImportStatus(
         val noBankAccountAdded = connections.bankAccounts().isEmpty()
         return Overview(
             unreadable = startState.unreadableParts.map { UnreadableNotice(it.part, it.startedFromLastGoodCopy) },
-            recoveryCheck = recoveryNotice(snapshot),
+            firstUploadMatching = snapshot.firstUploadMatching,
             backupWarning = backupWarning(snapshot),
             expiringBankConsents = expiringConsents(snapshot),
             budgets = summaries,
@@ -133,6 +134,8 @@ class ImportStatus(
             summary = summary(budget, snapshot),
             sources = sourcesOf(accounts, snapshot),
             bankAccounts = accounts.map { bankAccountStatus(it, budget, snapshot) },
+            firstUploadMatching = snapshot.firstUploadMatching,
+            budgetAppName = budgetAppName,
         )
     }
 
@@ -144,14 +147,8 @@ class ImportStatus(
         }
     }
 
-    suspend fun confirmRecoveryCheck(): RecoveryConfirmation {
-        val open = recovery.openChecks()
-        if (open.isEmpty()) return RecoveryConfirmation.NoneOpen
-        // UC-008 BR-009: The Operator can confirm a Recovery Check only after a Comparison that read every Budget has run since it opened.
-        if (open.any { it.comparedAt == null }) return RecoveryConfirmation.ComparisonNotAvailable
-        // A9 steps 2-4 come with the slice that builds Compare With the Budget App (UC-003), which fills compared_at (O-P2-09).
-        return RecoveryConfirmation.ComparisonNotAvailable
-    }
+    /** A9: the Operator chooses "Start First Upload Matching" (BR-006, BR-009). */
+    suspend fun startFirstUploadMatching(): FirstUploadMatchingStart = firstUploadMatching.start()
 
     private fun accountsOf(budget: StoredBudget, snapshot: Snapshot): List<StoredBankAccount> {
         val accountIds = budget.budgetAccounts.map { it.id }.toSet()
@@ -176,9 +173,9 @@ class ImportStatus(
     }
 
     private fun budgetBlocked(budget: StoredBudget, snapshot: Snapshot): List<Blocked> = buildList {
-        // UC-008 BR-009: While a Recovery Check is open, Uploads are blocked until the Operator compares and confirms.
-        if (snapshot.openChecks.isNotEmpty()) {
-            add(Blocked(BlockedReason.RecoveryCheckOpen, Remedy.CompareAndConfirm, snapshot.openChecks.last().openedAt, budget.name))
+        // UC-008 BR-006: While First Upload Matching is open, each Budget shows "Uploads wait for First Upload Matching" with the action "Start First Upload Matching".
+        snapshot.firstUploadMatching?.let { open ->
+            add(Blocked(BlockedReason.UploadsWaitForFirstUploadMatching, Remedy.StartFirstUploadMatching, open.openedAt, budget.name))
         }
         credentialBlocked(snapshot.credentials.getValue(ServiceKey.budgetApp), budgetAppName)?.let { add(it) }
     }
@@ -374,10 +371,6 @@ class ImportStatus(
             val sent = snapshot.requests.filter { it.bankAccountId == bankAccount.id && it.unattended && it.kind == kind }
             freesUpAt(sent.map { it.sentAt }, UNATTENDED_ACCESS_LIMIT)
         }.maxOrNull()
-
-    // UC-008 BR-009: Every opening shows an open Recovery Check: Uploads are blocked until the Operator confirms it.
-    private fun recoveryNotice(snapshot: Snapshot): RecoveryNotice? =
-        snapshot.openChecks.lastOrNull()?.let { RecoveryNotice(it.cause, it.openedAt) }
 
     private fun backupWarning(snapshot: Snapshot): BackupWarning? {
         val bytes = backupSize.backedUpBytes()

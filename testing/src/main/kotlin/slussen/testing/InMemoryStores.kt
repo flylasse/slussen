@@ -29,8 +29,8 @@ import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.PluginRegistryStore
 import slussen.core.port.ProviderRequestStore
-import slussen.core.port.RecoveryCause
-import slussen.core.port.RecoveryStore
+import slussen.core.port.FirstUploadMatchingCause
+import slussen.core.port.FirstUploadMatchingStore
 import slussen.core.port.RegisteredRows
 import slussen.core.port.ServeOutcome
 import slussen.core.port.StartKind
@@ -50,7 +50,7 @@ import slussen.core.port.StoredFileFormat
 import slussen.core.port.StoredLeftOutBankAccount
 import slussen.core.port.StoredOfferedBankAccount
 import slussen.core.port.StoredProviderRequest
-import slussen.core.port.StoredRecoveryCheck
+import slussen.core.port.StoredFirstUploadMatching
 import slussen.core.port.StoredRequestLimit
 import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.StoredTransactionFile
@@ -336,15 +336,15 @@ class InMemoryConnectionStore : ConnectionStore, MappingStore {
     }
 }
 
-/** In-memory fake of [RecoveryStore]. */
-class InMemoryRecoveryStore : RecoveryStore {
-    val checks = mutableListOf<StoredRecoveryCheck>()
+/** In-memory fake of [FirstUploadMatchingStore]. */
+class InMemoryFirstUploadMatchingStore : FirstUploadMatchingStore {
+    val checks = mutableListOf<StoredFirstUploadMatching>()
 
-    fun open(cause: RecoveryCause, at: Instant) {
-        checks += StoredRecoveryCheck(checks.size + 1L, cause, at, comparedAt = null, confirmedAt = null)
+    fun open(cause: FirstUploadMatchingCause, at: Instant) {
+        checks += StoredFirstUploadMatching(checks.size + 1L, cause, at, comparedAt = null, confirmedAt = null)
     }
 
-    override suspend fun openChecks(): List<StoredRecoveryCheck> = checks.filter { it.confirmedAt == null }
+    override suspend fun openChecks(): List<StoredFirstUploadMatching> = checks.filter { it.confirmedAt == null }
 }
 
 /** A fixed [StartState]. */

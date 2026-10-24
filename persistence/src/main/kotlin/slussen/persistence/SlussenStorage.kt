@@ -16,7 +16,7 @@ import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
 import slussen.core.port.JournalEntry
 import slussen.core.port.ProviderRequestKind
-import slussen.core.port.RecoveryCause
+import slussen.core.port.FirstUploadMatchingCause
 import slussen.core.port.StartKind
 import slussen.core.port.StartedBy
 import slussen.core.port.StartState
@@ -28,7 +28,7 @@ import slussen.persistence.journal.DecisionJournalEntryEntity
 import slussen.persistence.journal.JournalDatabase
 import slussen.persistence.journal.JournalEventType
 import slussen.persistence.main.CoordinatorStateEntity
-import slussen.persistence.main.RecoveryCheckEntity
+import slussen.persistence.main.FirstUploadMatchingEntity
 import slussen.persistence.main.SlussenDatabase
 import slussen.persistence.start.SqliteDatabaseCheck
 import slussen.persistence.start.SqliteDatabaseCheck.ValueColumn
@@ -107,7 +107,7 @@ class SlussenStorage private constructor(
     val mappings = RoomMappingStore(main.connections())
     val offered = RoomOfferedBankAccountStore(device.offeredBankAccounts())
     val providerRequests = RoomProviderRequestStore(main.providerRequests())
-    val recovery = RoomRecoveryStore(main.recovery())
+    val firstUploadMatching = RoomFirstUploadMatchingStore(main.firstUploadMatching())
     val coordinator = RoomCoordinatorStore(main.coordinator())
     val credentialVault = KeystoreCredentialVault(device.serviceCredentials())
     val journalRecorder = RoomDecisionJournalRecorder(journal.entries())
@@ -118,7 +118,7 @@ class SlussenStorage private constructor(
         /** The `Values:` columns of `slussen.db` in this schema, for the logical check of ADR-002 §8 step 1. */
         val MAIN_VALUES: List<ValueColumn> = listOf(
             ValueColumn("bank_account", "bank_account_type", BankAccountType.entries.map { it.text }),
-            ValueColumn("recovery_check", "cause", RecoveryCause.entries.map { it.text }),
+            ValueColumn("recovery_check", "cause", FirstUploadMatchingCause.entries.map { it.text }),
             ValueColumn("provider_request", "request_kind", ProviderRequestKind.entries.map { it.text }),
             ValueColumn("fetch", "started_by", StartedBy.entries.map { it.text }),
             ValueColumn("fetch", "outcome", FetchOutcome.entries.map { it.text }),
@@ -131,7 +131,7 @@ class SlussenStorage private constructor(
             ValueColumn("decision_journal_entry", "event_type", JournalEventType.entries.map { it.text }),
         )
 
-        /** Runs the start sequence (ADR-002 §6, §8), opens the databases and opens a Recovery Check when one is due. */
+        /** Runs the start sequence (ADR-002 §6, §8), opens the databases and opens a First Upload Matching when one is due. */
         suspend fun open(context: Context, clock: Clock): SlussenStorage {
             val mainFile = SlussenDatabases.mainFile(context)
             mainFile.parentFile?.mkdirs()
@@ -152,12 +152,12 @@ class SlussenStorage private constructor(
                 FileBackupSizeMonitor(mainFile),
             )
             storage.start(outcome, clock)
-            if (outcome.recoveryCause != null) sequence.finish()
+            if (outcome.firstUploadMatchingCause != null) sequence.finish()
             return storage
         }
     }
 
-    /** The default content (ADR-002 §8 step 3) and step 5 of the start sequence: O-12 opens the Recovery Check. */
+    /** The default content (ADR-002 §8 step 3) and step 5 of the start sequence: O-12 opens First Upload Matching. */
     internal suspend fun start(outcome: StartOutcome, clock: Clock) {
         main.withTransaction {
             settings.ensureDefault()
@@ -173,9 +173,9 @@ class SlussenStorage private constructor(
                     ),
                 )
             }
-            val cause = outcome.recoveryCause ?: return@withTransaction
-            // UC-006 BR-017: After a new installation, a restored backup or a last good copy, Uploads wait for the Recovery Check.
-            main.recovery().insert(RecoveryCheckEntity(cause = cause.text, openedAt = clock.instant(), comparedAt = null, confirmedAt = null))
+            val cause = outcome.firstUploadMatchingCause ?: return@withTransaction
+            // UC-006 BR-017: After a new installation, a restored backup or a last good copy, Uploads wait for First Upload Matching.
+            main.firstUploadMatching().insert(FirstUploadMatchingEntity(cause = cause.text, openedAt = clock.instant(), comparedAt = null, confirmedAt = null))
             coordinatorDao.resetMode(RoomCoordinatorStore.textOf(CoordinatorMode.Normal))
         }
     }

@@ -23,6 +23,11 @@ import slussen.core.credential.CredentialStatus
 import slussen.core.credential.RemovalOutcome
 import slussen.core.fetch.FetchReport
 import slussen.core.fetch.FetchStart
+import slussen.core.operation.OperationKind
+import slussen.core.operation.RunningOperation
+import slussen.app.ui.components.FetchButtonUi
+import slussen.app.ui.components.FetchResultKind
+import slussen.app.ui.components.FetchResultUi
 import slussen.core.port.ServiceKey
 import slussen.core.settings.RequestLimitShown
 import slussen.core.settings.ServicePage
@@ -140,6 +145,10 @@ data class ServicePageUi(
     val fetchWarning: FetchWarningUi?,
     /** UC-001 BR-008 (P9-13): why the Fetch is unavailable in this build, or null when it is offered. */
     val fetchUnavailable: String? = null,
+    /** P9-16: a Data Provider's Fetch button, "Fetching <Data Provider>…" with progress and disabled while a Fetch runs; null on the Budget App's page. */
+    val fetchButton: FetchButtonUi? = null,
+    /** P9-16: the result of the last tap of the Fetch, or null. */
+    val fetchResult: FetchResultUi? = null,
 )
 
 /** UC-001 A16 (`budget.html#request-limit-warning`): the warning, its end and the risk, before the Operator confirms. */
@@ -167,6 +176,33 @@ class ServicePageViewModel(
 
     /** What Undo does: the last switch, switched back. */
     private var undoAction: (suspend () -> Unit)? = null
+
+    /** P9-16: the result of the last tap of the Fetch, and the taps of this page, so that every result is shown as new. */
+    private var fetchResult: FetchResultUi? = null
+    private var taps = 0
+
+    /** P9-16, ADR-007 §1: the operation that runs now. */
+    private var running: RunningOperation? = services.running.value
+
+    init {
+        viewModelScope.launch {
+            services.running.collect { now ->
+                running = now
+                mutableState.value = mutableState.value?.let { ui -> ui.copy(fetchButton = fetchButton(ui.name, ui.canFetch, page?.isBudgetApp == true)) }
+            }
+        }
+    }
+
+    /** P9-16 (`budget.html#fetch-states`): "Fetching <Data Provider>…", disabled, while a Fetch runs; none on the Budget App's page. */
+    private fun fetchButton(name: String, canFetch: Boolean, isBudgetApp: Boolean): FetchButtonUi? {
+        if (isBudgetApp) return null
+        val now = running
+        return if (now != null && now.kind == OperationKind.Fetch) {
+            FetchButtonUi(Texts.fetching(now.subject), enabled = false, running = true)
+        } else {
+            FetchButtonUi("Fetch $name", enabled = canFetch, running = false)
+        }
+    }
 
     fun load() {
         snack = null
@@ -317,6 +353,8 @@ class ServicePageViewModel(
             canFetch = !page.isBudgetApp && !page.needsBankConsent,
             fetchWarning = fetchWarning,
             fetchUnavailable = if (!page.isBudgetApp && page.needsBankConsent) "${Texts.cannotFetchWithoutBankConsents(page.name)}." else null,
+            fetchButton = fetchButton(page.name, canFetch = !page.isBudgetApp && !page.needsBankConsent, isBudgetApp = page.isBudgetApp),
+            fetchResult = fetchResult,
         )
     }
 
@@ -422,9 +460,9 @@ class ServicePageViewModel(
         }
     }
 
-    /** UC-001 step 1: the Operator starts a Fetch of this Data Provider, when the page offers it (P9-13). */
+    /** UC-001 step 1: the Operator starts a Fetch of this Data Provider, when the page offers it (P9-13) and no Fetch runs (P9-16). */
     fun fetch() {
-        if (mutableState.value?.canFetch == true) startFetch(confirmedDespiteWarning = false)
+        if (mutableState.value?.fetchButton?.enabled == true) startFetch(confirmedDespiteWarning = false)
     }
 
     /** UC-001 A16 step 2: the Operator confirms the Fetch despite the warning. */
@@ -436,14 +474,24 @@ class ServicePageViewModel(
     }
 
     private fun startFetch(confirmedDespiteWarning: Boolean) {
+        val tap = ++taps
+        // P9-16: the result of the earlier tap goes while this one runs.
+        fetchResult = null
+        mutableState.value = mutableState.value?.copy(fetchResult = null, message = null)
         viewModelScope.launch {
             val start = services.fetch.fetch(service, confirmedDespiteWarning)
             val page = pageWithSections()
             when (start) {
-                is FetchStart.Unavailable -> show(page, message = Texts.refusal(start.reason))
+                is FetchStart.Unavailable -> {
+                    fetchResult = FetchResultUi(Texts.refusal(start.reason), null, FetchResultKind.NotFetched, tap)
+                    show(page)
+                }
                 is FetchStart.Ran -> when (val report = start.reports.single()) {
                     is FetchReport.WarningToConfirm -> show(page, fetchWarning = Texts.fetchWarning(report, services.formats))
-                    else -> show(page, message = Texts.fetchReport(report, services.formats))
+                    else -> {
+                        fetchResult = Texts.fetchResult(report, services.formats, tap)
+                        show(page)
+                    }
                 }
             }
         }

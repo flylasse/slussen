@@ -36,7 +36,7 @@ import java.time.LocalDate
         FetchResultEntity::class,
         BackOffEntity::class,
         AccountBalanceEntity::class,
-        RecoveryCheckEntity::class,
+        FirstUploadMatchingEntity::class,
         CoordinatorStateEntity::class,
     ],
     version = 3,
@@ -54,7 +54,7 @@ abstract class SlussenDatabase : RoomDatabase() {
 
     abstract fun fetches(): FetchDao
 
-    abstract fun recovery(): RecoveryDao
+    abstract fun firstUploadMatching(): FirstUploadMatchingDao
 
     abstract fun coordinator(): CoordinatorDao
 }
@@ -318,9 +318,12 @@ data class BackOffEntity(
     @ColumnInfo(name = "ends_at") val endsAt: Instant,
 )
 
-/** `RECOVERY_CHECK` (entity model). */
+/**
+ * `FIRST_UPLOAD_MATCHING` (entity model), stored in the table `recovery_check` of committed schema version 1 with the
+ * attribute names as columns: the one exception to the naming rule of ADR-002 §2 (S-41); no schema version for the name.
+ */
 @Entity(tableName = "recovery_check")
-data class RecoveryCheckEntity(
+data class FirstUploadMatchingEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     @ColumnInfo(name = "cause") val cause: String,
     @ColumnInfo(name = "opened_at") val openedAt: Instant,

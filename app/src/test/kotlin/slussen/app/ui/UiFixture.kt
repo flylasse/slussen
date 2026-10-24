@@ -35,6 +35,7 @@ class UiFixture(
         formats = Formats(zone),
         clock = slice.clock,
         appVersion = appVersion,
+        running = slice.coordinator.running,
     )
 }
 

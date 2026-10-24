@@ -436,12 +436,12 @@ abstract class FetchDao {
 }
 
 @Dao
-abstract class RecoveryDao {
+abstract class FirstUploadMatchingDao {
     @Query("SELECT * FROM recovery_check WHERE confirmed_at IS NULL ORDER BY id")
-    abstract suspend fun openChecks(): List<RecoveryCheckEntity>
+    abstract suspend fun openChecks(): List<FirstUploadMatchingEntity>
 
     @Insert
-    abstract suspend fun insert(check: RecoveryCheckEntity): Long
+    abstract suspend fun insert(check: FirstUploadMatchingEntity): Long
 }
 
 @Dao

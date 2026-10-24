@@ -9,6 +9,7 @@ import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
 import slussen.core.fetch.FetchTransactions
+import slussen.core.firstupload.FirstUploadMatching
 import slussen.core.journal.DecisionJournal
 import slussen.core.mapping.AccountMappings
 import slussen.core.operation.OperationCoordinator
@@ -78,7 +79,7 @@ class CompositionRoot(log: SlussenLog) {
                 stored = storage.importStatus,
                 providerRequests = storage.providerRequests,
                 credentials = credentials,
-                recovery = storage.recovery,
+                firstUploadMatching = FirstUploadMatching(storage.firstUploadMatching),
                 startState = storage.startState,
                 backupSize = storage.backupSize,
                 settings = storage.settings,
@@ -93,6 +94,7 @@ class CompositionRoot(log: SlussenLog) {
             formats = Formats(clock.zone),
             clock = clock,
             appVersion = context.installedAppVersion(),
+            running = coordinator.running,
         )
     }
 

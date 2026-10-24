@@ -30,8 +30,8 @@ import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.PluginRegistryStore
 import slussen.core.port.ProviderRequestKind
 import slussen.core.port.ProviderRequestStore
-import slussen.core.port.RecoveryCause
-import slussen.core.port.RecoveryStore
+import slussen.core.port.FirstUploadMatchingCause
+import slussen.core.port.FirstUploadMatchingStore
 import slussen.core.port.RegisteredRows
 import slussen.core.port.ServeOutcome
 import slussen.core.port.StartedBy
@@ -50,7 +50,7 @@ import slussen.core.port.StoredFileFormat
 import slussen.core.port.StoredLeftOutBankAccount
 import slussen.core.port.StoredOfferedBankAccount
 import slussen.core.port.StoredProviderRequest
-import slussen.core.port.StoredRecoveryCheck
+import slussen.core.port.StoredFirstUploadMatching
 import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.StoredTransactionFile
 import slussen.persistence.device.OfferedBankAccountDao
@@ -72,7 +72,7 @@ import slussen.persistence.main.OperatorSettingsEntity
 import slussen.persistence.main.PluginRegistryDao
 import slussen.persistence.main.ProviderRequestDao
 import slussen.persistence.main.ProviderRequestEntity
-import slussen.persistence.main.RecoveryDao
+import slussen.persistence.main.FirstUploadMatchingDao
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
 import java.time.Instant
@@ -393,12 +393,12 @@ class RoomProviderRequestStore(private val dao: ProviderRequestDao) : ProviderRe
     }
 }
 
-/** `RECOVERY_CHECK` in `slussen.db`. */
-class RoomRecoveryStore(private val dao: RecoveryDao) : RecoveryStore {
-    override suspend fun openChecks(): List<StoredRecoveryCheck> = dao.openChecks().map {
-        StoredRecoveryCheck(
+/** `FIRST_UPLOAD_MATCHING` in `slussen.db`, in the table `recovery_check` (ADR-002 §2, §3 O-12). */
+class RoomFirstUploadMatchingStore(private val dao: FirstUploadMatchingDao) : FirstUploadMatchingStore {
+    override suspend fun openChecks(): List<StoredFirstUploadMatching> = dao.openChecks().map {
+        StoredFirstUploadMatching(
             it.id,
-            valueOfText<RecoveryCause>(it.cause, MAIN_PART) { cause -> cause.text },
+            valueOfText<FirstUploadMatchingCause>(it.cause, MAIN_PART) { cause -> cause.text },
             it.openedAt,
             it.comparedAt,
             it.confirmedAt,

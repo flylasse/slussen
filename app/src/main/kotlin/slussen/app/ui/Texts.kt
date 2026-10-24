@@ -8,7 +8,11 @@ import slussen.app.ui.service.FetchWarningUi
 import slussen.core.operation.OperationRefusal
 import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
-import slussen.core.port.RecoveryCause
+import slussen.core.firstupload.FirstUploadMatchingNotice
+import slussen.app.ui.components.FirstUploadMatchingUi
+import slussen.app.ui.components.FetchResultKind
+import slussen.app.ui.components.FetchResultUi
+import slussen.core.port.FirstUploadMatchingCause
 import slussen.core.port.StartedBy
 import slussen.core.port.StoredPart
 import slussen.core.port.TransactionFileOutcome
@@ -42,8 +46,105 @@ object Texts {
     const val TRANSACTIONS_NOT_IN_THIS_BUILD =
         "Bank Transactions are not fetched in this build yet: a Fetch stores the Account Balances, so the counts stay at 0."
 
-    /** UC-008 A8 (P9-14): what an open Recovery Check holds back, in plain words. */
-    const val RECOVERY_CHECK_HOLDS_UPLOADS_ONLY = "Only Uploads wait for the Recovery Check; a Fetch still works."
+    /** UC-008 BR-006, BR-009: the Blocked Reason of First Upload Matching. */
+    const val UPLOADS_WAIT_FOR_FIRST_UPLOAD_MATCHING = "Uploads wait for First Upload Matching"
+
+    /** UC-008 BR-006, BR-009, A9: the action of First Upload Matching. */
+    const val START_FIRST_UPLOAD_MATCHING = "Start First Upload Matching"
+
+    /** UC-008 A8, BR-009: the banner of the open First Upload Matchings, with the Budget App's name. */
+    fun firstUploadMatching(notice: FirstUploadMatchingNotice, budgetAppName: String): FirstUploadMatchingUi = FirstUploadMatchingUi(
+        title = UPLOADS_WAIT_FOR_FIRST_UPLOAD_MATCHING,
+        explanation = firstUploadMatchingExplanation(budgetAppName),
+        reasons = notice.causes.map { reason(it, budgetAppName) },
+        tone = notice.tone,
+        action = START_FIRST_UPLOAD_MATCHING,
+        actionAvailable = notice.canStart,
+        // O-P2-09 (`first-upload-matching.html#open`): while the Comparison is not built, the line says why nothing starts.
+        buildNote = if (notice.canStart) null else "Matching with $budgetAppName comes in a later version; until then nothing is uploaded.",
+    )
+
+    /** UC-008 BR-009: the explanation, the same in every case, with the Budget App's name. */
+    fun firstUploadMatchingExplanation(budgetAppName: String): String =
+        "Before Slussen uploads anything, it compares the transactions it fetched with what is already in $budgetAppName " +
+            "and marks every match, so that no transaction ends up in $budgetAppName twice. You look at the result and " +
+            "confirm; until then nothing is uploaded. Fetching works as usual."
+
+    /** UC-008 BR-009: the reason line of each cause, without a date (ADR-002 §6). */
+    fun reason(cause: FirstUploadMatchingCause, budgetAppName: String): String = when (cause) {
+        FirstUploadMatchingCause.NewInstallation ->
+            "This is a new installation. Your earlier importer, $budgetAppName's own bank import or you by hand may already " +
+                "have added some of these transactions to $budgetAppName."
+        FirstUploadMatchingCause.RestoredBackup ->
+            "Slussen was restored from a backup. It may have uploaded transactions after the backup was made that its " +
+                "records no longer show."
+        FirstUploadMatchingCause.LastGoodCopy ->
+            "Slussen's records could not be read, so it started from its last good copy, or from empty records when it had " +
+                "none. Anything uploaded after that copy was made is not in its records."
+    }
+
+    /** P9-16 (`budget.html#fetch-states`): the text of the Fetch button while a Fetch of [subject] runs. */
+    fun fetching(subject: String?): String = if (subject == null) "Fetching…" else "Fetching $subject…"
+
+    /** P9-16: the short message for the result of one tap of a Fetch of one Data Provider. */
+    fun fetchResult(report: FetchReport, formats: Formats, tap: Int): FetchResultUi = when (report) {
+        is FetchReport.Fetched -> FetchResultUi("Fetched ${formats.time(report.fetchedAt)}", fetchedDetail(report, formats), FetchResultKind.Fetched, tap)
+        // A2 of UC-001: the data comes from the last Fetch, and when a new Fetch contacts the Data Provider again.
+        is FetchReport.ServedFromFetchCooldown -> when (val read = report.read) {
+            null -> FetchResultUi(
+                "Not fetched again: the Fetch of ${formats.time(report.lastFetchAt)} is still fresh until " +
+                    "${formats.time(report.contactsAgainAt)} (Fetch Cooldown)",
+                report.requestLimitFreesUpAt?.let {
+                    "Bank Accounts added since not read · Request Limit reached · frees up from ${formats.dateTime(it)}"
+                },
+                FetchResultKind.Cooldown,
+                tap,
+            )
+            else -> FetchResultUi(
+                "Fetched ${formats.time(read.fetchedAt)} the Bank Accounts added since the Fetch of " +
+                    "${formats.time(report.lastFetchAt)}, which is still fresh until ${formats.time(report.contactsAgainAt)} (Fetch Cooldown)",
+                "read: " + read.identified.joinToString(", ").ifEmpty { "none delivered" },
+                FetchResultKind.Fetched,
+                tap,
+            )
+        }
+        // A1 of UC-001: "waiting for the provider" with the time the Back-off ends.
+        is FetchReport.WaitingForProvider ->
+            FetchResultUi("Not fetched: waiting for the provider until ${formats.dateTime(report.until)}", null, FetchResultKind.NotFetched, tap)
+        // A3 of UC-001: "Request Limit reached" with the time the oldest counted Provider Request leaves the 24-hour window.
+        is FetchReport.RequestLimitReached ->
+            FetchResultUi("Not fetched: Request Limit reached · frees up from ${formats.dateTime(report.freesUpAt)}", null, FetchResultKind.NotFetched, tap)
+        // A6 of UC-001: the failure with its time; stored data unchanged, no Back-off.
+        is FetchReport.Failed -> FetchResultUi(
+            "Failed ${formats.time(report.failedAt)}: ${failure(report.kind)}",
+            "Stored data unchanged · you can fetch again at any time",
+            FetchResultKind.Failed,
+            tap,
+        )
+        // A7 of UC-001: "credentials refused" with the action that enters them again (UC-014).
+        is FetchReport.CredentialsRefused ->
+            FetchResultUi("Not fetched: credentials refused · enter them again", null, FetchResultKind.Failed, tap)
+        is FetchReport.CredentialsMissing -> FetchResultUi("Not fetched: credentials missing · enter them", null, FetchResultKind.NotFetched, tap)
+        // P9-13: said plainly; no Bank is contacted without a valid Bank Consent (UC-001 BR-008), and this build grants none yet.
+        is FetchReport.NeedsBankConsent ->
+            FetchResultUi("Not fetched: ${cannotFetchWithoutBankConsents(report.dataProviderName)}", null, FetchResultKind.NotFetched, tap)
+        is FetchReport.WarningToConfirm -> FetchResultUi(fetchWarning(report, formats).title, null, FetchResultKind.NotFetched, tap)
+        is FetchReport.NotSent -> FetchResultUi("Not fetched: ${gateRefusal(report.reason)}", null, FetchResultKind.NotFetched, tap)
+    }
+
+    /** What a Fetch that read the Data Provider came to besides its time (UC-001 steps 6, 11, A5, A8, A15, A18). */
+    private fun fetchedDetail(report: FetchReport.Fetched, formats: Formats): String = listOfNotNull(
+        "Bank Accounts offered: ${report.offered}",
+        report.identified.size.takeIf { it > 0 }?.let { "added and identified: $it" },
+        report.notAdded.takeIf { it > 0 }?.let { "not added: $it" },
+        report.failed.takeIf { it.isNotEmpty() }?.let { "failed: ${it.joinToString(", ")}, stored data unchanged" },
+        report.waitingUntil?.let { "Blocked: waiting for the provider · until ${formats.dateTime(it)}" },
+        report.warning?.let {
+            "${report.dataProviderName} warned that Slussen is near its Request Limit · Scheduled Fetches leave it alone " +
+                "until ${formats.dateTime(it.endsAt)} · further requests can get Slussen's access to " +
+                "${report.dataProviderName} disabled"
+        },
+    ).joinToString(" · ")
 
     fun refusal(reason: OperationRefusal): String = when (reason) {
         OperationRefusal.UploadPlanAwaitingConfirmation ->
@@ -110,7 +211,7 @@ object Texts {
         BlockedReason.CredentialsRefused -> "credentials refused"
         BlockedReason.CredentialsMissing -> "credentials missing"
         BlockedReason.CurrencyMismatch -> "currency mismatch"
-        BlockedReason.RecoveryCheckOpen -> "Recovery Check open"
+        BlockedReason.UploadsWaitForFirstUploadMatching -> UPLOADS_WAIT_FOR_FIRST_UPLOAD_MATCHING
     }
 
     fun blocked(blocked: Blocked, formats: Formats): String {
@@ -130,13 +231,7 @@ object Texts {
         Remedy.FetchAgain -> "Fetch again"
         Remedy.EnterCredentials -> "Enter credentials"
         Remedy.MoveAccountMapping -> "Move the Account Mapping"
-        Remedy.CompareAndConfirm -> "Compare and confirm"
-    }
-
-    fun cause(cause: RecoveryCause): String = when (cause) {
-        RecoveryCause.NewInstallation -> "New installation · earlier sends unknown · check the Budget App, then confirm"
-        RecoveryCause.RestoredBackup -> "Restored backup · sends after it unknown · check the Budget App, then confirm"
-        RecoveryCause.LastGoodCopy -> "Started from the last good copy · sends after that copy unknown · check the Budget App, then confirm"
+        Remedy.StartFirstUploadMatching -> START_FIRST_UPLOAD_MATCHING
     }
 
     fun part(part: StoredPart): String = when (part) {
@@ -161,49 +256,6 @@ object Texts {
     }
 
     fun fetch(outcome: FetchOutcome): String = outcome.text
-
-    /** What one Fetch of a Data Provider came to (UC-001), in one line, the way `budget.html` and `connections.html` show it. */
-    fun fetchReport(report: FetchReport, formats: Formats): String {
-        val name = report.dataProviderName
-        return when (report) {
-            is FetchReport.Fetched -> fetched(report, formats)
-            is FetchReport.ServedFromFetchCooldown -> listOfNotNull(
-                "$name · Served from the Fetch of ${formats.time(report.lastFetchAt)} · next ${formats.time(report.contactsAgainAt)}",
-                report.read?.let { read ->
-                    "read the Bank Accounts added since: " + read.identified.joinToString(", ").ifEmpty { "none delivered" }
-                },
-                report.requestLimitFreesUpAt?.let {
-                    "Bank Accounts added since not read · Blocked: Request Limit reached · frees up from ${formats.dateTime(it)}"
-                },
-            ).joinToString(" · ")
-            is FetchReport.WaitingForProvider ->
-                "Blocked: $name, waiting for the provider · until ${formats.dateTime(report.until)}"
-            is FetchReport.RequestLimitReached ->
-                "Blocked: $name, Request Limit reached · frees up from ${formats.dateTime(report.freesUpAt)}"
-            is FetchReport.Failed ->
-                "$name could not be read: ${failure(report.kind)} · ${formats.time(report.failedAt)} · stored data unchanged · Fetch again"
-            is FetchReport.CredentialsRefused -> "Blocked: $name, credentials refused · Enter credentials"
-            is FetchReport.CredentialsMissing -> "Blocked: $name, credentials missing · Enter credentials"
-            // P9-13: said plainly; no Bank is contacted without a valid Bank Consent (UC-001 BR-008), and this build grants none yet.
-            is FetchReport.NeedsBankConsent -> "$name · not fetched · ${cannotFetchWithoutBankConsents(name)}"
-            is FetchReport.WarningToConfirm -> fetchWarning(report, formats).title
-            is FetchReport.NotSent -> "$name · not fetched · ${gateRefusal(report.reason)}"
-        }
-    }
-
-    private fun fetched(report: FetchReport.Fetched, formats: Formats): String = listOfNotNull(
-        "${report.dataProviderName} · Fetched ${formats.time(report.fetchedAt)}",
-        "Bank Accounts offered: ${report.offered}",
-        report.identified.size.takeIf { it > 0 }?.let { "added and identified: $it" },
-        report.notAdded.takeIf { it > 0 }?.let { "not added: $it" },
-        report.failed.takeIf { it.isNotEmpty() }?.let { "failed: ${it.joinToString(", ")}, stored data unchanged" },
-        report.waitingUntil?.let { "Blocked: waiting for the provider · until ${formats.dateTime(it)}" },
-        report.warning?.let {
-            "${report.dataProviderName} warned that Slussen is near its Request Limit · Scheduled Fetches leave it alone " +
-                "until ${formats.dateTime(it.endsAt)} · further requests can get Slussen's access to " +
-                "${report.dataProviderName} disabled"
-        },
-    ).joinToString(" · ")
 
     /** UC-001 A16 step 1 (`budget.html#request-limit-warning`): the warning, its end and the risk. */
     fun fetchWarning(report: FetchReport.WarningToConfirm, formats: Formats): FetchWarningUi {

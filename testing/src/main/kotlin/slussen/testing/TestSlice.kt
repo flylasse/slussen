@@ -5,6 +5,7 @@ import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
 import slussen.core.fetch.FetchTransactions
+import slussen.core.firstupload.FirstUploadMatching
 import slussen.core.journal.DecisionJournal
 import slussen.core.mapping.AccountMappings
 import slussen.core.operation.OperationCoordinator
@@ -45,7 +46,7 @@ class TestSlice(
     val connectionStore = InMemoryConnectionStore()
     val offeredStore = InMemoryOfferedBankAccountStore()
     val importStatusStore = InMemoryImportStatusStore()
-    val recoveryStore = InMemoryRecoveryStore()
+    val firstUploadMatchingStore = InMemoryFirstUploadMatchingStore()
     val startState = FixedStartState(startKind, unreadableParts)
     val backupSize = FixedBackupSizeMonitor()
     val random = Random(20261015L).let { seeded -> RandomSource { bytes -> seeded.nextBytes(bytes) } }
@@ -76,7 +77,7 @@ class TestSlice(
         stored = importStatusStore,
         providerRequests = providerRequests,
         credentials = credentials,
-        recovery = recoveryStore,
+        firstUploadMatching = FirstUploadMatching(firstUploadMatchingStore),
         startState = startState,
         backupSize = backupSize,
         settings = settings,

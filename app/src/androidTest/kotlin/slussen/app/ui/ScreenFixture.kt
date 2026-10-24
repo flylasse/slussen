@@ -25,6 +25,7 @@ class ScreenFixture(appVersion: AppVersion = AppVersion.of(packageName = "slusse
         formats = Formats(ZoneId.of("Europe/Stockholm")),
         clock = slice.clock,
         appVersion = appVersion,
+        running = slice.coordinator.running,
     )
 }
 
