@@ -283,5 +283,5 @@ One block per phase, written by the orchestrator in the phase's commit. This is 
   5. App icon and visual identity: not a spec concern, needed before the first installable build.
   6. README how-to for adopting developers (clone or fork, where the Build Configuration goes), referenced by UC-012.
   7. Repository admin (operator): re-apply the GitHub ruleset `forcepr`, not re-applied after the history rewrite (§5).
-- **Verdict on the method (operator):** _Pending operator._
+- **Verdict on the method (operator, recorded 2026-10-24, after construction):** Worth it. Reverse-engineering the specification from the predecessor "gave you everything to choose from, and I could affirm or remove a list of items": the operator decided by confirming or removing what the evidence surfaced, rather than writing from a blank page. The operator read the use cases, the requirements, the entity model and the architecture, "but yes it takes discipline".
   - Aid: the §5 evaluation signals are in the Vision gate row (the evidence-drafted vision missed seven safety rules that only the extra adversarial pass caught) and the Phase 5 row (lint 0/0/0 strict alongside 5 High semantic findings); the 'Deviations' and 'Skill silent on' columns of every row list where AIUP could not be followed as written.
