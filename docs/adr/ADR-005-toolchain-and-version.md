@@ -12,7 +12,7 @@ at the gate are listed under "Review findings addressed".
 ## Context
 
 - C-001: Slussen runs natively on the Operator's Android phone. C-003: it is installed directly on the phone.
-- NFR-017, FR-042: upgrading to a newer version of the same build keeps every stored item. Android installs an
+- NFR-017, FR-042: upgrading to a newer build signed with the same key, release or debug, keeps every stored item. Android installs an
   upgrade over an installed app only when the new `versionCode` is higher and the signing key is the same.
 - C-011: every guarantee that depends on YNAB's behaviour is shown by a test against a real, throwaway YNAB Budget
   before Uploads that rely on it are trusted. S-05: automatic resending of an unknown outcome depends on the Budget
@@ -225,3 +225,5 @@ fails on the device is changed by amending ADR-002, not worked around.
   version, not only from released ones.
 - Phase 9 acceptance (2026-10-24): S-41 (P9-17, O-P2-75; the glossary term Recovery Check renamed First Upload
   Matching): §6, §7 E-03, E-07, E-08, E-12 and Consequences renamed; no evidence changes.
+- Backlog decisions (2026-10-27, issue #13): Context says "a newer build signed with the same key" instead of "the
+  same build", as NFR-017 does; no decision changes.

@@ -222,7 +222,7 @@ Right after an Upload, Slussen compares the uploaded Budget with the Budget App 
 
 ### BR-014: Sent Record Kept Across a Reinstall, Restore or Upgrade
 
-The Sent Record is included in device backups, restored after a reinstall and kept on an upgrade of the same build, together with the stored Bank Transactions, the Bank Account identifications and Account Mappings (UC-009 BR-006) and the Review Decisions and Transfer Decisions. Bank Consents with their Bank Sessions and the service credentials are not restored (UC-007 BR-005, UC-014 BR-004). After a restore, Uploads wait for First Upload Matching (BR-017).
+The Sent Record is included in device backups, restored after a reinstall and kept on an upgrade to a newer build signed with the same key (NFR-017), together with the stored Bank Transactions, the Bank Account identifications and Account Mappings (UC-009 BR-006) and the Review Decisions and Transfer Decisions. Bank Consents with their Bank Sessions and the service credentials are not restored (UC-007 BR-005, UC-014 BR-004). After a restore, Uploads wait for First Upload Matching (BR-017).
 
 ### BR-015: Long Payee and Memo
 
