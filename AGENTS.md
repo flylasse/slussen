@@ -69,3 +69,36 @@ Which mode a phase must pass is stated in the active plan. A phase is not comple
 | **major** `+1.0.0`, minor and revision reset to 0 | **Operator decision only**, as for minor. |
 
 When in doubt, revision.
+
+## 6. Backlog and work intake
+
+The specification says what Slussen is. What is still to do about it lives in two places, never as prose left in a closed plan.
+
+**Where open work lives:**
+
+- **Capability not built yet:** the requirements catalog and the use case statuses (AIUP). A new want becomes a new requirement (and use case) in `docs/`, Open until built. Which steps of a use case are built is read from the code's markers and tests (the coverage audit), not stored anywhere else.
+- **Everything else:** one GitHub issue per item in `flylasse/slussen`, with exactly one of these labels:
+
+| Label | For |
+|---|---|
+| `decision` | A question only the operator can answer. The issue states the options and a recommendation. |
+| `spec-gap` | The specification is wrong, incomplete or silent, or two parts of it disagree (a mockup included). |
+| `defect` | The app does not do what the specification says (drift). |
+| `debt` | Work that keeps code, tests, tools or docs healthy: owed, not urgent. |
+| `device-evidence` | Evidence only a phone or an emulator can give (instrumented tests, ADR-005 §7 evidence). |
+
+Each issue names the requirement, use case, ADR or mockup it touches. It is closed with a link to the commit or PR that settled it, or with the reason it no longer applies. An operator decision is still recorded where it takes effect (the specification, or the plan's §6); the `decision` issue links there when it is closed.
+
+**Every change starts from an issue or a new requirement, and takes one of three paths:**
+
+| Path | When | How |
+|---|---|---|
+| **Fix** | A `defect`: the code departs from the specification, and fixing it changes no requirement, use case, ADR or mockup. | One PR that names the issue: tests first, the gate of §3 and the build, no plan file. |
+| **Change** | A tweak, a `spec-gap` or an answered `decision`: behaviour the specification must say first, small enough for one PR. | One PR: the specification commit first, approved by the operator, then the code commit; no plan file. |
+| **Initiative** | New capability: new or changed requirements and use cases, too large for one PR. | A plan `docs/<name>_plan.md` (§1). It names the requirements and use cases it adds or changes, and the issues it takes on. Its first phase writes or changes them, approved by the operator before any code phase. |
+
+If in doubt between Fix and Change, it is a Change: specification first.
+
+Work too large for one PR that changes no requirement or use case (`debt` across several modules, a `device-evidence` campaign) also gets a plan; that plan says in its first section that it changes no specification, and why.
+
+**Closing:** a plan or PR that ends with unfinished work turns each item into an issue before it closes. A plan's closing section lists those issue numbers, not the work itself.
