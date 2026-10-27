@@ -72,7 +72,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
             is NextThing.EnterBudgetAppCredentials -> " · next: enter the ${entry.name} credentials"
             is NextThing.ChooseBudgets -> " · next: choose the Budgets"
             NextThing.EnterDataProviderCredentials -> " · next: enter its credentials"
-            is NextThing.FetchOrGrantBankConsent -> if (entry.needsBankConsent) " · next: grant a Bank Consent" else " · next: fetch it"
+            is NextThing.FetchOrGrantBankConsent -> if (entry.needsBankConsent) " · ${Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD}" else " · next: fetch it"
             else -> ""
         }
         val status = when (val shown = entry.status) {

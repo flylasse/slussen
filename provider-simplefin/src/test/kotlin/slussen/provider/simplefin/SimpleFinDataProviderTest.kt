@@ -74,7 +74,7 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
         server.shutdown()
     }
 
-    private fun provider() = SimpleFinDataProvider(SilentLog, http, allowPlainHttp = true)
+    private fun provider() = SimpleFinDataProvider(log, http, allowPlainHttp = true)
 
     private fun setupToken(): String =
         Base64.getEncoder().encodeToString(server.url(CLAIM_PATH).toString().toByteArray(Charsets.UTF_8))

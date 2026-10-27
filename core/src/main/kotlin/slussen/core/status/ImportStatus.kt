@@ -194,7 +194,9 @@ class ImportStatus(
     }
 
     private fun sourcesOf(accounts: List<StoredBankAccount>, snapshot: Snapshot): List<SourceStatus> {
-        val providerSources = accounts.mapNotNull { it.dataProviderId }.distinct().map { id ->
+        // UC-001 BR-011: the Data Provider that reports a file-imported Bank Account's balance is one of the Budget's Sources too.
+        val providerIds = (accounts.mapNotNull { it.dataProviderId } + accounts.mapNotNull { it.balanceDataProviderId }).distinct()
+        val providerSources = providerIds.map { id ->
             val provider = dataProviders.single { it.id == id }
             val fetches = snapshot.fetches.filter { it.dataProviderId == id }
             val last = fetches.firstOrNull()
@@ -205,6 +207,7 @@ class ImportStatus(
                 freshness = fetches.firstOrNull { it.outcome == FetchOutcome.Fetched }?.startedAt,
                 notYetUploaded = notYetUploaded(accounts.filter { it.dataProviderId == id }, snapshot),
                 blocked = sourceBlocked(provider, last, snapshot),
+                balanceOnly = accounts.none { it.dataProviderId == id },
             )
         }
         val fileSources = accounts.mapNotNull { it.fileFormatId }.distinct().map { id ->

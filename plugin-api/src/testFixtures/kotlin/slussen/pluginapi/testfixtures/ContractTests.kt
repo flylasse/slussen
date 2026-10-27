@@ -62,6 +62,12 @@ private val slack: Duration = Duration.ofSeconds(4)
  * subclass serves invented recorded answers from its own local test server (a fresh one per test) through the hooks.
  */
 public abstract class CredentialContractTest {
+    /**
+     * The log the subclass constructs the plug-in under test with, written as with Detailed Logging on, so that every
+     * detail message is run and kept (ADR-006 §2, NFR-008).
+     */
+    protected val log: WrittenLog = WrittenLog()
+
     /** The service accepts the credentials. */
     protected abstract fun credentialsAccepted(): CredentialScenario
 
@@ -186,7 +192,7 @@ public abstract class CredentialContractTest {
     }
 
     @Test
-    @DisplayName("ADR-006 §2: no toString() of the input or of a result reveals a planted credential")
+    @DisplayName("ADR-006 §2, NFR-008: no toString() of the input or of a result, and no log line with Detailed Logging on, reveals a planted credential")
     public fun noResultRevealsACredential() {
         val shown = mutableListOf<String>()
         listOf(::credentialsAccepted, ::credentialsRefused, ::credentialServiceUnavailable).forEach { scenario ->
@@ -197,6 +203,7 @@ public abstract class CredentialContractTest {
             shown += result.toString()
             if (result is CredentialCheck.Accepted) shown += result.credential.toString()
         }
+        shown += log.written
         plantedValues().forEach { planted ->
             shown.forEach { text -> assertFalse(planted in text, "a toString() reveals a planted credential: $text") }
         }
@@ -578,6 +585,21 @@ public abstract class FilePreprocessorContractTest {
 private fun assertNoUncaughtException(threads: RecordingRequestThreads) {
     val uncaught = threads.uncaught
     assertTrue(uncaught.isEmpty(), "an exception ended a request thread: ${uncaught.map { it::class.java.name }}")
+}
+
+/** A log that keeps every line it is given as text, detail messages included, as with Detailed Logging on. */
+public class WrittenLog : SlussenLog {
+    private val lines = mutableListOf<String>()
+
+    public val written: List<String> get() = lines.toList()
+
+    override fun event(event: slussen.pluginapi.diagnostic.LogEvent, vararg facts: slussen.pluginapi.diagnostic.LogFact) {
+        lines += "$event ${facts.toList()}"
+    }
+
+    override fun detail(event: slussen.pluginapi.diagnostic.LogEvent, message: () -> String) {
+        lines += "$event ${message()}"
+    }
 }
 
 /** A log that writes nothing, for constructing a plug-in only to read its declarations. */

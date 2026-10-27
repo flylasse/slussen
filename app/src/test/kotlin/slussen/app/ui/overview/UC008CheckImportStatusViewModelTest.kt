@@ -268,8 +268,8 @@ class UC008CheckImportStatusViewModelTest {
         assertEquals(
             FirstRunUi(
                 "Set up Slussen in Settings",
-                "Next: fetch Kestrel Feeds or grant a Bank Consent in Aurora Open Banking",
-                "Its Bank Accounts are then imported and mapped in Account Mappings.",
+                "Next: fetch Kestrel Feeds",
+                "Its Bank Accounts are then imported and mapped in Account Mappings. Aurora Open Banking needs a Bank Consent: Bank Consents are not in this build yet.",
             ),
             overview().firstRun,
         )
