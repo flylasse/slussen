@@ -392,7 +392,7 @@ A period during which Slussen does not contact a Data Provider, or one Bank thro
 |------------------|-----------------------------------------------------------|-----------|------------------|------------------------------------------|
 | id               | Unique identifier                                         | Long      | 19               | Primary Key, Sequence                    |
 | data_provider_id | Data Provider that must not be contacted                  | Long      | 19               | Not Null, Foreign Key (DATA_PROVIDER.id) |
-| bank_id          | Bank that must not be contacted, empty when the whole Data Provider waits | Long      | 19               | Optional                                 |
+| bank_id          | Bank that must not be contacted, as the Data Provider names it, empty when the whole Data Provider waits | Long      | 19               | Optional                                 |
 | cause            | Why Slussen waits                                         | String    | 30               | Not Null, Values: Request To Wait, Request Limit Warning |
 | starts_at        | Time the Back-off began                                   | DateTime  | -                | Not Null                                 |
 | ends_at          | Time after which Slussen may contact the provider again   | DateTime  | -                | Not Null                                 |
@@ -404,6 +404,7 @@ A period during which Slussen does not contact a Data Provider, or one Bank thro
 - A Back-off with `cause` Request To Wait holds for every Fetch, started by the Operator or as a Scheduled Fetch; no action of the Operator ends it.
 - A Back-off with `cause` Request Limit Warning holds for Scheduled Fetches only; a Fetch the Operator starts during it is made after the Operator has seen the warning and the risk that further requests can get Slussen's access to the Data Provider disabled.
 - A timeout, an outage or an unreadable answer starts no Back-off.
+- A Back-off with a `bank_id` holds for each `BANK_ACCOUNT` read through `data_provider_id` whose `provider_bank_id` is that `bank_id`, whatever the Bank Account's own `bank_id` (UC-001 BR-004).
 
 ### PROVIDER_REQUEST
 

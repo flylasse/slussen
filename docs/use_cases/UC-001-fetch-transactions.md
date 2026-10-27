@@ -240,7 +240,7 @@ A transaction with an amount of zero is left out.
 
 ### BR-004: Requests to Wait Are Honoured
 
-When a Data Provider or a Bank asks Slussen to wait, Slussen does not contact it until the period it named has ended, or for the default wait when it named no period (8 hours by default, a number the Operator can change, UC-010). Such a Back-off holds for a Fetch the Operator starts and for a Scheduled Fetch alike; no action of the Operator ends it. It applies to the whole Data Provider or to the one Bank that asked. A warning about the Request Limit is not a request to wait and follows BR-015.
+When a Data Provider or a Bank asks Slussen to wait, Slussen does not contact it until the period it named has ended, or for the default wait when it named no period (8 hours by default, a number the Operator can change, UC-010). Such a Back-off holds for a Fetch the Operator starts and for a Scheduled Fetch alike; no action of the Operator ends it. It applies to the whole Data Provider or to the one Bank that asked. A Back-off of one Bank holds for the Bank Accounts the Data Provider names that Bank for, whatever Bank the Operator confirmed or chose for them, as a Bank Consent does (UC-007 BR-009): the Bank the Operator chose only names and groups a Bank Account in Slussen. A warning about the Request Limit is not a request to wait and follows BR-015.
 
 ### BR-005: No Wait After a Transient Failure
 
