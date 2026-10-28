@@ -10,7 +10,8 @@
 
 - The plan is drafted and the operator answered O-T-01..O-T-08 on 2026-10-28 (§6): Transfers are in scope, and the fetch period becomes a setting in the app with a default of 30 days.
 - The operator approved the plan on 2026-10-28. Phase 1 wrote S-T-01..S-T-07 (§6).
-- Next: the **specification gate**. The operator reviews S-T-01..S-T-07; when approved, PR #24 (plan and specification) is merged and Phase 2 (UX review) starts.
+- The specification gate passed: the operator merged PR #24 on 2026-10-28, approving S-T-01..S-T-07.
+- Next: Phase 2. The operator runs the external UX review with the prompt in §4 on the branch `transactions-ux`.
 
 ## 1. Scope
 
@@ -76,7 +77,7 @@ In addition:
 |---|---|---|---|---|---|
 | 1 | Specification changes for #8, #9, #11, #16 and the open questions' answers | `docs/` (use cases, entity model, ADR-001 §4.1, glossary, requirements as needed); §6 S-T-nn | `inherit` | `lint_specs.py --strict` and `check_project_rules.py` exit 0; every S-T-nn names its issue, the files it changes and the reason | `docs: phase 1 - specification for Bank Transactions and the Comparison` |
 | — | **Specification gate: the orchestrator stops** | operator reviews the S-T-nn | operator | operator says "approved" | — |
-| 2 | UX review (report only) of the screens this initiative changes: Overview, Budget tab, Bank Account, Fetch states, the YNAB read, the Settings entries the Fetch result points to | §6 UX-nn | a different model from the authors, or an external CLI run by the operator (O-T-05) | every finding has an ID, a screen and state, what the Operator would not understand or could not do, and a proposal; only this plan changed | `docs: phase 2 - UX review findings` |
+| 2 | UX review (report only), **external reviewer**, of the screens this initiative changes: Overview, Budget tab, Bank Account, Transfers (status only), Fetch states and Recent Fetches, the YNAB read, Settings with the fetch period, the SimpleFIN page | `docs/reviews/transactions_phase2_ux_review.md` (reviewer's commit); findings copied into §6 UX-nn (orchestrator's commit) | external CLI of another vendor, run by the operator with the prompt in §4 (O-T-05) | the reviewer's commit changes only its review file; every finding has an ID, a screen and state, what the Operator would not understand or could not do, a severity and a proposal | reviewer: `docs: phase 2 - UX review (external)`; orchestrator: `docs: phase 2 - record the UX review in the plan` |
 | 2b | Mockups revised from the UX gate's decisions | `docs/mockups/*.html` | `inherit` | `check_mockup_links.py` and `check_project_rules.py` exit 0; every accepted UX-nn is resolved in a named state | `docs: phase 2b - mockups revised after the UX gate` |
 | — | **UX gate: the orchestrator stops** | operator walks the mockups | operator | operator says "approved" | — |
 | 3 | Device baseline (#5): `gradlew connectedDebugAndroidTest` on an emulator (API 26 and current) or the phone, then E-13 with `adb shell bmgr` | results into §6 and issue #5 | operator | every instrumented test passes, or each failure becomes an issue | — (results recorded by the orchestrator in Phase 4's commit) |
@@ -89,6 +90,57 @@ In addition:
 | 9 | Close: §7, requirement statuses, open work turned into issues, plan to `docs/archive/` | this plan, `docs/requirements.md`, issues | `inherit` | `lint_specs.py --strict` and `check_project_rules.py` exit 0; §7 lists issue numbers, not open work | `docs: phase 9 - close the transactions plan` |
 
 ## 4. Phase prompts
+
+### Phase 2: UX review (external reviewer)
+
+The operator runs it on the branch `transactions-ux` with an external CLI (O-T-05), and commits and pushes only the review file.
+
+```text
+You are an external UX reviewer of Slussen, an Android app for one person, the Operator, that fetches their
+bank transactions from Data Providers (SimpleFIN in this build) and, in a later version, uploads them to their
+budgeting app, YNAB, after they confirm an Upload Plan. It is an AIUP project: the specification in docs/ is
+the source of truth. Read AGENTS.md first, then docs/glossary.md, docs/requirements.md (NFR-023 especially),
+docs/use_cases/UC-001, UC-003, UC-005, UC-008 and UC-010, and docs/transactions_plan.md sections 1 and 6.
+
+What changes for the Operator in the next version (transactions_plan.md section 1):
+- A Fetch of SimpleFIN now brings in booked Bank Transactions, not only balances. Slussen reads YNAB and gives
+  each Bank Transaction a Transaction Status (New, Already In Budget App, Match For Typed Entry, Needs Review,
+  Before Start Date, Too Old, In The Future, Transfer Leg, Guessed Transfer, ...).
+- Transfers between the Operator's own Bank Accounts in one Budget are detected, but cannot yet be confirmed,
+  split or held (no Transfer Decisions). Needs Review transactions cannot yet be decided (no Review Decisions).
+  Nothing is uploaded in this version.
+- New situations: a selected Bank Account that SimpleFIN does not deliver (UC-001 A19), the Bank's sign-in at
+  SimpleFIN needed (A20), a balance in another currency (A21), the time a balance was reported ("balance as
+  of"), the fetch period on Settings (30 days by default, 7-180).
+
+Scope: the mockups in docs/mockups/ that show these situations: overview.html, budget.html,
+bank-account.html, transfers.html (statuses only), fetch-history.html, settings.html, connections.html (the
+SimpleFIN page). Read the HTML source; each <div class="state" id="..."> is one screen state, and its
+step-label names the use case step it shows. Do not review screens for Uploads, Review Decisions, Bank
+Consents or Transaction Files except where this version's screens lead to them.
+
+Walk these journeys as the Operator, a careful non-expert who knows their own banks and YNAB:
+1. Upgrade from the previous version, open the app, fetch everything, find this week's transactions.
+2. For each Transaction Status that can appear in this version: can the Operator tell what it means, whether
+   anything is wrong, and what, if anything, to do now or later?
+3. A payment from checking to the credit card: how does it look; is a Guessed Transfer that cannot yet be
+   confirmed a dead end or clearly "later"?
+4. Each Blocked Reason of A19, A20, A21 and the existing ones: is the next action clear and reachable?
+5. Read YNAB again with the refresh on the YNAB line; tell apart "statuses as of" and "balance as of".
+6. Change the fetch period to 14 days.
+
+For every screen in scope, check NFR-023: every action shows its state on its own control before it sends
+anything, its result appears in the same place, and every Blocked Reason, empty state or line about a part
+this version does not have names the next action or says that none is needed. Also report a situation in
+the specification that no mockup state shows (for example A19-A21 or the fetch period), and any term on a
+screen that is not the glossary's.
+
+Report only. Write docs/reviews/transactions_phase2_ux_review.md and change no other file. One finding per
+row: ID (UX-01, UX-02, ...), screen and state id, journey, what the Operator would not understand or could not
+do, severity (Blocker: the Operator cannot complete the journey or misreads money; Major: they get stuck or
+need to guess; Minor: friction), and a proposal in one or two sentences. End with the three findings you
+would fix first. Use invented names and amounts only. Do not read scratch/ or any other repository.
+```
 
 Written for each phase when the phase before it is accepted, so that each prompt carries what the gates decided. Every prompt starts with: read `AGENTS.md`, this plan's §1, §2 and §6, and the use cases and ADRs the phase names; follow `use-case-test` and then `use-case-implement` for code phases; return Clarified / Assumed / Open.
 
