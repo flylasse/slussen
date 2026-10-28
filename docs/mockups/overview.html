@@ -297,18 +297,18 @@
 <div class="screen-title">Slussen</div>
 <p class="screen-sub">Overview · 2026-10-20 08:15 · device time</p>
 <div class="body">
-<div class="bh" style="margin:0 4px 8px"><span class="meta">YNAB · read 08:03 <a href="budget.html#budget-app-read" style="color:var(--app-blue)">⟳</a></span></div><a class="btn primary" href="budget.html#fetch-states">Fetch all Data Providers</a><a class="card" href="budget.html#in-sync" style="display:block"><div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="r dot"></span></div><div class="bh"><span class="meta">Eligible 0 · waiting for a decision 0</span></div><div class="tagrow"><span class="chip green">Nothing blocked</span></div></a> <a class="card" href="budget.html#summer-house" style="display:block"><div class="bh"><span class="nm">Summer House</span> <span class="chip grey">EUR</span> <span class="r dot"></span></div><div class="bh"><span class="meta">Eligible 0 · waiting for a decision 0</span></div><div class="tagrow"><span class="chip green">Nothing blocked</span></div></a> <a class="card" href="budget.html#care-fund" style="display:block"><div class="bh"><span class="nm">Care Fund</span> <span class="chip grey">USD</span> <span class="r dot"></span></div><div class="bh"><span class="meta">Eligible 0 · waiting for a decision 0</span></div><div class="tagrow"><span class="chip green">Nothing blocked</span></div></a> <p class="note">Statuses as of 2026-10-20 08:03</p>
+<div class="bh" style="margin:0 4px 8px"><span class="meta">YNAB · read 08:03 <a href="budget.html#budget-app-read" style="color:var(--app-blue)">⟳ Read YNAB again</a></span></div><a class="btn primary" href="budget.html#fetch-states">Fetch all Data Providers</a><a class="card" href="budget.html#in-sync" style="display:block"><div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="r dot"></span></div><div class="bh"><span class="meta">Eligible 0 · waiting for a decision 0</span></div><div class="tagrow"><span class="chip green">Nothing blocked</span></div></a> <a class="card" href="budget.html#summer-house" style="display:block"><div class="bh"><span class="nm">Summer House</span> <span class="chip grey">EUR</span> <span class="r dot"></span></div><div class="bh"><span class="meta">Eligible 0 · waiting for a decision 0</span></div><div class="tagrow"><span class="chip green">Nothing blocked</span></div></a> <a class="card" href="budget.html#care-fund" style="display:block"><div class="bh"><span class="nm">Care Fund</span> <span class="chip grey">USD</span> <span class="r dot"></span></div><div class="bh"><span class="meta">Eligible 0 · waiting for a decision 0</span></div><div class="tagrow"><span class="chip green">Nothing blocked</span></div></a> <p class="note">Statuses as of 2026-10-20 08:03</p>
 </div>
 <div class="nav"><a class="tab on" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="open">
-<div class="step-label"><span class="n">UC-008 1–3</span><p><b>Opening Slussen.</b> The Overview tab: every Budget with its Eligible Transactions, its Bank Transactions waiting for a decision and whether any Source or Bank Account is blocked, plus every Bank Consent inside the consent warning lead time with its renew action. “Fetch all Data Providers” stands above the Budget cards, where it is seen without scrolling (P9-14). <i>Build state, not part of the use case:</i> while UC-001 steps 7–10 are not built, one line under it says what a Fetch does in this build.</p></div>
+<div class="step-label"><span class="n">UC-008 1–3</span><p><b>Opening Slussen.</b> The Overview tab: every Budget with its Eligible Transactions, its Bank Transactions waiting for a decision and whether any Source or Bank Account is blocked, plus every Bank Consent inside the consent warning lead time with its renew action. “Fetch all Data Providers” stands above the Budget cards, where it is seen without scrolling (P9-14). <i>Build state, not part of the use case:</i> while UC-001 steps 7–10 are not built, one line under it says what a Fetch does in this build. The version that fetches Bank Transactions but uploads nothing: <a href="#open-this-build">opening Slussen after the upgrade</a>.</p></div>
 <div class="phone">
 <div class="screen-title">Slussen</div>
 <p class="screen-sub">Overview · 2026-10-15 14:32 · device time</p>
 <div class="body">
-<div class="bh" style="margin:0 4px 8px"><span class="meta">YNAB · read 13:21 <a href="budget.html#budget-app-read" style="color:var(--app-blue)">⟳</a></span></div>
+<div class="bh" style="margin:0 4px 8px"><span class="meta">YNAB · read 13:21 <a href="budget.html#budget-app-read" style="color:var(--app-blue)">⟳ Read YNAB again</a></span></div>
 <a class="btn primary" href="budget.html#fetch-states">Fetch all Data Providers</a>
 <div class="banner"><span class="txt"><b>Bank Consent of Aurora Bank expires 2026-10-19</b>
 </span>
@@ -487,6 +487,77 @@
 </div>
 </div>
 </section>
+<section>
+<h2>This version: Bank Transactions, compared, nothing uploaded</h2>
+<p class="lede">The Overview of the version that fetches Bank Transactions and compares them with YNAB but uploads nothing (transactions plan §1). These states stand next to the full-product states above, which stay the target of later versions (UX-D1). Each says what this version does not do yet, that nothing is uploaded and that no action is needed for it now.</p>
+<div class="flow">
+<div class="state" id="open-this-build">
+<div class="step-label"><span class="n">UC-008 1–3 · A2 · A8 · UC-001 A11</span><p><b>Opening Slussen after the upgrade</b>, set up as before, after the first Fetch of all Data Providers. Each Budget names what its counts count and when its statuses were given; the outdated Account Balance names its remedy. <i>Build state, not part of the use case:</i> while Uploads (UC-006), First Upload Matching's confirmation, Bank Consents (UC-007) and Transaction Files (UC-002) are not built, one line under Fetch all says what a Fetch does in this version; the First Upload Matching card offers no Start and says that no action is needed now; Summer House and Care Fund say what waits for a later version. The full product: <a href="#open">Opening Slussen</a>.</p></div>
+<div class="phone">
+<div class="screen-title">Slussen</div>
+<p class="screen-sub">Overview · 2026-10-15 13:30 · device time</p>
+<div class="body">
+<div class="bh" style="margin:0 4px 8px"><span class="meta">YNAB · read 13:21 <a href="budget.html#ynab-read-states" style="color:var(--app-blue)">⟳ Read YNAB again</a></span></div>
+<a class="btn primary" href="#fetch-all-states">Fetch all Data Providers</a>
+<p class="note">A Fetch brings in the Bank Transactions and compares them with YNAB. Nothing is uploaded in this version.</p>
+<div class="banner blue"><span class="txt"><b>Uploads wait for First Upload Matching</b> <span class="d">First Upload Matching comes with Uploads in a later version. Nothing is uploaded until then, and no action is needed now.</span></span></div>
+<a class="card amber" href="budget.html#household-this-build" style="display:block">
+  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="r dot amber"></span></div>
+  <div class="bh"><span class="meta">Statuses as of 13:21 · Eligible Transactions, for a later Upload Plan: 8 · waiting for a later decision: 7</span></div>
+  <div class="tagrow"><span class="chip amber">Guessed Transfers: 2</span> <span class="chip amber">Pinecrest Home Card: Account Balance outdated</span></div>
+  <div class="src-note">Fetch again later for a newer Account Balance; nothing else is needed now.</div>
+</a>
+<a class="card" href="budget.html#summer-house-this-build" style="display:block">
+  <div class="bh"><span class="nm">Summer House</span> <span class="chip grey">EUR</span> <span class="r dot grey"></span></div>
+  <div class="bh"><span class="meta">Its Bank Accounts wait for Bank Consents, which come in a later version · no action is needed now</span></div>
+</a>
+<a class="card" href="budget.html#care-fund-this-build" style="display:block">
+  <div class="bh"><span class="nm">Care Fund</span> <span class="chip grey">USD</span> <span class="r dot"></span></div>
+  <div class="bh"><span class="meta">Statuses as of 13:21 · Account Balance only: Transaction Files come in a later version · no action is needed now</span></div>
+</a>
+</div>
+<div class="nav"><a class="tab on" href="overview.html#open-this-build"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household-this-build"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house-this-build"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund-this-build"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html#list-this-build"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="read-one-failed">
+<div class="step-label"><span class="n">UC-003 A1 · failure postconditions · UC-008 1</span><p><b>Read YNAB again, with one Budget not read.</b> Care Fund was read at 13:42; Household was not, so its statuses keep the time of its last successful read and are not shown as current. The YNAB line says so and offers the read again; no Bank Fetch is needed.</p></div>
+<div class="phone">
+<div class="screen-title">Slussen</div>
+<p class="screen-sub">Overview · 2026-10-15 13:43 · device time</p>
+<div class="body">
+<div class="bh" style="margin:0 4px 8px"><span class="meta"><span style="color:var(--app-amber)">YNAB · read 13:42 · Household not read</span> <a href="budget.html#ynab-read-states" style="color:var(--app-blue)">⟳ Read YNAB again</a></span></div>
+<a class="btn primary" href="#fetch-all-states">Fetch all Data Providers</a>
+<a class="card amber" href="budget.html#household-this-build" style="display:block">
+  <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="r dot amber"></span></div>
+  <div class="bh"><span class="meta">Statuses as of 13:21, its last successful read · the read of 13:42 failed: no answer</span></div>
+  <div class="bh"><span class="meta">From that read: Eligible Transactions 8 · waiting for a later decision 7</span></div>
+  <div class="src-note">Read YNAB again to bring them up to date; nothing else is needed.</div>
+</a>
+<a class="card" href="budget.html#summer-house-this-build" style="display:block">
+  <div class="bh"><span class="nm">Summer House</span> <span class="chip grey">EUR</span> <span class="r dot grey"></span></div>
+  <div class="bh"><span class="meta">Its Bank Accounts wait for Bank Consents, which come in a later version · no action is needed now</span></div>
+</a>
+<a class="card" href="budget.html#care-fund-this-build" style="display:block">
+  <div class="bh"><span class="nm">Care Fund</span> <span class="chip grey">USD</span> <span class="r dot"></span></div>
+  <div class="bh"><span class="meta">Statuses as of 13:42</span></div>
+</a>
+</div>
+<div class="nav"><a class="tab on" href="overview.html#open-this-build"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household-this-build"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house-this-build"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund-this-build"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html#list-this-build"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="first-run-next-this-build">
+<div class="step-label"><span class="n">UC-008 A10 · BR-011</span><p><b>Later on the first run</b>, in this version: the card names the Fetch of SimpleFIN as the next thing, and says that a Data Provider which needs a Bank Consent waits for a later version, so no setup step that cannot work is proposed. <i>Build state, not part of the use case:</i> as in <a href="#first-run-next">the full product's state</a> but without “or grant a Bank Consent”.</p></div>
+<div class="phone">
+<div class="screen-title">Slussen</div>
+<p class="screen-sub">Overview</p>
+<div class="body">
+<a class="card blue" href="connections.html#first-fetch" style="display:block"><div class="bh"><span class="nm">Set up Slussen in Settings</span></div><p class="note" style="margin-top:4px">Next: <b>fetch SimpleFIN</b></p><p class="note">Its Bank Accounts are then imported and mapped in Account Mappings.</p><p class="note">Enable Banking needs Bank Consents, which come in a later version; no action is needed for it now.</p><span class="cta">Open SimpleFIN</span></a>
+</div>
+<div class="nav"><a class="tab on" href="overview.html#first-run-next-this-build"><span class="ic">◎</span> Overview</a> <a class="tab" href="settings.html#nothing-imported"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
+</section><section id="fetch-all-states" class="state"><h2>Fetch all Data Providers: the button answers back</h2><p class="lede">The Overview's “Fetch all Data Providers” keeps its place and its name through the whole action: the Fetch of each Data Provider, then the read of YNAB for every Budget (UC-001 A11, UC-003). Its last state tells complete success, data served during the Fetch Cooldown and a partial result apart, and leads to the Bank Accounts concerned (NFR-023). The same states appear on a Budget tab's Fetch (<a href="budget.html#fetch-states">button states</a>) and on the SimpleFIN page (<a href="connections.html#simplefin-fetching">in place</a>).</p><div class="gallery"><div class="st"><h4>Ready</h4><p>Fetches every Data Provider that can be fetched, then reads YNAB. In this version Enable Banking waits for Bank Consents and is left out.</p><div class="stage"><span class="btn primary">Fetch all Data Providers</span></div></div><div class="st"><h4>Waiting for the running operation</h4><p>Shown at once, before anything is sent (ADR-007).</p><div class="stage"><span class="btn busy"><span class="spin"></span> Fetch all · waits for: Reading YNAB</span></div></div><div class="st"><h4>Fetching</h4><p>One Data Provider after the other.</p><div class="stage"><span class="btn busy"><span class="spin"></span> Fetch all · fetching SimpleFIN</span></div></div><div class="st"><h4>Reading YNAB</h4><p>The Comparison of every Budget; no Bank is contacted any more.</p><div class="stage"><span class="btn busy"><span class="spin"></span> Fetch all · reading YNAB · Budgets: 2 of 3</span></div></div><div class="st"><h4>Done</h4><p>Every Bank Account fetched, every Budget compared.</p><div class="stage"><span class="btn done">✓ All fetched 13:20 · YNAB read 13:21</span></div></div><div class="st"><h4>Served from the Fetch Cooldown (UC-001 A2)</h4><p>Nothing new was asked for; YNAB was still read.</p><div class="stage"><span class="btn cool">✓ SimpleFIN from the Fetch of 13:20 · contacts it again from 14:20 · YNAB read 13:45</span></div></div><div class="st"><h4>Partly fetched (UC-001 A8, A19, A20)</h4><p>Each Bank Account that was not fetched is named and leads to its Blocked Reason.</p><div class="stage"><span class="btn warn">Fetched 13:20 · YNAB read 13:21 · not fetched: 3</span><br><a class="small" href="budget.html#not-delivered" style="color:var(--app-blue)">Kestrel Reserve: not delivered ›</a><br><a class="small" href="budget.html#sign-in-needed" style="color:var(--app-blue)">Pinecrest Card Co.: sign-in needed ›</a></div></div><div class="st"><h4>Failed (UC-001 A6)</h4><p>Stored data kept; YNAB still read; fetch again at any time.</p><div class="stage"><span class="btn danger">SimpleFIN failed 14:05 · no answer · YNAB read 14:05</span> <span class="btn">Fetch again</span></div></div><div class="st"><h4>YNAB not read (UC-003 A1)</h4><p>The Bank Transactions are stored; their statuses wait for a read of YNAB.</p><div class="stage"><a class="btn warn" href="budget.html#first-read-failed">✓ Fetched 13:20 · YNAB not read · Read YNAB again</a></div></div></div></section>
 <p class="footnote">Mockup for the mockup gate of the construction kickoff plan. Every Budget, Bank, Bank Account,
 payee and amount is invented. The Approved use cases are normative; where this page and a use case disagree, the use
 case wins.</p>

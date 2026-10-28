@@ -13,7 +13,8 @@
 - The specification gate passed: the operator merged PR #24 on 2026-10-28, approving S-T-01..S-T-07.
 - Phase 2 done: the operator pushed the external UX review (1982708); its 27 findings are in §6 with recommendations.
 - The operator answered UX-D1..UX-D4 on 2026-10-28 (§6); issue #26 holds UX-24's notices outside this initiative.
-- Next: Phase 2b revises the mockups, then the **UX gate**.
+- Phase 2b done: the mockups are revised (a sub-agent; 8 files), with this version's read-only states beside the full-product ones. It found four specification gaps, written as **S-T-08..S-T-11** for approval (§6).
+- Next: the **UX gate**. The operator walks through the mockups (the list of new states is in PR #25) and approves S-T-08..S-T-11.
 
 ## 1. Scope
 
@@ -44,7 +45,7 @@ Not taken on: #6 (gates Uploads), #7 and #15 (Enable Banking), #18 (waits on the
 
 ### What the Operator will see at the end
 
-- After a Fetch of SimpleFIN, each Budget tab lists its Bank Transactions with a Transaction Status: New, Already In Budget App, Match For Typed Entry, Transfer Leg, Guessed Transfer, Needs Review (for example an Unreadable Transaction), Before Start Date, Too Old, and so on.
+- After a Fetch of SimpleFIN, each Budget tab lists its Bank Transactions with a Transaction Status: New, Match For Typed Entry, Transfer Leg, Guessed Transfer, Needs Review (for example an Unreadable Transaction), Before Start Date, Too Old, and so on. Already In Budget App cannot occur yet: it needs an Import Identifier Slussen sent (UC-003 BR-003), and this version sends nothing.
 - A payment from one of your Bank Accounts to another in the same Budget is one Transfer with two Transfer Legs, not two New Bank Transactions. One that Slussen cannot pair for certain is a Guessed Transfer, shown but not yet confirmable (O-T-02).
 - Settings shows the fetch period, 30 days by default, and you can change it, for example to 14 days.
 - The counts on the Overview and the Budget tabs are real: Eligible, and waiting for a decision.
@@ -153,6 +154,7 @@ Written for each phase when the phase before it is accepted, so that each prompt
 | 1 | Draft | Initiative intake (AGENTS.md §6) | The plan names the use cases, requirements and issues it takes on, and its first phase writes the specification changes. | No |
 | 2 | 1 | Specification changes (`requirements`, `use-case-spec`, `entity-model`) | The orchestrator wrote Phase 1 itself instead of dispatching a sub-agent (§2): every change had been designed with the operator in the same session (issues #8, #9, #11, #16, O-T-06, O-T-07), and a sub-agent would have needed that whole conversation as its prompt. The semantic `/spec-review` was not run; the two linters were. | Yes |
 | 3 | 1 | `requirements` (NFR) | A usability requirement (NFR-023, O-T-06) is written as an NFR with the category Usability. The project rule on numbers (AGENTS.md §2) refused "within 1 second", so the measure is "before the action sends any request or waits for anything". | No |
+| 5 | 2b | Mockups (`use-case-spec` mockup step) | Phase 2b ran as a sub-agent with the accepted findings as its brief, as §2 says; it changed only `docs/mockups/` and reported nine specification observations instead of changing the specification. | No |
 | 4 | 2 | Adversarial review (Centaur cross-model rule) | The external UX reviewer (Codex CLI) worked only from this repository, as its prompt said, so it did not read the Marketplace `spec-review` skill that AGENTS.md names. Its review is a source walkthrough of the HTML mockups, not of the running app. | Yes (recorded as the reviewer asked) |
 
 ## 6. Findings, specification changes and open questions
@@ -185,6 +187,22 @@ Phase 1, 2026-10-28. Waiting for the operator's approval at the specification ga
 | S-T-07 | O-T-06 | New NFR-023 "Every Action Answers in Place" (Usability): every action shows its state on its own control before it sends anything, its result in the same place, and every Blocked Reason, empty state or build-state line names the next action; the UX review checks each changed screen against it. Referenced by UC-001, UC-003, UC-005, UC-008, UC-010. | requirements, those use cases |
 
 Not changed: O-T-01 (Transfers) needs no specification change, since UC-005 is Approved as it stands.
+
+Phase 2b, 2026-10-28: four specification gaps the mockup revision found. **Proposed, waiting for the operator's approval at the UX gate.**
+
+| ID | Found by | Change | Files |
+|---|---|---|---|
+| S-T-08 | Phase 2b (UX-13) | A Bank Transaction stored before any successful Comparison of its Budget, or since the last one, has no Transaction Status yet: it is shown as not compared yet and counted neither as Eligible nor as waiting for a decision. `BANK_TRANSACTION.status` becomes Optional, empty until a Comparison has read its Budget. | UC-003 A1, entity model |
+| S-T-09 | Phase 2b | The glossary's Fetch Result lists the two outcomes S-T-01 and S-T-03 added: not delivered, sign-in needed. | glossary |
+| S-T-10 | Phase 2b (NFR-023) | UC-001 A21 names its next action: nothing is needed now; if it happens again, check the Bank Account's currency at the Data Provider. | UC-001 A21 |
+| S-T-11 | Phase 2b (UX-19) | A changed fetch period applies from the next Fetch that contacts the Data Provider; a Fetch served from the Fetch Cooldown asks for nothing. | UC-001 BR-009 |
+
+Phase 2b's other observations, no specification change:
+- Plan §1 listed Already In Budget App among this version's statuses; corrected, since it needs a sent Import Identifier.
+- Funded By and Transfer Partner start empty and cannot be set in this version, so card-side Lonely Transfers cannot occur; UC-005 does not say how the card of a funding-side Lonely Transfer found by a Card Payment Description is known. Phase 7b checks this against UC-005 BR-002 and BR-012 and stops for a specification change if needed.
+- UC-010 has no flow for a setting that cannot be stored; the mockups rest that on NFR-023 and the failure postconditions. No change proposed.
+- The build-state notes "while the Comparison (UC-003) is not built" in `overview.html#first-added`, `#recovery` and `first-upload-matching.html` go out of date with this version; Phase 7 updates them with the code.
+- `index.html` has no traceability row for UC-001 A18 (missing since construction); `transfers.html#doubtful-leg` has no this-version state. Both are small and are fixed in Phase 7's mockup touch-ups.
 
 ### UX review findings (UX-nn)
 

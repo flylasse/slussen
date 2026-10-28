@@ -35,7 +35,7 @@
 **Flow:**
 
 1. Slussen keeps the previous Transaction Statuses and the stored Budget App Transactions of that Budget.
-2. Slussen shows that these statuses come from the last successful read, with its time, and that the read failed.
+2. Slussen shows that these statuses come from the last successful read, with its time, and that the read failed. A Bank Transaction of that Budget stored since its last successful read, or before any successful read, has no Transaction Status yet: Slussen shows it as not compared yet and counts it neither as an Eligible Transaction nor as waiting for a decision, and the action that reads the Budget App again.
 3. Use case continues at step 2 for the other Budgets, or ends when no Budget could be read.
 
 ### A2: Budget App Refuses Slussen's Credentials
