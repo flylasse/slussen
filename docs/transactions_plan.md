@@ -11,7 +11,8 @@
 - The plan is drafted and the operator answered O-T-01..O-T-08 on 2026-10-28 (§6): Transfers are in scope, and the fetch period becomes a setting in the app with a default of 30 days.
 - The operator approved the plan on 2026-10-28. Phase 1 wrote S-T-01..S-T-07 (§6).
 - The specification gate passed: the operator merged PR #24 on 2026-10-28, approving S-T-01..S-T-07.
-- Next: Phase 2. The operator runs the external UX review with the prompt in §4 on the branch `transactions-ux`.
+- Phase 2 done: the operator pushed the external UX review (1982708); its 27 findings are in §6 with recommendations.
+- Next: the operator answers UX-D1..UX-D4 (§6), then Phase 2b revises the mockups for the **UX gate**.
 
 ## 1. Scope
 
@@ -151,6 +152,7 @@ Written for each phase when the phase before it is accepted, so that each prompt
 | 1 | Draft | Initiative intake (AGENTS.md §6) | The plan names the use cases, requirements and issues it takes on, and its first phase writes the specification changes. | No |
 | 2 | 1 | Specification changes (`requirements`, `use-case-spec`, `entity-model`) | The orchestrator wrote Phase 1 itself instead of dispatching a sub-agent (§2): every change had been designed with the operator in the same session (issues #8, #9, #11, #16, O-T-06, O-T-07), and a sub-agent would have needed that whole conversation as its prompt. The semantic `/spec-review` was not run; the two linters were. | Yes |
 | 3 | 1 | `requirements` (NFR) | A usability requirement (NFR-023, O-T-06) is written as an NFR with the category Usability. The project rule on numbers (AGENTS.md §2) refused "within 1 second", so the measure is "before the action sends any request or waits for anything". | No |
+| 4 | 2 | Adversarial review (Centaur cross-model rule) | The external UX reviewer (Codex CLI) worked only from this repository, as its prompt said, so it did not read the Marketplace `spec-review` skill that AGENTS.md names. Its review is a source walkthrough of the HTML mockups, not of the running app. | Yes (recorded as the reviewer asked) |
 
 ## 6. Findings, specification changes and open questions
 
@@ -185,7 +187,26 @@ Not changed: O-T-01 (Transfers) needs no specification change, since UC-005 is A
 
 ### UX review findings (UX-nn)
 
-None yet: Phase 2 writes them.
+Phase 2, 2026-10-28: an external review (Codex CLI, run by the operator) of the mockups against the approved specification, in `docs/reviews/transactions_phase2_ux_review.md`, 27 findings: 4 Blocker, 21 Major, 2 Minor. The reviewer's own limitation, carried forward as it asked: it did not read the Marketplace review skill, which lives in another repository (§5 row 4).
+
+Most findings fall into five groups. Each group is followed by the orchestrator's recommendation; "Accept" means Phase 2b changes the mockups accordingly.
+
+| Group | Findings | What the review found | Recommendation |
+|---|---|---|---|
+| **A. The version boundary** | UX-01, UX-02, UX-03, UX-04 (Blocker), UX-23 | The mockups draw the whole product. In this version, Upload, Review Decision, Transfer Decision, Scheduled Fetch and Bank Consent entry points look usable but are not, and "Written via Kestrel Checking" (UX-04) suggests money already in YNAB. | Accept, by **adding** this version's states rather than removing the full-product ones, which stay the target of later initiatives (decision UX-D1). Each added state is read-only: it shows the reason, says the action comes in a later version, that nothing is uploaded and that no action is needed now. UX-04's wording is fixed in both. |
+| **B. Situations no state shows yet** | UX-05 (A19), UX-06 (A20), UX-07 (A21, Blocker), UX-09 (fetch period, Blocker), UX-13 (first YNAB read failed, one Budget failed), UX-18 (successful but empty), UX-19 (Fetch Cooldown with one Bank Account read) | Each is specified but not drawn. UX-09 also found the fetch period still drawn at 60 days, with no editor. | Accept all. |
+| **C. Times and balances** | UX-08 (Blocker), UX-25 | "Read 13:20" does not say whose time it is; the Account Balance's reported time, the Fetch time and the YNAB read time are not told apart; some Bank Accounts lack their own Source Health and Freshness. | Accept: "Bank balance as of …" (reported time, S-T-04), "Budget Account balance read …", and per Bank Account health. |
+| **D. Answer in place (NFR-023)** | UX-10, UX-11, UX-12, UX-20, UX-21, UX-22, UX-24 | The Overview's Fetch all, the SimpleFIN page, the YNAB read and Recent Fetches lack running, queued, result or failure states at their own control; some saved values disagree with their row (UX-22); a credential refusal leads to a page that says Accepted (UX-21); some notices name no next action (UX-24). | Accept UX-10, -11, -12, -20, -21, -22. UX-24: accept for the outdated Account Balance (in scope); the damaged-journal and backup notices are outside this initiative and become an issue (decision UX-D3). |
+| **E. Understanding statuses and Transfers** | UX-14, UX-15, UX-16, UX-17 (Minor), UX-26 (Minor), UX-27 | New, Match For Typed Entry and Already In Budget App lack a reachable explanation; the date statuses do not name their boundary or say why the fetch period does not change eligibility; a Transfer's two sides are not shown; finding this week's Bank Transactions means scanning groups; a few words differ from the glossary ("refreshing", "imported", "waiting"); the counts on the Transfers entry cannot be reconciled. | Accept UX-14, -15, -16, -26, -27. UX-17: a chronological list per Bank Account now; the date filter becomes an issue (decision UX-D2). |
+
+**Decisions for the operator at the UX gate:**
+
+| ID | Question | Recommendation | Operator's answer |
+|---|---|---|---|
+| UX-D1 | Version boundary (group A): add read-only states for this version next to the full-product states, or redraw the full-product states? | Add. The full-product states are the approved target of the Upload and Review initiatives; redrawing them would lose that specification. | |
+| UX-D2 | UX-17: a date filter on Bank Transactions now? | No: a chronological list now, the filter as a `spec-gap` issue for UC-008. | |
+| UX-D3 | UX-24's damaged-journal and backup notices: now or later? | Later, as a `defect` issue: they are existing screens outside this initiative's journeys. | |
+| UX-D4 | UX-21 and UX-22 concern screens already built in construction (credentials, Fetch Cooldown); the app may share the mockups' gaps. Check and fix the app in this initiative? | Yes: Phase 6 checks those screens against NFR-023 and fixes what the app shares; the mockups are fixed in Phase 2b. | |
 
 ## 7. Plan closed
 
