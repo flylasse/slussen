@@ -9,7 +9,7 @@
 **Trigger:** Operator asks to change an Operator Setting  
 **Status:** Approved  
 
-**Requirements:** [FR-001, FR-012, FR-014, FR-016, FR-017, FR-030, FR-046, FR-051, FR-062, FR-065, FR-066, FR-067, FR-069, FR-076, FR-081, FR-087, FR-088, FR-089, FR-090, FR-094, FR-103, FR-104, NFR-003, NFR-006, NFR-007, NFR-008, NFR-010, NFR-013, NFR-016, NFR-017, NFR-019, NFR-023](../requirements.md)
+**Requirements:** [FR-001, FR-012, FR-014, FR-016, FR-017, FR-030, FR-046, FR-051, FR-062, FR-065, FR-066, FR-067, FR-069, FR-076, FR-081, FR-087, FR-088, FR-089, FR-090, FR-094, FR-103, FR-104, NFR-003, NFR-006, NFR-007, NFR-008, NFR-010, NFR-013, NFR-016, NFR-017, NFR-019, NFR-023, FR-107](../requirements.md)
 
 ## Preconditions
 
@@ -121,6 +121,16 @@
 
 1. Slussen takes the default the Data Provider's part declares as the new value.
 2. Use case continues at step 4.
+
+### A12: Start Over
+
+**Trigger:** Operator chooses, on Settings, to start Slussen over (step 2)  
+**Flow:**
+
+1. Slussen states everything it will delete: the chosen Budgets and their Budget Accounts, the Bank Accounts with their Account Mappings and Start Dates, the Left-Out Bank Accounts, the Bank Transactions with their Review Decisions and Transfer Decisions, the Sent Record, the service credentials, the Bank Consents, the Operator Settings and the Decision Journal, with the number of Bank Accounts and Bank Transactions; and that, as after a new installation, nothing is uploaded until First Upload Matching is confirmed (UC-006 BR-017).
+2. Operator confirms, or cancels and the use case ends with nothing deleted.
+3. Slussen deletes everything it stores and starts as a new installation, opening a First Upload Matching (UC-006 BR-017).
+4. Use case ends.
 
 ## Postconditions
 
