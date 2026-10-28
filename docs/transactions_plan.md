@@ -20,7 +20,8 @@
   - first run: `:app` 17 of 18 failed, all from Espresso 3.6.1 calling the removed `InputManager.getInstance`; fixed by pinning Espresso 3.7.0 (PR #28);
   - second run: `:persistence` **29 of 29 passed**, among them `SlussenDatabaseMigrationIT` 4 of 4 (E-06: versions 1 and 2 upgraded on the phone); `:app` 15 of 18 passed; the 3 failures were stale tests (a text the Budget card now repeats, a section title drawn in capitals, a tap below the screen edge), fixed in PR #28;
   - **E-13 passed**: after a backup with `bmgr`, an uninstall, a reinstall and a restore, YNAB showed credentials missing while the chosen Budgets and their Budget Accounts were kept.
-- Next: the operator reruns `:app`'s instrumented tests on PR #28's branch; when they pass, #28 merges and Phase 4 starts.
+  - third run on PR #28 at 3b635e1: `:app` **18 of 18 passed**. Phase 3 done: PR #28 merged on 2026-10-28, issue #5 closed.
+- Phase 4 (Data Provider contract and SimpleFIN) in progress on the branch `transactions-phase4`, with the prompt in §4.
 
 ## 1. Scope
 
@@ -149,6 +150,46 @@ row: ID (UX-01, UX-02, ...), screen and state id, journey, what the Operator wou
 do, severity (Blocker: the Operator cannot complete the journey or misreads money; Major: they get stuck or
 need to guess; Minor: friction), and a proposal in one or two sentences. End with the three findings you
 would fix first. Use invented names and amounts only. Do not read scratch/ or any other repository.
+```
+
+### Phase 4: Data Provider contract and SimpleFIN (sub-agent)
+
+```text
+Work in /home/user/slussen on the branch transactions-phase4 (checked out). Do not commit, push or switch
+branches; leave the changes in the working tree for the orchestrator.
+
+Read AGENTS.md, docs/transactions_plan.md §1, §2 and §6 (S-T-03, S-T-04), ADR-001 §4.1 (the Data Provider
+contract, including the bullets "The time of a balance" and "SimpleFIN's error list"), UC-001 A8, A20, A21,
+ADR-004 (traceability markers), ADR-006 (logging) and docs/architecture/development.md. Follow aiup-core's
+use-case-test and then use-case-implement (read from /home/user/marketplace, branch feat/layer-plugins):
+tests first.
+
+Build:
+1. :plugin-api: `BankAccountResult.Read` gains `balanceReportedAt: Instant?` (default null);
+   `BankAccountResult.SignInNeeded` (an object, carries nothing), with KDoc citing UC-001 A20 and ADR-001 §4.1.
+2. provider-simplefin: read each account's `balance-date` (a Unix time) into `balanceReportedAt`; read the
+   answer's `errlist` (protocol version 2: objects with `code`, and `conn_id` or `account_id`) and map it:
+   `con.auth` -> `SignInNeeded` for every account of that connection; `act.failed`, `act.missingdata` ->
+   `Failed(FailureKind.Incomplete)` for that account; any other code -> `Failed(UnreadableAnswer)` for the
+   accounts it names, ignored when it names none. Never pass any SimpleFIN text on (NFR-012). Remove the
+   KDoc sentence that says errlist is not read.
+3. The Data Provider contract tests (plugin-api testFixtures, DataProviderFetchContractTest) and the
+   SimpleFIN tests cover: a pending item passed on with booked=false, a zero amount passed on, an item without
+   a date as Uninterpretable(MissingDate), balance-date carried, con.auth -> SignInNeeded for the accounts of
+   that connection only, act.failed -> Failed(Incomplete), and that no errlist text appears in any
+   toString() of the response. Invented data and the local test server only; never -PincludeLive.
+4. Enable Banking and every other user of these types compile unchanged in behaviour.
+5. :core: the Account Balance stored in step 8 takes `reported_at` from `balanceReportedAt`, or the time the
+   answer arrived when it is null (S-T-04), with a test naming UC-001 step 8. A `SignInNeeded` Bank Account
+   keeps its stored data and gets no Fetch Result yet (UC-001 A20 is built in Phase 6): handle it in every
+   `when`, and say so in a comment naming Phase 6.
+
+Gate (run it; it must pass): ANDROID_HOME=/opt/android-sdk; sh ./gradlew --stop;
+sh ./gradlew check :app:assembleDebug --rerun-tasks; python3 tools/lint_specs.py --strict;
+python3 tools/check_project_rules.py.
+
+Report (under 40 lines): files changed, tests added with their names, gate result, Clarified / Assumed /
+Open, and any place the specification was unclear or wrong (do not change docs/; report it instead).
 ```
 
 Written for each phase when the phase before it is accepted, so that each prompt carries what the gates decided. Every prompt starts with: read `AGENTS.md`, this plan's §1, §2 and §6, and the use cases and ADRs the phase names; follow `use-case-test` and then `use-case-implement` for code phases; return Clarified / Assumed / Open.
