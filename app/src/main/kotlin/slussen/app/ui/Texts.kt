@@ -137,6 +137,7 @@ object Texts {
         "Bank Accounts offered: ${report.offered}",
         report.identified.size.takeIf { it > 0 }?.let { "added and identified: $it" },
         report.notAdded.takeIf { it > 0 }?.let { "not added: $it" },
+        report.sharedReference.takeIf { it > 0 }?.let { "not used, ${report.dataProviderName} gave them the same identifier: $it" },
         report.failed.takeIf { it.isNotEmpty() }?.let { "failed: ${it.joinToString(", ")}, stored data unchanged" },
         report.waitingUntil?.let { "Blocked: waiting for the provider · until ${formats.dateTime(it)}" },
         report.warning?.let {
@@ -283,11 +284,14 @@ object Texts {
         is NextThing.ChooseBudgets ->
             "Next: choose the Budgets in ${next.budgetAppName}" to "Then connect a Data Provider and map its Bank Accounts."
         NextThing.EnterDataProviderCredentials ->
-            "Next: enter the credentials of a Data Provider" to "Then fetch it or grant a Bank Consent, and map its Bank Accounts."
+            "Next: enter the credentials of a Data Provider" to "Then fetch it and map its Bank Accounts."
+        // P9-13 (#16): Bank Consents are not in this build, so granting one is never named as the next step.
         is NextThing.FetchOrGrantBankConsent -> {
-            val fetch = next.toFetch.joinToString(" or ").takeIf { it.isNotEmpty() }?.let { "fetch $it" }
-            val grant = next.toGrant.takeIf { it.isNotEmpty() }?.let { "grant a Bank Consent in ${it.joinToString(" or ")}" }
-            "Next: " + listOfNotNull(fetch, grant).joinToString(" or ") to "Its Bank Accounts are then imported and mapped in Account Mappings."
+            val waiting = next.toGrant.takeIf { it.isNotEmpty() }
+                ?.let { " ${it.joinToString(" and ")} ${if (it.size == 1) "needs" else "need"} a Bank Consent: $BANK_CONSENTS_NOT_IN_THIS_BUILD." }
+                .orEmpty()
+            val title = if (next.toFetch.isEmpty()) "Next: enter the credentials of a Data Provider that needs no Bank Consent" else "Next: fetch ${next.toFetch.joinToString(" or ")}"
+            title to "Its Bank Accounts are then imported and mapped in Account Mappings.$waiting"
         }
         is NextThing.MapBankAccounts ->
             "Next: map the ${next.count} imported Bank ${if (next.count == 1) "Account" else "Accounts"} in Account Mappings" to null

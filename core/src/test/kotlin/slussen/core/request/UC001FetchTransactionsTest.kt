@@ -1133,7 +1133,7 @@ class UC001FetchTransactionsTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "A18: Bank Account Not Added")
-    @DisplayName("A18, S-35: an Offered Bank Account that is not added stores no Account Balance and no Fetch Result, though the Data Provider listed its balance; nor does a Left-Out Bank Account")
+    @DisplayName("A18, S-35: an Offered Bank Account that is not added stores no Account Balance and no Fetch Result, though the Data Provider listed its balance; nor does a Left-Out Bank Account, which is not counted as not added")
     fun bankAccountNotAddedStoresNoAccountBalance() = runTest {
         ready()
         val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
@@ -1146,10 +1146,37 @@ class UC001FetchTransactionsTest {
             ),
         )
 
-        fetchFeeds()
+        val report = fetchFeeds() as FetchReport.Fetched
 
         assertEquals(setOf(checking), balances().keys)
         assertEquals(listOf(checking), fetchesOfFeeds().single().results.map { it.bankAccountId })
+        assertEquals(1, report.notAdded)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A10: Bank Account Not Identified With Certainty")
+    @DisplayName("A10, UC-009 BR-004: two delivered Bank Accounts with the same reference are neither kept as Offered Bank Accounts nor identified, and the Fetch says so")
+    fun sharedReferenceIdentifiesNeither() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerFeeds(
+            accounts = listOf(
+                delivered("acct-4410", "CHK", amount(4140, 50)),
+                delivered("acct-4410", "Other CHK", amount(990)),
+                delivered("acct-7731", "Reserve Saver", amount(12000), kind = "savings"),
+            ),
+        )
+
+        val report = fetchFeeds() as FetchReport.Fetched
+
+        assertEquals(emptyList<String>(), report.identified)
+        assertEquals(2, report.sharedReference)
+        assertEquals(1, report.offered)
+        assertEquals(1, report.notAdded)
+        assertFalse(checking in balances().keys)
+        assertTrue(fetchesOfFeeds().single().results.isEmpty())
+        val offered = slice.connect.pairing().sources.single { it.dataProviderId == slice.feedsId }.offered
+        assertEquals(listOf("Reserve Saver"), offered.map { it.nameOrProduct })
     }
 
     @Test

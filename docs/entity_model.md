@@ -260,7 +260,7 @@ A Bank Account that a Data Provider delivered in its latest list of Bank Account
 
 ### LEFT_OUT_BANK_ACCOUNT
 
-An Offered Bank Account that the Operator chose not to import, remembered by its Data Provider and the Data Provider's reference so that it is no longer offered for pairing and never read.
+An Offered Bank Account that the Operator chose not to import, remembered by its Data Provider and the Data Provider's reference so that it is no longer offered for pairing and never read: Slussen never asks for its transactions or balance on their own and never stores or uses them, though a Data Provider that lists all its Bank Accounts in one answer still lists it (UC-013 BR-011).
 
 | Attribute          | Description                                                                                         | Data Type | Length/Precision | Validation Rules                         |
 |--------------------|-----------------------------------------------------------------------------------------------------|-----------|------------------|------------------------------------------|
@@ -273,6 +273,7 @@ An Offered Bank Account that the Operator chose not to import, remembered by its
 #### Constraints
 
 - Within one Data Provider, two Left-Out Bank Accounts never have the same `provider_reference`.
+- It is recognised by `provider_reference` only: a Bank Account the Data Provider offers under a new reference is a new Offered Bank Account (UC-013 BR-011).
 - `provider_reference` is never the `provider_reference` of a `BANK_ACCOUNT` whose `data_provider_id` is the same Data Provider, nor the `balance_provider_reference` of one whose `balance_data_provider_id` is that Data Provider: a Bank Account that is added is never left out (UC-013 BR-011).
 - A Fetch never asks for the transactions or the balance of a Left-Out Bank Account and stores none of either (UC-001 A18).
 - It is removed only when the Operator brings it back (UC-013 A10, UC-009 A15), never by a Fetch, a Bank Consent or a delivery of the Data Provider that no longer contains it.
@@ -391,7 +392,7 @@ A period during which Slussen does not contact a Data Provider, or one Bank thro
 |------------------|-----------------------------------------------------------|-----------|------------------|------------------------------------------|
 | id               | Unique identifier                                         | Long      | 19               | Primary Key, Sequence                    |
 | data_provider_id | Data Provider that must not be contacted                  | Long      | 19               | Not Null, Foreign Key (DATA_PROVIDER.id) |
-| bank_id          | Bank that must not be contacted, empty when the whole Data Provider waits | Long      | 19               | Optional                                 |
+| bank_id          | Bank that must not be contacted, as the Data Provider names it, empty when the whole Data Provider waits | Long      | 19               | Optional                                 |
 | cause            | Why Slussen waits                                         | String    | 30               | Not Null, Values: Request To Wait, Request Limit Warning |
 | starts_at        | Time the Back-off began                                   | DateTime  | -                | Not Null                                 |
 | ends_at          | Time after which Slussen may contact the provider again   | DateTime  | -                | Not Null                                 |
@@ -403,6 +404,7 @@ A period during which Slussen does not contact a Data Provider, or one Bank thro
 - A Back-off with `cause` Request To Wait holds for every Fetch, started by the Operator or as a Scheduled Fetch; no action of the Operator ends it.
 - A Back-off with `cause` Request Limit Warning holds for Scheduled Fetches only; a Fetch the Operator starts during it is made after the Operator has seen the warning and the risk that further requests can get Slussen's access to the Data Provider disabled.
 - A timeout, an outage or an unreadable answer starts no Back-off.
+- A Back-off with a `bank_id` holds for each `BANK_ACCOUNT` read through `data_provider_id` whose `provider_bank_id` is that `bank_id`, whatever the Bank Account's own `bank_id` (UC-001 BR-004).
 
 ### PROVIDER_REQUEST
 

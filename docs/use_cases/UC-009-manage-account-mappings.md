@@ -208,7 +208,7 @@ Slussen records the time of the first send through an Account Mapping (UC-006 BR
 
 ### BR-004: Never Guess a Bank Account
 
-Slussen uses a Bank Account's transactions only when it identifies the Bank Account with certainty. When it can only propose a likely Bank Account, it asks the Operator to confirm. When two Bank Accounts are possible, or two Account Mappings would point to the same Bank Account, it stops for that Bank Account and shows why. This holds also when a Source later delivers a changed list of Bank Accounts. A Left-Out Bank Account (UC-013 BR-011) is never proposed as a likely Bank Account, never offered to confirm or identify a Bank Account, and never identified as one, until the Operator brings it back (A15, UC-013 A10).
+Slussen uses a Bank Account's transactions only when it identifies the Bank Account with certainty. When it can only propose a likely Bank Account, it asks the Operator to confirm. When two Bank Accounts are possible, or two Account Mappings would point to the same Bank Account, it stops for that Bank Account and shows why. This holds also when a Source later delivers a changed list of Bank Accounts. A Data Provider's reference identifies a Bank Account only when no other Bank Account in the same answer has it: when two delivered Bank Accounts share a reference, as the identifier SimpleFIN gives a Bank Account can across two connections at the Bridge, neither is kept as an Offered Bank Account or identified, and Slussen stops for both and shows why. The reference alone identifies the Bank Account, not combined with a connection, so that reconnecting a Bank at the Data Provider keeps its identification. A Left-Out Bank Account (UC-013 BR-011) is never proposed as a likely Bank Account, never offered to confirm or identify a Bank Account, and never identified as one, until the Operator brings it back (A15, UC-013 A10).
 
 ### BR-005: Retire and Restore
 
@@ -216,7 +216,7 @@ A Retired Account is neither fetched, compared, matched nor uploaded. It keeps i
 
 ### BR-006: Identifications Survive a Reinstall, Restore or Upgrade
 
-The chosen Budgets, each Bank Account with its generated identifier, name and Start Date, how the Source identifies it, and the Account Mappings with the time of their first send are included in device backups, restored after a reinstall and kept on an upgrade of the same build.
+The chosen Budgets, each Bank Account with its generated identifier, name and Start Date, how the Source identifies it, and the Account Mappings with the time of their first send are included in device backups, restored after a reinstall and kept on an upgrade to a newer build signed with the same key (NFR-017).
 
 ### BR-007: Identify Again Deliberately
 

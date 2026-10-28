@@ -21,7 +21,7 @@
 2. Operator changes the value of an Operator Setting.
 3. Slussen checks that the value lies within the allowed range of the Operator Setting (BR-002).
 4. Slussen stores the value and applies it from the next Fetch, Scheduled Fetch, Comparison, Upload or opening of the app on.
-5. Slussen gives every stored Bank Transaction its Transaction Status again under the new value, without contacting the Budget App or any Source.
+5. When the Operator Setting is one that a Transaction Status depends on (the Upload Window, the file upload window, the Card Payment Descriptions, the Bank Transfer Descriptions, the transfer pairing days or the Lonely Transfer grace period), Slussen gives every stored Bank Transaction its Transaction Status again under the new value, without contacting the Budget App or any Source; any other Operator Setting changes no Transaction Status.
 6. Slussen records the change in the Decision Journal.
 
 ## Alternative Flows
@@ -126,7 +126,7 @@
 
 ### Success Postconditions
 
-- The Operator Setting has the new value, and the Transaction Statuses reflect it.
+- The Operator Setting has the new value, and the Transaction Statuses reflect it when they depend on it (step 5).
 - The change is recorded in the Decision Journal, unless the Decision Journal is switched off.
 
 ### Failure Postconditions
@@ -158,7 +158,7 @@ With Detailed Logging off, device logs contain no transaction amounts, payees, m
 
 ### BR-006: Settings Are Kept
 
-The Operator Settings are included in device backups, restored after a reinstall and kept on an upgrade of the same build. There is no action that resets them to their defaults, with these exceptions: the Card Payment Descriptions and the Bank Transfer Descriptions can each be restored to their default list (A8), and the list they replace is recorded in the Decision Journal first; and the Fetch Cooldown of a Data Provider, and the Request Limit of a Data Provider that publishes none, can each be reset to the default its part declares (A10, A11), recorded like any other change.
+The Operator Settings are included in device backups, restored after a reinstall and kept on an upgrade to a newer build signed with the same key (NFR-017). There is no action that resets them to their defaults, with these exceptions: the Card Payment Descriptions and the Bank Transfer Descriptions can each be restored to their default list (A8), and the list they replace is recorded in the Decision Journal first; and the Fetch Cooldown of a Data Provider, and the Request Limit of a Data Provider that publishes none, can each be reset to the default its part declares (A10, A11), recorded like any other change.
 
 ### BR-007: Default Description Lists
 

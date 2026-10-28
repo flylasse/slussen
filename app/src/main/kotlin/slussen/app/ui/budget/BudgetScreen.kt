@@ -39,7 +39,7 @@ fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit, onStartFirstUpl
                 Muted(source.kind)
                 Muted(source.health)
                 Muted(source.freshness)
-                Muted(source.counts)
+                source.counts?.let { Muted(it) }
                 source.blocked.forEach { BlockedReasonLine(it.text, it.action, onRemedy) }
             }
         }

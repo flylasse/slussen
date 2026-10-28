@@ -30,7 +30,8 @@ data class SourceCard(
     val kind: String,
     val health: String,
     val freshness: String,
-    val counts: String,
+    /** Null for a Source of the balance only, which brings no Bank Transaction to upload. */
+    val counts: String?,
     val blocked: List<BlockedLine>,
 )
 
@@ -78,10 +79,15 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                 sources = workspace.sources.map { source ->
                     SourceCard(
                         name = source.name,
-                        kind = if (source.isFileFormat) "Transaction Files" else "Data Provider",
+                        kind = when {
+                            source.isFileFormat -> "Transaction Files"
+                            source.balanceOnly -> "Data Provider · Account Balance only"
+                            else -> "Data Provider"
+                        },
                         health = Texts.health(source.health, formats),
                         freshness = freshness(source.freshness, formats),
-                        counts = "Not yet uploaded: " + counts(source.notYetUploaded),
+                        // UC-001 BR-011: a Source of the balance only brings no Bank Transaction to upload.
+                        counts = if (source.balanceOnly) null else "Not yet uploaded: " + counts(source.notYetUploaded),
                         blocked = lines(source.blocked, dataProvider = null),
                     )
                 },

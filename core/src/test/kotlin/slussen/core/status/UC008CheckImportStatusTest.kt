@@ -91,6 +91,7 @@ class UC008CheckImportStatusTest {
         type: BankAccountType,
         budgetAccountName: String,
         fileFormatId: Long? = null,
+        balanceDataProviderId: Long? = null,
     ) {
         val id = nextId++
         val budgetAccount = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == budgetAccountName }
@@ -101,7 +102,7 @@ class UC008CheckImportStatusTest {
             providerBankId = null,
             dataProviderId = dataProviderId,
             fileFormatId = fileFormatId,
-            balanceDataProviderId = null,
+            balanceDataProviderId = balanceDataProviderId,
             name = name,
             currency = currency,
             type = type,
@@ -266,6 +267,25 @@ class UC008CheckImportStatusTest {
         assertEquals(longAgo, file.freshness)
         assertTrue(harbor.sources.single().isFileFormat)
         assertEquals("Harbor Health statement", harbor.sources.single().name)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-007"])
+    @DisplayName("Step 5: the Data Provider that reports a file-imported Bank Account's balance is one of the Budget's Sources, for the balance only")
+    fun balanceDataProviderIsASource() = runTest {
+        household()
+        val fileFormat = slice.plugins.fileFormats.single().id
+        bankAccount(
+            "Harbor Health Savings", "Harbor Health Trust", null, USD, BankAccountType.Savings, "Health Savings",
+            fileFormatId = fileFormat, balanceDataProviderId = slice.feedsId,
+        )
+
+        val sources = slice.status.workspace(budgetId("Care Fund")).sources
+        val household = slice.status.workspace(budgetId("Household")).sources
+
+        assertEquals(listOf("Kestrel Feeds", "Harbor Health statement"), sources.map { it.name })
+        assertEquals(listOf(true, false), sources.map { it.balanceOnly })
+        assertEquals(listOf(false), household.map { it.balanceOnly })
     }
 
     @Test

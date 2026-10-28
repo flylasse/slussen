@@ -62,7 +62,7 @@ class EnableBankingDataProviderTest : DataProviderContractTest() {
     }
 
     private fun provider() =
-        EnableBankingDataProvider(SilentLog, server.url("/"), http, Clock.fixed(now, ZoneOffset.UTC))
+        EnableBankingDataProvider(log, server.url("/"), http, Clock.fixed(now, ZoneOffset.UTC))
 
     private fun input(pem: String = pkcs8Pem) = CredentialInput(
         mapOf(

@@ -133,6 +133,8 @@ data class SourceStatus(
     val freshness: Instant?,
     val notYetUploaded: NotYetUploaded,
     val blocked: List<Blocked>,
+    /** A Data Provider that reports only the Account Balance of the Budget's file-imported Bank Accounts (UC-001 BR-011). */
+    val balanceOnly: Boolean = false,
 )
 
 /** The overview line of one Budget: counts and blocked states only (step 1, BR-007). */

@@ -129,7 +129,7 @@ continue its history, identities or Import Identifiers.
   happened to each Import in the Budget App. The Operator can export it, together with the Budget App's current
   data, for review outside the app.
 - Keeping the Operator's transaction history, decisions and the Sent Record across a reinstall, a restore from a
-  device backup and an upgrade of the same build. Bank Consents and service credentials do not survive a reinstall:
+  device backup and an upgrade to a newer build signed with the same key. Bank Consents and service credentials do not survive a reinstall:
   the Operator grants each Bank Consent and enters each credential again. After a restore, Slussen checks the Budget App before it uploads again.
 
 ### Out of scope

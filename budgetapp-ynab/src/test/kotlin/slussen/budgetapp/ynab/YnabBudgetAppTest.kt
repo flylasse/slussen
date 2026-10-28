@@ -52,7 +52,7 @@ class YnabBudgetAppTest : BudgetAppContractTest() {
         server.shutdown()
     }
 
-    private fun app(): YnabBudgetApp = YnabBudgetApp(SilentLog, server.url("/v1/"), http)
+    private fun app(): YnabBudgetApp = YnabBudgetApp(log, server.url("/v1/"), http)
 
     private fun tokenInput() = CredentialInput(mapOf(YnabCredentials.TOKEN to Secret(PLANTED_TOKEN)))
 
