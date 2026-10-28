@@ -48,6 +48,7 @@ dependencies {
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.junit5.android.test.core)
     androidTestImplementation(libs.junit5.android.test.compose)
     androidTestRuntimeOnly(libs.junit5.android.test.runner)

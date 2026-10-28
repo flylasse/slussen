@@ -31,6 +31,9 @@ androidx-core = "1.16.0"
 androidx-lifecycle = "2.8.7"
 androidx-test-core = "1.6.1"
 androidx-test-runner = "1.6.2"
+# Phase 3 of the transactions plan (issue #5): Espresso 3.7.0 replaces the reflective InputManager.getInstance call
+# that newer Android versions removed; the Compose UI tests reach Espresso transitively at 3.6.1 otherwise.
+espresso = "3.7.0"
 junit5-android-test = "1.6.0"
 
 [libraries]
@@ -67,6 +70,7 @@ asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
 asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
 androidx-test-core = { module = "androidx.test:core", version.ref = "androidx-test-core" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-runner" }
+espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 # Phase 8d (S-39, ADR-002 §7): the migration tests of :persistence. room-testing's MigrationTestHelper for the instrumented
 # tests, and the JVM build of SQLite bundled with androidx.sqlite (allowed for :persistence by ADR-001 §2) for the JVM
 # migration tests in the gate.

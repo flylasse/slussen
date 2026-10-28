@@ -15,7 +15,8 @@
 - The operator answered UX-D1..UX-D4 on 2026-10-28 (§6); issue #26 holds UX-24's notices outside this initiative.
 - Phase 2b done: the mockups are revised (a sub-agent; 8 files), with this version's read-only states beside the full-product ones. It found four specification gaps, written as **S-T-08..S-T-11** for approval (§6).
 - The operator approved S-T-08..S-T-11 on 2026-10-28.
-- Next: the **UX gate**. The operator walks through the mockups (the list of new states is in PR #25) and merges PR #25.
+- The UX gate passed: the operator merged PR #25 on 2026-10-28. Issue #27 plans the removal of the `-this-build` states.
+- Phase 3 (device baseline) in progress. First run on the operator's phone (Galaxy, Android 17), 2026-10-28: `:app` 18 tests, 17 failed, all with one cause: Espresso 3.6.1, reached through the Compose UI test library, calls `InputManager.getInstance` by reflection, which newer Android versions removed. The fix pins Espresso 3.7.0 for `:app`'s instrumented tests (PR for the branch `transactions-device-baseline`). Next: the operator runs the tests again, sends the `:persistence` report too, and finishes E-13.
 
 ## 1. Scope
 
