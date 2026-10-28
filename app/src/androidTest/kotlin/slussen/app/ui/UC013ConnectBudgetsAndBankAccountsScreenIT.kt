@@ -4,9 +4,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.platform.app.InstrumentationRegistry
 import de.mannodermaus.junit5.compose.createComposeExtension
 import kotlinx.coroutines.runBlocking
@@ -127,8 +130,11 @@ class UC013ConnectBudgetsAndBankAccountsScreenIT {
         onNodeWithText("1 of 1").assertExists()
         onNodeWithText("Proposed: the only free Budget Account in USD").assertExists()
         onNodeWithText("Proposed CHK ••4410").assertExists()
+        // The card is taller than a phone screen: a tap below its edge reaches nothing.
+        onNode(hasScrollAction()).performScrollToNode(hasText("Add and continue"))
         onNodeWithText("Add and continue").performClick()
 
+        onNodeWithText("not added", substring = true).assertDoesNotExist()
         onNodeWithText("Bank Accounts added: 1").assertExists()
         onNodeWithText("CHK ••4410 → Health Savings ••4410").assertExists()
     }

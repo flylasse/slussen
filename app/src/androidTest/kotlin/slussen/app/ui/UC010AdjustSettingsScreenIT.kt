@@ -65,7 +65,8 @@ class UC010AdjustSettingsScreenIT {
             }
         }
 
-        onNode(hasScrollAction()).performScrollToNode(hasText("This app"))
+        // Section titles are drawn in capitals, so the scroll targets the version line itself.
+        onNode(hasScrollAction()).performScrollToNode(hasText("${installed.versionName} · debug build"))
         onNodeWithText("${installed.versionName} · debug build").assertExists()
     }
 }
