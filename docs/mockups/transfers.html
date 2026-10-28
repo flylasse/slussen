@@ -292,12 +292,12 @@
 <p class="lede">Adopted from the predecessor: a Transfer Review screen that never writes, one card per Transfer with its choices, and the Guessed Transfer banner that leads to it. Changed: Hold back is a choice for every Transfer that is not uploaded (UC-005 A2), a Guessed Transfer is not in any Upload Plan until confirmed instead of being written as the guess (UC-005 BR-010), and the other side is chosen as a Budget Account that Slussen fetches (UC-005 A3, BR-014).</p>
 <div class="flow">
 <div class="state" id="list">
-<div class="step-label"><span class="n">UC-005 1 · A5, A6</span><p><b>Review Transfers.</b> Each Transfer of the Budget with its two Budget Accounts, amount, dates and whether both Transfer Legs arrived; Guessed Transfers flagged and counted.</p></div>
+<div class="step-label"><span class="n">UC-005 1 · A5, A6</span><p><b>Review Transfers.</b> Each Transfer of the Budget with its two Budget Accounts, amount, dates and whether both Transfer Legs arrived; Guessed Transfers flagged and counted. The version without Transfer Decisions: <a href="#list-this-build">in this version</a>.</p></div>
 <div class="phone">
 <div class="screen-title"><a class="back" href="budget.html#household">‹</a> Transfers</div>
 <p class="screen-sub">Household · Review Transfers</p>
 <div class="body">
-<div class="banner"><span class="txt"><b>Guessed Transfers in Household: 2</b> </span></div><a class="card amber" href="#selected" style="display:block"><span class="acct-h"><span class="chip amber">Guessed Transfer</span> <span class="chip teal">Card Payment</span> <span class="nm">Checking? → Home Card</span> <span class="amt r">410.00</span></span><div class="note">Proposed: Kestrel Checking 10-12 · also pairs: Kestrel Reserve 10-10</div></a> <a class="card amber" href="#first-card-payment" style="display:block"><span class="acct-h"><span class="chip amber">Guessed Transfer</span> <span class="chip teal">Card Payment</span> <span class="nm">? → Home Card</span> <span class="amt r">95.00</span></span><div class="note">10-14 · no Funded By · choose the paying Budget Account</div></a> <a class="card " href="#split" style="display:block"><span class="acct-h"><span class="chip teal">Bank Transfer</span> <span class="nm">Checking → Reserve Savings</span> <span class="amt r">500.00</span></span><div class="note">10-11 · both sides arrived · eligible</div></a> <a class="card " href="#lonely" style="display:block"><span class="acct-h"><span class="chip teal">Card Payment</span> <span class="chip grey">Lonely Transfer</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">180.00</span></span><div class="note">10-14 · other side by 2026-10-20 · eligible</div></a> <a class="card " href="#held" style="display:block"><span class="acct-h"><span class="chip grey">Held Transfer</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">300.00</span></span><div class="note">10-08 · held by you</div></a> <a class="card amber" href="review-decision.html#counterpart-changed" style="display:block"><span class="acct-h"><span class="chip amber">Transfer Counterpart Changed</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">250.00</span></span><div class="note">Counterpart changed in the Budget App · decide</div></a><div class="card "><span class="acct-h"><span class="chip green">New</span> <span class="nm">Reserve Savings · ordinary</span> <span class="amt r">75.00</span></span><div class="note">10-08 · other side never arrived · now ordinary</div></div><a class="card " href="#locked" style="display:block"><span class="acct-h"><span class="chip grey">Already In Budget App</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">600.00</span></span><div class="note">Uploaded 2026-10-09 · Transfer Decision locked</div></a>
+<div class="banner"><span class="txt"><b>Guessed Transfers in Household: 2</b> </span></div><a class="card amber" href="#selected" style="display:block"><span class="acct-h"><span class="chip amber">Guessed Transfer</span> <span class="chip teal">Card Payment</span> <span class="nm">Checking? → Home Card</span> <span class="amt r">410.00</span></span><div class="note">Proposed: Kestrel Checking 10-12 · also pairs: Kestrel Reserve 10-10</div></a> <a class="card amber" href="#first-card-payment" style="display:block"><span class="acct-h"><span class="chip amber">Guessed Transfer</span> <span class="chip teal">Card Payment</span> <span class="nm">? → Home Card</span> <span class="amt r">95.00</span></span><div class="note">10-14 · no Funded By · choose the paying Budget Account</div></a> <a class="card " href="#split" style="display:block"><span class="acct-h"><span class="chip teal">Bank Transfer</span> <span class="nm">Checking → Reserve Savings</span> <span class="amt r">500.00</span></span><div class="note">10-11 · both sides arrived · eligible</div></a> <a class="card " href="#lonely" style="display:block"><span class="acct-h"><span class="chip teal">Card Payment</span> <span class="chip grey">Lonely Transfer</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">180.00</span></span><div class="note">10-14 · other side by 2026-10-20 · eligible</div></a> <a class="card " href="#held" style="display:block"><span class="acct-h"><span class="chip grey">Held Transfer</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">300.00</span></span><div class="note">10-08 · held by you</div></a> <a class="card amber" href="review-decision.html#counterpart-changed" style="display:block"><span class="acct-h"><span class="chip amber">Transfer Counterpart Changed</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">250.00</span></span><div class="note">Counterpart changed in the Budget App · decide</div></a><div class="card "><span class="acct-h"><span class="chip green">New</span> <span class="nm">Reserve Savings · ordinary</span> <span class="amt r">75.00</span></span><div class="note">10-08 · other side did not arrive within the Lonely Transfer grace period · now ordinary</div></div><a class="card " href="#locked" style="display:block"><span class="acct-h"><span class="chip grey">Already In Budget App</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">600.00</span></span><div class="note">Uploaded 2026-10-09 · Transfer Decision locked</div></a>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
@@ -393,6 +393,84 @@
 <div class="sheet "><div class="grab"></div><h4>Card Payment · 600.00 USD</h4><p class="ctx">Checking → Rewards Card</p><p class="note">Locked · uploaded 2026-10-09 · counterpart arrived 2026-10-13</p></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
+</section>
+<section>
+<h2>This version: Transfers detected, not yet decided</h2>
+<p class="lede">The version that fetches and compares detects Transfers and gives their Transfer Legs their status, but has no Transfer Decisions and uploads nothing (transactions plan §1, O-T-01, O-T-02). Its Transfers screen is read only and stands next to the full-product states above (UX-D1). Each Transfer shows both sides with Bank Account, Budget Account, signed amount, booked date and whether it arrived; the counts say what they count.</p>
+<div class="flow">
+<div class="state" id="list-this-build">
+<div class="step-label"><span class="n">UC-005 1 · A4, A5, A8 · BR-010</span><p><b>The Transfers of a Budget in this version</b>, with both sides of each. A Guessed Transfer says why it is uncertain; a Lonely Transfer says what it waits for and until when; one whose other side did not arrive in time is shown as an ordinary Bank Transaction. <i>Build state, not part of the use case:</i> while Transfer Decisions (UC-005 steps 2–6) are not built, no card offers a choice; one line says that confirming comes in a later version, nothing is uploaded and no decision is needed now. The full product: <a href="#list">Review Transfers</a>.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="budget.html#household-this-build">‹</a> Transfers</div>
+<p class="screen-sub">Household · statuses as of 13:21</p>
+<div class="body">
+<div class="banner blue"><span class="txt"><b>Transfers in Household: 4 · of them Guessed Transfers: 2</b> <span class="d">Read only in this version: confirming, splitting or holding back a Transfer comes in a later version. Nothing is uploaded, and no decision is needed now.</span></span></div>
+<a class="card amber" href="#selected-this-build" style="display:block"><span class="acct-h"><span class="chip amber">Guessed Transfer</span> <span class="chip teal">Card Payment</span> <span class="nm">Checking? → Home Card</span> <span class="amt r">410.00</span></span>
+<div class="note">Pinecrest Home Card +410.00 · 10-13 · arrived</div>
+<div class="note">Proposed paying side: Kestrel Checking −410.00 · 10-12 · arrived</div>
+<div class="note">Also possible: Kestrel Reserve −410.00 · 10-10 · so not certain</div></a>
+<div class="card amber"><span class="acct-h"><span class="chip amber">Guessed Transfer</span> <span class="chip teal">Card Payment</span> <span class="nm">? → Home Card</span> <span class="amt r">95.00</span></span>
+<div class="note">Pinecrest Home Card +95.00 · 10-14 · arrived</div>
+<div class="note">Paying side not known: Home Card has no Funded By. Setting one comes in a later version; nothing is needed now.</div></div>
+<div class="card"><span class="acct-h"><span class="chip teal">Bank Transfer</span> <span class="nm">Checking → Reserve Savings</span> <span class="amt r">500.00</span></span>
+<div class="note">Kestrel Checking −500.00 · 10-11 · arrived</div>
+<div class="note">Kestrel Reserve +500.00 · 10-11 · arrived</div>
+<div class="note">Both stored as one Transfer · not uploaded</div></div>
+<a class="card" href="#lonely-this-build" style="display:block"><span class="acct-h"><span class="chip teal">Card Payment</span> <span class="chip grey">Lonely Transfer</span> <span class="nm">Checking → Rewards Card</span> <span class="amt r">180.00</span></span>
+<div class="note">Kestrel Checking −180.00 · 10-14 · arrived</div>
+<div class="note">Pinecrest Rewards Card +180.00 · expected by 2026-10-20 · a later Fetch may bring it</div></a>
+<div class="card"><span class="acct-h"><span class="chip green">New</span> <span class="nm">Reserve Savings · no longer a Transfer</span> <span class="amt r">+75.00</span></span>
+<div class="note">Kestrel Reserve +75.00 · 10-08 · its other side did not arrive within the Lonely Transfer grace period, so it is an ordinary Bank Transaction</div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html#open-this-build"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household-this-build"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house-this-build"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund-this-build"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html#list-this-build"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="selected-this-build">
+<div class="step-label"><span class="n">UC-005 1, 3 · BR-002 · BR-014</span><p><b>A Guessed Transfer, opened</b>: the side that arrived, the proposed other side, the alternative and why Slussen cannot pair it for certain. <i>Build state, not part of the use case:</i> while Transfer Decisions are not built, the sheet shows no Confirm, Split, Hold back or other Budget Account; it says that they come in a later version. The full product: <a href="#selected">selecting a Guessed Transfer</a>.</p></div>
+<div class="phone">
+<div class="screen-title">Transfers</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="ghost"><div class="card amber"><span class="acct-h"><span class="chip amber">Guessed Transfer</span> <span class="nm">Checking? → Home Card</span> <span class="amt r">410.00</span></span></div></div>
+<div class="sheet amber"><div class="grab"></div><h4>Guessed Transfer · Card Payment · 410.00 USD</h4>
+<div class="kv"><span class="k">Arrived</span> <span class="v">Pinecrest Home Card · Budget Account Home Card · 2026-10-13 · +410.00 · Autopay Received</span></div>
+<div class="kv"><span class="k">Proposed other side</span> <span class="v">Kestrel Checking · Budget Account Checking · 2026-10-12 · −410.00 · Pinecrest Home Autopay</span></div>
+<div class="kv"><span class="k">Also possible</span> <span class="v">Kestrel Reserve · Budget Account Reserve Savings · 2026-10-10 · −410.00 · Pinecrest Payment</span></div>
+<div class="kv"><span class="k">Why not certain</span> <span class="v">Two Bank Transactions of −410.00 lie within the transfer pairing days (5 by default, an Operator Setting), and Home Card has no Funded By to choose between them</span></div>
+<div class="kv"><span class="k">Later</span> <span class="v">Confirm, Split, Hold back and choosing another Budget Account come in a later version</span></div>
+<p class="note">Nothing is uploaded and no decision is needed now.</p><a class="cta" href="#list-this-build">Close</a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html#open-this-build"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household-this-build"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house-this-build"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund-this-build"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html#list-this-build"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="lonely-this-build">
+<div class="step-label"><span class="n">UC-005 A4, A5</span><p><b>A Lonely Transfer, opened</b>: the side that arrived, the side expected, and what happens if it does not come. <i>Build state, not part of the use case:</i> no Confirm, Split or Hold back. The full product: <a href="#lonely">Lonely Transfer</a>.</p></div>
+<div class="phone">
+<div class="screen-title">Transfers</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="sheet blue"><div class="grab"></div><h4>Lonely Transfer · Card Payment · 180.00 USD</h4><p class="ctx">Checking → Rewards Card</p>
+<div class="kv"><span class="k">Arrived</span> <span class="v">Kestrel Checking · Budget Account Checking · 2026-10-14 · −180.00 · Pinecrest Rewards Payment, a Card Payment Description</span></div>
+<div class="kv"><span class="k">Expected other side</span> <span class="v">Pinecrest Rewards Card · Budget Account Rewards Card · +180.00 · not arrived yet</span></div>
+<div class="kv"><span class="k">Expected by</span> <span class="v">2026-10-20, the end of the Lonely Transfer grace period (6 days by default, an Operator Setting)</span></div>
+<div class="kv"><span class="k">What happens</span> <span class="v">A later Fetch may bring the other side; then both are one Transfer. If it has not arrived by 2026-10-20, this becomes an ordinary Bank Transaction.</span></div>
+<p class="note">No decision and no Upload are needed now; Fetch again later if you want to see whether it arrived.</p><a class="cta" href="#list-this-build">Close</a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html#open-this-build"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household-this-build"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house-this-build"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund-this-build"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html#list-this-build"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="no-transfers">
+<div class="step-label"><span class="n">UC-005 1 · NFR-023</span><p><b>No Transfers</b> (another day) among the stored Bank Transactions of a Budget: an expected result, not a failure; it names the dates it covers and says that no action is needed.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="budget.html#household-this-build">‹</a> Transfers</div>
+<p class="screen-sub">Household · statuses as of 08:03</p>
+<div class="body">
+<div class="banner grey"><span class="txt"><b>No Transfers in Household</b> <span class="d">Among the stored Bank Transactions of 2026-09-21 to 2026-10-20 Slussen found no Transfer between your Bank Accounts. Nothing is wrong and no action is needed; a later Fetch may bring one.</span></span></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html#open-this-build"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household-this-build"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house-this-build"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund-this-build"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html#list-this-build"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 </div>

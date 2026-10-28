@@ -230,7 +230,7 @@
 **Flow:**
 
 1. Slussen does not store that balance and keeps the previous Account Balance of the Bank Account unchanged.
-2. Slussen shows on the Bank Account that its balance was reported in the other currency, naming both currencies, for example "balance reported in EUR, expected USD"; no amount is converted.
+2. Slussen shows on the Bank Account that its balance was reported in the other currency, naming both currencies, for example "balance reported in EUR, expected USD", and that nothing is needed now; if it happens again, the Operator checks the Bank Account's currency at the Data Provider. No amount is converted.
 3. Use case continues at step 7 for the transactions of that Bank Account and for the other Bank Accounts.
 
 ## Postconditions
@@ -289,7 +289,7 @@ Slussen never contacts a Bank whose Bank Consent is missing or expired. Other Ba
 
 ### BR-009: Fetch Period
 
-A Fetch asks for the transactions of the fetch period (the last 30 days by default, a number the Operator can change on Settings, UC-010).
+A Fetch asks for the transactions of the fetch period (the last 30 days by default, a number the Operator can change on Settings, UC-010). A changed fetch period applies from the next Fetch that contacts the Data Provider; a Fetch served from the Fetch Cooldown asks for nothing.
 
 ### BR-010: Failures Stay Isolated
 

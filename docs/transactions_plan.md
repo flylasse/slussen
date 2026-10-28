@@ -10,7 +10,12 @@
 
 - The plan is drafted and the operator answered O-T-01..O-T-08 on 2026-10-28 (§6): Transfers are in scope, and the fetch period becomes a setting in the app with a default of 30 days.
 - The operator approved the plan on 2026-10-28. Phase 1 wrote S-T-01..S-T-07 (§6).
-- Next: the **specification gate**. The operator reviews S-T-01..S-T-07; when approved, PR #24 (plan and specification) is merged and Phase 2 (UX review) starts.
+- The specification gate passed: the operator merged PR #24 on 2026-10-28, approving S-T-01..S-T-07.
+- Phase 2 done: the operator pushed the external UX review (1982708); its 27 findings are in §6 with recommendations.
+- The operator answered UX-D1..UX-D4 on 2026-10-28 (§6); issue #26 holds UX-24's notices outside this initiative.
+- Phase 2b done: the mockups are revised (a sub-agent; 8 files), with this version's read-only states beside the full-product ones. It found four specification gaps, written as **S-T-08..S-T-11** for approval (§6).
+- The operator approved S-T-08..S-T-11 on 2026-10-28.
+- Next: the **UX gate**. The operator walks through the mockups (the list of new states is in PR #25) and merges PR #25.
 
 ## 1. Scope
 
@@ -41,7 +46,7 @@ Not taken on: #6 (gates Uploads), #7 and #15 (Enable Banking), #18 (waits on the
 
 ### What the Operator will see at the end
 
-- After a Fetch of SimpleFIN, each Budget tab lists its Bank Transactions with a Transaction Status: New, Already In Budget App, Match For Typed Entry, Transfer Leg, Guessed Transfer, Needs Review (for example an Unreadable Transaction), Before Start Date, Too Old, and so on.
+- After a Fetch of SimpleFIN, each Budget tab lists its Bank Transactions with a Transaction Status: New, Match For Typed Entry, Transfer Leg, Guessed Transfer, Needs Review (for example an Unreadable Transaction), Before Start Date, Too Old, and so on. Already In Budget App cannot occur yet: it needs an Import Identifier Slussen sent (UC-003 BR-003), and this version sends nothing.
 - A payment from one of your Bank Accounts to another in the same Budget is one Transfer with two Transfer Legs, not two New Bank Transactions. One that Slussen cannot pair for certain is a Guessed Transfer, shown but not yet confirmable (O-T-02).
 - Settings shows the fetch period, 30 days by default, and you can change it, for example to 14 days.
 - The counts on the Overview and the Budget tabs are real: Eligible, and waiting for a decision.
@@ -76,7 +81,7 @@ In addition:
 |---|---|---|---|---|---|
 | 1 | Specification changes for #8, #9, #11, #16 and the open questions' answers | `docs/` (use cases, entity model, ADR-001 §4.1, glossary, requirements as needed); §6 S-T-nn | `inherit` | `lint_specs.py --strict` and `check_project_rules.py` exit 0; every S-T-nn names its issue, the files it changes and the reason | `docs: phase 1 - specification for Bank Transactions and the Comparison` |
 | — | **Specification gate: the orchestrator stops** | operator reviews the S-T-nn | operator | operator says "approved" | — |
-| 2 | UX review (report only) of the screens this initiative changes: Overview, Budget tab, Bank Account, Fetch states, the YNAB read, the Settings entries the Fetch result points to | §6 UX-nn | a different model from the authors, or an external CLI run by the operator (O-T-05) | every finding has an ID, a screen and state, what the Operator would not understand or could not do, and a proposal; only this plan changed | `docs: phase 2 - UX review findings` |
+| 2 | UX review (report only), **external reviewer**, of the screens this initiative changes: Overview, Budget tab, Bank Account, Transfers (status only), Fetch states and Recent Fetches, the YNAB read, Settings with the fetch period, the SimpleFIN page | `docs/reviews/transactions_phase2_ux_review.md` (reviewer's commit); findings copied into §6 UX-nn (orchestrator's commit) | external CLI of another vendor, run by the operator with the prompt in §4 (O-T-05) | the reviewer's commit changes only its review file; every finding has an ID, a screen and state, what the Operator would not understand or could not do, a severity and a proposal | reviewer: `docs: phase 2 - UX review (external)`; orchestrator: `docs: phase 2 - record the UX review in the plan` |
 | 2b | Mockups revised from the UX gate's decisions | `docs/mockups/*.html` | `inherit` | `check_mockup_links.py` and `check_project_rules.py` exit 0; every accepted UX-nn is resolved in a named state | `docs: phase 2b - mockups revised after the UX gate` |
 | — | **UX gate: the orchestrator stops** | operator walks the mockups | operator | operator says "approved" | — |
 | 3 | Device baseline (#5): `gradlew connectedDebugAndroidTest` on an emulator (API 26 and current) or the phone, then E-13 with `adb shell bmgr` | results into §6 and issue #5 | operator | every instrumented test passes, or each failure becomes an issue | — (results recorded by the orchestrator in Phase 4's commit) |
@@ -90,6 +95,57 @@ In addition:
 
 ## 4. Phase prompts
 
+### Phase 2: UX review (external reviewer)
+
+The operator runs it on the branch `transactions-ux` with an external CLI (O-T-05), and commits and pushes only the review file.
+
+```text
+You are an external UX reviewer of Slussen, an Android app for one person, the Operator, that fetches their
+bank transactions from Data Providers (SimpleFIN in this build) and, in a later version, uploads them to their
+budgeting app, YNAB, after they confirm an Upload Plan. It is an AIUP project: the specification in docs/ is
+the source of truth. Read AGENTS.md first, then docs/glossary.md, docs/requirements.md (NFR-023 especially),
+docs/use_cases/UC-001, UC-003, UC-005, UC-008 and UC-010, and docs/transactions_plan.md sections 1 and 6.
+
+What changes for the Operator in the next version (transactions_plan.md section 1):
+- A Fetch of SimpleFIN now brings in booked Bank Transactions, not only balances. Slussen reads YNAB and gives
+  each Bank Transaction a Transaction Status (New, Already In Budget App, Match For Typed Entry, Needs Review,
+  Before Start Date, Too Old, In The Future, Transfer Leg, Guessed Transfer, ...).
+- Transfers between the Operator's own Bank Accounts in one Budget are detected, but cannot yet be confirmed,
+  split or held (no Transfer Decisions). Needs Review transactions cannot yet be decided (no Review Decisions).
+  Nothing is uploaded in this version.
+- New situations: a selected Bank Account that SimpleFIN does not deliver (UC-001 A19), the Bank's sign-in at
+  SimpleFIN needed (A20), a balance in another currency (A21), the time a balance was reported ("balance as
+  of"), the fetch period on Settings (30 days by default, 7-180).
+
+Scope: the mockups in docs/mockups/ that show these situations: overview.html, budget.html,
+bank-account.html, transfers.html (statuses only), fetch-history.html, settings.html, connections.html (the
+SimpleFIN page). Read the HTML source; each <div class="state" id="..."> is one screen state, and its
+step-label names the use case step it shows. Do not review screens for Uploads, Review Decisions, Bank
+Consents or Transaction Files except where this version's screens lead to them.
+
+Walk these journeys as the Operator, a careful non-expert who knows their own banks and YNAB:
+1. Upgrade from the previous version, open the app, fetch everything, find this week's transactions.
+2. For each Transaction Status that can appear in this version: can the Operator tell what it means, whether
+   anything is wrong, and what, if anything, to do now or later?
+3. A payment from checking to the credit card: how does it look; is a Guessed Transfer that cannot yet be
+   confirmed a dead end or clearly "later"?
+4. Each Blocked Reason of A19, A20, A21 and the existing ones: is the next action clear and reachable?
+5. Read YNAB again with the refresh on the YNAB line; tell apart "statuses as of" and "balance as of".
+6. Change the fetch period to 14 days.
+
+For every screen in scope, check NFR-023: every action shows its state on its own control before it sends
+anything, its result appears in the same place, and every Blocked Reason, empty state or line about a part
+this version does not have names the next action or says that none is needed. Also report a situation in
+the specification that no mockup state shows (for example A19-A21 or the fetch period), and any term on a
+screen that is not the glossary's.
+
+Report only. Write docs/reviews/transactions_phase2_ux_review.md and change no other file. One finding per
+row: ID (UX-01, UX-02, ...), screen and state id, journey, what the Operator would not understand or could not
+do, severity (Blocker: the Operator cannot complete the journey or misreads money; Major: they get stuck or
+need to guess; Minor: friction), and a proposal in one or two sentences. End with the three findings you
+would fix first. Use invented names and amounts only. Do not read scratch/ or any other repository.
+```
+
 Written for each phase when the phase before it is accepted, so that each prompt carries what the gates decided. Every prompt starts with: read `AGENTS.md`, this plan's §1, §2 and §6, and the use cases and ADRs the phase names; follow `use-case-test` and then `use-case-implement` for code phases; return Clarified / Assumed / Open.
 
 ## 5. Methodology evaluation log
@@ -99,6 +155,8 @@ Written for each phase when the phase before it is accepted, so that each prompt
 | 1 | Draft | Initiative intake (AGENTS.md §6) | The plan names the use cases, requirements and issues it takes on, and its first phase writes the specification changes. | No |
 | 2 | 1 | Specification changes (`requirements`, `use-case-spec`, `entity-model`) | The orchestrator wrote Phase 1 itself instead of dispatching a sub-agent (§2): every change had been designed with the operator in the same session (issues #8, #9, #11, #16, O-T-06, O-T-07), and a sub-agent would have needed that whole conversation as its prompt. The semantic `/spec-review` was not run; the two linters were. | Yes |
 | 3 | 1 | `requirements` (NFR) | A usability requirement (NFR-023, O-T-06) is written as an NFR with the category Usability. The project rule on numbers (AGENTS.md §2) refused "within 1 second", so the measure is "before the action sends any request or waits for anything". | No |
+| 5 | 2b | Mockups (`use-case-spec` mockup step) | Phase 2b ran as a sub-agent with the accepted findings as its brief, as §2 says; it changed only `docs/mockups/` and reported nine specification observations instead of changing the specification. | No |
+| 4 | 2 | Adversarial review (Centaur cross-model rule) | The external UX reviewer (Codex CLI) worked only from this repository, as its prompt said, so it did not read the Marketplace `spec-review` skill that AGENTS.md names. Its review is a source walkthrough of the HTML mockups, not of the running app. | Yes (recorded as the reviewer asked) |
 
 ## 6. Findings, specification changes and open questions
 
@@ -131,9 +189,45 @@ Phase 1, 2026-10-28. Waiting for the operator's approval at the specification ga
 
 Not changed: O-T-01 (Transfers) needs no specification change, since UC-005 is Approved as it stands.
 
+Phase 2b, 2026-10-28: four specification gaps the mockup revision found. **Approved by the operator on 2026-10-28.**
+
+| ID | Found by | Change | Files |
+|---|---|---|---|
+| S-T-08 | Phase 2b (UX-13) | A Bank Transaction stored before any successful Comparison of its Budget, or since the last one, has no Transaction Status yet: it is shown as not compared yet and counted neither as Eligible nor as waiting for a decision. `BANK_TRANSACTION.status` becomes Optional, empty until a Comparison has read its Budget. | UC-003 A1, entity model |
+| S-T-09 | Phase 2b | The glossary's Fetch Result lists the two outcomes S-T-01 and S-T-03 added: not delivered, sign-in needed. | glossary |
+| S-T-10 | Phase 2b (NFR-023) | UC-001 A21 names its next action: nothing is needed now; if it happens again, check the Bank Account's currency at the Data Provider. | UC-001 A21 |
+| S-T-11 | Phase 2b (UX-19) | A changed fetch period applies from the next Fetch that contacts the Data Provider; a Fetch served from the Fetch Cooldown asks for nothing. | UC-001 BR-009 |
+
+Phase 2b's other observations, no specification change:
+- Plan §1 listed Already In Budget App among this version's statuses; corrected, since it needs a sent Import Identifier.
+- Funded By and Transfer Partner start empty and cannot be set in this version, so card-side Lonely Transfers cannot occur; UC-005 does not say how the card of a funding-side Lonely Transfer found by a Card Payment Description is known. Phase 7b checks this against UC-005 BR-002 and BR-012 and stops for a specification change if needed.
+- UC-010 has no flow for a setting that cannot be stored; the mockups rest that on NFR-023 and the failure postconditions. No change proposed.
+- The build-state notes "while the Comparison (UC-003) is not built" in `overview.html#first-added`, `#recovery` and `first-upload-matching.html` go out of date with this version; Phase 7 updates them with the code.
+- **The 18 `-this-build` states are transitional** (operator's question, 2026-10-28). They show what this version shows where the full product would offer a decision or an Upload; the other new states (A19-A21, the fetch period, the times, the empty and failed results) are permanent. Their removal is planned: at this plan's close (Phase 9) they become one `debt` issue, "Remove the `-this-build` mockup states and the app's matching build-state lines", and the initiative that builds Review Decisions, Transfer Decisions and Uploads (UC-004, UC-005, UC-006) names that issue in its scope and deletes them with the code that replaces them.
+- `index.html` has no traceability row for UC-001 A18 (missing since construction); `transfers.html#doubtful-leg` has no this-version state. Both are small and are fixed in Phase 7's mockup touch-ups.
+
 ### UX review findings (UX-nn)
 
-None yet: Phase 2 writes them.
+Phase 2, 2026-10-28: an external review (Codex CLI, run by the operator) of the mockups against the approved specification, in `docs/reviews/transactions_phase2_ux_review.md`, 27 findings: 4 Blocker, 21 Major, 2 Minor. The reviewer's own limitation, carried forward as it asked: it did not read the Marketplace review skill, which lives in another repository (§5 row 4).
+
+Most findings fall into five groups. Each group is followed by the orchestrator's recommendation; "Accept" means Phase 2b changes the mockups accordingly.
+
+| Group | Findings | What the review found | Recommendation |
+|---|---|---|---|
+| **A. The version boundary** | UX-01, UX-02, UX-03, UX-04 (Blocker), UX-23 | The mockups draw the whole product. In this version, Upload, Review Decision, Transfer Decision, Scheduled Fetch and Bank Consent entry points look usable but are not, and "Written via Kestrel Checking" (UX-04) suggests money already in YNAB. | Accept, by **adding** this version's states rather than removing the full-product ones, which stay the target of later initiatives (decision UX-D1). Each added state is read-only: it shows the reason, says the action comes in a later version, that nothing is uploaded and that no action is needed now. UX-04's wording is fixed in both. |
+| **B. Situations no state shows yet** | UX-05 (A19), UX-06 (A20), UX-07 (A21, Blocker), UX-09 (fetch period, Blocker), UX-13 (first YNAB read failed, one Budget failed), UX-18 (successful but empty), UX-19 (Fetch Cooldown with one Bank Account read) | Each is specified but not drawn. UX-09 also found the fetch period still drawn at 60 days, with no editor. | Accept all. |
+| **C. Times and balances** | UX-08 (Blocker), UX-25 | "Read 13:20" does not say whose time it is; the Account Balance's reported time, the Fetch time and the YNAB read time are not told apart; some Bank Accounts lack their own Source Health and Freshness. | Accept: "Bank balance as of …" (reported time, S-T-04), "Budget Account balance read …", and per Bank Account health. |
+| **D. Answer in place (NFR-023)** | UX-10, UX-11, UX-12, UX-20, UX-21, UX-22, UX-24 | The Overview's Fetch all, the SimpleFIN page, the YNAB read and Recent Fetches lack running, queued, result or failure states at their own control; some saved values disagree with their row (UX-22); a credential refusal leads to a page that says Accepted (UX-21); some notices name no next action (UX-24). | Accept UX-10, -11, -12, -20, -21, -22. UX-24: accept for the outdated Account Balance (in scope); the damaged-journal and backup notices are outside this initiative and become an issue (decision UX-D3). |
+| **E. Understanding statuses and Transfers** | UX-14, UX-15, UX-16, UX-17 (Minor), UX-26 (Minor), UX-27 | New, Match For Typed Entry and Already In Budget App lack a reachable explanation; the date statuses do not name their boundary or say why the fetch period does not change eligibility; a Transfer's two sides are not shown; finding this week's Bank Transactions means scanning groups; a few words differ from the glossary ("refreshing", "imported", "waiting"); the counts on the Transfers entry cannot be reconciled. | Accept UX-14, -15, -16, -26, -27. UX-17: a chronological list per Bank Account; no date filter (decision UX-D2). |
+
+**Decisions for the operator at the UX gate:**
+
+| ID | Question | Recommendation | Operator's answer |
+|---|---|---|---|
+| UX-D1 | Version boundary (group A): add read-only states for this version next to the full-product states, or redraw the full-product states? | Add. The full-product states are the approved target of the Upload and Review initiatives; redrawing them would lose that specification. | Agreed (2026-10-28). |
+| UX-D2 | UX-17: a date filter on Bank Transactions now? | No: a chronological list now, the filter as a `spec-gap` issue for UC-008. | No filter and **no issue**: it is not a requirement; the operator raises it as one if they want it (2026-10-28). The chronological list stays, as a drawing choice of UC-008 step 5. |
+| UX-D3 | UX-24's damaged-journal and backup notices: now or later? | Later, as a `defect` issue: they are existing screens outside this initiative's journeys. | Agreed (2026-10-28): issue #26. |
+| UX-D4 | UX-21 and UX-22 concern screens already built in construction (credentials, Fetch Cooldown); the app may share the mockups' gaps. Check and fix the app in this initiative? | Yes: Phase 6 checks those screens against NFR-023 and fixes what the app shares; the mockups are fixed in Phase 2b. | Agreed (2026-10-28). |
 
 ## 7. Plan closed
 
