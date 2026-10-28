@@ -317,7 +317,7 @@ sealed interface BankOutcome { val bankReference: String
 data class DeliveredBankAccount(
     val providerReference: String, val bankReference: String?, val name: String?, val kind: String?,
     val currency: CurrencyCode?, val number: BankAccountNumber?,
-    val result: BankAccountResult,                     // Read(transactions, balance?) | Failed(kind) | NotRead(cause, balance?)
+    val result: BankAccountResult,                     // Read(transactions, balance?, balanceReportedAt?) | Failed(kind) | SignInNeeded | NotRead(cause, balance?)
 )
 sealed interface ProviderTransaction {
     data class Interpretable(val stableReference: String?, val bookedDate: LocalDate, val amount: Amount,
@@ -330,7 +330,9 @@ sealed interface ProviderTransaction {
 - **Continuation protocol.** A refusal or outcome of scope BankAccount ends that Bank Account only; of scope Bank, the
   Bank Accounts of that Bank only; of scope Source, everything still to read. A Bank Account whose paged read did not
   finish is `Failed(Incomplete)` and carries none of its transactions, so the core keeps its stored data unchanged
-  (UC-001 A8). A `RequestLimitWarning` is reported and the plug-in goes on (UC-001 A15, BR-015 decide the rest).
+  (UC-001 A8). A Bank Account whose Bank the Operator must sign in to again at the Data Provider is `SignInNeeded`
+  and carries nothing (UC-001 A20). A `RequestLimitWarning` is reported and the plug-in goes on (UC-001 A15, BR-015
+  decide the rest).
   `RefusalReason` and `FailureKind` are closed enumerations; a Data Provider error text never leaves the plug-in
   (NFR-012).
 - **Unreadable Transactions (S-07, A-11).** A delivered item the plug-in cannot turn into an `Interpretable` (missing
@@ -347,6 +349,15 @@ sealed interface ProviderTransaction {
   the description UC-009 step 3 shows. The core replaces the stored Offered Bank Accounts of that Data Provider (or of
   one Bank through it) with this list in one storage operation (ADR-002 §3, O-2), keeping only `last_four_digits` and
   the fingerprint of each number (UC-009 BR-009).
+- **The time of a balance (S-T-04, issue #16).** `Read.balanceReportedAt` is the time the Data Provider says the
+  balance was reported (SimpleFIN `balance-date`), or null when it gives none; the core stores it as
+  `ACCOUNT_BALANCE.reported_at`, or the time it received the answer when it is null. A balance in another currency
+  than the Bank Account's is not stored (UC-001 A21); that is a core rule, not the plug-in's.
+- **SimpleFIN's error list (S-T-03, issue #11).** SimpleFIN's checklist asks an application to show the messages of
+  `errlist` to the user. Slussen deviates on purpose: no Data Provider text leaves the plug-in (NFR-012). The plug-in
+  maps `con.auth` to `SignInNeeded` for each Bank Account of that connection, and `act.failed` and `act.missingdata`
+  to `Failed(Incomplete)` for that Bank Account; any other code is `Failed(UnreadableAnswer)` for the Bank Accounts it
+  names, and is otherwise ignored.
 - **Balances of listed Bank Accounts (S-35, O-P2-56).** A Bank Account the request did not ask to read is
   `NotRead(NotSelected, balance)`, carrying the balance the Data Provider gave with the list in the same answer, or
   none when it gave none; the plug-in sends no further request for it. The core takes the balance of each Offered
@@ -958,3 +969,6 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
   Matching): Context; §7 rows UC-003, UC-006 and UC-008 (the Blocked Reason "Uploads wait for First Upload Matching",
   the explanation and reason line of UC-008 BR-009). The package `:core` `recovery` becomes `:core` `firstupload`, and every code name that held "Recovery
   Check" or "Recovery" takes "First Upload Matching" (rule T-05 refuses the Avoid term in names), in Phase 8g.
+- Transactions plan, Phase 1 (2026-10-28): S-T-03 (issue #11; UC-001 A20): §4.1 `BankAccountResult.SignInNeeded` and
+  the mapping of SimpleFIN's `errlist`, a recorded deviation from SimpleFIN's checklist; S-T-04 (issue #16 item 1):
+  §4.1 `Read.balanceReportedAt`.

@@ -9,7 +9,7 @@
 **Trigger:** Operator opens Slussen  
 **Status:** Approved  
 
-**Requirements:** [FR-003, FR-011, FR-012, FR-032, FR-060, FR-061, FR-062, FR-063, FR-064, FR-065, FR-066, FR-095, FR-103, NFR-005, NFR-018, NFR-019, C-015](../requirements.md)
+**Requirements:** [FR-003, FR-011, FR-012, FR-032, FR-060, FR-061, FR-062, FR-063, FR-064, FR-065, FR-066, FR-095, FR-103, NFR-005, NFR-018, NFR-019, NFR-023, C-015](../requirements.md)
 
 ## Preconditions
 
@@ -146,11 +146,11 @@ When an Account Balance is older than 36 hours (36 by default, a number the Oper
 
 ### BR-005: Balance Difference
 
-The difference is the Account Balance minus the balance of the Budget Account as the Budget App last reported it (UC-003), both in the Budget's currency, shown with the time each balance was read.
+The difference is the Account Balance minus the balance of the Budget Account as the Budget App last reported it (UC-003), both in the Budget's currency, shown with the time each balance was read: for the Account Balance, the time the Data Provider says it was reported ("balance as of …").
 
 ### BR-006: Blocked Reasons and Their Remedies
 
-Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; a failed Fetch, the time of the failure and the action that fetches again (UC-001); Request Limit reached or access limit reached, the time the limit frees up; credentials refused or missing, enter them (UC-014); currency mismatch, move the Account Mapping (UC-009 A8); Uploads wait for First Upload Matching, start First Upload Matching: compare with the Budget App and confirm (BR-009).
+Each Blocked Reason is shown with the action that removes it: missing or expired Bank Consent, grant it (UC-007); unrecognised Bank Account, confirm or identify it (UC-009); waiting for the provider, the time the wait ends; a failed Fetch, the time of the failure and the action that fetches again (UC-001); Request Limit reached or access limit reached, the time the limit frees up; credentials refused or missing, enter them (UC-014); not delivered by the Data Provider, the time of the Fetch, the action that fetches again and the advice to check the Bank Account at the Data Provider (UC-001 A19); the Bank's sign-in at the Data Provider needs you, sign in to the Bank again at the Data Provider and fetch again (UC-001 A20); currency mismatch, move the Account Mapping (UC-009 A8); Uploads wait for First Upload Matching, start First Upload Matching: compare with the Budget App and confirm (BR-009).
 
 ### BR-007: One Budget at a Time
 

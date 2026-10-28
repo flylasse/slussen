@@ -190,7 +190,7 @@ One of the Operator's or a household member's Bank Accounts at a Bank, as expose
 | bank_account_fingerprint          | One-way fingerprint of the Bank Account number that recognises the Bank Account when the Data Provider's identifier changes | String    | 64               | Optional                                 |
 | provider_bank_id                  | Bank that the Data Provider reading the Bank Account (`data_provider_id`, or `balance_data_provider_id` for its balance) names for it, recorded when the Bank Account is added or identified; empty when no Data Provider reads it or the Data Provider names no Bank | Long      | 19               | Optional                                 |
 | balance_provider_reference        | Identifier the balance Data Provider gives the Bank Account, taken from the Offered Bank Account the Operator chose for its balance (UC-013 A4, BR-006) | String    | 200              | Optional                                 |
-| identified_at                     | Time the Bank Account was added, or the Operator last confirmed or changed how its Source identifies it; a Fetch within the Fetch Cooldown still reads a Bank Account identified after the Data Provider's last successful Fetch (UC-001 BR-006) | DateTime  | -                | Not Null                                 |
+| identified_at                     | Time the Bank Account was added, or the Operator last confirmed or changed how its Source identifies it; a Fetch within the Fetch Cooldown still reads a Bank Account that has no `FETCH_RESULT` with outcome Fetched since this time (UC-001 BR-006) | DateTime  | -                | Not Null                                 |
 | retired                           | True when the Operator has retired the Bank Account so that it is neither fetched nor uploaded                | Boolean   | 1                | Not Null                                 |
 | funded_by_budget_account_id       | Funded By: Budget Account that pays this credit card Bank Account by default, empty until the Operator sets it | Long      | 19               | Optional                                 |
 | transfer_partner_budget_account_id | Transfer Partner: Budget Account that money most often moves to and from for this Bank Account, empty until the Operator sets it | Long      | 19               | Optional                                 |
@@ -377,7 +377,7 @@ The outcome of one Fetch for one Bank Account, from which the Bank Account's Sou
 |-------------------|---------------------------------------------------|-----------|------------------|------------------------------------------|
 | fetch_id          | Fetch that produced the result                    | Long      | 19               | Primary Key, Foreign Key (FETCH.id)      |
 | bank_account_id   | Bank Account the result is for                    | Long      | 19               | Primary Key, Foreign Key (BANK_ACCOUNT.id) |
-| outcome           | Outcome for the Bank Account                      | String    | 30               | Not Null, Values: Fetched, Failed, Not Consented, Not Recognised, Ambiguous Bank Account, Access Limit Reached |
+| outcome           | Outcome for the Bank Account                      | String    | 30               | Not Null, Values: Fetched, Failed, Not Consented, Not Recognised, Ambiguous Bank Account, Access Limit Reached, Not Delivered, Sign-In Needed |
 | transaction_count | Number of booked Bank Transactions delivered      | Integer   | 10               | Not Null                                 |
 
 #### Constraints
@@ -435,10 +435,11 @@ The most recent balance of a Bank Account as reported by its Data Provider.
 | bank_account_id | Bank Account the balance belongs to              | Long      | 19               | Not Null, Foreign Key (BANK_ACCOUNT.id) |
 | amount          | Balance in the Bank Account's currency           | Decimal   | 12,3             | Not Null                                |
 | currency        | ISO 4217 code of the reported currency           | String    | 3                | Not Null                                |
-| reported_at     | Time the Data Provider reported the balance      | DateTime  | -                | Not Null                                |
+| reported_at     | Time the Data Provider says the balance was reported, or the time Slussen received it when the Data Provider gives none | DateTime  | -                | Not Null                                |
 
 #### Constraints
 
+- `currency` is the currency of the Bank Account; a balance reported in another currency is not stored (UC-001 A21).
 - When `reported_at` is older than `OPERATOR_SETTINGS.outdated_balance_hours`, the balance difference to the Budget Account is hidden and marked as outdated.
 
 ### TRANSACTION_FILE
@@ -709,7 +710,7 @@ The values the Operator can change inside the app, each with its allowed range a
 | id                         | Unique identifier                                                                                 | Long      | 19               | Primary Key, Sequence      |
 | upload_window_days         | Upload Window: number of days back from today inside which a Bank Transaction may be uploaded, 7 by default | Integer   | 10               | Not Null, Min: 1, Max: 60  |
 | file_upload_window_days    | File upload window: number of days back from today inside which a Bank Transaction from a Transaction File may be uploaded, whatever its File Format, 60 by default | Integer   | 10               | Not Null, Min: 7, Max: 365 |
-| fetch_period_days          | Fetch period: number of days back from today for which a Fetch asks for transactions, 60 by default | Integer   | 10               | Not Null, Min: 7, Max: 180 |
+| fetch_period_days          | Fetch period: number of days back from today for which a Fetch asks for transactions, 30 by default | Integer   | 10               | Not Null, Min: 7, Max: 180 |
 | default_wait_hours         | Default wait when a Data Provider or Bank asks Slussen to wait without naming a period, 8 by default | Integer   | 10               | Not Null, Min: 1, Max: 48  |
 | request_limit_warning_hours | Request Limit warning pause: hours without a Scheduled Fetch of a Data Provider after its first warning about its Request Limit, 24 by default | Integer   | 10               | Not Null, Min: 1, Max: 72  |
 | request_timeout_seconds    | Request timeout: seconds after which a request to a Data Provider or to the Budget App gives up, 30 by default | Integer   | 10               | Not Null, Min: 10, Max: 120 |
