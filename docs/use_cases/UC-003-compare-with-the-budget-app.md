@@ -10,7 +10,7 @@
 **Trigger:** Operator asks Slussen to read the Budget App again, or Fetch Transactions, Import a Transaction File or Upload to the Budget App reaches its Comparison step  
 **Status:** Approved  
 
-**Requirements:** [FR-009, FR-019, FR-020, FR-021, FR-023, FR-024, FR-025, FR-026, FR-027, FR-030, FR-031, FR-032, FR-038, FR-040, FR-046, FR-061, FR-066, FR-074, FR-075, FR-094, FR-095, FR-100, NFR-002, NFR-004, NFR-015, NFR-016, NFR-020, NFR-022, C-009, C-011, C-012](../requirements.md)
+**Requirements:** [FR-009, FR-019, FR-020, FR-021, FR-023, FR-024, FR-025, FR-026, FR-027, FR-030, FR-031, FR-032, FR-038, FR-040, FR-046, FR-061, FR-066, FR-074, FR-075, FR-094, FR-095, FR-100, NFR-002, NFR-004, NFR-015, NFR-016, NFR-020, NFR-022, NFR-023, C-009, C-011, C-012](../requirements.md)
 
 ## Preconditions
 

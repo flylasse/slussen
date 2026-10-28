@@ -9,7 +9,8 @@
 ## 0. Resume here (state as of 2026-10-28)
 
 - The plan is drafted and the operator answered O-T-01..O-T-08 on 2026-10-28 (§6): Transfers are in scope, and the fetch period becomes a setting in the app with a default of 30 days.
-- Next: the operator approves the revised plan, then Phase 1 (specification changes) starts.
+- The operator approved the plan on 2026-10-28. Phase 1 wrote S-T-01..S-T-07 (§6).
+- Next: the **specification gate**. The operator reviews S-T-01..S-T-07; when approved, PR #24 (plan and specification) is merged and Phase 2 (UX review) starts.
 
 ## 1. Scope
 
@@ -96,6 +97,8 @@ Written for each phase when the phase before it is accepted, so that each prompt
 | # | Phase | AIUP step | What happened | Deviation? |
 |---|---|---|---|---|
 | 1 | Draft | Initiative intake (AGENTS.md §6) | The plan names the use cases, requirements and issues it takes on, and its first phase writes the specification changes. | No |
+| 2 | 1 | Specification changes (`requirements`, `use-case-spec`, `entity-model`) | The orchestrator wrote Phase 1 itself instead of dispatching a sub-agent (§2): every change had been designed with the operator in the same session (issues #8, #9, #11, #16, O-T-06, O-T-07), and a sub-agent would have needed that whole conversation as its prompt. The semantic `/spec-review` was not run; the two linters were. | Yes |
+| 3 | 1 | `requirements` (NFR) | A usability requirement (NFR-023, O-T-06) is written as an NFR with the category Usability. The project rule on numbers (AGENTS.md §2) refused "within 1 second", so the measure is "before the action sends any request or waits for anything". | No |
 
 ## 6. Findings, specification changes and open questions
 
@@ -114,7 +117,19 @@ Written for each phase when the phase before it is accepted, so that each prompt
 
 ### Specification changes (S-T-nn)
 
-None yet: Phase 1 writes them.
+Phase 1, 2026-10-28. Waiting for the operator's approval at the specification gate.
+
+| ID | Issue or answer | Change | Files |
+|---|---|---|---|
+| S-T-01 | #8 | New flow UC-001 A19 "Selected Bank Account Not Delivered": stored data unchanged, the outcome Not Delivered, the Blocked Reason "not delivered by the Data Provider" with the time, the action that fetches again and the advice to check the Bank Account at the Data Provider. | UC-001, UC-008 BR-006, entity model `FETCH_RESULT.outcome` |
+| S-T-02 | #9 | A Bank Account is read within the Fetch Cooldown only until it has been read once since it was added or its identification changed (a `FETCH_RESULT` with outcome Fetched since `identified_at`); after that the Fetch Cooldown serves it. | UC-001 A2, BR-006; entity model `BANK_ACCOUNT.identified_at` |
+| S-T-03 | #11 | New flow UC-001 A20 "Bank's Sign-In at the Data Provider Needed" with the outcome Sign-In Needed and its Blocked Reason; the contract's `BankAccountResult.SignInNeeded`; SimpleFIN's `errlist` mapped (`con.auth`, `act.failed`, `act.missingdata`), a recorded deviation from SimpleFIN's checklist, since no Data Provider text is shown (NFR-012). | UC-001, UC-008 BR-006, ADR-001 §4.1, entity model `FETCH_RESULT.outcome` |
+| S-T-04 | #16 item 1 | `Read.balanceReportedAt` (SimpleFIN `balance-date`); `ACCOUNT_BALANCE.reported_at` is the time the Data Provider says the balance was reported, or the time Slussen received it; the Budget tab shows "balance as of …". | ADR-001 §4.1, entity model, UC-001 postconditions, UC-008 BR-005 |
+| S-T-05 | #16 item 3, decided 3b | New flow UC-001 A21 "Balance in Another Currency": the balance is not stored, the previous one stays, and the Bank Account shows both currencies; no amount is converted. | UC-001, entity model `ACCOUNT_BALANCE` |
+| S-T-06 | O-T-07 | The fetch period defaults to 30 days instead of 60 (range 7-180 unchanged), changed on Settings. | FR-001, UC-001 BR-009, UC-010 BR-001, entity model `OPERATOR_SETTINGS.fetch_period_days` |
+| S-T-07 | O-T-06 | New NFR-023 "Every Action Answers in Place" (Usability): every action shows its state on its own control before it sends anything, its result in the same place, and every Blocked Reason, empty state or build-state line names the next action; the UX review checks each changed screen against it. Referenced by UC-001, UC-003, UC-005, UC-008, UC-010. | requirements, those use cases |
+
+Not changed: O-T-01 (Transfers) needs no specification change, since UC-005 is Approved as it stands.
 
 ### UX review findings (UX-nn)
 
