@@ -137,6 +137,7 @@ object Texts {
         "Bank Accounts offered: ${report.offered}",
         report.identified.size.takeIf { it > 0 }?.let { "added and identified: $it" },
         report.notAdded.takeIf { it > 0 }?.let { "not added: $it" },
+        report.sharedReference.takeIf { it > 0 }?.let { "not used, ${report.dataProviderName} gave them the same identifier: $it" },
         report.failed.takeIf { it.isNotEmpty() }?.let { "failed: ${it.joinToString(", ")}, stored data unchanged" },
         report.waitingUntil?.let { "Blocked: waiting for the provider · until ${formats.dateTime(it)}" },
         report.warning?.let {

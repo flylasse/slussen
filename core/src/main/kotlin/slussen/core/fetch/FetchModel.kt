@@ -17,7 +17,9 @@ sealed interface FetchReport {
     /**
      * Steps 4-6 and 11: the Data Provider delivered its Bank Accounts, which are kept as Offered Bank Accounts; the
      * Fetch is recorded as Fetched. [identified] names the Bank Accounts the Operator added that were identified with
-     * certainty (step 6, BR-011); [notAdded] counts the delivered Bank Accounts that match none of them (A18).
+     * certainty (step 6, BR-011); [notAdded] counts the delivered Bank Accounts that match none of them, Left-Out Bank
+     * Accounts not counted (A18); [sharedReference] counts the delivered Bank Accounts whose reference another one in
+     * the same answer has, which are neither kept nor identified (A10, UC-009 BR-004).
      * [waitingUntil] is set when the Data Provider asked Slussen to wait while delivering (A5), [warning] when it warned
      * about its Request Limit (A15). [failed] names the identified Bank Accounts the Data Provider reported a failure
      * for, whose stored data stays unchanged (A8).
@@ -32,6 +34,7 @@ sealed interface FetchReport {
         val waitingUntil: Instant?,
         val warning: RequestLimitWarningShown?,
         val failed: List<String> = emptyList(),
+        val sharedReference: Int = 0,
     ) : FetchReport
 
     /**

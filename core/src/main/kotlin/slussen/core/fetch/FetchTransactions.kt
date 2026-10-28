@@ -224,16 +224,20 @@ class FetchTransactions(
                     return FetchReport.WaitingForProvider(key, name, waitingUntil)
                 }
                 val answeredAt = clock.instant()
-                val fetched = keep(provider, response.bankAccounts, toRead, startedAt, waitingUntil, warning)
+                // UC-009 BR-004: a reference that two delivered Bank Accounts share identifies neither; neither is kept or identified.
+                val shared = response.bankAccounts.groupingBy { it.providerReference }.eachCount().filterValues { it > 1 }.keys
+                val usable = response.bankAccounts.filter { it.providerReference !in shared }
+                val fetched = keep(provider, usable, toRead, startedAt, waitingUntil, warning)
+                    .copy(sharedReference = response.bankAccounts.size - usable.size)
                 if (cooldown == null) {
                     val fetchId = record(stored, startedAt, FetchOutcome.Fetched)
-                    storeDeliveries(fetchId, response.bankAccounts, toRead, answeredAt)
+                    storeDeliveries(fetchId, usable, toRead, answeredAt)
                     fetched
                 } else {
                     // UC-001 BR-006: A read within the Fetch Cooldown is recorded as served from it, so it neither starts nor extends it.
                     val fetchId = record(stored, startedAt, FetchOutcome.ServedFromFetchCooldown)
                     // A2 step 3: the Fetch Served From Fetch Cooldown carries the outcome of each Bank Account it read.
-                    storeDeliveries(fetchId, response.bankAccounts, toRead, answeredAt)
+                    storeDeliveries(fetchId, usable, toRead, answeredAt)
                     FetchReport.ServedFromFetchCooldown(key, name, cooldown.lastFetchAt, cooldown.endsAt, read = fetched, requestLimitFreesUpAt = null)
                 }
             }
@@ -313,8 +317,9 @@ class FetchTransactions(
             fetchedAt = startedAt,
             offered = delivered.size,
             identified = identified,
-            // A18: a delivered Bank Account that matches none the Operator added is kept only as an Offered Bank Account.
-            notAdded = delivered.count { it.providerReference !in added },
+            // A18: a delivered Bank Account that matches none the Operator added is kept only as an Offered Bank Account;
+            // a Left-Out Bank Account is not counted (UC-013 BR-011).
+            notAdded = delivered.count { it.providerReference !in added && it.providerReference !in leftOut },
             waitingUntil = waitingUntil,
             warning = warning,
             // A8: the identified Bank Accounts the Data Provider reported a failure for.
