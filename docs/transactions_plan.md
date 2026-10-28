@@ -14,7 +14,8 @@
 - Phase 2 done: the operator pushed the external UX review (1982708); its 27 findings are in §6 with recommendations.
 - The operator answered UX-D1..UX-D4 on 2026-10-28 (§6); issue #26 holds UX-24's notices outside this initiative.
 - Phase 2b done: the mockups are revised (a sub-agent; 8 files), with this version's read-only states beside the full-product ones. It found four specification gaps, written as **S-T-08..S-T-11** for approval (§6).
-- Next: the **UX gate**. The operator walks through the mockups (the list of new states is in PR #25) and approves S-T-08..S-T-11.
+- The operator approved S-T-08..S-T-11 on 2026-10-28.
+- Next: the **UX gate**. The operator walks through the mockups (the list of new states is in PR #25) and merges PR #25.
 
 ## 1. Scope
 
@@ -188,7 +189,7 @@ Phase 1, 2026-10-28. Waiting for the operator's approval at the specification ga
 
 Not changed: O-T-01 (Transfers) needs no specification change, since UC-005 is Approved as it stands.
 
-Phase 2b, 2026-10-28: four specification gaps the mockup revision found. **Proposed, waiting for the operator's approval at the UX gate.**
+Phase 2b, 2026-10-28: four specification gaps the mockup revision found. **Approved by the operator on 2026-10-28.**
 
 | ID | Found by | Change | Files |
 |---|---|---|---|
@@ -202,6 +203,7 @@ Phase 2b's other observations, no specification change:
 - Funded By and Transfer Partner start empty and cannot be set in this version, so card-side Lonely Transfers cannot occur; UC-005 does not say how the card of a funding-side Lonely Transfer found by a Card Payment Description is known. Phase 7b checks this against UC-005 BR-002 and BR-012 and stops for a specification change if needed.
 - UC-010 has no flow for a setting that cannot be stored; the mockups rest that on NFR-023 and the failure postconditions. No change proposed.
 - The build-state notes "while the Comparison (UC-003) is not built" in `overview.html#first-added`, `#recovery` and `first-upload-matching.html` go out of date with this version; Phase 7 updates them with the code.
+- **The 18 `-this-build` states are transitional** (operator's question, 2026-10-28). They show what this version shows where the full product would offer a decision or an Upload; the other new states (A19-A21, the fetch period, the times, the empty and failed results) are permanent. Their removal is planned: at this plan's close (Phase 9) they become one `debt` issue, "Remove the `-this-build` mockup states and the app's matching build-state lines", and the initiative that builds Review Decisions, Transfer Decisions and Uploads (UC-004, UC-005, UC-006) names that issue in its scope and deletes them with the code that replaces them.
 - `index.html` has no traceability row for UC-001 A18 (missing since construction); `transfers.html#doubtful-leg` has no this-version state. Both are small and are fixed in Phase 7's mockup touch-ups.
 
 ### UX review findings (UX-nn)
