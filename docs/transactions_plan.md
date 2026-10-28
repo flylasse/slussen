@@ -16,7 +16,11 @@
 - Phase 2b done: the mockups are revised (a sub-agent; 8 files), with this version's read-only states beside the full-product ones. It found four specification gaps, written as **S-T-08..S-T-11** for approval (§6).
 - The operator approved S-T-08..S-T-11 on 2026-10-28.
 - The UX gate passed: the operator merged PR #25 on 2026-10-28. Issue #27 plans the removal of the `-this-build` states.
-- Phase 3 (device baseline) in progress. First run on the operator's phone (Galaxy, Android 17), 2026-10-28: `:app` 18 tests, 17 failed, all with one cause: Espresso 3.6.1, reached through the Compose UI test library, calls `InputManager.getInstance` by reflection, which newer Android versions removed. The fix pins Espresso 3.7.0 for `:app`'s instrumented tests (PR for the branch `transactions-device-baseline`). Next: the operator runs the tests again, sends the `:persistence` report too, and finishes E-13.
+- Phase 3 (device baseline), on the operator's phone (Galaxy, Android 17), 2026-10-28:
+  - first run: `:app` 17 of 18 failed, all from Espresso 3.6.1 calling the removed `InputManager.getInstance`; fixed by pinning Espresso 3.7.0 (PR #28);
+  - second run: `:persistence` **29 of 29 passed**, among them `SlussenDatabaseMigrationIT` 4 of 4 (E-06: versions 1 and 2 upgraded on the phone); `:app` 15 of 18 passed; the 3 failures were stale tests (a text the Budget card now repeats, a section title drawn in capitals, a tap below the screen edge), fixed in PR #28;
+  - **E-13 passed**: after a backup with `bmgr`, an uninstall, a reinstall and a restore, YNAB showed credentials missing while the chosen Budgets and their Budget Accounts were kept.
+- Next: the operator reruns `:app`'s instrumented tests on PR #28's branch; when they pass, #28 merges and Phase 4 starts.
 
 ## 1. Scope
 

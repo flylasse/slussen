@@ -4,6 +4,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import de.mannodermaus.junit5.compose.createComposeExtension
@@ -49,7 +51,8 @@ class UC008CheckImportStatusScreenIT {
             }
         }
 
-        onNodeWithText("Uploads wait for First Upload Matching").assertExists()
+        // The banner and each Budget card both say it (BR-009, `overview.html#recovery`).
+        onAllNodesWithText("Uploads wait for First Upload Matching", substring = true).onFirst().assertExists()
         onNodeWithText("Before Slussen uploads anything", substring = true).assertExists()
         onNodeWithText("This is a new installation.", substring = true).assertExists()
         onNodeWithText("Matching with ${slussen.testing.ExampleData.BUDGET_APP_NAME} comes in a later version; until then nothing is uploaded.").assertExists()
