@@ -25,7 +25,8 @@
 - Phase 4 done: the operator approved S-T-12, S-T-13 and the six `errlist` assumptions and merged PR #30 (2026-10-29). The SimpleFIN protocol (`www.simplefin.org`, allowed by the operator on 2026-10-29) confirms the codes, the shape of `errlist` and `balance-date`.
 - Phase 5 built (a sub-agent; the orchestrator re-ran the gate with `--rerun-tasks`: green). `slussen.db` version 4 with five tables and `MIGRATION_3_4`; the instrumented migration test runs on the phone in Phase 8 at the latest. It found two specification problems, proposed as **S-T-14** and **S-T-15** (§6).
 - Phase 5 done: the operator approved S-T-14 and S-T-15 and merged PR #31 (2026-10-29).
-- Phase 6 is split in two (orchestrator, 2026-10-29), since it is the largest phase: **6a** stores the Bank Transactions of a Fetch (with the Import Identifier protocol of ADR-008, which nothing had built yet), A17, A19, A20, A21, #9 and the Decision Journal; **6b** the fetch period on Settings and UX-D4's credential and Fetch Cooldown screens. 6a in progress on the branch `transactions-phase6a`, with the prompt in §4.
+- Phase 6 is split in two (orchestrator, 2026-10-29), since it is the largest phase: **6a** stores the Bank Transactions of a Fetch (with the Import Identifier protocol of ADR-008, which nothing had built yet), A17, A19, A20, A21, #9 and the Decision Journal; **6b** the fetch period on Settings and UX-D4's credential and Fetch Cooldown screens. 6a built (a sub-agent, then two fixes by the orchestrator, below); it found one specification gap, proposed as **S-T-16** (§6).
+- Next: the operator approves S-T-16 and merges the Phase 6a PR; then Phase 6b.
 
 ## 1. Scope
 
@@ -289,6 +290,7 @@ Written for each phase when the phase before it is accepted, so that each prompt
 | 3 | 1 | `requirements` (NFR) | A usability requirement (NFR-023, O-T-06) is written as an NFR with the category Usability. The project rule on numbers (AGENTS.md §2) refused "within 1 second", so the measure is "before the action sends any request or waits for anything". | No |
 | 6 | 4 | `use-case-test`, then `use-case-implement` | Tests were written first, but they could not compile before the new types existed, so none was seen failing first: the recurring deviation of the construction plan (§7 there). | Yes |
 | 7 | 5 | `use-case-test`, `use-case-implement` | The sub-agent read the two skills from `origin/feat/layer-plugins` with `git show`, since the Marketplace clone is on a detached HEAD without them. Six new JVM tests were seen failing before the production change. | Yes (how the skills were read) |
+| 8 | 6a | `use-case-test` | 31 core tests were seen failing first against stubs; the `:app` ViewModel tests were written after the texts and were not seen failing. | Yes (partly) |
 | 5 | 2b | Mockups (`use-case-spec` mockup step) | Phase 2b ran as a sub-agent with the accepted findings as its brief, as §2 says; it changed only `docs/mockups/` and reported nine specification observations instead of changing the specification. | No |
 | 4 | 2 | Adversarial review (Centaur cross-model rule) | The external UX reviewer (Codex CLI) worked only from this repository, as its prompt said, so it did not read the Marketplace `spec-review` skill that AGENTS.md names. Its review is a source walkthrough of the HTML mockups, not of the running app. | Yes (recorded as the reviewer asked) |
 
@@ -345,6 +347,19 @@ Phase 5, 2026-10-29: two specification problems the sub-agent found. **Approved 
 |---|---|---|---|
 | S-T-14 | Phase 5 | UC-010 BR-007's default Bank Transfer Descriptions held both ÖVERFÖRING and OVERFORING, which BR-008 forbids (no two entries equal without regard to case and accents). OVERFORING is dropped: ÖVERFÖRING already matches it, since matching ignores accents (UC-005 BR-012). | UC-010 BR-007, `transfer-descriptions.html`, the default list in `SlussenMigrations` |
 | S-T-15 | Phase 5 | `BANK_TRANSACTION.transfer_id` is a foreign key to `TRANSFER`, as the diagram already shows. | entity model |
+
+Phase 6a, 2026-10-29: one specification gap. **Proposed, waiting for the operator's approval.**
+
+| ID | Found by | Change | Files |
+|---|---|---|---|
+| S-T-16 | Phase 6a | A delivered transaction whose currency differs from its Bank Account's had no rule: it would have been stored as a Bank Transaction, and a later Comparison could have called it New. It is kept as an Unreadable Transaction with the reason "currency differs from the Bank Account's" (Needs Review, never uploaded, nothing converted). | UC-001 A17, BR-016 |
+
+Phase 6a's notes:
+- The orchestrator fixed one assumption of the sub-agent: a selected Bank Account the answer leaves out **while the Data Provider asks to wait** is affected by the wait (A5 step 2), not Not Delivered (A19); a test proves it, failing without the fix.
+- The notice of a balance in another currency (A21) is kept in memory, not stored: the entity model has no place for a balance that was not stored. It is shown again by the next Fetch; after a restart the Bank Account shows its last stored balance with its own time.
+- A transaction without a Stable Reference (kind F) has no "changed content": its content is its identity (ADR-008).
+- BR-006 (#9) counts a Fetch Result Fetched of a Fetch started at or after `identified_at`; one trimmed by the number of recent Fetches kept can cost one more read.
+- Journal entries name the Bank Account, the Import Identifier, the date and the amount, never the payee or memo.
 
 Phase 5's notes: a new installation also starts with the default description lists (ADR-002 §8 step 3); the rule that no two entries of a list are equal without regard to case and accents is the core's, since a unique index cannot compare that way; the new value columns join the startup check of stored values (`SlussenStorage.MAIN_VALUES`, ADR-002 §8 step 1) when Phases 6 and 7 add their core types; version 4's digest joins the pinned final versions when version 5 is added.
 
