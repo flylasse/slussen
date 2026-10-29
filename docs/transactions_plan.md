@@ -22,7 +22,8 @@
   - **E-13 passed**: after a backup with `bmgr`, an uninstall, a reinstall and a restore, YNAB showed credentials missing while the chosen Budgets and their Budget Accounts were kept.
   - third run on PR #28 at 3b635e1: `:app` **18 of 18 passed**. Phase 3 done: PR #28 merged on 2026-10-28, issue #5 closed.
 - Phase 4 built (a sub-agent; the orchestrator re-ran the full gate with `--rerun-tasks`: green). It found two specification conflicts, proposed as **S-T-12** and **S-T-13** (§6), to be approved before its PR merges.
-- Next: the operator approves S-T-12, S-T-13 and the Phase 4 assumptions (§6), and checks the SimpleFIN error codes against the protocol (the host `www.simplefin.org` is not allowed in the cloud session); then PR merges and Phase 5 (schema version 4) starts.
+- Phase 4 done: the operator approved S-T-12, S-T-13 and the six `errlist` assumptions and merged PR #30 (2026-10-29). The SimpleFIN protocol (`www.simplefin.org`, allowed by the operator on 2026-10-29) confirms the codes, the shape of `errlist` and `balance-date`.
+- Phase 5 (schema version 4) in progress on the branch `transactions-phase5`, with the prompt in §4.
 
 ## 1. Scope
 
@@ -193,6 +194,40 @@ Report (under 40 lines): files changed, tests added with their names, gate resul
 Open, and any place the specification was unclear or wrong (do not change docs/; report it instead).
 ```
 
+### Phase 5: schema version 4 (sub-agent)
+
+```text
+Work in /home/user/slussen on the branch transactions-phase5 (checked out). Do not commit, push or switch
+branches; leave the changes in the working tree for the orchestrator. Never read, print or write signing values
+or credentials; never run -PincludeLive; tests use invented data only.
+
+Read AGENTS.md, docs/transactions_plan.md §1, §2, §3 (Phase 5 row) and §6, docs/entity_model.md (BANK_TRANSACTION,
+UNREADABLE_TRANSACTION, BUDGET_APP_TRANSACTION, TRANSFER, TRANSFER_DESCRIPTION, and their constraints), ADR-002
+(all of it; §2 mapping, §3 storage operations, §7 upgrades and S-39), ADR-005 §7 E-06, UC-010 BR-007 (the default
+Card Payment Descriptions and Bank Transfer Descriptions), UC-003 A1 (S-T-08: BANK_TRANSACTION.status is Optional),
+and the existing persistence code, schemas and migrations (MIGRATION_1_2, MIGRATION_2_3, SlussenDatabaseMigrationIT,
+the JVM migration tests). Follow aiup-core's use-case-test, then use-case-implement (read from
+/home/user/marketplace, branch feat/layer-plugins): tests first.
+
+Build:
+1. slussen.db schema version 4 with the five tables above, mapped as ADR-002 §2 says (names, types, indices,
+   foreign keys, unique constraints), and its committed schema JSON. A column whose foreign key targets a table
+   that does not exist in version 4 is a plain column; list each one in the report.
+2. A hand-written MIGRATION_3_4 that creates the five tables and fills TRANSFER_DESCRIPTION with the default lists of
+   UC-010 BR-007; every row of version 3 kept. Never fallbackToDestructiveMigration (K-09).
+3. Tests: the JVM migration tests for 3 -> 4 and 1 -> 4 / 2 -> 4 through the chain, with the rows of every earlier
+   table read back; SlussenDatabaseMigrationIT extended the same way (it runs on the phone in Phase 8 at the latest);
+   the S-39 schema check accepts version 4 and still refuses a change to versions 1-3.
+4. No DAO or store for these tables beyond what the migration tests need: the stores come with Phases 6 and 7.
+
+Gate (run it; it must pass): ANDROID_HOME=/opt/android-sdk; sh ./gradlew --stop;
+sh ./gradlew check :app:assembleDebug :persistence:assembleDebugAndroidTest --rerun-tasks;
+python3 tools/lint_specs.py --strict; python3 tools/check_project_rules.py.
+
+Report (under 40 lines): files changed, tests added with their names, the plain columns of step 1, gate result,
+Clarified / Assumed / Open, and any place the specification was unclear or wrong (do not change docs/).
+```
+
 Written for each phase when the phase before it is accepted, so that each prompt carries what the gates decided. Every prompt starts with: read `AGENTS.md`, this plan's §1, §2 and §6, and the use cases and ADRs the phase names; follow `use-case-test` and then `use-case-implement` for code phases; return Clarified / Assumed / Open.
 
 ## 5. Methodology evaluation log
@@ -246,14 +281,14 @@ Phase 2b, 2026-10-28: four specification gaps the mockup revision found. **Appro
 | S-T-10 | Phase 2b (NFR-023) | UC-001 A21 names its next action: nothing is needed now; if it happens again, check the Bank Account's currency at the Data Provider. | UC-001 A21 |
 | S-T-11 | Phase 2b (UX-19) | A changed fetch period applies from the next Fetch that contacts the Data Provider; a Fetch served from the Fetch Cooldown asks for nothing. | UC-001 BR-009 |
 
-Phase 4, 2026-10-28: two specification conflicts the sub-agent found. **Proposed, waiting for the operator's approval.**
+Phase 4, 2026-10-28: two specification conflicts the sub-agent found. **Approved by the operator on 2026-10-29.**
 
 | ID | Found by | Change | Files |
 |---|---|---|---|
 | S-T-12 | Phase 4 | ADR-001 §4.1 said both that a listed Bank Account the request did not read is `NotRead(NotSelected, balance)` (S-35) and that SimpleFIN's `con.auth` makes every Bank Account of the connection `SignInNeeded` (S-T-03). The error wins: an error the Data Provider reports for such a Bank Account, or its connection, replaces `NotRead`. | ADR-001 §4.1 |
 | S-T-13 | Phase 4 | UC-001 lists NFR-012 (no Data Provider text in the journal or on screen), which A20 already relies on, so its tests can name it. | UC-001 Requirements |
 
-Phase 4's assumptions about SimpleFIN's `errlist`, built and tested; the operator confirms them:
+Phase 4's assumptions about SimpleFIN's `errlist`, built and tested; **confirmed by the operator on 2026-10-29**:
 1. An error that names a connection applies to every account of that connection, whatever its code.
 2. `con.auth` that names only an account applies to that account alone.
 3. Several errors for one account: the sign-in wins, then `Failed(Incomplete)`, then `Failed(UnreadableAnswer)`.
@@ -262,7 +297,7 @@ Phase 4's assumptions about SimpleFIN's `errlist`, built and tested; the operato
 6. No balance time is carried when no balance is.
 
 Phase 4's other notes:
-- The codes `con.auth`, `act.failed`, `act.missingdata` and the shape of `errlist` come from issue #11 and the construction plan (O-P2-61); they are to be checked against the SimpleFIN protocol before acceptance. `www.simplefin.org` is not an allowed host in the cloud session.
+- The codes `con.auth`, `act.failed`, `act.missingdata` and the shape of `errlist` come from issue #11 and the construction plan (O-P2-61); checked against the SimpleFIN protocol on 2026-10-29: they match, and the protocol's rule that an unknown subcode is treated like its prefix (`con.`, `act.`) agrees with mapping any other code to `Failed(UnreadableAnswer)` for the accounts it names.
 - The core test `fetchWithNoBankAccountAddedAsksForTheOfferedBankAccounts` still expects 60 days: the code's default fetch period moves to 30 days (S-T-06) in Phase 6.
 
 Phase 2b's other observations, no specification change:
