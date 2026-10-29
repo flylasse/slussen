@@ -360,8 +360,9 @@ sealed interface ProviderTransaction {
   names, and is otherwise ignored.
 - **Balances of listed Bank Accounts (S-35, O-P2-56).** A Bank Account the request did not ask to read is
   `NotRead(NotSelected, balance)`, carrying the balance the Data Provider gave with the list in the same answer, or
-  none when it gave none; the plug-in sends no further request for it. The core takes the balance of each Offered
-  Bank Account from `Read.balance` or from this one, so the Offered Bank Accounts not yet added keep showing their
+  none when it gave none; the plug-in sends no further request for it. When the Data Provider reports an error for
+  such a Bank Account or its connection, the error's result applies instead (`SignInNeeded` or `Failed`, S-T-12).
+  The core takes the balance of each Offered Bank Account from `Read.balance` or from this one, so the Offered Bank Accounts not yet added keep showing their
   balance after another Bank Account was added (UC-013 step 5, BR-002). The core does not store it as an Account
   Balance (UC-001 step 8). `NotRead` for any other cause carries no balance.
 - The plug-in does not filter, deduplicate or classify. Leaving out pending and zero-amount transactions
@@ -972,3 +973,5 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
 - Transactions plan, Phase 1 (2026-10-28): S-T-03 (issue #11; UC-001 A20): §4.1 `BankAccountResult.SignInNeeded` and
   the mapping of SimpleFIN's `errlist`, a recorded deviation from SimpleFIN's checklist; S-T-04 (issue #16 item 1):
   §4.1 `Read.balanceReportedAt`.
+- Transactions plan, Phase 4 (2026-10-28): S-T-12: §4.1 an error the Data Provider reports for a listed Bank Account
+  that was not read replaces `NotRead(NotSelected, balance)`.
