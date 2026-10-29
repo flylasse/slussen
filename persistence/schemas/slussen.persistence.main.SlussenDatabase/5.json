@@ -1,0 +1,1878 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 5,
+    "identityHash": "47ef3cd52332ff6c37bde5974d9047b6",
+    "entities": [
+      {
+        "tableName": "operator_settings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `upload_window_days` INTEGER NOT NULL, `file_upload_window_days` INTEGER NOT NULL, `fetch_period_days` INTEGER NOT NULL, `default_wait_hours` INTEGER NOT NULL, `request_limit_warning_hours` INTEGER NOT NULL, `request_timeout_seconds` INTEGER NOT NULL, `upload_plan_minutes` INTEGER NOT NULL, `consent_request_minutes` INTEGER NOT NULL, `fetch_history_size` INTEGER NOT NULL, `scheduled_fetches_per_day` INTEGER NOT NULL, `transfer_pairing_days` INTEGER NOT NULL, `lonely_transfer_grace_days` INTEGER NOT NULL, `outdated_balance_hours` INTEGER NOT NULL, `consent_warning_days` INTEGER NOT NULL, `journal_on` INTEGER NOT NULL, `journal_size_limit_mb` INTEGER NOT NULL, `journal_warning_percent` INTEGER NOT NULL, `backup_warning_percent` INTEGER NOT NULL, `detailed_logging` INTEGER NOT NULL, `upload_as_cleared` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uploadWindowDays",
+            "columnName": "upload_window_days",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileUploadWindowDays",
+            "columnName": "file_upload_window_days",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fetchPeriodDays",
+            "columnName": "fetch_period_days",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "defaultWaitHours",
+            "columnName": "default_wait_hours",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requestLimitWarningHours",
+            "columnName": "request_limit_warning_hours",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requestTimeoutSeconds",
+            "columnName": "request_timeout_seconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uploadPlanMinutes",
+            "columnName": "upload_plan_minutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consentRequestMinutes",
+            "columnName": "consent_request_minutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fetchHistorySize",
+            "columnName": "fetch_history_size",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scheduledFetchesPerDay",
+            "columnName": "scheduled_fetches_per_day",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transferPairingDays",
+            "columnName": "transfer_pairing_days",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lonelyTransferGraceDays",
+            "columnName": "lonely_transfer_grace_days",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outdatedBalanceHours",
+            "columnName": "outdated_balance_hours",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consentWarningDays",
+            "columnName": "consent_warning_days",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journalOn",
+            "columnName": "journal_on",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journalSizeLimitMb",
+            "columnName": "journal_size_limit_mb",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journalWarningPercent",
+            "columnName": "journal_warning_percent",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "backupWarningPercent",
+            "columnName": "backup_warning_percent",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "detailedLogging",
+            "columnName": "detailed_logging",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uploadAsCleared",
+            "columnName": "upload_as_cleared",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "data_provider",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `source_key` TEXT NOT NULL, `stable_reference` INTEGER NOT NULL, `bank_consent_required` INTEGER NOT NULL, `fetch_cooldown_minutes` INTEGER NOT NULL, `request_limit` INTEGER NOT NULL, `request_limit_published` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceKey",
+            "columnName": "source_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stableReference",
+            "columnName": "stable_reference",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankConsentRequired",
+            "columnName": "bank_consent_required",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fetchCooldownMinutes",
+            "columnName": "fetch_cooldown_minutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requestLimit",
+            "columnName": "request_limit",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requestLimitPublished",
+            "columnName": "request_limit_published",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_data_provider_name",
+            "unique": true,
+            "columnNames": [
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_data_provider_name` ON `${TABLE_NAME}` (`name`)"
+          },
+          {
+            "name": "index_data_provider_source_key",
+            "unique": true,
+            "columnNames": [
+              "source_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_data_provider_source_key` ON `${TABLE_NAME}` (`source_key`)"
+          }
+        ]
+      },
+      {
+        "tableName": "file_format",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `source_key` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceKey",
+            "columnName": "source_key",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_file_format_name",
+            "unique": true,
+            "columnNames": [
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_file_format_name` ON `${TABLE_NAME}` (`name`)"
+          },
+          {
+            "name": "index_file_format_source_key",
+            "unique": true,
+            "columnNames": [
+              "source_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_file_format_source_key` ON `${TABLE_NAME}` (`source_key`)"
+          }
+        ]
+      },
+      {
+        "tableName": "bank",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `country` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "country",
+            "columnName": "country",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_bank_name",
+            "unique": true,
+            "columnNames": [
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_bank_name` ON `${TABLE_NAME}` (`name`)"
+          }
+        ]
+      },
+      {
+        "tableName": "budget",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `budget_app_reference` TEXT NOT NULL, `name` TEXT NOT NULL, `currency` TEXT NOT NULL, `last_read_at` INTEGER, `served` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "budgetAppReference",
+            "columnName": "budget_app_reference",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastReadAt",
+            "columnName": "last_read_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "served",
+            "columnName": "served",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_budget_budget_app_reference",
+            "unique": true,
+            "columnNames": [
+              "budget_app_reference"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_budget_budget_app_reference` ON `${TABLE_NAME}` (`budget_app_reference`)"
+          }
+        ]
+      },
+      {
+        "tableName": "budget_account",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `budget_id` INTEGER NOT NULL, `budget_app_reference` TEXT NOT NULL, `name` TEXT NOT NULL, `manually_kept` INTEGER NOT NULL, `balance` INTEGER, `balance_read_at` INTEGER, FOREIGN KEY(`budget_id`) REFERENCES `budget`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "budgetId",
+            "columnName": "budget_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "budgetAppReference",
+            "columnName": "budget_app_reference",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "manuallyKept",
+            "columnName": "manually_kept",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "balance",
+            "columnName": "balance",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "balanceReadAt",
+            "columnName": "balance_read_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_budget_account_budget_app_reference",
+            "unique": true,
+            "columnNames": [
+              "budget_app_reference"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_budget_account_budget_app_reference` ON `${TABLE_NAME}` (`budget_app_reference`)"
+          },
+          {
+            "name": "index_budget_account_budget_id",
+            "unique": false,
+            "columnNames": [
+              "budget_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_budget_account_budget_id` ON `${TABLE_NAME}` (`budget_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "budget",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "budget_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "bank_account",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `generated_identifier` TEXT NOT NULL, `bank_id` INTEGER NOT NULL, `provider_bank_id` INTEGER, `data_provider_id` INTEGER, `file_format_id` INTEGER, `balance_data_provider_id` INTEGER, `name` TEXT NOT NULL, `currency` TEXT NOT NULL, `bank_account_type` TEXT NOT NULL, `start_date` INTEGER, `provider_reference` TEXT, `bank_account_fingerprint` TEXT, `balance_provider_reference` TEXT, `identified_at` INTEGER NOT NULL, `retired` INTEGER NOT NULL, `funded_by_budget_account_id` INTEGER, `transfer_partner_budget_account_id` INTEGER, FOREIGN KEY(`bank_id`) REFERENCES `bank`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`provider_bank_id`) REFERENCES `bank`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`data_provider_id`) REFERENCES `data_provider`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`file_format_id`) REFERENCES `file_format`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`balance_data_provider_id`) REFERENCES `data_provider`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`funded_by_budget_account_id`) REFERENCES `budget_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`transfer_partner_budget_account_id`) REFERENCES `budget_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "generatedIdentifier",
+            "columnName": "generated_identifier",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankId",
+            "columnName": "bank_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "providerBankId",
+            "columnName": "provider_bank_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "dataProviderId",
+            "columnName": "data_provider_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fileFormatId",
+            "columnName": "file_format_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "balanceDataProviderId",
+            "columnName": "balance_data_provider_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankAccountType",
+            "columnName": "bank_account_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startDate",
+            "columnName": "start_date",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "providerReference",
+            "columnName": "provider_reference",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bankAccountFingerprint",
+            "columnName": "bank_account_fingerprint",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "balanceProviderReference",
+            "columnName": "balance_provider_reference",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "identifiedAt",
+            "columnName": "identified_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retired",
+            "columnName": "retired",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fundedByBudgetAccountId",
+            "columnName": "funded_by_budget_account_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "transferPartnerBudgetAccountId",
+            "columnName": "transfer_partner_budget_account_id",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_bank_account_generated_identifier",
+            "unique": true,
+            "columnNames": [
+              "generated_identifier"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_bank_account_generated_identifier` ON `${TABLE_NAME}` (`generated_identifier`)"
+          },
+          {
+            "name": "index_bank_account_bank_id",
+            "unique": false,
+            "columnNames": [
+              "bank_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_bank_account_bank_id` ON `${TABLE_NAME}` (`bank_id`)"
+          },
+          {
+            "name": "index_bank_account_provider_bank_id",
+            "unique": false,
+            "columnNames": [
+              "provider_bank_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_bank_account_provider_bank_id` ON `${TABLE_NAME}` (`provider_bank_id`)"
+          },
+          {
+            "name": "index_bank_account_data_provider_id",
+            "unique": false,
+            "columnNames": [
+              "data_provider_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_bank_account_data_provider_id` ON `${TABLE_NAME}` (`data_provider_id`)"
+          },
+          {
+            "name": "index_bank_account_file_format_id",
+            "unique": false,
+            "columnNames": [
+              "file_format_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_bank_account_file_format_id` ON `${TABLE_NAME}` (`file_format_id`)"
+          },
+          {
+            "name": "index_bank_account_balance_data_provider_id",
+            "unique": false,
+            "columnNames": [
+              "balance_data_provider_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_bank_account_balance_data_provider_id` ON `${TABLE_NAME}` (`balance_data_provider_id`)"
+          },
+          {
+            "name": "index_bank_account_funded_by_budget_account_id",
+            "unique": false,
+            "columnNames": [
+              "funded_by_budget_account_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_bank_account_funded_by_budget_account_id` ON `${TABLE_NAME}` (`funded_by_budget_account_id`)"
+          },
+          {
+            "name": "index_bank_account_transfer_partner_budget_account_id",
+            "unique": false,
+            "columnNames": [
+              "transfer_partner_budget_account_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_bank_account_transfer_partner_budget_account_id` ON `${TABLE_NAME}` (`transfer_partner_budget_account_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "bank",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bank_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "bank",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "provider_bank_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "data_provider",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "data_provider_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "file_format",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "file_format_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "data_provider",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "balance_data_provider_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "budget_account",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "funded_by_budget_account_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "budget_account",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "transfer_partner_budget_account_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "account_mapping",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `bank_account_id` INTEGER NOT NULL, `budget_account_id` INTEGER NOT NULL, `first_sent_at` INTEGER, FOREIGN KEY(`bank_account_id`) REFERENCES `bank_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`budget_account_id`) REFERENCES `budget_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankAccountId",
+            "columnName": "bank_account_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "budgetAccountId",
+            "columnName": "budget_account_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstSentAt",
+            "columnName": "first_sent_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_account_mapping_bank_account_id",
+            "unique": true,
+            "columnNames": [
+              "bank_account_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_account_mapping_bank_account_id` ON `${TABLE_NAME}` (`bank_account_id`)"
+          },
+          {
+            "name": "index_account_mapping_budget_account_id",
+            "unique": true,
+            "columnNames": [
+              "budget_account_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_account_mapping_budget_account_id` ON `${TABLE_NAME}` (`budget_account_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "bank_account",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bank_account_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "budget_account",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "budget_account_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "left_out_bank_account",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `data_provider_id` INTEGER NOT NULL, `provider_reference` TEXT NOT NULL, `name` TEXT, `left_out_at` INTEGER NOT NULL, FOREIGN KEY(`data_provider_id`) REFERENCES `data_provider`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataProviderId",
+            "columnName": "data_provider_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "providerReference",
+            "columnName": "provider_reference",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "leftOutAt",
+            "columnName": "left_out_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_left_out_bank_account_data_provider_id_provider_reference",
+            "unique": true,
+            "columnNames": [
+              "data_provider_id",
+              "provider_reference"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_left_out_bank_account_data_provider_id_provider_reference` ON `${TABLE_NAME}` (`data_provider_id`, `provider_reference`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "data_provider",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "data_provider_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "provider_request",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `data_provider_id` INTEGER NOT NULL, `bank_account_id` INTEGER, `request_kind` TEXT NOT NULL, `unattended` INTEGER NOT NULL, `sent_at` INTEGER NOT NULL, FOREIGN KEY(`data_provider_id`) REFERENCES `data_provider`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bank_account_id`) REFERENCES `bank_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataProviderId",
+            "columnName": "data_provider_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankAccountId",
+            "columnName": "bank_account_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "requestKind",
+            "columnName": "request_kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unattended",
+            "columnName": "unattended",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sentAt",
+            "columnName": "sent_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_provider_request_data_provider_id_sent_at",
+            "unique": false,
+            "columnNames": [
+              "data_provider_id",
+              "sent_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_provider_request_data_provider_id_sent_at` ON `${TABLE_NAME}` (`data_provider_id`, `sent_at`)"
+          },
+          {
+            "name": "index_provider_request_bank_account_id",
+            "unique": false,
+            "columnNames": [
+              "bank_account_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_provider_request_bank_account_id` ON `${TABLE_NAME}` (`bank_account_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "data_provider",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "data_provider_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "bank_account",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bank_account_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "fetch",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `data_provider_id` INTEGER NOT NULL, `started_at` INTEGER NOT NULL, `started_by` TEXT NOT NULL, `outcome` TEXT NOT NULL, FOREIGN KEY(`data_provider_id`) REFERENCES `data_provider`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataProviderId",
+            "columnName": "data_provider_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "started_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedBy",
+            "columnName": "started_by",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outcome",
+            "columnName": "outcome",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_fetch_data_provider_id_started_at",
+            "unique": false,
+            "columnNames": [
+              "data_provider_id",
+              "started_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fetch_data_provider_id_started_at` ON `${TABLE_NAME}` (`data_provider_id`, `started_at`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "data_provider",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "data_provider_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "fetch_result",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`fetch_id` INTEGER NOT NULL, `bank_account_id` INTEGER NOT NULL, `outcome` TEXT NOT NULL, `transaction_count` INTEGER NOT NULL, PRIMARY KEY(`fetch_id`, `bank_account_id`), FOREIGN KEY(`fetch_id`) REFERENCES `fetch`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bank_account_id`) REFERENCES `bank_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "fetchId",
+            "columnName": "fetch_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankAccountId",
+            "columnName": "bank_account_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outcome",
+            "columnName": "outcome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transactionCount",
+            "columnName": "transaction_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "fetch_id",
+            "bank_account_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_fetch_result_bank_account_id",
+            "unique": false,
+            "columnNames": [
+              "bank_account_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fetch_result_bank_account_id` ON `${TABLE_NAME}` (`bank_account_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "fetch",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "fetch_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "bank_account",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bank_account_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "back_off",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `data_provider_id` INTEGER NOT NULL, `bank_id` INTEGER, `cause` TEXT NOT NULL, `starts_at` INTEGER NOT NULL, `ends_at` INTEGER NOT NULL, FOREIGN KEY(`data_provider_id`) REFERENCES `data_provider`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bank_id`) REFERENCES `bank`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataProviderId",
+            "columnName": "data_provider_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankId",
+            "columnName": "bank_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "cause",
+            "columnName": "cause",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startsAt",
+            "columnName": "starts_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endsAt",
+            "columnName": "ends_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_back_off_data_provider_id",
+            "unique": false,
+            "columnNames": [
+              "data_provider_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_back_off_data_provider_id` ON `${TABLE_NAME}` (`data_provider_id`)"
+          },
+          {
+            "name": "index_back_off_bank_id",
+            "unique": false,
+            "columnNames": [
+              "bank_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_back_off_bank_id` ON `${TABLE_NAME}` (`bank_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "data_provider",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "data_provider_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "bank",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bank_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "account_balance",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `bank_account_id` INTEGER NOT NULL, `amount` INTEGER NOT NULL, `currency` TEXT NOT NULL, `reported_at` INTEGER NOT NULL, FOREIGN KEY(`bank_account_id`) REFERENCES `bank_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankAccountId",
+            "columnName": "bank_account_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amount",
+            "columnName": "amount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reportedAt",
+            "columnName": "reported_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_account_balance_bank_account_id",
+            "unique": true,
+            "columnNames": [
+              "bank_account_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_account_balance_bank_account_id` ON `${TABLE_NAME}` (`bank_account_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "bank_account",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bank_account_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "budget_app_transaction",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `budget_account_id` INTEGER NOT NULL, `budget_app_reference` TEXT NOT NULL, `transaction_date` INTEGER NOT NULL, `amount` INTEGER NOT NULL, `payee` TEXT, `memo` TEXT, `import_identifier` TEXT, `entered_by` TEXT NOT NULL, `transfer_link_reference` TEXT, `merged_into_reference` TEXT, `cleared` INTEGER NOT NULL, `approved` INTEGER NOT NULL, `state` TEXT NOT NULL, FOREIGN KEY(`budget_account_id`) REFERENCES `budget_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "budgetAccountId",
+            "columnName": "budget_account_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "budgetAppReference",
+            "columnName": "budget_app_reference",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transactionDate",
+            "columnName": "transaction_date",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amount",
+            "columnName": "amount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payee",
+            "columnName": "payee",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "memo",
+            "columnName": "memo",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "importIdentifier",
+            "columnName": "import_identifier",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "enteredBy",
+            "columnName": "entered_by",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transferLinkReference",
+            "columnName": "transfer_link_reference",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "mergedIntoReference",
+            "columnName": "merged_into_reference",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "cleared",
+            "columnName": "cleared",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "approved",
+            "columnName": "approved",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_budget_app_transaction_budget_app_reference",
+            "unique": true,
+            "columnNames": [
+              "budget_app_reference"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_budget_app_transaction_budget_app_reference` ON `${TABLE_NAME}` (`budget_app_reference`)"
+          },
+          {
+            "name": "index_budget_app_transaction_budget_account_id",
+            "unique": false,
+            "columnNames": [
+              "budget_account_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_budget_app_transaction_budget_account_id` ON `${TABLE_NAME}` (`budget_account_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "budget_account",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "budget_account_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "transfer",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `outflow_budget_account_id` INTEGER NOT NULL, `inflow_budget_account_id` INTEGER NOT NULL, `amount` INTEGER NOT NULL, `transfer_type` TEXT NOT NULL, `guessed` INTEGER NOT NULL, `decision` TEXT NOT NULL, `decided_at` INTEGER, FOREIGN KEY(`outflow_budget_account_id`) REFERENCES `budget_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`inflow_budget_account_id`) REFERENCES `budget_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outflowBudgetAccountId",
+            "columnName": "outflow_budget_account_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inflowBudgetAccountId",
+            "columnName": "inflow_budget_account_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amount",
+            "columnName": "amount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transferType",
+            "columnName": "transfer_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "guessed",
+            "columnName": "guessed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "decision",
+            "columnName": "decision",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "decidedAt",
+            "columnName": "decided_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_transfer_outflow_budget_account_id",
+            "unique": false,
+            "columnNames": [
+              "outflow_budget_account_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_transfer_outflow_budget_account_id` ON `${TABLE_NAME}` (`outflow_budget_account_id`)"
+          },
+          {
+            "name": "index_transfer_inflow_budget_account_id",
+            "unique": false,
+            "columnNames": [
+              "inflow_budget_account_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_transfer_inflow_budget_account_id` ON `${TABLE_NAME}` (`inflow_budget_account_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "budget_account",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "outflow_budget_account_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "budget_account",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "inflow_budget_account_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "bank_transaction",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `bank_account_id` INTEGER NOT NULL, `stable_reference` TEXT, `reference_kind` TEXT NOT NULL, `occurrence_number` INTEGER NOT NULL, `import_identifier` TEXT NOT NULL, `booked_date` INTEGER NOT NULL, `amount` INTEGER NOT NULL, `currency` TEXT NOT NULL, `payee` TEXT, `memo` TEXT, `first_seen_at` INTEGER NOT NULL, `status` TEXT, `transfer_id` INTEGER, FOREIGN KEY(`bank_account_id`) REFERENCES `bank_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`transfer_id`) REFERENCES `transfer`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankAccountId",
+            "columnName": "bank_account_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stableReference",
+            "columnName": "stable_reference",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "referenceKind",
+            "columnName": "reference_kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "occurrenceNumber",
+            "columnName": "occurrence_number",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "importIdentifier",
+            "columnName": "import_identifier",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bookedDate",
+            "columnName": "booked_date",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amount",
+            "columnName": "amount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payee",
+            "columnName": "payee",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "memo",
+            "columnName": "memo",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "firstSeenAt",
+            "columnName": "first_seen_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "transferId",
+            "columnName": "transfer_id",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_bank_transaction_bank_account_id_import_identifier",
+            "unique": true,
+            "columnNames": [
+              "bank_account_id",
+              "import_identifier"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_bank_transaction_bank_account_id_import_identifier` ON `${TABLE_NAME}` (`bank_account_id`, `import_identifier`)"
+          },
+          {
+            "name": "index_bank_transaction_bank_account_id_stable_reference",
+            "unique": true,
+            "columnNames": [
+              "bank_account_id",
+              "stable_reference"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_bank_transaction_bank_account_id_stable_reference` ON `${TABLE_NAME}` (`bank_account_id`, `stable_reference`)"
+          },
+          {
+            "name": "index_bank_transaction_transfer_id",
+            "unique": false,
+            "columnNames": [
+              "transfer_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_bank_transaction_transfer_id` ON `${TABLE_NAME}` (`transfer_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "bank_account",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bank_account_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "transfer",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "transfer_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "unreadable_transaction",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `bank_account_id` INTEGER NOT NULL, `booked_date` INTEGER, `amount` INTEGER, `currency` TEXT, `payee` TEXT, `memo` TEXT, `reason` TEXT NOT NULL, `first_seen_at` INTEGER NOT NULL, `status` TEXT NOT NULL, FOREIGN KEY(`bank_account_id`) REFERENCES `bank_account`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankAccountId",
+            "columnName": "bank_account_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bookedDate",
+            "columnName": "booked_date",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "amount",
+            "columnName": "amount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "payee",
+            "columnName": "payee",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "memo",
+            "columnName": "memo",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "reason",
+            "columnName": "reason",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstSeenAt",
+            "columnName": "first_seen_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_unreadable_transaction_bank_account_id",
+            "unique": false,
+            "columnNames": [
+              "bank_account_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_unreadable_transaction_bank_account_id` ON `${TABLE_NAME}` (`bank_account_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "bank_account",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bank_account_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "transfer_description",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `kind` TEXT NOT NULL, `text` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "text",
+            "columnName": "text",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "recovery_check",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `cause` TEXT NOT NULL, `opened_at` INTEGER NOT NULL, `compared_at` INTEGER, `confirmed_at` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cause",
+            "columnName": "cause",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "openedAt",
+            "columnName": "opened_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "comparedAt",
+            "columnName": "compared_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "confirmedAt",
+            "columnName": "confirmed_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "coordinator_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `mode` TEXT NOT NULL, `upload_plan_id` INTEGER, `state_version` INTEGER NOT NULL, `scheduled_fetch_deferred` INTEGER NOT NULL, `comparison_pending` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uploadPlanId",
+            "columnName": "upload_plan_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "stateVersion",
+            "columnName": "state_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scheduledFetchDeferred",
+            "columnName": "scheduled_fetch_deferred",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "comparisonPending",
+            "columnName": "comparison_pending",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "budget_read_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`budget_id` INTEGER NOT NULL, `change_cursor` TEXT NOT NULL, PRIMARY KEY(`budget_id`), FOREIGN KEY(`budget_id`) REFERENCES `budget`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "budgetId",
+            "columnName": "budget_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "changeCursor",
+            "columnName": "change_cursor",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "budget_id"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "budget",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "budget_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '47ef3cd52332ff6c37bde5974d9047b6')"
+    ]
+  }
+}

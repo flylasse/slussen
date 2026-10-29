@@ -104,7 +104,7 @@ class SlussenDatabaseMigrationTest {
         (1 until current).forEach { from -> SlussenMigrations.ALL.single { it.startVersion == from }.migrate(connection) }
 
         assertEquals(before, everything().filterKeys { it in version1Tables })
-        assertEquals(setOf("left_out_bank_account", "account_balance", "fetch_result") + newInVersion4, everything().keys - version1Tables.toSet())
+        assertEquals(setOf("left_out_bank_account", "account_balance", "fetch_result") + newInVersion4 + newInVersion5, everything().keys - version1Tables.toSet())
         assertEquals(defaultDescriptions, query("SELECT kind, text FROM transfer_description ORDER BY id"))
         val validation = RoomSchemas.openDelegateOf(SlussenDatabase::class).onValidateSchema(connection)
         assertTrue(validation.isValid, validation.expectedFoundMsg)
@@ -130,7 +130,7 @@ class SlussenDatabaseMigrationTest {
         (2 until current).forEach { from -> SlussenMigrations.ALL.single { it.startVersion == from }.migrate(connection) }
 
         assertEquals(before, everything().filterKeys { it in version2Tables })
-        assertEquals(setOf("account_balance", "fetch_result") + newInVersion4, everything().keys - version2Tables.toSet())
+        assertEquals(setOf("account_balance", "fetch_result") + newInVersion4 + newInVersion5, everything().keys - version2Tables.toSet())
         assertEquals(defaultDescriptions, query("SELECT kind, text FROM transfer_description ORDER BY id"))
         val validation = RoomSchemas.openDelegateOf(SlussenDatabase::class).onValidateSchema(connection)
         assertTrue(validation.isValid, validation.expectedFoundMsg)
@@ -182,6 +182,9 @@ class SlussenDatabaseMigrationTest {
         assertEquals(listOf(listOf("1", "1", "Fetched", "0")), query("SELECT * FROM fetch_result"))
     }
 
+    /** The table version 5 adds (ADR-002 §2; transactions plan Phase 7a). */
+    private val newInVersion5 = setOf("budget_read_state")
+
     /** The tables version 4 adds (ADR-002 §1, §2; transactions plan Phase 5). */
     private val newInVersion4 = setOf("budget_app_transaction", "transfer", "bank_transaction", "unreadable_transaction", "transfer_description")
 
@@ -219,7 +222,7 @@ class SlussenDatabaseMigrationTest {
         (3 until current).forEach { from -> migrationFrom(from).migrate(connection) }
 
         assertEquals(before, everything().filterKeys { it in version3Tables })
-        assertEquals(newInVersion4, everything().keys - version3Tables.toSet())
+        assertEquals(newInVersion4 + newInVersion5, everything().keys - version3Tables.toSet())
         assertEquals(defaultDescriptions, query("SELECT kind, text FROM transfer_description ORDER BY id"))
         (newInVersion4 - "transfer_description").forEach { table -> assertEquals(listOf(listOf("0")), query("SELECT COUNT(*) FROM `$table`"), table) }
         val validation = RoomSchemas.openDelegateOf(SlussenDatabase::class).onValidateSchema(connection)
@@ -305,6 +308,77 @@ class SlussenDatabaseMigrationTest {
         assertEquals(listOf(listOf("1", "No amount", "Needs Review")), query("SELECT bank_account_id, reason, status FROM unreadable_transaction"))
         assertEquals(listOf(listOf("1", "ynab-tx-0001")), query("SELECT budget_account_id, budget_app_reference FROM budget_app_transaction"))
         assertTrue(query("PRAGMA foreign_key_check").isEmpty())
+    }
+
+    /**
+     * Invented rows in every table of version 4: those of version 3, a Budget App Transaction, a Transfer, a Bank
+     * Transaction (one with a Transaction Status, one not compared yet) and an Unreadable Transaction (transactions plan
+     * Phase 5); `transfer_description` holds the default lists from the Migration 3 to 4.
+     */
+    private fun inventedVersion4Data() {
+        inventedVersion3Data()
+        listOf(
+            "INSERT INTO budget_app_transaction VALUES (1, 1, 'ynab-tx-0001', 20375, -42500, 'Corner Grocer', 'PLANTED-MEMO', " +
+                "'YNAB:-42500:2026-10-14:1', 'Other Import Path', NULL, NULL, 1, 0, 'Present')",
+            "INSERT INTO transfer VALUES (1, 1, 2, 150000, 'Bank Transfer', 0, 'Proposed', NULL)",
+            "INSERT INTO bank_transaction VALUES (1, 1, 'TX-0001', 'Supplied', 1, 'SLS1-aaaaaaaaaaaaaaaaaaaaaaaaaa', 20375, -42500, 'USD', " +
+                "'Corner Grocer', NULL, 1760533200000, 'New', NULL)",
+            "INSERT INTO bank_transaction VALUES (2, 1, NULL, 'None', 1, 'SLS1-bbbbbbbbbbbbbbbbbbbbbbbbbb', 20376, -1500, 'USD', " +
+                "NULL, NULL, 1760533200000, NULL, 1)",
+            "INSERT INTO unreadable_transaction VALUES (1, 1, NULL, NULL, NULL, 'Harbor Fuel', NULL, 'date missing', 1760533200000, 'Needs Review')",
+        ).forEach(connection::execSQL)
+    }
+
+    @Test
+    @DisplayName("NFR-017: slussen.db created at version 4 with rows in every table and migrated to the current version keeps every row and value, and adds budget_read_state empty, so the next read of each Budget is its first (UC-003 BR-016; ADR-002 §7)")
+    fun version4MigratesToTheCurrentVersionKeepingEveryValue() {
+        create(SlussenDatabase::class.java, 4)
+        connection.execSQL("DELETE FROM transfer_description")
+        SlussenMigrations.INSERT_DEFAULT_TRANSFER_DESCRIPTIONS.forEach(connection::execSQL)
+        inventedVersion4Data()
+        val version4Tables = tables().filter { it != "room_master_table" }
+        assertTrue(version4Tables.all { table -> query("SELECT COUNT(*) FROM `$table`").single().single() != "0" }, "every table holds a row")
+        val before = everything()
+
+        val current = RoomSchemas.currentOf(SlussenDatabase::class).version
+        (4 until current).forEach { from -> migrationFrom(from).migrate(connection) }
+
+        assertEquals(before, everything().filterKeys { it in version4Tables })
+        assertEquals(newInVersion5, everything().keys - version4Tables.toSet())
+        assertEquals(listOf(listOf("0")), query("SELECT COUNT(*) FROM budget_read_state"))
+        val validation = RoomSchemas.openDelegateOf(SlussenDatabase::class).onValidateSchema(connection)
+        assertTrue(validation.isValid, validation.expectedFoundMsg)
+        assertTrue(query("PRAGMA foreign_key_check").isEmpty())
+    }
+
+    @Test
+    @DisplayName("NFR-017: the Migration 4 to 5 creates budget_read_state exactly as the committed version 5 states it")
+    fun migrationSqlIsTheCommittedVersion5() {
+        val schema = File(RoomSchemas.committed, "${SlussenDatabase::class.java.name}/5.json").readText()
+        val expected = newInVersion5.flatMap { table ->
+            val entity = schema.substringAfter("\"tableName\": \"$table\"").substringBefore("\"tableName\"")
+            Regex(""""createSql"\s*:\s*"([^"]*)"""").findAll(entity).map { it.groupValues[1].replace("\${TABLE_NAME}", table) }.toList()
+        }
+
+        assertEquals(expected, (migrationFrom(4) as SlussenMigrations.Statements).statements)
+    }
+
+    @Test
+    @DisplayName("NFR-017: after the Migration 4 to 5 a Budget has at most one read cursor, and only a stored Budget has one (ADR-002 §2; UC-003 BR-020)")
+    fun migratedVersion5TableKeepsItsRules() {
+        create(SlussenDatabase::class.java, 4)
+        connection.execSQL("DELETE FROM transfer_description")
+        inventedVersion4Data()
+        migrationFrom(4).migrate(connection)
+        connection.execSQL("PRAGMA foreign_keys = ON")
+        connection.execSQL("INSERT INTO budget_read_state (budget_id, change_cursor) VALUES (1, '4182')")
+
+        val twice = runCatching { connection.execSQL("INSERT INTO budget_read_state (budget_id, change_cursor) VALUES (1, '4183')") }
+        val noBudget = runCatching { connection.execSQL("INSERT INTO budget_read_state (budget_id, change_cursor) VALUES (9, '1')") }
+
+        assertTrue(twice.isFailure)
+        assertTrue(noBudget.isFailure)
+        assertEquals(listOf(listOf("1", "4182")), query("SELECT budget_id, change_cursor FROM budget_read_state"))
     }
 
     @Test

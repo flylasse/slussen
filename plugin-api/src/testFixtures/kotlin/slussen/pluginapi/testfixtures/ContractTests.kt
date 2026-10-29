@@ -15,7 +15,12 @@ import org.junit.jupiter.api.Test
 import slussen.pluginapi.budgetapp.BudgetApp
 import slussen.pluginapi.budgetapp.BudgetAppReader
 import slussen.pluginapi.budgetapp.BudgetRead
+import slussen.pluginapi.budgetapp.ChangeCursor
+import slussen.pluginapi.budgetapp.ChangeSet
+import slussen.pluginapi.budgetapp.EntryKind
 import slussen.pluginapi.budgetapp.ReadResult
+import slussen.pluginapi.budgetapp.ReadState
+import slussen.pluginapi.budgetapp.TransferLink
 import slussen.pluginapi.credential.CredentialCapability
 import slussen.pluginapi.credential.CredentialCheck
 import slussen.pluginapi.credential.CredentialInput
@@ -33,10 +38,12 @@ import slussen.pluginapi.provider.UnreadableReason
 import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.request.RefusalReason
+import slussen.pluginapi.request.RequestKind
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.Secret
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 
 /** One credential check the contract tests run: the capability under test and what the Operator entered. */
 public class CredentialScenario(
@@ -598,9 +605,19 @@ public abstract class DataProviderFetchContractTest : DataProviderContractTest()
     }
 }
 
+/** One read of changes the contract tests run: the reader under test, the stored credential, and what it is asked. */
+public class ChangesScenario(
+    public val reader: BudgetAppReader,
+    public val credential: Secret,
+    public val budgetReference: String,
+    public val since: ChangeCursor?,
+    public val from: LocalDate,
+)
+
 /**
- * The Budget App contract test of ADR-001 §4.4: the credential checks of §4.5, the length check of ADR-008 §6 and the
- * reading of Budgets of §4.2.3. F-1 to F-8 come with the slices that build UC-003 and UC-006.
+ * The Budget App contract test of ADR-001 §4.4: the credential checks of §4.5, the length check of ADR-008 §6, the
+ * reading of Budgets and of changes of §4.2.3 (F-3, F-4, F-8). F-1, F-2, F-5 and F-7 come with the slice that builds
+ * UC-006.
  */
 public abstract class BudgetAppContractTest : CredentialContractTest() {
     protected abstract fun budgetApp(log: SlussenLog): BudgetApp
@@ -694,6 +711,123 @@ public abstract class BudgetAppContractTest : CredentialContractTest() {
     public fun gateRefusedReadSendsNothing() {
         val scenario = budgetsAnswered()
         val result = read(scenario, TestRequestContext(RecordingRequestGate.refusing(), credential = scenario.credential))
+        assertTrue(result is ReadResult.StoppedByGate, "was $result")
+        assertEquals(0, requestsReceived())
+    }
+
+    /**
+     * The Budget App answers a read of changes with the recorded answer of [expectedChanges]: a transaction entered by
+     * hand, an Import, a deletion, a merge, two linked transfers alike in amount and date with both their sides, and
+     * transactions that are Cleared and approved and that are not (F-3, F-4). Each call serves the answer once more.
+     */
+    protected abstract fun changesAnswered(): ChangesScenario
+
+    /** What [changesAnswered] must return, from the same recorded answer. */
+    protected abstract fun expectedChanges(): ChangeSet
+
+    /** The Budget App answers a read of changes that the stored credential is not valid. */
+    protected abstract fun changesCredentialRefused(): ChangesScenario
+
+    /** The Budget App answers a read of changes that it is unavailable. */
+    protected abstract fun changesUnavailable(): ChangesScenario
+
+    /** The Budget App accepts the connection of a read of changes and never answers. */
+    protected abstract fun changesNeverAnswering(): ChangesScenario
+
+    private fun readChanges(scenario: ChangesScenario, context: TestRequestContext): ReadResult<ChangeSet> =
+        runBlocking(Dispatchers.Default) { scenario.reader.readChanges(scenario.budgetReference, scenario.since, scenario.from, context) }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-016", "BR-020"])
+    @DisplayName("ADR-001 §4.2.1 F-3, F-4: readChanges returns every changed transaction with every field and the next cursor, every request admitted by the gate first")
+    public fun changesAreReadWithEveryField() {
+        val gate = RecordingRequestGate()
+        val scenario = changesAnswered()
+        val result = readChanges(scenario, TestRequestContext(gate, credential = scenario.credential))
+        assertEquals(ReadResult.Answered(expectedChanges()), result)
+        assertTrue(requestsReceived() >= 1)
+        assertEquals(requestsReceived(), gate.requests.size, "every request is admitted by the gate first")
+        assertTrue(gate.requests.all { it.kind == RequestKind.BudgetAppRead }, "a read is admitted as a Budget App read")
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-004", "BR-005", "BR-020"])
+    @DisplayName("ADR-001 §4.4, F-4: the recorded answer holds every entry kind, a deletion, a merge with the transaction it went into, and Cleared and approved both ways, and each comes back as the plug-in decides it")
+    public fun changesCoverEveryKindAndState() {
+        val transactions = expectedChanges().transactions
+        assertEquals(EntryKind.entries.toSet(), transactions.map { it.entry }.toSet(), "every entry kind")
+        assertTrue(transactions.any { it.state == ReadState.Deleted }, "a deletion")
+        val merged = transactions.mapNotNull { it.state as? ReadState.Merged }
+        assertTrue(merged.isNotEmpty(), "a merge")
+        merged.forEach { into -> assertTrue(transactions.any { it.reference == into.intoReference }, "merged into ${into.intoReference}") }
+        assertEquals(setOf(true, false), transactions.map { it.cleared }.toSet(), "Cleared and not")
+        assertEquals(setOf(true, false), transactions.map { it.approved }.toSet(), "approved and not")
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-020"])
+    @DisplayName("ADR-001 §4.4, F-4: both sides of a linked transfer carry each other's references, and two look-alike Transfers stay apart")
+    public fun linkedTransferSidesCarryEachOther() {
+        val scenario = changesAnswered()
+        val read = (readChanges(scenario, TestRequestContext(credential = scenario.credential)) as ReadResult.Answered).value.transactions
+        val linked = read.filter { it.transferLink != null }
+        assertTrue(linked.size >= 4, "two linked transfers with both sides")
+        linked.forEach { side ->
+            val link = side.transferLink!!
+            val other = read.single { it.reference == link.transactionReference }
+            assertEquals(link.budgetAccountReference, other.budgetAccountReference, "${side.reference} names the other side's Budget Account")
+            assertEquals(TransferLink(side.reference, side.budgetAccountReference), other.transferLink, "${other.reference} links back")
+        }
+        val alike = linked.groupBy { Triple(it.budgetAccountReference, it.date, it.amount) }.filterValues { it.size >= 2 }
+        assertTrue(alike.isNotEmpty(), "two Transfers alike in Budget Account, date and amount")
+        alike.values.forEach { sides -> assertEquals(sides.size, sides.map { it.transferLink }.toSet().size, "look-alike Transfers stay apart") }
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-016"])
+    @DisplayName("ADR-001 §4.2.1 F-3: reading again from the same cursor returns at least the same changes, so applying them twice changes nothing")
+    public fun readingAgainReturnsAtLeastTheSameChanges() {
+        val first = changesAnswered()
+        val once = (readChanges(first, TestRequestContext(credential = first.credential)) as ReadResult.Answered).value
+        val again = changesAnswered()
+        val twice = (readChanges(again, TestRequestContext(credential = again.credential)) as ReadResult.Answered).value
+        assertTrue(twice.transactions.containsAll(once.transactions), "the second read misses changes of the first")
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A2: Budget App Refuses Slussen's Credentials")
+    @DisplayName("ADR-001 §4.2.1 F-8: refused credentials of a read of changes are a typed result")
+    public fun refusedCredentialsOfChangesAreTyped() {
+        val scenario = changesCredentialRefused()
+        assertEquals(ReadResult.CredentialsRefused, readChanges(scenario, TestRequestContext(credential = scenario.credential)))
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read")
+    @DisplayName("ADR-001 §4.2.3: an unavailable Budget App is a TransientFailure of the read of changes")
+    public fun unavailableChangesAreATransientFailure() {
+        val scenario = changesUnavailable()
+        val result = readChanges(scenario, TestRequestContext(credential = scenario.credential))
+        assertTrue(result is ReadResult.TransientFailure, "was $result")
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read", requirements = ["NFR-016"])
+    @DisplayName("NFR-016, ADR-001 §4.0: a read of changes the Budget App never answers ends in TransientFailure(Timeout) within the request timeout")
+    public fun neverAnsweredChangesTimeOut() {
+        val scenario = changesNeverAnswering()
+        val started = System.nanoTime()
+        val result = readChanges(scenario, TestRequestContext(timeout = shortTimeout, credential = scenario.credential))
+        val elapsed = Duration.ofNanos(System.nanoTime() - started)
+        assertEquals(ReadResult.TransientFailure(FailureKind.Timeout), result)
+        assertTrue(elapsed < shortTimeout.plus(slack), "took $elapsed")
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.0: a read of changes refused by the gate sends nothing")
+    public fun gateRefusedChangesSendNothing() {
+        val scenario = changesAnswered()
+        val result = readChanges(scenario, TestRequestContext(RecordingRequestGate.refusing(), credential = scenario.credential))
         assertTrue(result is ReadResult.StoppedByGate, "was $result")
         assertEquals(0, requestsReceived())
     }

@@ -19,7 +19,9 @@ import java.time.LocalDate
  * the hand-written [SlussenMigrations.MIGRATION_1_2]; version 3 adds `account_balance` and `fetch_result` (UC-001 steps
  * 8, 11; Phase 8f) with [SlussenMigrations.MIGRATION_2_3]; version 4 adds `budget_app_transaction`, `transfer`,
  * `bank_transaction`, `unreadable_transaction` and `transfer_description` (transactions plan Phase 5) with
- * [SlussenMigrations.MIGRATION_3_4], which fills the default Description lists. Every later schema change, also a table a
+ * [SlussenMigrations.MIGRATION_3_4], which fills the default Description lists; version 5 adds the technical table
+ * `budget_read_state` with the Budget App read cursor (ADR-002 §2; transactions plan Phase 7a) with
+ * [SlussenMigrations.MIGRATION_4_5]. Every later schema change, also a table a
  * later slice adds, raises the version by one, commits its schema file and adds a Migration from the version before.
  */
 @Database(
@@ -45,8 +47,9 @@ import java.time.LocalDate
         TransferDescriptionEntity::class,
         FirstUploadMatchingEntity::class,
         CoordinatorStateEntity::class,
+        BudgetReadStateEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(StorageConverters::class)
@@ -64,6 +67,8 @@ abstract class SlussenDatabase : RoomDatabase() {
     abstract fun firstUploadMatching(): FirstUploadMatchingDao
 
     abstract fun coordinator(): CoordinatorDao
+
+    abstract fun budgetAppCopy(): BudgetAppCopyDao
 }
 
 /** `OPERATOR_SETTINGS` (entity model): exactly one record. Ranges and defaults are rules of the core. */
@@ -472,3 +477,17 @@ data class CoordinatorStateEntity(
         const val SINGLE_RECORD = 1L
     }
 }
+
+/**
+ * The technical table `budget_read_state` of ADR-002 §2: the opaque `ChangeCursor` of ADR-001 §4.2.3 of one Budget, which
+ * lets every later read take all changes since the previous read (UC-003 BR-016). Written only by O-4, together with the
+ * copy it read (BR-020).
+ */
+@Entity(
+    tableName = "budget_read_state",
+    foreignKeys = [ForeignKey(entity = BudgetEntity::class, parentColumns = ["id"], childColumns = ["budget_id"])],
+)
+data class BudgetReadStateEntity(
+    @PrimaryKey @ColumnInfo(name = "budget_id") val budgetId: Long,
+    @ColumnInfo(name = "change_cursor") val changeCursor: String,
+)

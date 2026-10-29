@@ -12,6 +12,7 @@ import slussen.core.port.AddOutcome
 import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
 import slussen.core.port.BudgetAccountToStore
+import slussen.core.port.BudgetAppCopyStore
 import slussen.core.port.BudgetToServe
 import slussen.core.port.ConnectionStore
 import slussen.core.port.JournalEventKind
@@ -44,6 +45,7 @@ class BudgetsAndBankAccounts(
     private val credentials: ServiceCredentials,
     private val store: ConnectionStore,
     private val offered: OfferedBankAccountStore,
+    private val copies: BudgetAppCopyStore,
     private val coordinator: OperationCoordinator,
     private val journal: DecisionJournal,
     private val random: RandomSource,
@@ -87,6 +89,16 @@ class BudgetsAndBankAccounts(
         }
     }
 
+    /** The stored, served Budgets among [chosen] that [toServe] lists with a Budget Account Slussen does not hold yet. */
+    private suspend fun gainingBudgetAccounts(toServe: List<BudgetToServe>, chosen: Set<String>): List<Long> {
+        val stored = store.budgets().filter { it.served }.associateBy { it.budgetAppReference }
+        return toServe.filter { it.budgetAppReference in chosen }.mapNotNull { listed ->
+            val budget = stored[listed.budgetAppReference] ?: return@mapNotNull null
+            val held = budget.budgetAccounts.map { it.budgetAppReference }.toSet()
+            budget.id.takeIf { listed.budgetAccounts.any { it.budgetAppReference !in held } }
+        }
+    }
+
     suspend fun chooseBudgets(listed: List<ListedBudget>, chosen: Set<String>): BudgetChoice {
         val result = coordinator.run(OperationKind.BudgetAndBankAccountChange, StartedBy.Operator) {
             stillMapped(chosen)?.let { return@run it }
@@ -98,6 +110,8 @@ class BudgetsAndBankAccounts(
                     budget.budgetAccounts.map { BudgetAccountToStore(it.budgetAppReference, it.name, it.balance) },
                 )
             }
+            // UC-003 BR-016: A served Budget that gains a Budget Account is read again over the read period (S-T-18); the cursor is forgotten first, so that a stop in between costs one more read, never a lost transaction.
+            gainingBudgetAccounts(toServe, chosen).forEach { copies.forgetCursor(it) }
             // UC-013 BR-001: Slussen serves only the Budgets the Operator chose from those the Budget App lists.
             when (val outcome = store.serveBudgets(toServe, chosen, clock.instant())) {
                 ServeOutcome.Served -> {

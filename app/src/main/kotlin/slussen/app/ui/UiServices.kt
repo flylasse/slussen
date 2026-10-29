@@ -2,6 +2,7 @@ package slussen.app.ui
 
 import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.ServiceCredentials
+import slussen.core.comparison.Comparison
 import slussen.core.fetch.FetchTransactions
 import kotlinx.coroutines.flow.StateFlow
 import slussen.core.mapping.AccountMappings
@@ -22,6 +23,8 @@ class UiServices(
     val mappings: AccountMappings,
     val status: ImportStatus,
     val fetch: FetchTransactions,
+    /** Reading the Budget App again and comparing (UC-003); its screens come with the transactions plan's Phase 7c. */
+    val comparison: Comparison,
     val formats: Formats,
     val clock: java.time.Clock,
     /** The version of the build the Operator runs, shown on Settings (UC-010 BR-011). */

@@ -31,6 +31,7 @@ import slussen.core.port.StoredLeftOutBankAccount
 import slussen.core.port.StoredUnreadableTransaction
 import slussen.core.port.StableReferenceKind
 import slussen.core.port.UnreadableTransactionStatus
+import slussen.core.port.JournalEntry
 import slussen.core.port.JournalEventKind
 import slussen.core.fetch.BalanceInOtherCurrency
 import slussen.core.identity.ImportIdentifierInput
@@ -50,6 +51,7 @@ import slussen.pluginapi.provider.NotReadCause
 import slussen.pluginapi.provider.OperatorPresence
 import slussen.pluginapi.provider.ReadKind
 import slussen.pluginapi.provider.SourceOutcome
+import slussen.pluginapi.budgetapp.ReadResult
 import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.BankAccountNumber
@@ -86,7 +88,8 @@ import java.time.Duration
  * balance, the identification of the Bank Accounts the Operator added (step 6, A18, BR-011), the Fetch record with its
  * outcome (step 11, A1-A3, A6, A7) and the Fetch of several Data Providers (A11, BR-010); since Phase 8f also the Account
  * Balance (step 8, BR-011) and the Fetch Result (step 11, A2, A5, A8) of each Bank Account a Fetch reads, stored by O-1.
- * The Bank Transactions (steps 7-10), the Comparison and the Scheduled Fetch come with later slices.
+ * Since the transactions plan's Phase 6a the Bank Transactions and Unreadable Transactions (steps 7-9) and since Phase 7a
+ * the Comparison that follows (step 10, tested with UC-003); the Scheduled Fetch comes with a later slice.
  */
 @DisplayName("UC-001: Fetch Transactions")
 class UC001FetchTransactionsTest {
@@ -1476,6 +1479,9 @@ class UC001FetchTransactionsTest {
 
     private suspend fun storedUnreadable(bankAccountId: Long) = slice.importStatusStore.unreadableTransactionsOf(bankAccountId)
 
+    /** The Decision Journal entries of step 9 among [entries]; the Comparison of step 10 records its own (UC-003 step 6). */
+    private fun stepNine(entries: List<JournalEntry>) = entries.filterNot { it.details.startsWith("Transaction Status changed") }
+
     private fun r(reference: String) = ImportIdentifierProtocol.importIdentifier(ImportIdentifierInput.WithStableReference("example-feeds", reference))
 
     private val oct14: LocalDate = LocalDate.of(2026, 10, 14)
@@ -1517,11 +1523,12 @@ class UC001FetchTransactionsTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario", requirements = ["NFR-020"])
-    @DisplayName("Step 8, UC-003 BR-002 (S-T-08): a Bank Transaction is stored with its Import Identifier from the Source Key and the Stable Reference, occurrence_number 1, the reference as Supplied, the time first received, the content as delivered, and no Transaction Status until a Comparison")
+    @DisplayName("Step 8, UC-003 BR-002 (S-T-08): a Bank Transaction is stored with its Import Identifier from the Source Key and the Stable Reference, occurrence_number 1, the reference as Supplied, the time first received, the content as delivered, and no Transaction Status until a Comparison has read its Budget (here the Budget App cannot be read, UC-003 A1)")
     fun bankTransactionIsStoredWithItsImportIdentifier() = runTest {
         ready()
         val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
         answerChecking(tx("TX-1", oct14, amount(-64, 180), payee = "Corner Grocer", memo = "card 0042"))
+        slice.budgetApp.reader.changesAnswer = { ReadResult.TransientFailure(FailureKind.Timeout) }
         val receivedAt = slice.clock.instant()
 
         fetchFeeds()
@@ -1605,7 +1612,7 @@ class UC001FetchTransactionsTest {
         val before = slice.journalRecorder.entries.size
         fetchFeeds()
 
-        val firstTime = slice.journalRecorder.entries.drop(before)
+        val firstTime = stepNine(slice.journalRecorder.entries.drop(before))
         assertEquals(listOf(JournalEventKind.TransactionSeen, JournalEventKind.TransactionSeen), firstTime.map { it.eventKind })
         assertEquals(listOf(r("TX-1"), r("TX-2")), firstTime.map { it.importIdentifier })
         assertTrue(firstTime.all { it.bankAccountName == "Kestrel Checking" })
@@ -1615,7 +1622,7 @@ class UC001FetchTransactionsTest {
         answerChecking(tx("TX-1", oct14, amount(-64, 180), payee = "Corner Grocer Ltd"), tx("TX-2", oct14, amount(-5)))
         fetchFeedsLater()
 
-        val changed = slice.journalRecorder.entries.drop(beforeSecond).single()
+        val changed = stepNine(slice.journalRecorder.entries.drop(beforeSecond)).single()
         assertEquals(JournalEventKind.TransactionChanged, changed.eventKind)
         assertEquals(r("TX-1"), changed.importIdentifier)
         assertEquals("Kestrel Checking", changed.bankAccountName)
@@ -1633,7 +1640,7 @@ class UC001FetchTransactionsTest {
 
         fetchFeeds()
 
-        val entries = slice.journalRecorder.entries.drop(before)
+        val entries = stepNine(slice.journalRecorder.entries.drop(before))
         assertEquals(1, entries.size)
         listOf("PLANTED", "acct-4410", "CHK").forEach { planted -> assertTrue(entries.none { planted in it.toString() }, planted) }
 
@@ -1782,7 +1789,7 @@ class UC001FetchTransactionsTest {
         assertEquals("Import Identifier collision", collided.reason)
         assertEquals(amount(-5), collided.amount)
         assertEquals(UnreadableTransactionStatus.NeedsReview, collided.status)
-        val entries = planted.journalRecorder.entries.drop(before)
+        val entries = stepNine(planted.journalRecorder.entries.drop(before))
         assertEquals(listOf(JournalEventKind.TransactionSeen, JournalEventKind.StatusChanged), entries.map { it.eventKind })
         assertEquals(stored.importIdentifier, entries.last().importIdentifier)
         assertEquals("Kestrel Checking", entries.last().bankAccountName)

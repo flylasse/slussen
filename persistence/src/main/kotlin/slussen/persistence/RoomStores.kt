@@ -1,5 +1,6 @@
 package slussen.persistence
 
+import slussen.core.comparison.EligibleTransactions
 import slussen.core.identity.ImportIdentifierInput
 import slussen.core.identity.ImportIdentifierProtocol
 import slussen.core.port.AddOutcome
@@ -524,11 +525,12 @@ class RoomFetchStore(
 
 /**
  * The import status data of UC-001, UC-002, UC-003 and UC-007. The Fetches with their Fetch Results, the Account
- * Balances and the Back-offs of UC-001 are read from `fetch`, `fetch_result`, `account_balance` and `back_off`; the other
- * tables (`transaction_file`, `bank_transaction`, `bank_consent`) come with the slices that build those use cases
- * (ADR-002 §1), and until then each of their reads is empty.
+ * Balances and the Back-offs of UC-001 are read from `fetch`, `fetch_result`, `account_balance` and `back_off`, the
+ * counts of UC-003 from the Transaction Statuses in `bank_transaction` and `unreadable_transaction`; the other tables
+ * (`transaction_file`, `bank_consent`) come with the slices that build those use cases (ADR-002 §1), and until then each
+ * of their reads is empty.
  */
-class RoomImportStatusStore(private val fetches: FetchDao) : ImportStatusStore {
+class RoomImportStatusStore(private val fetches: FetchDao, private val connections: RoomConnectionStore) : ImportStatusStore {
     override suspend fun recentFetches(): List<StoredFetch> = withResults(fetches.recent(), fetches.results())
 
     override suspend fun accountBalances(): List<StoredAccountBalance> = fetches.balances().map {
@@ -541,5 +543,17 @@ class RoomImportStatusStore(private val fetches: FetchDao) : ImportStatusStore {
 
     override suspend fun latestTransactionFiles(): List<StoredTransactionFile> = emptyList()
 
-    override suspend fun transactionCounts(): List<StoredTransactionCounts> = emptyList()
+    /** UC-003 BR-014, UC-008 BR-003: the counts the core's rules give each Bank Account's stored transactions. */
+    override suspend fun transactionCounts(): List<StoredTransactionCounts> {
+        val budgets = connections.budgets()
+        return connections.bankAccounts().map { account ->
+            val budget = budgets.firstOrNull { budget -> budget.budgetAccounts.any { it.id == account.mapping?.budgetAccountId } }
+            EligibleTransactions.countsOf(
+                account,
+                budget,
+                fetches.bankTransactionsOf(account.id).map { it.stored() },
+                fetches.unreadableTransactionsOf(account.id).map { it.stored() },
+            )
+        }
+    }
 }
