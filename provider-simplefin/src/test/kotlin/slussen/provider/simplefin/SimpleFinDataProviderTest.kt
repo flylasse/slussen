@@ -28,6 +28,7 @@ import slussen.pluginapi.testfixtures.DeviceRefusal
 import slussen.pluginapi.testfixtures.FetchScenario
 import slussen.pluginapi.testfixtures.RecordedFetch
 import slussen.pluginapi.testfixtures.RecordedListedBalances
+import slussen.pluginapi.testfixtures.RecordedProviderErrors
 import slussen.pluginapi.testfixtures.RecordingRequestThreads
 import slussen.pluginapi.testfixtures.RecordingRequestGate
 import slussen.pluginapi.testfixtures.TestRequestContext
@@ -38,6 +39,7 @@ import slussen.pluginapi.provider.BankAccountResult
 import slussen.pluginapi.provider.BankAccountSelection
 import slussen.pluginapi.provider.BankAccountToRead
 import slussen.pluginapi.provider.FetchRequest
+import slussen.pluginapi.provider.FetchResponse
 import slussen.pluginapi.provider.NotReadCause
 import slussen.pluginapi.provider.OperatorPresence
 import slussen.pluginapi.provider.ProviderTransaction
@@ -234,7 +236,7 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
              {"id": "TRN-5", "posted": ${epoch("2026-10-13T12:00:00Z")}, "amount": "lots", "description": "Bad amount"}
            ]},
           {"id": "ACT-1182", "name": "Pinecrest Rewards Visa", "conn_id": "CON-PINE-02", "currency": "USD", "balance": "-1268.40",
-           "balance-date": ${epoch("2026-10-15T06:00:00Z")},
+           "balance-date": ${epoch("2026-10-14T22:15:00Z")},
            "transactions": [
              {"id": " TRN-Opaque-6 ", "posted": ${epoch("2026-10-12T23:30:00Z")}, "amount": "-49.99", "description": "Fuel Stop Inc pump 4",
               "extra": {"category": "fuel"}}
@@ -258,6 +260,13 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
         bankAccounts = listOf("ACT-4410", "ACT-1182", "ACT-7731"),
         itemsPerBankAccount = mapOf("ACT-4410" to 5, "ACT-1182" to 1),
         uninterpretable = 2,
+        pending = 1,
+        zeroAmount = 1,
+        withoutDate = 1,
+        balanceReportedAt = mapOf(
+            "ACT-4410" to Instant.parse("2026-10-15T06:00:00Z"),
+            "ACT-1182" to Instant.parse("2026-10-14T22:15:00Z"),
+        ),
     )
 
     /** The core's request since O-P2-54: one added account, for its balance only. */
@@ -283,6 +292,134 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
         request(readBoth),
         Secret("https://$PLANTED_USER:$PLANTED_PASSWORD@bridge.invalid/simplefin"),
     )
+
+    /**
+     * An invented Account Set of protocol version 2 with an `errlist` (S-T-03): the connection of Kestrel needs the
+     * Bank's sign-in (`con.auth`), one Harbor account failed (`act.failed`); Pinecrest and the other Harbor account are
+     * read as usual. Each error carries an invented text that must not leave the plug-in.
+     */
+    private fun accountSetWithErrors(errlist: String = """
+        [{"code": "con.auth", "msg": "$SIGN_IN_TEXT", "conn_id": "CON-KESTREL-01"},
+         {"code": "act.failed", "msg": "$FAILED_TEXT", "account_id": "ACT-5520"}]
+    """): String = """
+        {"errlist": $errlist,
+         "connections": [
+          {"conn_id": "CON-KESTREL-01", "name": "Kestrel Bank - Joint", "org_id": "ORG-KESTREL", "org_name": "Kestrel Bank", "sfin_url": "https://bridge.invalid/simplefin"},
+          {"conn_id": "CON-PINE-02", "name": "Pinecrest Card Services", "org_id": "ORG-PINE", "sfin_url": "https://bridge.invalid/simplefin"},
+          {"conn_id": "CON-HARBOR-03", "name": "Harbor Credit Union", "org_id": "ORG-HARBOR", "sfin_url": "https://bridge.invalid/simplefin"}
+         ],
+         "accounts": [
+          {"id": "ACT-4410", "name": "CHK", "conn_id": "CON-KESTREL-01", "currency": "USD", "balance": "4140.05",
+           "balance-date": ${epoch("2026-10-15T06:00:00Z")},
+           "transactions": [{"id": "TRN-1", "posted": ${epoch("2026-10-14T12:00:00Z")}, "amount": "-12.34", "description": "Corner Grocer"}]},
+          {"id": "ACT-7731", "name": "Reserve Saver", "conn_id": "CON-KESTREL-01", "currency": "USD", "balance": "12000.00",
+           "balance-date": ${epoch("2026-10-15T06:00:00Z")}, "transactions": []},
+          {"id": "ACT-1182", "name": "Pinecrest Rewards Visa", "conn_id": "CON-PINE-02", "currency": "USD", "balance": "-1268.40",
+           "balance-date": ${epoch("2026-10-15T06:00:00Z")},
+           "transactions": [{"id": "TRN-7", "posted": ${epoch("2026-10-12T23:30:00Z")}, "amount": "-49.99", "description": "Fuel Stop"}]},
+          {"id": "ACT-5520", "name": "Harbor Share Draft", "conn_id": "CON-HARBOR-03", "currency": "USD", "balance": "310.00",
+           "balance-date": ${epoch("2026-10-15T06:00:00Z")},
+           "transactions": [{"id": "TRN-8", "posted": ${epoch("2026-10-13T12:00:00Z")}, "amount": "-20.00", "description": "Harbor Bakery"}]},
+          {"id": "ACT-5521", "name": "Harbor Savings", "conn_id": "CON-HARBOR-03", "currency": "USD", "balance": "900.00",
+           "balance-date": ${epoch("2026-10-15T06:00:00Z")}, "transactions": []}
+         ]}
+    """.trimIndent()
+
+    private val readWithErrors = BankAccountSelection.Selected(
+        listOf("ACT-4410", "ACT-1182", "ACT-5520", "ACT-5521").map { BankAccountToRead(it, ReadKind.TransactionsAndBalance) },
+    )
+
+    override fun fetchWithProviderErrors() = fetching(MockResponse().setBody(accountSetWithErrors()), readWithErrors)
+
+    override fun recordedProviderErrors() = RecordedProviderErrors(
+        // ACT-7731 is listed, not asked for, and of the same connection: SignInNeeded too.
+        signInNeeded = setOf("ACT-4410", "ACT-7731"),
+        failed = mapOf("ACT-5520" to FailureKind.Incomplete),
+        read = setOf("ACT-1182", "ACT-5521"),
+        texts = listOf(SIGN_IN_TEXT, FAILED_TEXT),
+    )
+
+    private fun resultsOf(response: FetchResponse): Map<String, BankAccountResult> =
+        response.bankAccounts.associate { it.providerReference to it.result }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("Step 8 (S-T-04): a read account's balance-date, a Unix time, is the time its balance was reported, also when only balances are read; an account without one carries none")
+    fun balanceDateIsTheTimeOfTheBalance() {
+        val body = """
+            {"errlist": [],
+             "connections": [{"conn_id": "CON-A", "name": "Kestrel Bank", "org_id": "ORG-A", "sfin_url": "https://bridge.invalid/simplefin"}],
+             "accounts": [
+              {"id": "ACT-A", "name": "A", "conn_id": "CON-A", "currency": "USD", "balance": "1.00", "balance-date": ${epoch("2026-10-15T06:30:15Z")}},
+              {"id": "ACT-B", "name": "B", "conn_id": "CON-A", "currency": "USD", "balance": "2.00"}
+             ]}
+        """.trimIndent()
+        val selections = listOf(
+            BankAccountSelection.Selected(listOf("ACT-A", "ACT-B").map { BankAccountToRead(it, ReadKind.TransactionsAndBalance) }),
+            BankAccountSelection.Selected(listOf("ACT-A", "ACT-B").map { BankAccountToRead(it, ReadKind.Balance) }),
+            BankAccountSelection.AllForIdentification(ReadKind.Balance),
+        )
+        selections.forEach { selection ->
+            val results = resultsOf(fetch(fetching(MockResponse().setBody(body), selection)))
+            assertEquals(Instant.parse("2026-10-15T06:30:15Z"), (results.getValue("ACT-A") as BankAccountResult.Read).balanceReportedAt, "$selection")
+            assertNull((results.getValue("ACT-B") as BankAccountResult.Read).balanceReportedAt, "$selection")
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A20: Bank's Sign-In at the Data Provider Needed")
+    @DisplayName("A20 (S-T-03): con.auth for a connection makes every account of that connection SignInNeeded, the listed one not asked for too; the accounts of the other connections are read as usual")
+    fun conAuthIsSignInNeededForThatConnectionOnly() {
+        val results = resultsOf(fetch(fetchWithProviderErrors()))
+
+        assertEquals(BankAccountResult.SignInNeeded, results.getValue("ACT-4410"))
+        assertEquals(BankAccountResult.SignInNeeded, results.getValue("ACT-7731"))
+        assertEquals(
+            BankAccountResult.Read(
+                listOf(ProviderTransaction.Interpretable("TRN-7", LocalDate.of(2026, 10, 12), Amount(-49_990), CurrencyCode("USD"), "Fuel Stop", null, booked = true)),
+                Amount(-1_268_400),
+                Instant.parse("2026-10-15T06:00:00Z"),
+            ),
+            results.getValue("ACT-1182"),
+        )
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account", businessRules = ["BR-010"])
+    @DisplayName("A8 (S-T-03): act.failed and act.missingdata make the account they name Failed(Incomplete), carrying none of its transactions; the other accounts of its connection are read as usual")
+    fun actFailedAndMissingDataAreIncomplete() {
+        listOf("act.failed", "act.missingdata").forEach { code ->
+            val errlist = """[{"code": "$code", "msg": "$FAILED_TEXT", "account_id": "ACT-5520"}]"""
+
+            val results = resultsOf(fetch(fetching(MockResponse().setBody(accountSetWithErrors(errlist)), readWithErrors)))
+
+            assertEquals(BankAccountResult.Failed(FailureKind.Incomplete), results.getValue("ACT-5520"), code)
+            assertTrue(results.getValue("ACT-5521") is BankAccountResult.Read, code)
+            assertTrue(results.getValue("ACT-4410") is BankAccountResult.Read, code)
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account", businessRules = ["BR-010"])
+    @DisplayName("A8 (S-T-03): any other error code makes the accounts it names Failed(UnreadableAnswer), by account or by connection; one that names no account or connection is ignored")
+    fun otherErrorCodesAreUnreadableForTheAccountsTheyName() {
+        val errlist = """
+            [{"code": "act.invented", "msg": "$FAILED_TEXT", "account_id": "ACT-1182"},
+             {"code": "con.invented", "msg": "$FAILED_TEXT", "conn_id": "CON-HARBOR-03"},
+             {"code": "gen.invented", "msg": "$SIGN_IN_TEXT"}]
+        """
+
+        val response = fetch(fetching(MockResponse().setBody(accountSetWithErrors(errlist)), readWithErrors))
+
+        assertEquals(SourceOutcome.Completed, response.sourceOutcome)
+        val results = resultsOf(response)
+        assertEquals(BankAccountResult.Failed(FailureKind.UnreadableAnswer), results.getValue("ACT-1182"))
+        assertEquals(BankAccountResult.Failed(FailureKind.UnreadableAnswer), results.getValue("ACT-5520"))
+        assertEquals(BankAccountResult.Failed(FailureKind.UnreadableAnswer), results.getValue("ACT-5521"))
+        assertTrue(results.getValue("ACT-4410") is BankAccountResult.Read)
+        assertEquals(BankAccountResult.NotRead(NotReadCause.NotSelected, Amount(12_000_000)), results.getValue("ACT-7731"))
+    }
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-009"])
@@ -511,7 +648,7 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
 
         val response = fetch(fetching(MockResponse().setBody(body), readOneBalance))
 
-        assertEquals(BankAccountResult.Read(emptyList(), Amount(4_140_050)), response.bankAccounts[0].result)
+        assertEquals(BankAccountResult.Read(emptyList(), Amount(4_140_050), Instant.parse("2026-10-15T06:00:00Z")), response.bankAccounts[0].result)
         assertEquals(BankAccountResult.NotRead(NotReadCause.NotSelected, null), response.bankAccounts[1].result)
         assertEquals(1, server.requestCount)
     }
@@ -533,5 +670,9 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
         const val CLAIM_PATH = "/claim/invented-claim-Z9X4"
         const val PLANTED_USER = "invented-user-K2"
         const val PLANTED_PASSWORD = "invented-password-P5"
+
+        /** Invented texts of SimpleFIN's own errors (`errlist` `msg`), which never leave the plug-in (NFR-012). */
+        const val SIGN_IN_TEXT = "Invented sign-in text Q7: reauthenticate at the bank"
+        const val FAILED_TEXT = "Invented refresh text R3: the institution did not answer"
     }
 }

@@ -43,8 +43,9 @@ import java.time.ZoneOffset
  * read for its transactions, the request asks for the transactions of the fetch period (`start-date`, `end-date`);
  * when only balances are read, it asks for balances only (`balances-only`). SimpleFIN answers every account in that one
  * request, so the gate is asked once, for the whole Data Provider, and a listed account the request does not read
- * carries the balance of the same answer (`NotRead(NotSelected, balance)`, S-35). The `errlist` of the answer is not
- * read yet (O-P2-61).
+ * carries the balance of the same answer (`NotRead(NotSelected, balance)`, S-35). Each account's `balance-date` is the
+ * time of its balance (S-T-04), and the answer's `errlist` is mapped to typed results without its texts (S-T-03, see
+ * [errorsOf]).
  *
  * The plug-in passes every item on: it does not filter pending or zero-amount transactions, identify Bank Accounts or
  * start Back-offs, which are rules of the core (ADR-001 §4.1). No text of SimpleFIN's answer leaves this class except
@@ -134,9 +135,13 @@ internal class SimpleFinFetch(private val http: OkHttpClient, private val allowP
             .mapNotNull { it as? JsonObject }
             .mapNotNull { connection -> connection.text("conn_id")?.let { it to connection } }
             .toMap()
-        return accounts.map { element ->
+        val listed = accounts.map { element ->
             val account = element as? JsonObject ?: throw UnreadableAccountSet()
             val reference = account.text("id") ?: throw UnreadableAccountSet()
+            reference to account
+        }
+        val errors = errorsOf(set["errlist"], listed.map { (reference, account) -> reference to account.text("conn_id") })
+        return listed.map { (reference, account) ->
             val currency = account.text("currency")?.let(::currencyOf)
             val read = readOf(selection, reference)
             val balance = account.text("balance")?.let(::amountOf)
@@ -148,9 +153,11 @@ internal class SimpleFinFetch(private val http: OkHttpClient, private val allowP
                 kind = null,
                 currency = currency,
                 number = null,
-                result = when (read) {
+                result = when {
+                    // S-T-03: an error SimpleFIN reports for the account, or for its connection, replaces what it delivered.
+                    reference in errors -> errors.getValue(reference)
                     // Listed, not asked for: the balance SimpleFIN gave with the list in the same answer (S-35).
-                    null -> BankAccountResult.NotRead(NotReadCause.NotSelected, balance)
+                    read == null -> BankAccountResult.NotRead(NotReadCause.NotSelected, balance)
                     else -> BankAccountResult.Read(
                         transactions = if (read == ReadKind.Balance) {
                             emptyList()
@@ -158,9 +165,60 @@ internal class SimpleFinFetch(private val http: OkHttpClient, private val allowP
                             ((account["transactions"] as? JsonArray) ?: JsonArray(emptyList())).map { transactionOf(it, currency) }
                         },
                         balance = if (read == ReadKind.Transactions) null else balance,
+                        // S-T-04: the time SimpleFIN says the balance was reported; the core takes the time of the answer without it.
+                        balanceReportedAt = if (read == ReadKind.Transactions || balance == null) null else balanceDateOf(account["balance-date"]),
                     )
                 },
             )
+        }
+    }
+
+    /**
+     * SimpleFIN's error list (S-T-03, ADR-001 §4.1), protocol version 2: objects with a `code` that name an account
+     * (`account_id`) or a connection (`conn_id`, every account of it). `con.auth` is [BankAccountResult.SignInNeeded]
+     * (UC-001 A20); `act.failed` and `act.missingdata` are `Failed(Incomplete)` (UC-001 A8); any other code is
+     * `Failed(UnreadableAnswer)`. An error that names no account or connection, an entry that is no object or has no
+     * code, and an `errlist` that is no array, are ignored. Where several errors name one account, the Bank's sign-in
+     * comes first, then `Failed(Incomplete)`. SimpleFIN's checklist asks an application to show the error messages
+     * (`msg`); Slussen deviates on purpose and passes no SimpleFIN text on (NFR-012).
+     *
+     * [accounts] holds each listed account's identifier with its `conn_id`.
+     */
+    private fun errorsOf(errlist: JsonElement?, accounts: List<Pair<String, String?>>): Map<String, BankAccountResult> {
+        val errors = mutableMapOf<String, BankAccountResult>()
+        (errlist as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.forEach { error ->
+            val code = error.text("code") ?: return@forEach
+            val account = error.text("account_id")
+            val connection = error.text("conn_id")
+            val named = accounts.filter { (reference, conn) -> reference == account || (connection != null && conn == connection) }
+            val result = when (code) {
+                "con.auth" -> BankAccountResult.SignInNeeded
+                "act.failed", "act.missingdata" -> BankAccountResult.Failed(FailureKind.Incomplete)
+                else -> BankAccountResult.Failed(FailureKind.UnreadableAnswer)
+            }
+            named.forEach { (reference, _) ->
+                val earlier = errors[reference]
+                if (earlier == null || rank(result) < rank(earlier)) errors[reference] = result
+            }
+        }
+        return errors
+    }
+
+    /** Which of two errors for one account wins: the lower rank. */
+    private fun rank(result: BankAccountResult): Int = when (result) {
+        BankAccountResult.SignInNeeded -> 0
+        BankAccountResult.Failed(FailureKind.Incomplete) -> 1
+        else -> 2
+    }
+
+    /** `balance-date`, a Unix time in seconds, or null when it is missing, 0 or unreadable. */
+    private fun balanceDateOf(element: JsonElement?): Instant? {
+        val seconds = (element as? JsonPrimitive)?.longOrNull ?: return null
+        if (seconds <= 0L) return null
+        return try {
+            Instant.ofEpochSecond(seconds)
+        } catch (e: java.time.DateTimeException) {
+            null
         }
     }
 

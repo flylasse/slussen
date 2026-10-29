@@ -329,11 +329,13 @@ class FetchTransactions(
 
     /**
      * Steps 8 and 11 for each selected Bank Account the Data Provider delivered (O-1, one storage operation each): its
-     * Fetch Result for the Fetch [fetchId] and the Account Balance the Data Provider reported, as at [answeredAt]. A
-     * Bank Account the answer lists but did not read (A5, a Bank or the Data Provider stopped) keeps its stored data and
-     * gets no Fetch Result; one not delivered at all is not identified (A10, not built) and gets none either. Offered
-     * Bank Accounts that are not added store nothing (A18, S-35). No Bank Transaction is stored: steps 7, 9 and 10 come
-     * with a later slice, and until then a Fetch asks for balances only (O-P2-54).
+     * Fetch Result for the Fetch [fetchId] and the Account Balance the Data Provider reported, at the time it says it
+     * reported it, or as at [answeredAt] when it gives none (S-T-04). A Bank Account the answer lists but did not read
+     * (A5, a Bank or the Data Provider stopped), or whose Bank's sign-in at the Data Provider is needed (A20, its Fetch
+     * Result comes in Phase 6), keeps its stored data and gets no Fetch Result; one not delivered at all is not
+     * identified (A10, not built) and gets none either. Offered Bank Accounts that are not added store nothing (A18,
+     * S-35). No Bank Transaction is stored: steps 7, 9 and 10 come with a later slice, and until then a Fetch asks for
+     * balances only (O-P2-54).
      */
     private suspend fun storeDeliveries(fetchId: Long, delivered: List<DeliveredBankAccount>, toRead: List<Selected>, answeredAt: Instant) {
         val byReference = delivered.associateBy { it.providerReference }
@@ -347,10 +349,17 @@ class FetchTransactions(
                     outcome = FetchResultOutcome.Fetched,
                     transactionCount = result.transactions.count { it is ProviderTransaction.Interpretable && it.booked && it.amount.thousandths != 0L },
                     // UC-001 BR-011: The Account Balance of a file-imported Bank Account is the one its balance Data Provider reports, stored like any other.
-                    balance = result.balance?.let { NewAccountBalance(it, one.currency ?: bankAccount.currency, answeredAt) },
+                    balance = result.balance?.let {
+                        // Step 8 (S-T-04): reported at the time the Data Provider gives, or the time the answer arrived.
+                        NewAccountBalance(it, one.currency ?: bankAccount.currency, result.balanceReportedAt ?: answeredAt)
+                    },
                 )
                 // A8: a failure for one Bank Account keeps its stored Account Balance and records the outcome Failed.
                 is BankAccountResult.Failed -> BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.Failed, 0, balance = null)
+                // A20: the Bank's sign-in at the Data Provider is needed: its stored data stays unchanged and no Back-off
+                // starts. It gets no Fetch Result yet; the outcome Sign-In Needed and its Blocked Reason come in Phase 6
+                // of the transactions plan.
+                BankAccountResult.SignInNeeded -> null
                 is BankAccountResult.NotRead -> null
             }
             // UC-001 BR-010: A failure of one Bank Account leaves the others' storage unaffected: each is its own storage operation.
@@ -390,6 +399,8 @@ class FetchTransactions(
         is BankAccountResult.Read -> result.balance
         is BankAccountResult.NotRead -> result.balance.takeIf { result.cause == NotReadCause.NotSelected }
         is BankAccountResult.Failed -> null
+        // A20: a Bank Account whose Bank's sign-in at the Data Provider is needed carries no balance (Phase 6 builds A20).
+        BankAccountResult.SignInNeeded -> null
     }
 
     /** UC-014 BR-005: refused in this process, or in the last Fetch after the credentials were last accepted. */
