@@ -27,7 +27,8 @@
 - Phase 5 done: the operator approved S-T-14 and S-T-15 and merged PR #31 (2026-10-29).
 - Phase 6 is split in two (orchestrator, 2026-10-29), since it is the largest phase: **6a** stores the Bank Transactions of a Fetch (with the Import Identifier protocol of ADR-008, which nothing had built yet), A17, A19, A20, A21, #9 and the Decision Journal; **6b** the fetch period on Settings and UX-D4's credential and Fetch Cooldown screens. 6a built (a sub-agent, then two fixes by the orchestrator, below); it found one specification gap, proposed as **S-T-16** (§6).
 - Phase 6a done: the operator approved S-T-16 and merged PR #32 (2026-10-29); issues #8, #9 and #11 closed.
-- Phase 6b in progress on the branch `transactions-phase6b`, with the prompt in §4.
+- Phase 6b built (a sub-agent; the orchestrator re-ran the gate with `--rerun-tasks`: green). It found one specification gap, proposed as **S-T-17** (§6); the import switch's and credential removal's pending and failed states, not in its prompt, are issue #33.
+- Next: the operator approves S-T-17 and merges the Phase 6b PR; then Phase 7 (the Comparison).
 
 ## 1. Scope
 
@@ -391,6 +392,18 @@ Phase 6a, 2026-10-29: one specification gap. **Approved by the operator on 2026-
 | ID | Found by | Change | Files |
 |---|---|---|---|
 | S-T-16 | Phase 6a | A delivered transaction whose currency differs from its Bank Account's had no rule: it would have been stored as a Bank Transaction, and a later Comparison could have called it New. It is kept as an Unreadable Transaction with the reason "currency differs from the Bank Account's" (Needs Review, never uploaded, nothing converted). | UC-001 A17, BR-016 |
+
+Phase 6b, 2026-10-29: one specification gap. **Proposed, waiting for the operator's approval.**
+
+| ID | Found by | Change | Files |
+|---|---|---|---|
+| S-T-17 | Phase 6b | UC-014 lists NFR-023, which decision UX-D4 applies to the credential screens, so their tests can name it; NFR-023 becomes In Progress, since UC-014 is Implemented. | UC-014 Requirements, requirements |
+
+Phase 6b's notes:
+- The app had no Fetch Cooldown edit, only its value, so Phase 6b built UC-010 steps 2-6, A1 and A10 for it, with the fetch period's states.
+- A write that fails is answered "not stored" at its control (UC-010's failure postconditions and `settings.html#fetch-period-failed`); UC-010 still has no flow of its own for it.
+- On the refused credentials page the Fetch stays enabled and answers "Not fetched: credentials refused · enter them again" at its button, where `connections.html#simplefin-refused` draws it greyed out: an answer in place, as NFR-023 asks.
+- The import switch's and credential removal's pending and failed states, and the description-lists row of `settings.html#list-this-build`, are issue #33.
 
 Phase 6a's notes:
 - The orchestrator fixed one assumption of the sub-agent: a selected Bank Account the answer leaves out **while the Data Provider asks to wait** is affected by the wait (A5 step 2), not Not Delivered (A19); a test proves it, failing without the fix.
