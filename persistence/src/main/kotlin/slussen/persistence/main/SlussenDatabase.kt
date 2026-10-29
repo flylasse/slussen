@@ -17,8 +17,10 @@ import java.time.LocalDate
  * Data. Version 1, as committed at `96712aa`, holds the tables of UC-008, UC-013, UC-014 and the Fetch of UC-001; it is
  * final, because the Operator's phone holds it (ADR-002 §7, S-39). Version 2 adds `left_out_bank_account` (S-38) with
  * the hand-written [SlussenMigrations.MIGRATION_1_2]; version 3 adds `account_balance` and `fetch_result` (UC-001 steps
- * 8, 11; Phase 8f) with [SlussenMigrations.MIGRATION_2_3]. Every later schema change, also a table a later slice adds,
- * raises the version by one, commits its schema file and adds a Migration from the version before.
+ * 8, 11; Phase 8f) with [SlussenMigrations.MIGRATION_2_3]; version 4 adds `budget_app_transaction`, `transfer`,
+ * `bank_transaction`, `unreadable_transaction` and `transfer_description` (transactions plan Phase 5) with
+ * [SlussenMigrations.MIGRATION_3_4], which fills the default Description lists. Every later schema change, also a table a
+ * later slice adds, raises the version by one, commits its schema file and adds a Migration from the version before.
  */
 @Database(
     entities = [
@@ -36,10 +38,15 @@ import java.time.LocalDate
         FetchResultEntity::class,
         BackOffEntity::class,
         AccountBalanceEntity::class,
+        BudgetAppTransactionEntity::class,
+        TransferEntity::class,
+        BankTransactionEntity::class,
+        UnreadableTransactionEntity::class,
+        TransferDescriptionEntity::class,
         FirstUploadMatchingEntity::class,
         CoordinatorStateEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(StorageConverters::class)
@@ -298,6 +305,126 @@ data class AccountBalanceEntity(
     @ColumnInfo(name = "amount") val amount: Long,
     @ColumnInfo(name = "currency") val currency: String,
     @ColumnInfo(name = "reported_at") val reportedAt: Instant,
+)
+
+/**
+ * `BUDGET_APP_TRANSACTION` (entity model): Slussen's stored copy of one transaction of a Budget Account as last read from
+ * the Budget App, with every attribute, the Transfer link, merge target, Cleared and approved included (ADR-002 §2, S-12);
+ * `amount` in thousandths of the currency unit; `budget_app_reference` unique. Written only by O-4 (ADR-002 §3).
+ */
+@Entity(
+    tableName = "budget_app_transaction",
+    indices = [Index(value = ["budget_app_reference"], unique = true), Index(value = ["budget_account_id"])],
+    foreignKeys = [ForeignKey(entity = BudgetAccountEntity::class, parentColumns = ["id"], childColumns = ["budget_account_id"])],
+)
+data class BudgetAppTransactionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "budget_account_id") val budgetAccountId: Long,
+    @ColumnInfo(name = "budget_app_reference") val budgetAppReference: String,
+    @ColumnInfo(name = "transaction_date") val transactionDate: LocalDate,
+    @ColumnInfo(name = "amount") val amount: Long,
+    @ColumnInfo(name = "payee") val payee: String?,
+    @ColumnInfo(name = "memo") val memo: String?,
+    @ColumnInfo(name = "import_identifier") val importIdentifier: String?,
+    @ColumnInfo(name = "entered_by") val enteredBy: String,
+    @ColumnInfo(name = "transfer_link_reference") val transferLinkReference: String?,
+    @ColumnInfo(name = "merged_into_reference") val mergedIntoReference: String?,
+    @ColumnInfo(name = "cleared") val cleared: Boolean,
+    @ColumnInfo(name = "approved") val approved: Boolean,
+    @ColumnInfo(name = "state") val state: String,
+)
+
+/**
+ * `TRANSFER` (entity model): a movement of money between two Budget Accounts of one Budget, with its Transfer Legs in
+ * `bank_transaction.transfer_id`; `amount` in thousandths of the currency unit. That both sides differ and lie in one
+ * Budget is a rule of the core (ADR-002 §2).
+ */
+@Entity(
+    tableName = "transfer",
+    indices = [Index(value = ["outflow_budget_account_id"]), Index(value = ["inflow_budget_account_id"])],
+    foreignKeys = [
+        ForeignKey(entity = BudgetAccountEntity::class, parentColumns = ["id"], childColumns = ["outflow_budget_account_id"]),
+        ForeignKey(entity = BudgetAccountEntity::class, parentColumns = ["id"], childColumns = ["inflow_budget_account_id"]),
+    ],
+)
+data class TransferEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "outflow_budget_account_id") val outflowBudgetAccountId: Long,
+    @ColumnInfo(name = "inflow_budget_account_id") val inflowBudgetAccountId: Long,
+    @ColumnInfo(name = "amount") val amount: Long,
+    @ColumnInfo(name = "transfer_type") val transferType: String,
+    @ColumnInfo(name = "guessed") val guessed: Boolean,
+    @ColumnInfo(name = "decision") val decision: String,
+    @ColumnInfo(name = "decided_at") val decidedAt: Instant?,
+)
+
+/**
+ * `BANK_TRANSACTION` (entity model): one booked, non-zero transaction of a Bank Account, `amount` in thousandths of the
+ * currency unit, `booked_date` in days (ADR-002 §2). Within one Bank Account no two share an `import_identifier` or a
+ * `stable_reference` (unique indices; SQLite lets several empty `stable_reference` values stand). `status` is empty
+ * until a Comparison has read its Budget (UC-003 A1, S-T-08); `transfer_id` is empty for an ordinary transaction.
+ */
+@Entity(
+    tableName = "bank_transaction",
+    indices = [
+        Index(value = ["bank_account_id", "import_identifier"], unique = true),
+        Index(value = ["bank_account_id", "stable_reference"], unique = true),
+        Index(value = ["transfer_id"]),
+    ],
+    foreignKeys = [
+        ForeignKey(entity = BankAccountEntity::class, parentColumns = ["id"], childColumns = ["bank_account_id"]),
+        ForeignKey(entity = TransferEntity::class, parentColumns = ["id"], childColumns = ["transfer_id"]),
+    ],
+)
+data class BankTransactionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "bank_account_id") val bankAccountId: Long,
+    @ColumnInfo(name = "stable_reference") val stableReference: String?,
+    @ColumnInfo(name = "reference_kind") val referenceKind: String,
+    @ColumnInfo(name = "occurrence_number") val occurrenceNumber: Int,
+    @ColumnInfo(name = "import_identifier") val importIdentifier: String,
+    @ColumnInfo(name = "booked_date") val bookedDate: LocalDate,
+    @ColumnInfo(name = "amount") val amount: Long,
+    @ColumnInfo(name = "currency") val currency: String,
+    @ColumnInfo(name = "payee") val payee: String?,
+    @ColumnInfo(name = "memo") val memo: String?,
+    @ColumnInfo(name = "first_seen_at") val firstSeenAt: Instant,
+    @ColumnInfo(name = "status") val status: String?,
+    @ColumnInfo(name = "transfer_id") val transferId: Long?,
+)
+
+/**
+ * `UNREADABLE_TRANSACTION` (entity model): a delivered transaction Slussen cannot interpret, with whatever fields could
+ * be read and the reason; never removed by a later Fetch or by housekeeping (ADR-002 §10).
+ */
+@Entity(
+    tableName = "unreadable_transaction",
+    indices = [Index(value = ["bank_account_id"])],
+    foreignKeys = [ForeignKey(entity = BankAccountEntity::class, parentColumns = ["id"], childColumns = ["bank_account_id"])],
+)
+data class UnreadableTransactionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "bank_account_id") val bankAccountId: Long,
+    @ColumnInfo(name = "booked_date") val bookedDate: LocalDate?,
+    @ColumnInfo(name = "amount") val amount: Long?,
+    @ColumnInfo(name = "currency") val currency: String?,
+    @ColumnInfo(name = "payee") val payee: String?,
+    @ColumnInfo(name = "memo") val memo: String?,
+    @ColumnInfo(name = "reason") val reason: String,
+    @ColumnInfo(name = "first_seen_at") val firstSeenAt: Instant,
+    @ColumnInfo(name = "status") val status: String,
+)
+
+/**
+ * `TRANSFER_DESCRIPTION` (entity model): one entry of the Card Payment Descriptions or Bank Transfer Descriptions. That
+ * no two entries of one `kind` are equal without regard to case and accents is a rule of the core (UC-010 BR-008),
+ * which an index of exact texts cannot state (ADR-002 §2).
+ */
+@Entity(tableName = "transfer_description")
+data class TransferDescriptionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "kind") val kind: String,
+    @ColumnInfo(name = "text") val text: String,
 )
 
 /** `BACK_OFF` (entity model); `bank_id` empty when the whole Data Provider waits. */

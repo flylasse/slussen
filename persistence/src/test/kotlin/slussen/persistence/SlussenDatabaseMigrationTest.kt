@@ -13,6 +13,7 @@ import slussen.persistence.device.DeviceDatabase
 import slussen.persistence.journal.JournalDatabase
 import slussen.persistence.main.SlussenDatabase
 import slussen.persistence.main.SlussenMigrations
+import slussen.pluginapi.testfixtures.UseCase
 import java.io.File
 
 /**
@@ -103,6 +104,8 @@ class SlussenDatabaseMigrationTest {
         (1 until current).forEach { from -> SlussenMigrations.ALL.single { it.startVersion == from }.migrate(connection) }
 
         assertEquals(before, everything().filterKeys { it in version1Tables })
+        assertEquals(setOf("left_out_bank_account", "account_balance", "fetch_result") + newInVersion4, everything().keys - version1Tables.toSet())
+        assertEquals(defaultDescriptions, query("SELECT kind, text FROM transfer_description ORDER BY id"))
         val validation = RoomSchemas.openDelegateOf(SlussenDatabase::class).onValidateSchema(connection)
         assertTrue(validation.isValid, validation.expectedFoundMsg)
         assertTrue(query("PRAGMA foreign_key_check").isEmpty())
@@ -127,7 +130,8 @@ class SlussenDatabaseMigrationTest {
         (2 until current).forEach { from -> SlussenMigrations.ALL.single { it.startVersion == from }.migrate(connection) }
 
         assertEquals(before, everything().filterKeys { it in version2Tables })
-        assertEquals(setOf("account_balance", "fetch_result"), everything().keys - version2Tables.toSet())
+        assertEquals(setOf("account_balance", "fetch_result") + newInVersion4, everything().keys - version2Tables.toSet())
+        assertEquals(defaultDescriptions, query("SELECT kind, text FROM transfer_description ORDER BY id"))
         val validation = RoomSchemas.openDelegateOf(SlussenDatabase::class).onValidateSchema(connection)
         assertTrue(validation.isValid, validation.expectedFoundMsg)
         assertTrue(query("PRAGMA foreign_key_check").isEmpty())
@@ -176,6 +180,131 @@ class SlussenDatabaseMigrationTest {
         assertTrue(resultOfNoFetch.isFailure)
         assertEquals(listOf(listOf("1", "5135280", "USD", "1760533200000")), query("SELECT bank_account_id, amount, currency, reported_at FROM account_balance"))
         assertEquals(listOf(listOf("1", "1", "Fetched", "0")), query("SELECT * FROM fetch_result"))
+    }
+
+    /** The tables version 4 adds (ADR-002 §1, §2; transactions plan Phase 5). */
+    private val newInVersion4 = setOf("budget_app_transaction", "transfer", "bank_transaction", "unreadable_transaction", "transfer_description")
+
+    /** The default Card Payment Descriptions and Bank Transfer Descriptions of UC-010 BR-007, as (kind, text), in the order the rule lists them. */
+    private val defaultDescriptions: List<List<String?>> =
+        listOf(
+            "AUTOPAY", "AUTOMATIC PAYMENT", "PAYMENT - THANK", "AUTO-PMT", "ACH PMT", "AMERICAN EXPRESS ACH PMT", "CITI AUTOPAY",
+            "CRD AUTOPAY", "CITICARDAP",
+        ).map { listOf("Card Payment", it) } +
+            listOf(
+                "ÖVERFÖRING", "INTERNET TRANSFER", "EXPRESS INTERNET TRANSFER", "AMERICAN EXPRESS TRANSFER", "ONLINE TRANSFER",
+                "TRANSFER", "XFER",
+            ).map { listOf("Bank Transfer", it) }
+
+    /** The Migration from [from] to the next version, as the app is given it (ADR-002 §7). */
+    private fun migrationFrom(from: Int) = SlussenMigrations.ALL.single { it.startVersion == from && it.endVersion == from + 1 }
+
+    /** Invented rows in every table of version 3: those of version 2, an Account Balance and a Fetch Result (UC-001 steps 8, 11). */
+    private fun inventedVersion3Data() {
+        inventedVersion2Data()
+        connection.execSQL("INSERT INTO account_balance VALUES (1, 1, 5135280, 'USD', 1760533200000)")
+        connection.execSQL("INSERT INTO fetch_result VALUES (1, 1, 'Fetched', 3)")
+    }
+
+    @Test
+    @DisplayName("NFR-017: slussen.db created at version 3, as the Operator's phone holds it, with rows in every table and migrated to the current version keeps every row and value, and Room accepts the result as the current version (ADR-002 §7)")
+    fun version3MigratesToTheCurrentVersionKeepingEveryValue() {
+        create(SlussenDatabase::class.java, 3)
+        inventedVersion3Data()
+        val version3Tables = tables().filter { it != "room_master_table" }
+        assertTrue(version3Tables.all { table -> query("SELECT COUNT(*) FROM `$table`").single().single() != "0" }, "every table holds a row")
+        val before = everything()
+
+        val current = RoomSchemas.currentOf(SlussenDatabase::class).version
+        (3 until current).forEach { from -> migrationFrom(from).migrate(connection) }
+
+        assertEquals(before, everything().filterKeys { it in version3Tables })
+        assertEquals(newInVersion4, everything().keys - version3Tables.toSet())
+        assertEquals(defaultDescriptions, query("SELECT kind, text FROM transfer_description ORDER BY id"))
+        (newInVersion4 - "transfer_description").forEach { table -> assertEquals(listOf(listOf("0")), query("SELECT COUNT(*) FROM `$table`"), table) }
+        val validation = RoomSchemas.openDelegateOf(SlussenDatabase::class).onValidateSchema(connection)
+        assertTrue(validation.isValid, validation.expectedFoundMsg)
+        assertTrue(query("PRAGMA foreign_key_check").isEmpty())
+    }
+
+    @Test
+    @DisplayName("NFR-017: the Migration 3 to 4 creates the five tables with their indices exactly as the committed version 4 states them")
+    fun migrationSqlIsTheCommittedVersion4() {
+        val schema = File(RoomSchemas.committed, "${SlussenDatabase::class.java.name}/4.json").readText()
+        val expected = newInVersion4.flatMap { table ->
+            val entity = schema.substringAfter("\"tableName\": \"$table\"").substringBefore("\"tableName\"")
+            Regex(""""createSql"\s*:\s*"([^"]*)"""").findAll(entity).map { it.groupValues[1].replace("\${TABLE_NAME}", table) }.toList()
+        }
+
+        val statements = (migrationFrom(3) as SlussenMigrations.Statements).statements
+
+        assertEquals(expected, statements.filter { it.startsWith("CREATE") })
+        assertTrue(statements.filterNot { it.startsWith("CREATE") }.all { it.startsWith("INSERT INTO `transfer_description`") })
+    }
+
+    @Test
+    @UseCase(id = "UC-010", businessRules = ["BR-007"], requirements = ["NFR-017"])
+    @DisplayName("BR-007: the Migration 3 to 4 fills the Card Payment Descriptions and Bank Transfer Descriptions with the default lists that ship with the build, and nothing else")
+    fun migrationFillsTheDefaultDescriptionLists() {
+        create(SlussenDatabase::class.java, 3)
+        inventedVersion3Data()
+
+        migrationFrom(3).migrate(connection)
+
+        assertEquals(defaultDescriptions, query("SELECT kind, text FROM transfer_description ORDER BY id"))
+        assertEquals((1..defaultDescriptions.size).map { listOf(it.toString()) }, query("SELECT id FROM transfer_description ORDER BY id"))
+    }
+
+    @Test
+    @DisplayName("NFR-017: after the Migration 3 to 4 a Bank Transaction, Unreadable Transaction, Budget App Transaction and Transfer exist only for a stored Bank Account, Budget Account and Transfer; within one Bank Account no two Bank Transactions share an Import Identifier or a Stable Reference; a Budget App Transaction's identifier is unique; a Bank Transaction has no Transaction Status until a Comparison (entity model; UC-003 A1; ADR-002 §2)")
+    fun migratedVersion4TablesKeepTheirRules() {
+        create(SlussenDatabase::class.java, 3)
+        inventedVersion3Data()
+        migrationFrom(3).migrate(connection)
+        connection.execSQL("PRAGMA foreign_keys = ON")
+        fun budgetAppTransaction(reference: String, budgetAccount: Long) =
+            "INSERT INTO budget_app_transaction (budget_account_id, budget_app_reference, transaction_date, amount, payee, memo, import_identifier, " +
+                "entered_by, transfer_link_reference, merged_into_reference, cleared, approved, state) " +
+                "VALUES ($budgetAccount, '$reference', 20380, -42500, 'Corner Grocer', NULL, NULL, 'Typed Entry', NULL, NULL, 1, 1, 'Present')"
+        fun transfer(inflow: Long) =
+            "INSERT INTO transfer (outflow_budget_account_id, inflow_budget_account_id, amount, transfer_type, guessed, decision, decided_at) " +
+                "VALUES (1, $inflow, 150000, 'Bank Transfer', 0, 'Proposed', NULL)"
+        fun bankTransaction(bankAccount: Long, stableReference: String?, importIdentifier: String, transfer: Long? = null) =
+            "INSERT INTO bank_transaction (bank_account_id, stable_reference, reference_kind, occurrence_number, import_identifier, booked_date, " +
+                "amount, currency, payee, memo, first_seen_at, status, transfer_id) VALUES ($bankAccount, " +
+                "${stableReference?.let { "'$it'" } ?: "NULL"}, '${if (stableReference == null) "None" else "Supplied"}', 1, '$importIdentifier', " +
+                "20380, -42500, 'USD', 'Corner Grocer', NULL, 1760533200000, NULL, ${transfer ?: "NULL"})"
+        fun unreadableTransaction(bankAccount: Long) =
+            "INSERT INTO unreadable_transaction (bank_account_id, booked_date, amount, currency, payee, memo, reason, first_seen_at, status) " +
+                "VALUES ($bankAccount, NULL, NULL, NULL, NULL, NULL, 'No amount', 1760533200000, 'Needs Review')"
+
+        connection.execSQL(budgetAppTransaction("ynab-tx-0001", 1))
+        connection.execSQL(transfer(2))
+        connection.execSQL(bankTransaction(1, "TX-0001", "S1Rexample-identifier-0001"))
+        connection.execSQL(bankTransaction(2, "TX-0001", "S1Rexample-identifier-0001"))
+        connection.execSQL(bankTransaction(1, null, "S1Hexample-identifier-0002"))
+        connection.execSQL(bankTransaction(1, null, "S1Hexample-identifier-0003", transfer = 1))
+        connection.execSQL(unreadableTransaction(1))
+
+        val stored = mapOf(
+            "a second Budget App Transaction with the same identifier" to budgetAppTransaction("ynab-tx-0001", 2),
+            "a Budget App Transaction of no stored Budget Account" to budgetAppTransaction("ynab-tx-0002", 9),
+            "a Transfer to no stored Budget Account" to transfer(9),
+            "a second Bank Transaction with the same Import Identifier in one Bank Account" to bankTransaction(1, "TX-0002", "S1Rexample-identifier-0001"),
+            "a second Bank Transaction with the same Stable Reference in one Bank Account" to bankTransaction(1, "TX-0001", "S1Rexample-identifier-0004"),
+            "a Bank Transaction of no stored Bank Account" to bankTransaction(9, "TX-0003", "S1Rexample-identifier-0005"),
+            "a Transfer Leg of no stored Transfer" to bankTransaction(1, "TX-0004", "S1Rexample-identifier-0006", transfer = 9),
+            "an Unreadable Transaction of no stored Bank Account" to unreadableTransaction(9),
+        ).filterValues { sql -> runCatching { connection.execSQL(sql) }.isSuccess }
+
+        assertEquals(emptySet<String>(), stored.keys, "stored although the schema must refuse it")
+        assertEquals(
+            listOf(listOf("1", "TX-0001", null, null), listOf("2", "TX-0001", null, null), listOf("1", null, null, null), listOf("1", null, null, "1")),
+            query("SELECT bank_account_id, stable_reference, status, transfer_id FROM bank_transaction ORDER BY id"),
+        )
+        assertEquals(listOf(listOf("1", "No amount", "Needs Review")), query("SELECT bank_account_id, reason, status FROM unreadable_transaction"))
+        assertEquals(listOf(listOf("1", "ynab-tx-0001")), query("SELECT budget_account_id, budget_app_reference FROM budget_app_transaction"))
+        assertTrue(query("PRAGMA foreign_key_check").isEmpty())
     }
 
     @Test

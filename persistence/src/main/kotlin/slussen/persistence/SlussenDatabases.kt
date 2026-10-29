@@ -36,6 +36,7 @@ object SlussenDatabases {
             .addMigrations(*SlussenMigrations.ALL)
             .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
             .addCallback(SynchronousFull)
+            .addCallback(DefaultDescriptionLists)
             .build()
 
     /** `JournalMode.TRUNCATE` and `PRAGMA synchronous = FULL` (ADR-002 §4). */
@@ -54,6 +55,17 @@ object SlussenDatabases {
     private object SynchronousFull : RoomDatabase.Callback() {
         override fun onOpen(db: SupportSQLiteDatabase) {
             db.query("PRAGMA synchronous = FULL").close()
+        }
+    }
+
+    /**
+     * A `slussen.db` created new, for a new installation or as the empty database of ADR-002 §8 step 3, starts with the
+     * default Description lists, as one migrated from version 3 does ([SlussenMigrations.MIGRATION_3_4]).
+     */
+    private object DefaultDescriptionLists : RoomDatabase.Callback() {
+        // UC-010 BR-007: The default Card Payment Descriptions and Bank Transfer Descriptions ship with the build.
+        override fun onCreate(db: SupportSQLiteDatabase) {
+            SlussenMigrations.INSERT_DEFAULT_TRANSFER_DESCRIPTIONS.forEach(db::execSQL)
         }
     }
 
