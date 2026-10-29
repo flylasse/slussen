@@ -507,3 +507,50 @@ abstract class CoordinatorDao {
     @Query("UPDATE coordinator_state SET mode = :mode, upload_plan_id = NULL WHERE id = 1")
     abstract suspend fun resetMode(mode: String)
 }
+
+/**
+ * The stored copy of the Budget App (`budget_app_transaction`), the read cursor (`budget_read_state`) and the Transaction
+ * Statuses a Comparison gives (`bank_transaction.status`), with the Comparison-pending marker of `coordinator_state`
+ * (ADR-002 §3 O-4, O-5; ADR-007 §3a).
+ */
+@Dao
+abstract class BudgetAppCopyDao {
+    @Query("SELECT change_cursor FROM budget_read_state WHERE budget_id = :budgetId")
+    abstract suspend fun cursorOf(budgetId: Long): String?
+
+    @Query("DELETE FROM budget_read_state WHERE budget_id = :budgetId")
+    abstract suspend fun forgetCursor(budgetId: Long)
+
+    @Query("SELECT * FROM budget_app_transaction WHERE budget_account_id IN (SELECT id FROM budget_account WHERE budget_id = :budgetId) ORDER BY id")
+    abstract suspend fun copyOf(budgetId: Long): List<BudgetAppTransactionEntity>
+
+    @Query("SELECT * FROM budget_app_transaction WHERE budget_app_reference = :reference")
+    abstract suspend fun byReference(reference: String): BudgetAppTransactionEntity?
+
+    @Insert
+    abstract suspend fun insert(transaction: BudgetAppTransactionEntity): Long
+
+    @Update
+    abstract suspend fun update(transaction: BudgetAppTransactionEntity)
+
+    @Query("SELECT * FROM budget_account WHERE budget_id = :budgetId ORDER BY id")
+    abstract suspend fun budgetAccountsOf(budgetId: Long): List<BudgetAccountEntity>
+
+    @Query("UPDATE budget_account SET balance = :balance, balance_read_at = :readAt WHERE id = :id")
+    abstract suspend fun storeBalance(id: Long, balance: Long, readAt: Instant)
+
+    @Query("UPDATE budget SET last_read_at = :readAt WHERE id = :budgetId")
+    abstract suspend fun storeLastReadAt(budgetId: Long, readAt: Instant)
+
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    abstract suspend fun storeCursor(state: BudgetReadStateEntity)
+
+    @Query("UPDATE coordinator_state SET comparison_pending = :pending, state_version = state_version + 1 WHERE id = 1")
+    abstract suspend fun storeComparisonPending(pending: Boolean)
+
+    @Query("SELECT comparison_pending FROM coordinator_state WHERE id = 1")
+    abstract suspend fun comparisonPending(): Boolean?
+
+    @Query("UPDATE bank_transaction SET status = :status WHERE id = :id")
+    abstract suspend fun storeStatus(id: Long, status: String)
+}

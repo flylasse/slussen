@@ -116,8 +116,21 @@ object SlussenMigrations {
         *INSERT_DEFAULT_TRANSFER_DESCRIPTIONS.toTypedArray(),
     )
 
+    /**
+     * Version 4 (committed with transactions plan Phase 5) to version 5: adds the technical table `budget_read_state`
+     * (ADR-002 §2) that keeps the Budget App read cursor of each Budget (transactions plan Phase 7a), exactly as Room's
+     * version 5 schema declares it. No existing table, row or value changes; it starts empty, so the next read of each
+     * Budget is its first (UC-003 BR-016) and is stored with its cursor by O-4.
+     */
+    val MIGRATION_4_5: Migration = Statements(
+        4,
+        5,
+        "CREATE TABLE IF NOT EXISTS `budget_read_state` (`budget_id` INTEGER NOT NULL, `change_cursor` TEXT NOT NULL, " +
+            "PRIMARY KEY(`budget_id`), FOREIGN KEY(`budget_id`) REFERENCES `budget`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+    )
+
     /** Every Migration of `slussen.db`, given to Room when the database is opened (ADR-002 §7). */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 
     /**
      * A Migration made of SQL statements, run the same way on the platform's SQLite through Room's open helper (the app,

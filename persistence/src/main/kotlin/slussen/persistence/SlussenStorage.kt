@@ -10,6 +10,8 @@ import kotlinx.coroutines.launch
 import slussen.core.port.BackOffCause
 import slussen.core.port.BackupSizeMonitor
 import slussen.core.port.BankAccountType
+import slussen.core.port.BudgetAppTransactionState
+import slussen.core.port.EnteredBy
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.DecisionJournalRecorder
 import slussen.core.port.FetchOutcome
@@ -115,7 +117,8 @@ class SlussenStorage private constructor(
     val credentialVault = KeystoreCredentialVault(device.serviceCredentials())
     val journalRecorder = RoomDecisionJournalRecorder(journal.entries())
     val fetches = RoomFetchStore(main.fetches())
-    val importStatus = RoomImportStatusStore(main.fetches())
+    val importStatus = RoomImportStatusStore(main.fetches(), connections)
+    val comparisons = RoomComparisonStore(main, connections)
 
     companion object {
         /** The `Values:` columns of `slussen.db` in this schema, for the logical check of ADR-002 §8 step 1. */
@@ -132,6 +135,9 @@ class SlussenStorage private constructor(
             ValueColumn("bank_transaction", "reference_kind", StableReferenceKind.entries.map { it.text }),
             ValueColumn("bank_transaction", "status", TransactionStatus.entries.map { it.text }),
             ValueColumn("unreadable_transaction", "status", UnreadableTransactionStatus.entries.map { it.text }),
+            // Transactions plan Phase 7a: the value columns O-4 writes (ADR-002 §8 step 1).
+            ValueColumn("budget_app_transaction", "entered_by", EnteredBy.entries.map { it.text }),
+            ValueColumn("budget_app_transaction", "state", BudgetAppTransactionState.entries.map { it.text }),
         )
 
         val JOURNAL_VALUES: List<ValueColumn> = listOf(

@@ -131,4 +131,21 @@ class ImportIdentifierProtocolTest {
         assertEquals("SLS1-aaaaaaaaaaaaaaaaaaaaaaaaaa", first)
         assertEquals(first, second)
     }
+
+    @Test
+    @UseCase(id = "UC-003", businessRules = ["BR-008"])
+    @DisplayName("ADR-008 §1 (S-14, B-10): ownership and format are two tests: every Import Identifier beginning with SLS is Slussen's, and only the form of a version this build produces is supported")
+    fun ownershipAndSupportedFormat() {
+        val own = ImportIdentifierProtocol.importIdentifier(ImportIdentifierInput.WithStableReference("example-feeds", "TX-1"))
+        assertTrue(ImportIdentifierProtocol.isSlussens(own))
+        assertTrue(ImportIdentifierProtocol.hasSupportedFormat(own))
+        listOf("SLS", "SLS9-not-a-form-this-build-makes", "SLS2-aaaaaaaaaaaaaaaaaaaaaaaaaa", own.uppercase().replaceFirst("SLS1-", "SLS1-").let { "SLS1-" + it.drop(5) }, own + "a")
+            .forEach { identifier ->
+                assertTrue(ImportIdentifierProtocol.isSlussens(identifier), identifier)
+                assertFalse(ImportIdentifierProtocol.hasSupportedFormat(identifier), identifier)
+            }
+        listOf("YNAB:-42500:2026-10-14:1", "sls1-aaaaaaaaaaaaaaaaaaaaaaaaaa", " SLS1-aaaaaaaaaaaaaaaaaaaaaaaaaa", "").forEach { identifier ->
+            assertFalse(ImportIdentifierProtocol.isSlussens(identifier), identifier)
+        }
+    }
 }

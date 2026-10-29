@@ -5,6 +5,7 @@ import slussen.app.platform.version.installedAppVersion
 import slussen.app.ui.Formats
 import slussen.app.ui.UiServices
 import slussen.budgetapp.ynab.YnabBudgetApp
+import slussen.core.comparison.Comparison
 import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
@@ -62,6 +63,12 @@ class CompositionRoot(log: SlussenLog) {
             storage.fetches, CredentialRefusals(), clock,
         )
         val fetchNotices = FetchNotices()
+        val comparison = Comparison(
+            registered, credentials, storage.connections, storage.comparisons, storage.comparisons, coordinator, storage.settings,
+            journal, clock,
+        )
+        // ADR-007 §3a, §8: a Comparison left between storing its read and its conclusions is concluded from the stored data before any other operation.
+        comparison.recomputePending()
         val settingsOverview = SettingsOverview(
             registered, credentials, storage.connections, storage.offered, storage.importStatus, storage.settings, clock,
         )
@@ -69,7 +76,7 @@ class CompositionRoot(log: SlussenLog) {
             credentials = credentials,
             settingsOverview = settingsOverview,
             connect = BudgetsAndBankAccounts(
-                registered, credentials, storage.connections, storage.offered, coordinator, journal,
+                registered, credentials, storage.connections, storage.offered, storage.comparisons, coordinator, journal,
                 RandomSource { random.nextBytes(it) }, clock,
             ),
             providerSettings = DataProviderSettings(registered, storage.registry, coordinator, journal),
@@ -94,8 +101,9 @@ class CompositionRoot(log: SlussenLog) {
             ),
             fetch = FetchTransactions(
                 registered, credentials, storage.connections, storage.offered, storage.fetches, storage.providerRequests,
-                coordinator, storage.settings, journal, clock, fetchNotices,
+                coordinator, storage.settings, journal, clock, fetchNotices, comparison,
             ),
+            comparison = comparison,
             formats = Formats(clock.zone),
             clock = clock,
             appVersion = context.installedAppVersion(),

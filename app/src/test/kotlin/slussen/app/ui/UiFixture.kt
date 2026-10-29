@@ -33,6 +33,7 @@ class UiFixture(
         mappings = slice.mappings,
         status = slice.status,
         fetch = slice.fetch,
+        comparison = slice.comparison,
         formats = Formats(zone),
         clock = slice.clock,
         appVersion = appVersion,
