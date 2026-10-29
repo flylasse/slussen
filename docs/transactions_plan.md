@@ -29,7 +29,8 @@
 - Phase 6a done: the operator approved S-T-16 and merged PR #32 (2026-10-29); issues #8, #9 and #11 closed.
 - Phase 6b built (a sub-agent; the orchestrator re-ran the gate with `--rerun-tasks`: green). It found one specification gap, proposed as **S-T-17** (§6); the import switch's and credential removal's pending and failed states, not in its prompt, are issue #33.
 - Phase 6b done: the operator merged PR #34 (2026-10-29), approving S-T-17.
-- Phase 7 is split in three (orchestrator, 2026-10-29): **7a** reads YNAB and runs the Comparison in the core (UC-003), **7b** detects Transfers (UC-005), **7c** builds the screens (UC-008, the `-this-build` states). 7a in progress on the branch `transactions-phase7a`, with the prompt in §4.
+- Phase 7 is split in three (orchestrator, 2026-10-29): **7a** reads YNAB and runs the Comparison in the core (UC-003), **7b** detects Transfers (UC-005), **7c** builds the screens (UC-008, the `-this-build` states). 7a built (a sub-agent, then one fix by the orchestrator); it found one specification gap, proposed as **S-T-18** (§6).
+- Next: the operator approves S-T-18 and merges the Phase 7a PR; then Phase 7b (Transfers).
 
 ## 1. Scope
 
@@ -371,6 +372,7 @@ Written for each phase when the phase before it is accepted, so that each prompt
 | 6 | 4 | `use-case-test`, then `use-case-implement` | Tests were written first, but they could not compile before the new types existed, so none was seen failing first: the recurring deviation of the construction plan (§7 there). | Yes |
 | 7 | 5 | `use-case-test`, `use-case-implement` | The sub-agent read the two skills from `origin/feat/layer-plugins` with `git show`, since the Marketplace clone is on a detached HEAD without them. Six new JVM tests were seen failing before the production change. | Yes (how the skills were read) |
 | 8 | 6a | `use-case-test` | 31 core tests were seen failing first against stubs; the `:app` ViewModel tests were written after the texts and were not seen failing. | Yes (partly) |
+| 9 | 7a | `use-case-test` | 29 of 36 core tests and 11 of 12 YNAB tests seen failing first; the schema version 5 and its migration tests were written before the tests. | Yes (partly) |
 | 5 | 2b | Mockups (`use-case-spec` mockup step) | Phase 2b ran as a sub-agent with the accepted findings as its brief, as §2 says; it changed only `docs/mockups/` and reported nine specification observations instead of changing the specification. | No |
 | 4 | 2 | Adversarial review (Centaur cross-model rule) | The external UX reviewer (Codex CLI) worked only from this repository, as its prompt said, so it did not read the Marketplace `spec-review` skill that AGENTS.md names. Its review is a source walkthrough of the HTML mockups, not of the running app. | Yes (recorded as the reviewer asked) |
 
@@ -439,6 +441,22 @@ Phase 6b, 2026-10-29: one specification gap. **Approved by the operator on 2026-
 | ID | Found by | Change | Files |
 |---|---|---|---|
 | S-T-17 | Phase 6b | UC-014 lists NFR-023, which decision UX-D4 applies to the credential screens, so their tests can name it; NFR-023 becomes In Progress, since UC-014 is Implemented. | UC-014 Requirements, requirements |
+
+Phase 7a, 2026-10-29: one specification gap. **Proposed, waiting for the operator's approval.**
+
+| ID | Found by | Change | Files |
+|---|---|---|---|
+| S-T-18 | Phase 7a | The Budget App's copy keeps only transactions of Budget Accounts Slussen holds, and the read cursor moves past the others. A Budget Account opened in YNAB later becomes held only when the Operator chooses the Budgets again (UC-013); its earlier transactions would never be read, and a Bank Account mapped to it would call them New: a duplicate at the next Upload. A served Budget that gains a Budget Account is now read again as at its first read; the cursor is forgotten before the Budgets are stored, so a stop in between costs one read, never a transaction. | UC-003 BR-016 |
+
+Phase 7a's notes:
+- `slussen.db` moves to **version 5**: the read cursor of each Budget (`budget_read_state`, ADR-002 §2), which version 4 lacked; version 4 is pinned final. Phase 7a's migration tests were not seen failing first (§5).
+- A Bank Account with a currency mismatch (BR-013) still gets its statuses in the order of BR-001, but no amount comparison and nothing Eligible.
+- A Bank Transaction whose own Import Identifier the copy holds as Deleted or Merged is Deleted In Budget App or Merged In Budget App, even without a Sent Record. YNAB merges are recognised from `matched_transaction_id`, and "reconciled" counts as Cleared: both await the live proof of C-011 (E-10) with the Upload initiative.
+- Each Comparison reads the Budgets once more for the balances, since `readChanges` carries none (ADR-001 §4.2.3 is silent).
+- Windows are inclusive: the Upload Window of 7 days is today−7 to today; the Matching Date Window of 10 days likewise.
+- "Waiting for a decision" (UC-008 BR-003) counts as UC-001 BR-014 does, Unreadable Transactions with Needs Review included.
+- A2 midway: a Budget already stored in the same Comparison is concluded, so that no read is left pending. A Comparison left pending at a restart is concluded from the stored copy, which can move a status by the date (Too Old).
+- "Not compared yet" (S-T-08) is a Bank Transaction first received after its Budget's last successful read.
 
 Phase 6b's notes:
 - The app had no Fetch Cooldown edit, only its value, so Phase 6b built UC-010 steps 2-6, A1 and A10 for it, with the fetch period's states.

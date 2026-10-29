@@ -165,7 +165,7 @@ A Comparison reads the Budget App only. It never writes to the Budget App and ne
 
 ### BR-016: Budget App Read Period
 
-The first read of a Budget covers the transactions dated from today back by the longest of the Fetch period (UC-001 BR-009), the Upload Window and the file upload window, plus the Matching Date Window. Every later read takes all changes since the previous read, including deletions and merges, so that a transaction Slussen sent is always found again.
+The first read of a Budget covers the transactions dated from today back by the longest of the Fetch period (UC-001 BR-009), the Upload Window and the file upload window, plus the Matching Date Window. Every later read takes all changes since the previous read, including deletions and merges, so that a transaction Slussen sent is always found again. A served Budget that gains a Budget Account, when the Operator chooses the Budgets again (UC-013), is read again as at its first read, so that the earlier transactions of the new Budget Account are in Slussen's copy before a Bank Account is mapped to it.
 
 ### BR-017: Unknown Outcome Resolved
 
