@@ -8,6 +8,7 @@ import slussen.budgetapp.ynab.YnabBudgetApp
 import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
+import slussen.core.fetch.FetchNotices
 import slussen.core.fetch.FetchTransactions
 import slussen.core.firstupload.FirstUploadMatching
 import slussen.core.journal.DecisionJournal
@@ -59,6 +60,7 @@ class CompositionRoot(log: SlussenLog) {
             registered, storage.credentialVault, coordinator, journal, storage.settings, storage.providerRequests,
             storage.fetches, CredentialRefusals(), clock,
         )
+        val fetchNotices = FetchNotices()
         val settingsOverview = SettingsOverview(
             registered, credentials, storage.connections, storage.offered, storage.importStatus, storage.settings, clock,
         )
@@ -86,10 +88,11 @@ class CompositionRoot(log: SlussenLog) {
                 journal = journal,
                 clock = clock,
                 firstRunNext = { settingsOverview.next() },
+                fetchNotices = fetchNotices,
             ),
             fetch = FetchTransactions(
                 registered, credentials, storage.connections, storage.offered, storage.fetches, storage.providerRequests,
-                coordinator, storage.settings, clock,
+                coordinator, storage.settings, journal, clock, fetchNotices,
             ),
             formats = Formats(clock.zone),
             clock = clock,

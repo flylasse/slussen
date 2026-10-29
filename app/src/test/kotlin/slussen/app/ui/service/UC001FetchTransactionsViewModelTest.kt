@@ -14,6 +14,8 @@ import slussen.app.ui.UiFixture
 import slussen.app.ui.components.FetchButtonUi
 import slussen.app.ui.components.FetchResultKind
 import slussen.app.ui.components.FetchResultUi
+import slussen.app.ui.budget.BudgetViewModel
+import slussen.app.ui.budget.RemedyAction
 import slussen.app.ui.overview.OverviewViewModel
 import slussen.core.port.BackOffCause
 import slussen.core.port.CoordinatorMode
@@ -409,7 +411,7 @@ class UC001FetchTransactionsViewModelTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "A11: Fetch of Several Data Providers")
-    @DisplayName("A11 (P9-14): the Overview says in one line what a Fetch does in this build: it lists the Bank Accounts with their balances and stores the Account Balances, no Bank Transactions yet")
+    @DisplayName("A11 (P9-14): the Overview says in one line what a Fetch does in this build: it lists the Bank Accounts and stores their Bank Transactions and Account Balances, without comparing them yet")
     fun overviewSaysWhatAFetchDoesInThisBuild() {
         runBlocking { slice.enterCredentials() }
         aBankAccountIsAdded()
@@ -417,8 +419,8 @@ class UC001FetchTransactionsViewModelTest {
         val ui = OverviewViewModel(fixture.services).also { it.load() }.state.value!!
 
         assertEquals(
-            "In this build a Fetch lists the Bank Accounts each Data Provider offers and stores the Account Balance of each " +
-                "Bank Account you added; Bank Transactions are not fetched yet.",
+            "In this build a Fetch lists the Bank Accounts each Data Provider offers and stores the Bank Transactions and the " +
+                "Account Balance of each Bank Account you added; it does not compare them with the Budget App yet.",
             ui.fetchNote,
         )
     }
@@ -469,5 +471,103 @@ class UC001FetchTransactionsViewModelTest {
             slice.offeredStore.offered().single().id, checking, "Kestrel Checking", slussen.core.port.BankAccountType.Checking,
             slussen.core.port.BankChoice.Known(bank), null,
         )
+    }
+
+    private fun answerChecking(result: BankAccountResult, currency: slussen.pluginapi.value.CurrencyCode = USD, accounts: List<DeliveredBankAccount> = emptyList()) {
+        slice.feeds.fetchAnswer = {
+            FetchResponse(
+                SourceOutcome.Completed,
+                emptyList(),
+                listOf(DeliveredBankAccount("acct-4410", "Kestrel Bank", "CHK", "checking", currency, null, result)) + accounts,
+            )
+        }
+    }
+
+    private fun household() = BudgetViewModel(fixture.services, runBlocking { slice.connectionStore.budgets().single { it.name == "Household" }.id })
+        .also { it.load() }.state.value!!
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A19: Selected Bank Account Not Delivered")
+    @DisplayName("A19 (budget.html#not-delivered): the Fetch result names the Bank Account not delivered; its card on the Budget tab shows the Blocked Reason not delivered by the Data Provider with the time of the Fetch, the advice to check it there, and Fetch again")
+    fun notDeliveredIsShown() {
+        runBlocking { slice.enterCredentials() }
+        aFeedsBankAccountIsAdded()
+        slice.feeds.fetchAnswer = { FetchResponse(SourceOutcome.Completed, emptyList(), emptyList()) }
+        val page = page(slice.feedsKey)
+
+        page.fetch()
+
+        assertEquals(
+            FetchResultUi(
+                "Fetched 14:00",
+                "Bank Accounts offered: 0 · not delivered by Kestrel Feeds: Kestrel Checking, stored data unchanged · check at " +
+                    "Kestrel Feeds that it is still connected there, then fetch again",
+                FetchResultKind.Fetched,
+                tap = 1,
+            ),
+            page.ui().fetchResult,
+        )
+        val line = household().bankAccounts.single().blocked.single()
+        assertEquals("Blocked: Kestrel Checking, not delivered by Kestrel Feeds · 2026-10-15 14:00", line.text)
+        assertEquals(
+            "Kestrel Feeds answered without this Bank Account; its Bank Transactions and Account Balance are kept unchanged. " +
+                "Check at Kestrel Feeds that Kestrel Checking is still connected there, then fetch again.",
+            line.advice,
+        )
+        assertEquals(RemedyAction("Fetch again", available = true, service = slice.feedsKey, note = null), line.action)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A20: Bank's Sign-In at the Data Provider Needed", requirements = ["NFR-012"])
+    @DisplayName("A20 (budget.html#sign-in-needed), NFR-012: the Bank's sign-in at the Data Provider is shown in Slussen's words, naming the Data Provider, with the action to sign in there and fetch again; the credentials in Slussen stay as they are")
+    fun signInNeededIsShown() {
+        runBlocking { slice.enterCredentials() }
+        aFeedsBankAccountIsAdded()
+        answerChecking(BankAccountResult.SignInNeeded)
+        val page = page(slice.feedsKey)
+
+        page.fetch()
+
+        assertEquals(
+            "Bank Accounts offered: 1 · added and identified: 1 · the Bank's sign-in at Kestrel Feeds needs you: Kestrel Checking, " +
+                "stored data unchanged · sign in to the Bank again at Kestrel Feeds, then fetch again",
+            page.ui().fetchResult!!.detail,
+        )
+        val line = household().bankAccounts.single().blocked.single()
+        assertEquals("Blocked: Kestrel Checking, the Bank's sign-in at Kestrel Feeds needs you", line.text)
+        assertEquals(
+            "Kestrel Feeds cannot read this Bank until you sign in to it again there; its Bank Transactions and Account Balance " +
+                "are kept unchanged. Sign in to the Bank of Kestrel Checking again at Kestrel Feeds, then fetch again. Your " +
+                "Kestrel Feeds credentials in Slussen stay as they are.",
+            line.advice,
+        )
+        assertEquals(RemedyAction("Fetch again", available = true, service = slice.feedsKey, note = null), line.action)
+        assertEquals("Accepted 2026-10-15", page.ui().credentials)
+        assertNull(page.ui().blocked)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A21: Balance in Another Currency")
+    @DisplayName("A21 (bank-account.html#balance-other-currency): a balance reported in another currency is named with both currencies on the Bank Account, not stored, nothing converted, and nothing is needed now")
+    fun balanceInAnotherCurrencyIsShown() {
+        runBlocking { slice.enterCredentials() }
+        aFeedsBankAccountIsAdded()
+        answerChecking(BankAccountResult.Read(emptyList(), amount(4700)), currency = ExampleData.EUR)
+        val page = page(slice.feedsKey)
+
+        page.fetch()
+
+        assertEquals(
+            "Bank Accounts offered: 1 · added and identified: 1 · Kestrel Checking: balance reported in EUR, expected USD, not stored",
+            page.ui().fetchResult!!.detail,
+        )
+        val card = household().bankAccounts.single()
+        assertEquals(
+            "Balance reported in EUR, expected USD · at the Fetch of 2026-10-15 14:00 Kestrel Feeds reported it in EUR; it was " +
+                "not stored and no amount was converted. Nothing is needed now. If it happens again, check at Kestrel Feeds " +
+                "which currency it shows for Kestrel Checking.",
+            card.balanceNotice,
+        )
+        assertTrue(card.blocked.isEmpty())
     }
 }

@@ -17,7 +17,10 @@ import slussen.core.port.FetchResultOutcome
 import slussen.core.port.JournalEntry
 import slussen.core.port.ProviderRequestKind
 import slussen.core.port.FirstUploadMatchingCause
+import slussen.core.port.StableReferenceKind
 import slussen.core.port.StartKind
+import slussen.core.port.TransactionStatus
+import slussen.core.port.UnreadableTransactionStatus
 import slussen.core.port.StartedBy
 import slussen.core.port.StartState
 import slussen.core.port.UnreadablePart
@@ -125,6 +128,10 @@ class SlussenStorage private constructor(
             ValueColumn("fetch_result", "outcome", FetchResultOutcome.entries.map { it.text }),
             ValueColumn("back_off", "cause", BackOffCause.entries.map { it.text }),
             ValueColumn("coordinator_state", "mode", CoordinatorMode.entries.map(RoomCoordinatorStore::textOf)),
+            // Transactions plan Phase 6a: the value columns O-1 writes (ADR-002 §8 step 1); an empty status passes the check.
+            ValueColumn("bank_transaction", "reference_kind", StableReferenceKind.entries.map { it.text }),
+            ValueColumn("bank_transaction", "status", TransactionStatus.entries.map { it.text }),
+            ValueColumn("unreadable_transaction", "status", UnreadableTransactionStatus.entries.map { it.text }),
         )
 
         val JOURNAL_VALUES: List<ValueColumn> = listOf(

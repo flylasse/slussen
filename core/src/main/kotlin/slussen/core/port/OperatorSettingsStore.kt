@@ -28,11 +28,15 @@ data class OperatorSettings(
     val uploadAsCleared: Boolean,
 ) {
     companion object {
-        /** Every default the entity model names for `OPERATOR_SETTINGS`; each is a number the Operator can change. */
+        /**
+         * Every default the entity model names for `OPERATOR_SETTINGS`; each is a number the Operator can change. Only a
+         * new installation starts with it: a value already stored is never changed by a new default (fetch period 30
+         * days since S-T-06, 60 before).
+         */
         val DEFAULT: OperatorSettings = OperatorSettings(
             uploadWindowDays = 7,
             fileUploadWindowDays = 60,
-            fetchPeriodDays = 60,
+            fetchPeriodDays = 30,
             defaultWaitHours = 8,
             requestLimitWarningHours = 24,
             requestTimeoutSeconds = 30,

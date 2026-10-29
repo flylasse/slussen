@@ -3,6 +3,7 @@ package slussen.core.fetch
 import slussen.core.credential.CredentialStatus
 import slussen.core.credential.ServiceCredentials
 import slussen.core.identity.BankAccountFingerprint
+import slussen.core.journal.DecisionJournal
 import slussen.core.operation.OperationCoordinator
 import slussen.core.operation.OperationKind
 import slussen.core.operation.OperationPermit
@@ -11,6 +12,14 @@ import slussen.core.plugin.RegisteredDataProvider
 import slussen.core.plugin.RegisteredPlugins
 import slussen.core.port.BackOffCause
 import slussen.core.port.BankAccountDelivery
+import slussen.core.port.DeliveredTransaction
+import slussen.core.port.DeliveredTransactions
+import slussen.core.port.DeliveryStored
+import slussen.core.port.JournalEventKind
+import slussen.core.port.NewUnreadableTransaction
+import slussen.core.port.Reception
+import slussen.core.port.TransactionField
+import slussen.core.port.UnreadableTransactionReason
 import slussen.core.port.ConnectionStore
 import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
@@ -41,22 +50,24 @@ import slussen.pluginapi.provider.OperatorPresence
 import slussen.pluginapi.provider.ProviderTransaction
 import slussen.pluginapi.provider.ReadKind
 import slussen.pluginapi.provider.SourceOutcome
+import slussen.pluginapi.provider.UnreadableReason
 import slussen.pluginapi.request.RefusalReason
 import slussen.pluginapi.value.Amount
+import slussen.pluginapi.value.CurrencyCode
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 
 /**
- * Fetch Transactions (UC-001), `:core` `fetch` (ADR-001 §7), as far as the identification slice builds it (Phase 8a,
- * O-P2-45) and the Account Balances (Phase 8f): the request gate (Back-off, Fetch Cooldown, Request Limit; A1-A3, A16),
- * the Fetch with the Operator present, the Offered Bank Accounts with their balance (step 6), the identification of the
- * Bank Accounts the Operator added (step 6, A18, BR-011), the Account Balance of each Bank Account it read (step 8,
- * BR-011), the Back-offs a Data Provider asks for (A5, A15), and the Fetch record with its outcome and the Fetch Result
- * of each Bank Account it read (step 11, A2, A6, A7, A8). Steps 7, 9 and 10 (Bank Transactions, the Decision Journal,
- * the Comparison) and the Scheduled Fetch (A12) come with later slices. Until then step 4 asks every selected Bank
- * Account for its balance only (O-P2-54), so no transaction is delivered and none is dropped (NFR-002).
+ * Fetch Transactions (UC-001), `:core` `fetch` (ADR-001 §7): the request gate (Back-off, Fetch Cooldown, Request Limit;
+ * A1-A3, A16), the Fetch with the Operator present of the transactions and balance of every selected Bank Account
+ * (step 4), the Offered Bank Accounts with their balance (step 6), the identification of the Bank Accounts the Operator
+ * added (step 6, A10, A18, BR-011), the booked, non-zero Bank Transactions and the Unreadable Transactions of each
+ * (steps 7-8, A17, BR-002, BR-003, BR-016), its Account Balance in its own currency (step 8, A21, BR-011), the Decision
+ * Journal (step 9), the Back-offs a Data Provider asks for (A5, A15), and the Fetch record with its outcome and the Fetch
+ * Result of each Bank Account it selected (step 11, A2, A6-A8, A19, A20). Step 10 (the Comparison) and the Scheduled
+ * Fetch (A12) come with later slices.
  */
 class FetchTransactions(
     private val plugins: RegisteredPlugins,
@@ -67,7 +78,10 @@ class FetchTransactions(
     private val providerRequests: ProviderRequestStore,
     private val coordinator: OperationCoordinator,
     private val settings: OperatorSettingsStore,
+    private val journal: DecisionJournal,
     private val clock: Clock,
+    /** UC-001 A21: the balances reported in another currency, which the import status shows (UC-008). */
+    private val notices: FetchNotices = FetchNotices(),
 ) {
     /** A Fetch Cooldown that holds: from the last successful Fetch at [lastFetchAt] to [endsAt]. */
     private data class Cooldown(val lastFetchAt: Instant, val endsAt: Instant)
@@ -122,8 +136,7 @@ class FetchTransactions(
         }
         val selected = selected(stored)
         val cooldown = cooldownOf(stored, startedAt)
-        // UC-001 BR-006: Within the Fetch Cooldown only the Bank Accounts added or identified again since the last successful Fetch are read.
-        val toRead = if (cooldown == null) selected else selected.filter { it.bankAccount.identifiedAt.isAfter(cooldown.lastFetchAt) }
+        val toRead = if (cooldown == null) selected else notReadSinceIdentified(stored, selected)
         if (cooldown != null && toRead.isEmpty()) {
             record(stored, startedAt, FetchOutcome.ServedFromFetchCooldown)
             return FetchReport.ServedFromFetchCooldown(key, name, cooldown.lastFetchAt, cooldown.endsAt, read = null, requestLimitFreesUpAt = null)
@@ -147,10 +160,9 @@ class FetchTransactions(
     }
 
     /**
-     * Step 4: what is asked of the Data Provider, with the Operator present, for the fetch period. Partial until steps
-     * 7-10 are built (O-P2-54): every selected Bank Account is asked for its balance only (see [selected]), so the Data
-     * Provider delivers no transaction that Slussen could neither store nor show, and none is dropped (NFR-002); the
-     * fetch period is still sent. Nothing is lost for later, since every Fetch asks for the whole fetch period again.
+     * Step 4: what is asked of the Data Provider, with the Operator present, for the fetch period: the transactions and
+     * the balance of each selected Bank Account, only the balance of one whose transactions come from Transaction Files
+     * (see [selected]).
      */
     private suspend fun request(toRead: List<Selected>, now: Instant): FetchRequest {
         val today = LocalDate.ofInstant(now, clock.zone)
@@ -181,15 +193,32 @@ class FetchTransactions(
             val ownReference = bankAccount.providerReference
             val balanceReference = bankAccount.balanceProviderReference
             when {
-                // Step 4 (O-P2-54): ReadKind.TransactionsAndBalance once steps 7-10 store and show the transactions.
+                // Step 4: the transactions and the balance of each Bank Account the Operator added for the Data Provider.
                 bankAccount.dataProviderId == stored.id && ownReference != null ->
-                    Selected(bankAccount, BankAccountToRead(ownReference, ReadKind.Balance))
+                    Selected(bankAccount, BankAccountToRead(ownReference, ReadKind.TransactionsAndBalance))
                 // UC-001 BR-011: A Bank Account whose transactions come from Transaction Files is read for its balance only, from the Data Provider the Operator chose for it.
                 bankAccount.balanceDataProviderId == stored.id && balanceReference != null ->
                     Selected(bankAccount, BankAccountToRead(balanceReference, ReadKind.Balance))
                 else -> null
             }
         }
+
+    // UC-001 BR-006: Within the Fetch Cooldown a Bank Account is read until it has a Fetch Result Fetched since it was added or identified again.
+    /**
+     * A2: of the [selected] Bank Accounts, those not read since the Operator added them or confirmed or changed their
+     * identification (`BANK_ACCOUNT.identified_at`), that is, without a Fetch Result Fetched of a Fetch started since then
+     * (S-T-02, issue #9). A read that failed, was not delivered or needed a sign-in does not count.
+     */
+    private suspend fun notReadSinceIdentified(stored: StoredDataProvider, selected: List<Selected>): List<Selected> {
+        val fetchesOf = fetches.fetchesOf(stored.id)
+        return selected.filter { candidate ->
+            val bankAccount = candidate.bankAccount
+            fetchesOf.none { fetch ->
+                !fetch.startedAt.isBefore(bankAccount.identifiedAt) &&
+                    fetch.results.any { it.bankAccountId == bankAccount.id && it.outcome == FetchResultOutcome.Fetched }
+            }
+        }
+    }
 
     /** A2: the Fetch Cooldown that holds at [now] after the last successful Fetch, or null. */
     private suspend fun cooldownOf(stored: StoredDataProvider, now: Instant): Cooldown? {
@@ -227,17 +256,21 @@ class FetchTransactions(
                 // UC-009 BR-004: a reference that two delivered Bank Accounts share identifies neither; neither is kept or identified.
                 val shared = response.bankAccounts.groupingBy { it.providerReference }.eachCount().filterValues { it > 1 }.keys
                 val usable = response.bankAccounts.filter { it.providerReference !in shared }
-                val fetched = keep(provider, usable, toRead, startedAt, waitingUntil, warning)
+                val kept = keep(provider, usable, toRead, startedAt, waitingUntil, warning)
                     .copy(sharedReference = response.bankAccounts.size - usable.size)
+                // UC-001 BR-006: A read within the Fetch Cooldown is recorded as served from it, so it neither starts nor extends it.
+                val fetchId = record(stored, startedAt, if (cooldown == null) FetchOutcome.Fetched else FetchOutcome.ServedFromFetchCooldown)
+                // A2 step 3: a Fetch Served From Fetch Cooldown carries the outcome of each Bank Account it read.
+                val fetched = storeDeliveries(fetchId, stored, usable, shared, toRead, startedAt, answeredAt, waiting = waitingUntil != null).let { outcomes ->
+                    kept.copy(
+                        notDelivered = outcomes.notDelivered,
+                        signInNeeded = outcomes.signInNeeded,
+                        balancesInOtherCurrency = outcomes.balancesInOtherCurrency,
+                    )
+                }
                 if (cooldown == null) {
-                    val fetchId = record(stored, startedAt, FetchOutcome.Fetched)
-                    storeDeliveries(fetchId, usable, toRead, answeredAt)
                     fetched
                 } else {
-                    // UC-001 BR-006: A read within the Fetch Cooldown is recorded as served from it, so it neither starts nor extends it.
-                    val fetchId = record(stored, startedAt, FetchOutcome.ServedFromFetchCooldown)
-                    // A2 step 3: the Fetch Served From Fetch Cooldown carries the outcome of each Bank Account it read.
-                    storeDeliveries(fetchId, usable, toRead, answeredAt)
                     FetchReport.ServedFromFetchCooldown(key, name, cooldown.lastFetchAt, cooldown.endsAt, read = fetched, requestLimitFreesUpAt = null)
                 }
             }
@@ -327,44 +360,193 @@ class FetchTransactions(
         )
     }
 
+    /** What [storeDeliveries] found that the Fetch reports beside its Fetch Results (A19, A20, A21). */
+    private data class DeliveryOutcomes(
+        val notDelivered: List<String>,
+        val signInNeeded: List<String>,
+        val balancesInOtherCurrency: List<BalanceInOtherCurrency>,
+    )
+
     /**
-     * Steps 8 and 11 for each selected Bank Account the Data Provider delivered (O-1, one storage operation each): its
-     * Fetch Result for the Fetch [fetchId] and the Account Balance the Data Provider reported, at the time it says it
-     * reported it, or as at [answeredAt] when it gives none (S-T-04). A Bank Account the answer lists but did not read
-     * (A5, a Bank or the Data Provider stopped), or whose Bank's sign-in at the Data Provider is needed (A20, its Fetch
-     * Result comes in Phase 6), keeps its stored data and gets no Fetch Result; one not delivered at all is not
-     * identified (A10, not built) and gets none either. Offered Bank Accounts that are not added store nothing (A18,
-     * S-35). No Bank Transaction is stored: steps 7, 9 and 10 come with a later slice, and until then a Fetch asks for
-     * balances only (O-P2-54).
+     * Steps 7-9 and 11 for each selected Bank Account (O-1, one storage operation each): its Fetch Result for the Fetch
+     * [fetchId]; for one the Data Provider read, its booked, non-zero Bank Transactions and its Unreadable Transactions
+     * (not for one read for its balance only, BR-011), and the Account Balance the Data Provider reported, at the time it
+     * says it reported it, or as at [answeredAt] when it gives none (S-T-04), when it is in the Bank Account's own
+     * currency (A21); then the Decision Journal entries of what was received (step 9). A Bank Account whose reference two
+     * delivered Bank Accounts share is Ambiguous Bank Account (A10), one the answer does not contain Not Delivered (A19),
+     * one the Data Provider reported a failure for Failed (A8), one whose Bank's sign-in at the Data Provider is needed
+     * Sign-In Needed (A20); each of them keeps its stored data. One the answer lists but did not read (A5) keeps its
+     * stored data and gets no Fetch Result. Offered Bank Accounts that are not added store nothing (A18, S-35).
      */
-    private suspend fun storeDeliveries(fetchId: Long, delivered: List<DeliveredBankAccount>, toRead: List<Selected>, answeredAt: Instant) {
+    private suspend fun storeDeliveries(
+        fetchId: Long,
+        stored: StoredDataProvider,
+        delivered: List<DeliveredBankAccount>,
+        shared: Set<String>,
+        toRead: List<Selected>,
+        startedAt: Instant,
+        answeredAt: Instant,
+        waiting: Boolean,
+    ): DeliveryOutcomes {
         val byReference = delivered.associateBy { it.providerReference }
+        val notDelivered = mutableListOf<String>()
+        val signInNeeded = mutableListOf<String>()
+        val otherCurrency = mutableListOf<BalanceInOtherCurrency>()
         toRead.forEach { selected ->
             val bankAccount = selected.bankAccount
-            val one = byReference[selected.read.providerReference] ?: return@forEach
-            val delivery = when (val result = one.result) {
-                is BankAccountResult.Read -> BankAccountDelivery(
-                    fetchId = fetchId,
-                    bankAccountId = bankAccount.id,
-                    outcome = FetchResultOutcome.Fetched,
-                    transactionCount = result.transactions.count { it is ProviderTransaction.Interpretable && it.booked && it.amount.thousandths != 0L },
-                    // UC-001 BR-011: The Account Balance of a file-imported Bank Account is the one its balance Data Provider reports, stored like any other.
-                    balance = result.balance?.let {
-                        // Step 8 (S-T-04): reported at the time the Data Provider gives, or the time the answer arrived.
-                        NewAccountBalance(it, one.currency ?: bankAccount.currency, result.balanceReportedAt ?: answeredAt)
-                    },
-                )
-                // A8: a failure for one Bank Account keeps its stored Account Balance and records the outcome Failed.
-                is BankAccountResult.Failed -> BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.Failed, 0, balance = null)
-                // A20: the Bank's sign-in at the Data Provider is needed: its stored data stays unchanged and no Back-off
-                // starts. It gets no Fetch Result yet; the outcome Sign-In Needed and its Blocked Reason come in Phase 6
-                // of the transactions plan.
-                BankAccountResult.SignInNeeded -> null
-                is BankAccountResult.NotRead -> null
+            val reference = selected.read.providerReference
+            val one = byReference[reference]
+            val delivery = when {
+                // A10 step 3: two delivered Bank Accounts share the reference, so neither identifies this Bank Account.
+                reference in shared -> BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.AmbiguousBankAccount, 0, balance = null)
+                // A5 step 2: while the Data Provider asks Slussen to wait, a Bank Account it did not deliver is one the wait
+                // affects: its stored data stays unchanged and it is not Not Delivered.
+                one == null && waiting -> null
+                // A19: the answer contains the selected Bank Account neither as delivered nor as failed or not read.
+                one == null -> {
+                    notDelivered += bankAccount.name
+                    BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.NotDelivered, 0, balance = null)
+                }
+                else -> when (val result = one.result) {
+                    is BankAccountResult.Read -> readDelivery(fetchId, stored, selected, one, result, startedAt, answeredAt, otherCurrency)
+                    // A8: a failure for one Bank Account keeps its stored data and records the outcome Failed.
+                    is BankAccountResult.Failed -> BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.Failed, 0, balance = null)
+                    // A20: the Bank's sign-in at the Data Provider is needed: its stored data stays unchanged and no Back-off starts.
+                    BankAccountResult.SignInNeeded -> {
+                        signInNeeded += bankAccount.name
+                        BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.SignInNeeded, 0, balance = null)
+                    }
+                    is BankAccountResult.NotRead -> null
+                }
             }
             // UC-001 BR-010: A failure of one Bank Account leaves the others' storage unaffected: each is its own storage operation.
-            delivery?.let { fetches.storeBankAccountDelivery(it) }
+            val storedDelivery = delivery?.let { fetches.storeBankAccountDelivery(it) } ?: return@forEach
+            journalReceived(bankAccount, storedDelivery)
         }
+        return DeliveryOutcomes(notDelivered, signInNeeded, otherCurrency)
+    }
+
+    /** Steps 7-8, A21: what O-1 stores for a Bank Account the Data Provider read. */
+    private fun readDelivery(
+        fetchId: Long,
+        stored: StoredDataProvider,
+        selected: Selected,
+        one: DeliveredBankAccount,
+        result: BankAccountResult.Read,
+        startedAt: Instant,
+        answeredAt: Instant,
+        otherCurrency: MutableList<BalanceInOtherCurrency>,
+    ): BankAccountDelivery {
+        val bankAccount = selected.bankAccount
+        // UC-001 BR-011: A Bank Account whose transactions come from Transaction Files takes only its balance from the Data Provider.
+        val transactions = if (selected.read.read == ReadKind.Balance) null else takenIn(stored, bankAccount.currency, result.transactions, answeredAt)
+        val reportedIn = one.currency ?: bankAccount.currency
+        val balance = result.balance?.let { amount ->
+            // A21: a balance reported in another currency than the Bank Account's is not stored, and nothing is converted.
+            if (reportedIn != bankAccount.currency) {
+                BalanceInOtherCurrency(bankAccount.id, bankAccount.name, stored.name, reportedIn, bankAccount.currency, startedAt).let {
+                    otherCurrency += it
+                    notices.noteBalanceInOtherCurrency(it)
+                }
+                null
+            } else {
+                notices.balanceStored(bankAccount.id)
+                // Step 8 (S-T-04): reported at the time the Data Provider gives, or the time the answer arrived.
+                NewAccountBalance(amount, bankAccount.currency, result.balanceReportedAt ?: answeredAt)
+            }
+        }
+        return BankAccountDelivery(
+            fetchId = fetchId,
+            bankAccountId = bankAccount.id,
+            outcome = FetchResultOutcome.Fetched,
+            transactionCount = transactions?.interpretable?.size ?: 0,
+            // UC-001 BR-011: The Account Balance of a file-imported Bank Account is the one its balance Data Provider reports, stored like any other.
+            balance = balance,
+            transactions = transactions,
+        )
+    }
+
+    /**
+     * Step 7, A17: the delivered transactions Slussen takes in, in the order delivered: the booked ones with an amount
+     * other than zero, and those it cannot interpret unless they are known to be pending.
+     */
+    private fun takenIn(
+        stored: StoredDataProvider,
+        currency: CurrencyCode,
+        delivered: List<ProviderTransaction>,
+        answeredAt: Instant,
+    ): DeliveredTransactions {
+        val (interpretable, otherCurrency) = delivered.filterIsInstance<ProviderTransaction.Interpretable>()
+            // UC-001 BR-002: Only booked transactions are taken in; a pending one is left out until a later Fetch delivers it as booked.
+            .filter { it.booked }
+            // UC-001 BR-003: A transaction with an amount of zero is left out.
+            .filter { it.amount.thousandths != 0L }
+            .partition { it.currency == currency }
+        val unreadable = delivered.filterIsInstance<ProviderTransaction.Uninterpretable>()
+            // UC-001 BR-002: an item the Data Provider reports as pending is left out, also when it cannot be interpreted.
+            .filter { it.booked != false }
+            .map { NewUnreadableTransaction(it.bookedDate, it.amount, it.currency, it.payee, it.memo, reasonOf(it.reason)) }
+        // UC-001 BR-016: A transaction in another currency than its Bank Account's is kept for review, never converted (S-T-16, A17).
+        val inOtherCurrency = otherCurrency.map {
+            NewUnreadableTransaction(it.bookedDate, it.amount, it.currency, it.payee, it.memo, UnreadableTransactionReason.OtherCurrency)
+        }
+        return DeliveredTransactions(
+            stored.sourceKey,
+            answeredAt,
+            interpretable.map { DeliveredTransaction(it.stableReference, it.bookedDate, it.amount, it.currency, it.payee, it.memo) },
+            unreadable + inOtherCurrency,
+        )
+    }
+
+    private fun reasonOf(reason: UnreadableReason): UnreadableTransactionReason = when (reason) {
+        UnreadableReason.MissingDate -> UnreadableTransactionReason.MissingDate
+        UnreadableReason.UnreadableDate -> UnreadableTransactionReason.UnreadableDate
+        UnreadableReason.MissingAmount -> UnreadableTransactionReason.MissingAmount
+        UnreadableReason.UnreadableAmount -> UnreadableTransactionReason.UnreadableAmount
+        UnreadableReason.MissingCurrency -> UnreadableTransactionReason.MissingCurrency
+        UnreadableReason.UnreadableStructure -> UnreadableTransactionReason.UnreadableStructure
+    }
+
+    // UC-011 BR-001: Every Bank Transaction received for the first time or with changed content is recorded, naming its Bank Account and its Import Identifier.
+    /**
+     * Step 9: one Decision Journal entry per Bank Transaction [delivered] stored as received for the first time or with
+     * changed content, and one per Import Identifier collision (ADR-008 §5). The details hold Slussen's own words, the
+     * date and the amount, never a text the Data Provider delivered (NFR-012).
+     */
+    private suspend fun journalReceived(bankAccount: StoredBankAccount, delivered: DeliveryStored) {
+        delivered.received.forEach { received ->
+            val (kind, what) = when (received.reception) {
+                Reception.FirstTime -> JournalEventKind.TransactionSeen to "Bank Transaction received for the first time"
+                Reception.ChangedContent -> JournalEventKind.TransactionChanged to
+                    "Bank Transaction received with changed content (${received.changed.joinToString(", ") { fieldName(it) }})"
+            }
+            val details = "$what: booked ${received.bookedDate}, ${amountText(received.amount)} ${received.currency.code}"
+            journal.record(kind, details, received.importIdentifier, bankAccount.name)
+        }
+        delivered.collisions.forEach { importIdentifier ->
+            journal.record(
+                JournalEventKind.StatusChanged,
+                "Delivered transaction kept as an Unreadable Transaction with the status Needs Review: Import Identifier collision",
+                importIdentifier,
+                bankAccount.name,
+            )
+        }
+    }
+
+    private fun fieldName(field: TransactionField): String = when (field) {
+        TransactionField.BookedDate -> "booked date"
+        TransactionField.Amount -> "amount"
+        TransactionField.Currency -> "currency"
+        TransactionField.Payee -> "payee"
+        TransactionField.Memo -> "memo"
+    }
+
+    /** An amount as signed units with three decimals, the entity model's precision `12,3`: -64.180. */
+    private fun amountText(amount: Amount): String {
+        val thousandths = amount.thousandths
+        val units = Math.abs(thousandths) / THOUSANDTHS
+        val rest = (Math.abs(thousandths) % THOUSANDTHS).toString().padStart(3, '0')
+        return "${if (thousandths < 0) "-" else ""}$units.$rest"
     }
 
     private suspend fun offeredOf(
@@ -399,7 +581,7 @@ class FetchTransactions(
         is BankAccountResult.Read -> result.balance
         is BankAccountResult.NotRead -> result.balance.takeIf { result.cause == NotReadCause.NotSelected }
         is BankAccountResult.Failed -> null
-        // A20: a Bank Account whose Bank's sign-in at the Data Provider is needed carries no balance (Phase 6 builds A20).
+        // A20: a Bank Account whose Bank's sign-in at the Data Provider is needed carries no balance.
         BankAccountResult.SignInNeeded -> null
     }
 
@@ -425,5 +607,8 @@ class FetchTransactions(
 
         /** `BANK.name` holds at most 100 characters (entity model). */
         const val BANK_NAME_MAX_LENGTH = 100
+
+        /** Thousandths in one currency unit (ADR-001 §4 `Amount`). */
+        const val THOUSANDTHS = 1000L
     }
 }

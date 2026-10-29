@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import slussen.app.ui.components.BlockedReasonLine
 import slussen.app.ui.components.FirstUploadMatchingBanner
 import slussen.app.ui.components.Muted
@@ -40,7 +41,7 @@ fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit, onStartFirstUpl
                 Muted(source.health)
                 Muted(source.freshness)
                 source.counts?.let { Muted(it) }
-                source.blocked.forEach { BlockedReasonLine(it.text, it.action, onRemedy) }
+                source.blocked.forEach { BlockedReasonLine(it.text, it.action, onRemedy, it.advice) }
             }
         }
         item { SectionTitle("Bank Accounts") }
@@ -51,7 +52,9 @@ fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit, onStartFirstUpl
                 Muted(account.health)
                 Muted(account.freshness)
                 Text(account.balance, color = SlussenColors.Text, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
-                account.blocked.forEach { BlockedReasonLine(it.text, it.action, onRemedy) }
+                // A21 of UC-001 (`bank-account.html#balance-other-currency`): both currencies, nothing converted.
+                account.balanceNotice?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
+                account.blocked.forEach { BlockedReasonLine(it.text, it.action, onRemedy, it.advice) }
             }
         }
     }

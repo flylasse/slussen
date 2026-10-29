@@ -83,9 +83,10 @@ fun ScreenTitle(title: String, subtitle: String? = null, onBack: (() -> Unit)? =
 
 /** A Blocked Reason with its remedy (UC-008 BR-006, A6): available remedies start their use case. */
 @Composable
-fun BlockedReasonLine(text: String, action: RemedyAction?, onRemedy: (RemedyAction) -> Unit) {
+fun BlockedReasonLine(text: String, action: RemedyAction?, onRemedy: (RemedyAction) -> Unit, advice: String? = null) {
     Column(modifier = Modifier.padding(top = 4.dp)) {
         Text(text, color = SlussenColors.Amber, fontSize = 12.sp)
+        if (advice != null) Text(advice, color = SlussenColors.Text2, fontSize = 12.sp)
         if (action != null) {
             OutlinedButton(onClick = { onRemedy(action) }, enabled = action.available) { Text(action.title) }
             if (action.note != null) Text(action.note, color = SlussenColors.Text3, fontSize = 11.sp)

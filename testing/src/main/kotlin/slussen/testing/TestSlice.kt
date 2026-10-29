@@ -4,6 +4,9 @@ import kotlinx.coroutines.runBlocking
 import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
+import slussen.core.fetch.FetchNotices
+import slussen.core.identity.ImportIdentifierInput
+import slussen.core.identity.ImportIdentifierProtocol
 import slussen.core.fetch.FetchTransactions
 import slussen.core.firstupload.FirstUploadMatching
 import slussen.core.journal.DecisionJournal
@@ -29,6 +32,8 @@ import java.util.Random
 class TestSlice(
     startKind: StartKind = StartKind.Normal,
     unreadableParts: List<UnreadablePart> = emptyList(),
+    /** Computes the Import Identifiers O-1 stores; a test passes a test-only digest to plant a collision (ADR-008 §5). */
+    identify: (ImportIdentifierInput) -> String = ImportIdentifierProtocol::importIdentifier,
 ) {
     val clock = MutableClock()
     val budgetApp = FakeBudgetApp()
@@ -45,7 +50,7 @@ class TestSlice(
     val providerRequests = InMemoryProviderRequestStore()
     val connectionStore = InMemoryConnectionStore()
     val offeredStore = InMemoryOfferedBankAccountStore()
-    val importStatusStore = InMemoryImportStatusStore()
+    val importStatusStore = InMemoryImportStatusStore(identify)
     val firstUploadMatchingStore = InMemoryFirstUploadMatchingStore()
     val startState = FixedStartState(startKind, unreadableParts)
     val backupSize = FixedBackupSizeMonitor()
@@ -60,8 +65,10 @@ class TestSlice(
     val credentials = ServiceCredentials(
         plugins, vault, coordinator, journal, settings, providerRequests, importStatusStore, refusals, clock,
     )
+    val fetchNotices = FetchNotices()
     val fetch = FetchTransactions(
-        plugins, credentials, connectionStore, offeredStore, importStatusStore, providerRequests, coordinator, settings, clock,
+        plugins, credentials, connectionStore, offeredStore, importStatusStore, providerRequests, coordinator, settings, journal,
+        clock, fetchNotices,
     )
     val settingsOverview = SettingsOverview(plugins, credentials, connectionStore, offeredStore, importStatusStore, settings, clock)
     val connect = BudgetsAndBankAccounts(
@@ -84,6 +91,7 @@ class TestSlice(
         journal = journal,
         clock = clock,
         firstRunNext = { settingsOverview.next() },
+        fetchNotices = fetchNotices,
     )
 
     val feedsKey: ServiceKey get() = plugins.dataProviders.single { it.plugin === feeds }.key

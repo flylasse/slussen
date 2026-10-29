@@ -1,0 +1,31 @@
+# Test vectors of the Import Identifier protocol, version 1 (ADR-008 §3). Every input is invented.
+# A committed vector is never changed: a failing vector means the protocol changed, which ADR-008 §6 forbids.
+#
+# One vector per line, its fields separated by " | ":
+#   R | Source Key | Stable Reference | Import Identifier
+#   F | Source Key | booked date | amount in thousandths | payee | memo | occurrence_number | Import Identifier
+#   U | the Bank Transaction's own Import Identifier | occurrence | Import Identifier
+# <absent> is an absent payee or memo, <empty> an empty one. \u{XXXX} writes one Unicode code point in hex, so that
+# the file says which code points a text holds (a precomposed or a combining accent, a space at either end).
+
+# The vectors of ADR-008 §3.
+R | example-provider | TX-0001 | SLS1-rscv2q3lvs7nemqz2yqdgvjykw
+F | example-format | 2026-03-05 | -12500 | Example Bakery | <absent> | 1 | SLS1-tgwy3vevvqlnyt5mg7miyv2fnt
+F | example-format | 2026-03-05 | -12500 | Example Bakery | <empty> | 1 | SLS1-tgwy3vevvqlnyt5mg7miyv2fnt
+F | example-format | 2026-03-05 | -12500 | Example Bakery | <absent> | 2 | SLS1-ejox3o4izdp3rgwdphzn2jhpfn
+F | example-format | 2026-03-05 | -12500 | Cafe\u{301} Exempel | <absent> | 1 | SLS1-gpnx76lek6eymiesbmaxgkjqtg
+F | example-format | 2026-03-05 | -12500 | Caf\u{E9} Exempel | <absent> | 1 | SLS1-gpnx76lek6eymiesbmaxgkjqtg
+U | SLS1-rscv2q3lvs7nemqz2yqdgvjykw | 1 | SLS1-ckfrf47p3mlu3wjsyazsip6k3y
+R | example-provider | TX-\u{E9} | SLS1-2obifbyikdagkslwmfqes72y7x
+R | example-provider | TX-e\u{301} | SLS1-gzjltiw5oyt4laoscprrmdjaft
+
+# Added by the first slice that computes Import Identifiers (ADR-008 §3; transactions plan Phase 6a), each computed
+# by an independent implementation of §1 and §2 before this one was written.
+# A negative amount (an outflow).
+F | example-format | 2026-03-06 | -4250 | Corner Grocer | weekly shop | 1 | SLS1-kogaf22v2iq3ofepyt2gwh6vgi
+# A positive amount (an inflow).
+F | example-format | 2026-03-06 | 1500000 | Example Employer | salary | 1 | SLS1-okyw2fq4c7jfreoqtq2l5s3vrq
+# A payee with a character outside the Basic Multilingual Plane (U+1F96F, four bytes in UTF-8).
+F | example-format | 2026-03-07 | -9990 | Example \u{1F96F} Bagels | <empty> | 1 | SLS1-z4greazd65ilz3fq3vq5mvwq3n
+# A Stable Reference with spaces at its ends, kept as they are.
+R | example-provider | \u{20}\u{20}TX-0002\u{20} | SLS1-pzbrdeir62oah4ndelhw3rk6na

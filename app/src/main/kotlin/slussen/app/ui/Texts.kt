@@ -3,6 +3,7 @@ package slussen.app.ui
 import slussen.core.connection.PairOutcome
 import slussen.core.credential.CredentialOutcome
 import slussen.core.credential.CredentialStatus
+import slussen.core.fetch.BalanceInOtherCurrency
 import slussen.core.fetch.FetchReport
 import slussen.app.ui.service.FetchWarningUi
 import slussen.core.operation.OperationRefusal
@@ -37,14 +38,15 @@ object Texts {
     fun cannotFetchWithoutBankConsents(dataProviderName: String): String =
         "$BANK_CONSENTS_NOT_IN_THIS_BUILD; $dataProviderName cannot fetch until they are"
 
-    /** P9-14: what a Fetch does in this build, while UC-001 steps 7-10 are not built and a Fetch asks for balances only (O-P2-54). */
+    /** P9-14: what a Fetch does in this build, while UC-001 step 10 (the Comparison, UC-003) is not built. */
     const val FETCH_IN_THIS_BUILD =
-        "In this build a Fetch lists the Bank Accounts each Data Provider offers and stores the Account Balance of each " +
-            "Bank Account you added; Bank Transactions are not fetched yet."
+        "In this build a Fetch lists the Bank Accounts each Data Provider offers and stores the Bank Transactions and the " +
+            "Account Balance of each Bank Account you added; it does not compare them with the Budget App yet."
 
-    /** P9-15: what the Budget tab does not show yet in this build. */
+    /** P9-15: what the Budget tab does not show yet in this build (UC-003 A1, S-T-08: not compared yet). */
     const val TRANSACTIONS_NOT_IN_THIS_BUILD =
-        "Bank Transactions are not fetched in this build yet: a Fetch stores the Account Balances, so the counts stay at 0."
+        "Bank Transactions are fetched and stored, but not compared with the Budget App in this build yet: they have no " +
+            "Transaction Status, so the counts stay at 0. Nothing is uploaded."
 
     /** UC-008 BR-006, BR-009: the Blocked Reason of First Upload Matching. */
     const val UPLOADS_WAIT_FOR_FIRST_UPLOAD_MATCHING = "Uploads wait for First Upload Matching"
@@ -139,6 +141,20 @@ object Texts {
         report.notAdded.takeIf { it > 0 }?.let { "not added: $it" },
         report.sharedReference.takeIf { it > 0 }?.let { "not used, ${report.dataProviderName} gave them the same identifier: $it" },
         report.failed.takeIf { it.isNotEmpty() }?.let { "failed: ${it.joinToString(", ")}, stored data unchanged" },
+        // A19 of UC-001: the Bank Accounts the answer did not contain, with the advice to check them at the Data Provider.
+        report.notDelivered.takeIf { it.isNotEmpty() }?.let {
+            "not delivered by ${report.dataProviderName}: ${it.joinToString(", ")}, stored data unchanged · check at " +
+                "${report.dataProviderName} that ${if (it.size == 1) "it is" else "they are"} still connected there, then fetch again"
+        },
+        // A20 of UC-001: in Slussen's own words, never the Data Provider's text (NFR-012).
+        report.signInNeeded.takeIf { it.isNotEmpty() }?.let {
+            "the Bank's sign-in at ${report.dataProviderName} needs you: ${it.joinToString(", ")}, stored data unchanged · " +
+                "sign in to the Bank again at ${report.dataProviderName}, then fetch again"
+        },
+        // A21 of UC-001: both currencies named; nothing converted.
+        report.balancesInOtherCurrency.takeIf { it.isNotEmpty() }?.let { notices ->
+            notices.joinToString(" · ") { "${it.bankAccountName}: ${balanceInOtherCurrency(it)}, not stored" }
+        },
         report.waitingUntil?.let { "Blocked: waiting for the provider · until ${formats.dateTime(it)}" },
         report.warning?.let {
             "${report.dataProviderName} warned that Slussen is near its Request Limit · Scheduled Fetches leave it alone " +
@@ -201,7 +217,21 @@ object Texts {
         ServiceStatus.CredentialsMissing -> "Credentials missing"
     }
 
-    fun blockedReason(reason: BlockedReason): String = when (reason) {
+    /**
+     * UC-001 A21 step 2 (`bank-account.html#balance-other-currency`): the balance reported in another currency, naming
+     * both currencies; nothing is converted.
+     */
+    fun balanceInOtherCurrency(notice: BalanceInOtherCurrency): String =
+        "balance reported in ${notice.reported.code}, expected ${notice.expected.code}"
+
+    /** UC-001 A21 step 2: what the Bank Account says, and that nothing is needed now. */
+    fun balanceInOtherCurrencyNotice(notice: BalanceInOtherCurrency, formats: Formats): String =
+        "${balanceInOtherCurrency(notice).replaceFirstChar { it.uppercase() }} · at the Fetch of ${formats.dateTime(notice.fetchedAt)} " +
+            "${notice.dataProviderName} reported it in ${notice.reported.code}; it was not stored and no amount was converted. " +
+            "Nothing is needed now. If it happens again, check at ${notice.dataProviderName} which currency it shows for " +
+            "${notice.bankAccountName}."
+
+    fun blockedReason(reason: BlockedReason, dataProviderName: String? = null): String = when (reason) {
         BlockedReason.MissingBankConsent -> "missing Bank Consent"
         BlockedReason.ExpiredBankConsent -> "Bank Consent expired"
         BlockedReason.UnrecognisedBankAccount -> "unrecognised Bank Account"
@@ -213,6 +243,29 @@ object Texts {
         BlockedReason.CredentialsMissing -> "credentials missing"
         BlockedReason.CurrencyMismatch -> "currency mismatch"
         BlockedReason.UploadsWaitForFirstUploadMatching -> UPLOADS_WAIT_FOR_FIRST_UPLOAD_MATCHING
+        // A19 of UC-001.
+        BlockedReason.NotDelivered -> "not delivered by ${dataProviderName ?: "the Data Provider"}"
+        // A20 of UC-001: Slussen's own words, naming the Data Provider.
+        BlockedReason.SignInNeeded -> "the Bank's sign-in at ${dataProviderName ?: "the Data Provider"} needs you"
+    }
+
+    /**
+     * The advice a Blocked Reason carries beside its action (UC-008 BR-006): for not delivered, to check the Bank Account
+     * at the Data Provider (UC-001 A19); for the Bank's sign-in, to sign in there again (UC-001 A20). Both keep the stored
+     * data unchanged.
+     */
+    fun advice(blocked: Blocked): String? {
+        val provider = blocked.dataProviderName ?: "the Data Provider"
+        return when (blocked.reason) {
+            BlockedReason.NotDelivered ->
+                "$provider answered without this Bank Account; its Bank Transactions and Account Balance are kept unchanged. " +
+                    "Check at $provider that ${blocked.subject} is still connected there, then fetch again."
+            BlockedReason.SignInNeeded ->
+                "$provider cannot read this Bank until you sign in to it again there; its Bank Transactions and Account " +
+                    "Balance are kept unchanged. Sign in to the Bank of ${blocked.subject} again at $provider, then fetch " +
+                    "again. Your $provider credentials in Slussen stay as they are."
+            else -> null
+        }
     }
 
     fun blocked(blocked: Blocked, formats: Formats): String {
@@ -222,7 +275,7 @@ object Texts {
                 else -> " · ${formats.dateTime(it)}"
             }
         }.orEmpty()
-        return "Blocked: ${blocked.subject}, ${blockedReason(blocked.reason)}$at"
+        return "Blocked: ${blocked.subject}, ${blockedReason(blocked.reason, blocked.dataProviderName)}$at"
     }
 
     fun remedy(remedy: Remedy): String? = when (remedy) {
@@ -233,6 +286,8 @@ object Texts {
         Remedy.EnterCredentials -> "Enter credentials"
         Remedy.MoveAccountMapping -> "Move the Account Mapping"
         Remedy.StartFirstUploadMatching -> START_FIRST_UPLOAD_MATCHING
+        // A20 of UC-001: the sign-in happens at the Data Provider; the action here is the Fetch after it.
+        Remedy.SignInAtDataProvider -> "Fetch again"
     }
 
     fun part(part: StoredPart): String = when (part) {

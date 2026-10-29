@@ -5,7 +5,11 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import slussen.core.fetch.BankTransactionIntake
+import slussen.core.identity.ImportIdentifierInput
 import slussen.core.port.BankChoice
+import slussen.core.port.DeliveredTransactions
+import slussen.core.port.DeliveryStored
 import slussen.core.port.DataProviderRegistration
 import slussen.core.port.StoredRequestLimit
 import java.time.Instant
@@ -412,17 +416,57 @@ abstract class FetchDao {
     @Insert
     protected abstract suspend fun insertBalance(balance: AccountBalanceEntity)
 
+    @Query("SELECT * FROM bank_transaction WHERE bank_account_id = :bankAccountId ORDER BY id")
+    abstract suspend fun bankTransactionsOf(bankAccountId: Long): List<BankTransactionEntity>
+
+    @Query("SELECT * FROM unreadable_transaction WHERE bank_account_id = :bankAccountId ORDER BY id")
+    abstract suspend fun unreadableTransactionsOf(bankAccountId: Long): List<UnreadableTransactionEntity>
+
+    @Insert
+    protected abstract suspend fun insertBankTransactions(transactions: List<BankTransactionEntity>)
+
+    @Update
+    protected abstract suspend fun updateBankTransactions(transactions: List<BankTransactionEntity>)
+
+    @Insert
+    protected abstract suspend fun insertUnreadableTransactions(transactions: List<UnreadableTransactionEntity>)
+
+    /** ADR-002 §3, ADR-007 §6: a change of the Bank Transactions raises the version an Upload Plan depends on. */
+    @Query("UPDATE coordinator_state SET state_version = state_version + 1 WHERE id = 1")
+    protected abstract suspend fun raiseStateVersion()
+
     /**
-     * O-1 (ADR-002 §3) as far as this build stores it: the Fetch Result of one Bank Account and, when the Data Provider
-     * reported one, its Account Balance in place of the stored one, all or nothing (UC-001 steps 8, 11, A8).
+     * O-1 (ADR-002 §3): for one identified Bank Account, all or nothing, its Fetch Result, its Account Balance in place
+     * of the stored one when one is given, and, when [delivered] holds its transactions, the Bank Transactions and
+     * Unreadable Transactions the core's intake rules decide from what is stored now: new ones with their
+     * `occurrence_number` and Import Identifier ([identify], ADR-008 §4, §5), known ones with changed content, and the
+     * Unreadable Transactions beyond the stored ones (UC-001 steps 7-8, 11, A8, A17, BR-016).
      */
     @Transaction
-    open suspend fun storeBankAccountDelivery(result: FetchResultEntity, balance: AccountBalanceEntity?) {
+    open suspend fun storeBankAccountDelivery(
+        result: FetchResultEntity,
+        balance: AccountBalanceEntity?,
+        delivered: DeliveredTransactions?,
+        identify: (ImportIdentifierInput) -> String,
+    ): DeliveryStored {
+        val bankAccountId = result.bankAccountId
         insertResult(result)
         if (balance != null) {
             deleteBalanceOf(balance.bankAccountId)
             insertBalance(balance)
         }
+        if (delivered == null) return DeliveryStored()
+        val plan = BankTransactionIntake.plan(
+            bankTransactionsOf(bankAccountId).map { it.stored() },
+            unreadableTransactionsOf(bankAccountId).map { it.stored() },
+            delivered,
+            identify,
+        )
+        updateBankTransactions(plan.changed.map { it.entity() })
+        insertBankTransactions(plan.inserts.map { it.entity(bankAccountId) })
+        insertUnreadableTransactions(plan.unreadable.map { it.entity(bankAccountId, delivered.receivedAt) })
+        if (plan.inserts.isNotEmpty() || plan.changed.isNotEmpty()) raiseStateVersion()
+        return plan.stored
     }
 
     @Query("SELECT * FROM back_off ORDER BY id")
