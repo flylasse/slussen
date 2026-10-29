@@ -77,6 +77,25 @@ class PluginRegistryPersistenceIT {
     }
 
     @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-006"])
+    @DisplayName("Steps 3-4, BR-006: the Operator's Fetch Cooldown and fetch period are stored by one update each and kept at the next start")
+    fun fetchCooldownAndFetchPeriodAreStored() = runBlocking {
+        val registry = RoomPluginRegistryStore(main.registry())
+        val declared = DataProviderRegistration("Kestrel Feeds", "example-feeds", true, false, 60, published(20))
+        val id = registry.reconcile(listOf(declared), emptyList()).dataProviders.single().id
+        val settings = RoomOperatorSettingsStore(main.settings())
+        settings.ensureDefault()
+        assertEquals(30, settings.current().fetchPeriodDays)
+
+        registry.storeFetchCooldown(id, 15)
+        settings.storeFetchPeriod(14)
+
+        assertEquals(15, registry.reconcile(listOf(declared), emptyList()).dataProviders.single().fetchCooldownMinutes)
+        assertEquals(14, settings.current().fetchPeriodDays)
+        assertEquals(slussen.core.port.OperatorSettings.DEFAULT.copy(fetchPeriodDays = 14), settings.current())
+    }
+
+    @Test
     @UseCase(id = "UC-014", scenario = "Main Success Scenario", businessRules = ["BR-002"])
     @DisplayName("Step 3: a Data Provider's request is counted durably; at the Request Limit in the preceding 24 hours none is stored")
     fun providerRequestsAreCountedWithinTheLimit() = runBlocking {

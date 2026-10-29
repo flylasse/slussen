@@ -10,6 +10,12 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import slussen.app.ui.MainDispatcherExtension
 import slussen.app.ui.UiFixture
+import slussen.app.ui.components.AnswerKind
+import slussen.app.ui.components.AnswerUi
+import kotlinx.coroutines.CompletableDeferred
+import slussen.core.port.FetchOutcome
+import slussen.core.port.StartedBy
+import slussen.core.port.StoredFetch
 import slussen.app.ui.settings.EntryPage
 import slussen.app.ui.settings.SettingsViewModel
 import slussen.core.port.CoordinatorMode
@@ -85,7 +91,9 @@ class UC014ManageServiceCredentialsViewModelTest {
         val ui = page.ui()
         assertFalse(ui.entering)
         assertEquals("Accepted 2026-10-15", ui.credentials)
-        assertEquals("Accepted by ${ExampleData.BUDGET_APP_NAME}", ui.message)
+        // NFR-023: the answer is at the credentials, where the check started.
+        assertEquals(AnswerUi("Accepted by ${ExampleData.BUDGET_APP_NAME}", AnswerKind.Done), ui.credentialAnswer)
+        assertEquals("Replace", ui.enterAction)
         assertEquals("Connected · 0 Budgets in use", ui.status)
         assertNull(ui.blocked)
         assertFalse(ExampleData.BUDGET_APP_TOKEN in ui.toString())
@@ -101,7 +109,16 @@ class UC014ManageServiceCredentialsViewModelTest {
 
         page.save(mapOf("token" to "PLANTED-REFUSED-TOKEN"))
 
-        assertEquals("Refused by ${ExampleData.BUDGET_APP_NAME} · nothing stored", page.ui().message)
+        assertEquals(
+            AnswerUi(
+                "Refused by ${ExampleData.BUDGET_APP_NAME} 14:00 · nothing stored",
+                AnswerKind.Failed,
+                "Check what you entered, or get new credentials from ${ExampleData.BUDGET_APP_NAME}, and try again.",
+            ),
+            page.ui().credentialAnswer,
+        )
+        assertEquals("Try again", page.ui().saveAction)
+        assertNull(page.ui().earlierCredentialsNote)
         assertTrue(page.ui().entering)
         assertEquals("Not entered", page.ui().credentials)
     }
@@ -117,8 +134,8 @@ class UC014ManageServiceCredentialsViewModelTest {
         page.save(mapOf("setupKey" to ExampleData.SETUP_KEY))
 
         assertEquals(
-            "Kestrel Feeds could not be reached: no answer within the request timeout, an Operator Setting · nothing stored",
-            page.ui().message,
+            AnswerUi("Kestrel Feeds could not be reached: no answer within the request timeout, an Operator Setting · nothing stored", AnswerKind.Failed),
+            page.ui().credentialAnswer,
         )
         assertFalse(page.ui().entering)
         assertEquals("Not entered", page.ui().credentials)
@@ -134,7 +151,7 @@ class UC014ManageServiceCredentialsViewModelTest {
 
         page.save(mapOf("setupKey" to ExampleData.SETUP_KEY))
 
-        assertEquals("Kestrel Feeds could not be reached: the connection was lost · nothing stored", page.ui().message)
+        assertEquals(AnswerUi("Kestrel Feeds could not be reached: the connection was lost · nothing stored", AnswerKind.Failed), page.ui().credentialAnswer)
         assertFalse(page.ui().entering)
         assertEquals("Not entered", page.ui().credentials)
     }
@@ -175,6 +192,8 @@ class UC014ManageServiceCredentialsViewModelTest {
         assertEquals("Credentials missing", page.ui().status)
         assertEquals("Blocked: credentials missing · Enter credentials", page.ui().blocked)
         assertFalse(page.ui().canRemove)
+        assertEquals(AnswerUi("Removed · recorded in the Decision Journal", AnswerKind.Done), page.ui().credentialAnswer)
+        assertEquals("Enter credentials", page.ui().enterAction)
         assertNull(slice.vault.read(slice.feedsKey))
     }
 
@@ -204,8 +223,11 @@ class UC014ManageServiceCredentialsViewModelTest {
         page.save(mapOf("setupKey" to "PLANTED-NEW-SETUP-KEY"))
 
         assertEquals(
-            "Blocked: Request Limit reached · not checked · frees up from 2026-10-16 14:00 · nothing stored, the earlier credentials stay unchanged",
-            page.ui().message,
+            AnswerUi(
+                "Blocked: Request Limit reached · not checked · frees up from 2026-10-16 14:00 · nothing stored, the earlier credentials stay unchanged",
+                AnswerKind.Unchanged,
+            ),
+            page.ui().credentialAnswer,
         )
         assertFalse(page.ui().entering)
         assertEquals("Accepted 2026-10-15", page.ui().credentials)
@@ -222,7 +244,10 @@ class UC014ManageServiceCredentialsViewModelTest {
 
         page.save(mapOf("token" to ExampleData.BUDGET_APP_TOKEN))
 
-        assertEquals("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", page.ui().message)
+        assertEquals(
+            AnswerUi("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", AnswerKind.Unchanged),
+            page.ui().credentialAnswer,
+        )
         assertEquals(0, slice.budgetApp.credentials.requestsSent)
     }
 
@@ -275,11 +300,93 @@ class UC014ManageServiceCredentialsViewModelTest {
         page.save(mapOf("setupKey" to "PLANTED-NEW-SETUP-KEY"))
 
         assertEquals(
-            "Blocked: waiting for the provider · not checked · until 2026-10-15 17:00 · nothing stored, the earlier credentials stay unchanged",
-            page.ui().message,
+            AnswerUi(
+                "Blocked: waiting for the provider · not checked · until 2026-10-15 17:00 · nothing stored, the earlier credentials stay unchanged",
+                AnswerKind.Unchanged,
+            ),
+            page.ui().credentialAnswer,
         )
         assertFalse(page.ui().entering)
         assertEquals("Not entered", page.ui().credentials)
         assertEquals(0, slice.feeds.credentials.requestsSent)
+    }
+
+    // ---- Answers in place (NFR-023, UX-D4: UX-21) -------------------------------------------------------------------
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "Main Success Scenario", businessRules = ["BR-002"])
+    @DisplayName("Steps 3-4 (connections.html#simplefin-checking): Save shows at once that the service is being asked, before any answer, and Cancel waits; it ends as accepted")
+    fun checkShowsCheckingAtSave() {
+        val hold = CompletableDeferred<Unit>()
+        slice.feeds.credentials.beforeAnswer = { hold.await() }
+        val page = page(slice.feedsKey)
+        page.startEntering()
+
+        page.save(mapOf("setupKey" to ExampleData.SETUP_KEY))
+        assertTrue(page.ui().checking)
+        assertTrue(page.ui().entering)
+        assertNull(page.ui().credentialAnswer)
+        page.cancelEntering()
+        assertTrue(page.ui().entering)
+        hold.complete(Unit)
+
+        assertFalse(page.ui().checking)
+        assertFalse(page.ui().entering)
+        assertEquals(AnswerUi("Accepted by Kestrel Feeds", AnswerKind.Done), page.ui().credentialAnswer)
+        assertEquals("Accepted 2026-10-15", page.ui().credentials)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A1: Credentials Refused", businessRules = ["BR-005"])
+    @DisplayName("A1, BR-005 (connections.html#simplefin-check-refused, #simplefin-replace): replacing credentials says that the earlier ones stay; refused, the answer is at the form, nothing is stored and the earlier credentials stay accepted")
+    fun refusedReplacementKeepsTheEarlierCredentials() {
+        runBlocking { slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+        slice.feeds.credentials.answer = CredentialCheck.Refused
+        val page = page(slice.feedsKey)
+        assertEquals("Replace", page.ui().enterAction)
+
+        page.startEntering()
+        assertEquals("The earlier credentials stay until the new ones are accepted.", page.ui().earlierCredentialsNote)
+        page.save(mapOf("setupKey" to "PLANTED-REFUSED-SETUP-KEY"))
+
+        assertEquals(
+            AnswerUi(
+                "Refused by Kestrel Feeds 14:00 · nothing stored",
+                AnswerKind.Failed,
+                "Check what you entered, or get new credentials from Kestrel Feeds, and try again.",
+            ),
+            page.ui().credentialAnswer,
+        )
+        assertTrue(page.ui().entering)
+        assertEquals("Try again", page.ui().saveAction)
+        assertEquals("The earlier credentials stay until the new ones are accepted.", page.ui().earlierCredentialsNote)
+        assertEquals("Accepted 2026-10-15", page.ui().credentials)
+        assertEquals(ExampleData.EXCHANGED_ACCESS_CREDENTIAL, runBlocking { slice.credentials.stored(slice.feedsKey) }?.let { reveal(it) })
+    }
+
+    @OptIn(slussen.pluginapi.value.SensitiveApi::class)
+    private fun reveal(secret: slussen.pluginapi.value.Secret): String = secret.reveal()
+
+    @Test
+    @UseCase(id = "UC-014", businessRules = ["BR-005"])
+    @DisplayName("BR-005 (UX-21, connections.html#simplefin-refused): the page of a Data Provider that refused the credentials at a Fetch keeps the refusal in view instead of saying Accepted, with the Fetch's time, and its first action enters new credentials; stored data stays")
+    fun refusedPageLeadsToTheEntryAction() {
+        runBlocking { slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+        slice.clock.advance(java.time.Duration.ofMinutes(5))
+        slice.importStatusStore.fetches += StoredFetch(
+            1, slice.feedsId, slice.clock.instant(), StartedBy.Operator, FetchOutcome.CredentialsRefused, emptyList(),
+        )
+
+        val ui = page(slice.feedsKey).ui()
+
+        assertEquals("Credentials refused", ui.status)
+        assertEquals("Refused at the Fetch of 2026-10-15 14:05 · accepted 2026-10-15", ui.credentials)
+        assertEquals("Blocked: credentials refused · Enter credentials", ui.blocked)
+        assertEquals(
+            "Kestrel Feeds refused Slussen's credentials at the Fetch of 2026-10-15 14:05. Enter new credentials; your Bank " +
+                "Accounts and their stored data stay.",
+            ui.blockedDetail,
+        )
+        assertEquals("Enter new credentials", ui.enterAction)
     }
 }

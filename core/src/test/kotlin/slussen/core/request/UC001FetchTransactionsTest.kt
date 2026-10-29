@@ -360,6 +360,25 @@ class UC001FetchTransactionsTest {
     }
 
     @Test
+    @UseCase(id = "UC-001", scenario = "A2: Within the Fetch Cooldown", businessRules = ["BR-006", "BR-009"])
+    @DisplayName("BR-009 (S-T-11): a fetch period changed on Settings applies from the next Fetch that contacts the Data Provider; a Fetch served from the Fetch Cooldown asks for nothing")
+    fun changedFetchPeriodAppliesFromTheNextFetchThatContacts() = runTest {
+        ready()
+        answerFeeds()
+        fetchFeeds()
+        assertEquals(today.minusDays(30), slice.feeds.fetchRequests.single().periodFrom)
+
+        slice.generalSettings.changeFetchPeriod(14)
+        slice.clock.advance(Duration.ofMinutes(20))
+        assertInstanceOf(FetchReport.ServedFromFetchCooldown::class.java, fetchFeeds())
+        assertEquals(1, slice.feeds.fetchRequests.size)
+
+        slice.clock.advance(Duration.ofMinutes(40))
+        assertInstanceOf(FetchReport.Fetched::class.java, fetchFeeds())
+        assertEquals(today.minusDays(14), slice.feeds.fetchRequests.last().periodFrom)
+    }
+
+    @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-007", "BR-012"], requirements = ["NFR-016"])
     @DisplayName("Step 4: every request is admitted by the gate and kept as a Provider Request with its time, with the Operator present, under the request timeout")
     fun everyRequestIsKeptAsAProviderRequest() = runTest {

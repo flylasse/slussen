@@ -71,10 +71,13 @@ interface PluginRegistryStore {
 }
 
 /**
- * The Operator Settings kept per Data Provider in `DATA_PROVIDER` (ADR-002 §2, O-13 `SettingsStore`): here the
- * Request Limit of a Data Provider that publishes none (UC-010 BR-002, A11).
+ * The Operator Settings kept per Data Provider in `DATA_PROVIDER` (ADR-002 §2, O-13 `SettingsStore`): the Fetch
+ * Cooldown (UC-010 BR-002, A10) and the Request Limit of a Data Provider that publishes none (UC-010 BR-002, A11).
  */
 interface DataProviderSettingsStore {
     /** Stores [requests] as the Request Limit of the Data Provider [dataProviderId], one update. */
     suspend fun storeRequestLimit(dataProviderId: Long, requests: Int)
+
+    /** Stores [minutes] as the Fetch Cooldown of the Data Provider [dataProviderId], one update. */
+    suspend fun storeFetchCooldown(dataProviderId: Long, minutes: Int)
 }

@@ -53,9 +53,13 @@ class ScriptedCredentials(
      */
     var refusesUnsent: Boolean = false
 
+    /** Runs before the part answers, so that a test can hold the check and see it while it runs (NFR-023). */
+    var beforeAnswer: suspend () -> Unit = {}
+
     override suspend fun check(input: CredentialInput, context: RequestContext): CredentialCheck {
         checkedInputs += input
         contexts += context
+        beforeAnswer()
         if (refusesUnsent) return CredentialCheck.Refused
         val admission = context.gate.admit(RequestSummary(requestKind, null, null))
         if (admission is Admission.Refused) return CredentialCheck.StoppedByGate(admission.reason)

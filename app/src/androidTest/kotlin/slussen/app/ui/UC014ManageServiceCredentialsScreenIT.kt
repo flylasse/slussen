@@ -2,6 +2,7 @@ package slussen.app.ui
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -15,7 +16,12 @@ import slussen.app.ui.settings.SettingsScreen
 import slussen.app.ui.settings.SettingsViewModel
 import slussen.app.ui.service.ServicePageViewModel
 import slussen.app.ui.theme.SlussenTheme
+import kotlinx.coroutines.CompletableDeferred
+import slussen.core.port.FetchOutcome
 import slussen.core.port.ServiceKey
+import slussen.core.port.StartedBy
+import slussen.core.port.StoredFetch
+import slussen.pluginapi.credential.CredentialCheck
 import slussen.pluginapi.testfixtures.UseCase
 import slussen.testing.ExampleData
 
@@ -88,5 +94,57 @@ class UC014ManageServiceCredentialsScreenIT {
         onNodeWithText("Kestrel Feeds is not contacted until you enter new ones.", substring = true).assertExists()
         onNodeWithText("Cancel").performClick()
         onNodeWithText("Accepted", substring = true).assertExists()
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A1: Credentials Refused", businessRules = ["BR-005"])
+    @DisplayName("Steps 3-4, A1 (connections.html#simplefin-checking, #simplefin-check-refused): Save shows Checking with the service while it is asked; refused, the answer is at the form with Try again, and the earlier credentials stay")
+    fun checkShowsCheckingThenRefused() = compose.use {
+        val fixture = ScreenFixture()
+        kotlinx.coroutines.runBlocking { fixture.slice.enterCredentials() }
+        val hold = CompletableDeferred<Unit>()
+        fixture.slice.feeds.credentials.beforeAnswer = { hold.await() }
+        fixture.slice.feeds.credentials.answer = CredentialCheck.Refused
+        val viewModel = ServicePageViewModel(fixture.services, fixture.slice.feedsKey)
+        onMain { viewModel.load() }
+        setContent {
+            SlussenTheme {
+                ServicePage(viewModel)
+            }
+        }
+
+        onNodeWithText("Replace").performClick()
+        onNodeWithText("The earlier credentials stay until the new ones are accepted.").assertExists()
+        onNodeWithTag("field-setupKey").performTextInput("PLANTED-REFUSED-SETUP-KEY")
+        onNodeWithText("Save").performClick()
+        onNodeWithText("Checking with Kestrel Feeds…").assertExists()
+
+        hold.complete(Unit)
+        waitUntilExactlyOneExists(hasText("Refused by Kestrel Feeds", substring = true))
+        onNodeWithText("Try again").assertExists()
+        onNodeWithText("Accepted 2026-10-15").assertExists()
+    }
+
+    @Test
+    @UseCase(id = "UC-014", businessRules = ["BR-005"])
+    @DisplayName("BR-005 (UX-21, connections.html#simplefin-refused): reached after a refusal at a Fetch, the page keeps the refusal in view instead of Accepted, and its action enters new credentials")
+    fun refusedPageOffersTheEntryAction() = compose.use {
+        val fixture = ScreenFixture()
+        kotlinx.coroutines.runBlocking { fixture.slice.enterCredentials() }
+        fixture.slice.importStatusStore.fetches += StoredFetch(
+            1, fixture.slice.feedsId, fixture.slice.clock.instant(), StartedBy.Operator, FetchOutcome.CredentialsRefused, emptyList(),
+        )
+        val viewModel = ServicePageViewModel(fixture.services, fixture.slice.feedsKey)
+        onMain { viewModel.load() }
+        setContent {
+            SlussenTheme {
+                ServicePage(viewModel)
+            }
+        }
+
+        onNodeWithText("Blocked: credentials refused · Enter credentials").assertExists()
+        onNodeWithText("Refused at the Fetch of", substring = true).assertExists()
+        onNodeWithText("Enter new credentials").performClick()
+        onNodeWithTag("field-setupKey").assertExists()
     }
 }
