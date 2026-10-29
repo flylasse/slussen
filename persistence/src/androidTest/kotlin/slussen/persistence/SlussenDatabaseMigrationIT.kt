@@ -26,9 +26,9 @@ import java.time.Instant
 /**
  * Evidence E-06 of ADR-005 §7 (ADR-002 §7, S-39): `slussen.db` created at every committed schema version with Room's
  * `MigrationTestHelper` from the committed schema files, with invented rows in every table, migrated with the
- * hand-written Migrations to the current version and validated by Room, keeping every row and value; and a version 1
- * and a version 2 `slussen.db`, as the Operator's phone held and holds it, opened by the app's own
- * [SlussenDatabases.openMain] and read back.
+ * hand-written Migrations to the current version and validated by Room, keeping every row and value; a version 1, 2
+ * and 3 `slussen.db`, as the Operator's phone held and holds it, opened by the app's own [SlussenDatabases.openMain]
+ * and read back; and a new `slussen.db`, which starts with the default Description lists (UC-010 BR-007).
  * Instrumented, on API 26 and the phone; the same migration also runs on the JVM in `SlussenDatabaseMigrationTest`.
  */
 class SlussenDatabaseMigrationIT {
@@ -94,7 +94,8 @@ class SlussenDatabaseMigrationIT {
         helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
             assertEquals(before, db.everything(version1Tables))
             assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
-            assertTrue(db.tables().containsAll(listOf("left_out_bank_account", "account_balance", "fetch_result")))
+            assertTrue(db.tables().containsAll(listOf("left_out_bank_account", "account_balance", "fetch_result") + NEW_IN_VERSION_4))
+            assertEquals(DEFAULT_DESCRIPTIONS, db.select("SELECT kind, text FROM transfer_description ORDER BY id"))
         }
     }
 
@@ -112,7 +113,72 @@ class SlussenDatabaseMigrationIT {
         helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
             assertEquals(before, db.everything(version2Tables))
             assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
-            assertEquals(listOf("account_balance", "fetch_result"), db.tables() - version2Tables.toSet())
+            assertEquals((listOf("account_balance", "fetch_result") + NEW_IN_VERSION_4).sorted(), db.tables() - version2Tables.toSet())
+            assertEquals(DEFAULT_DESCRIPTIONS, db.select("SELECT kind, text FROM transfer_description ORDER BY id"))
+        }
+    }
+
+    /** Invented rows in every table of version 3: those of version 2, an Account Balance and a Fetch Result (UC-001 steps 8, 11). */
+    private fun SupportSQLiteDatabase.inventedVersion3Data() {
+        inventedVersion2Data()
+        execSQL("INSERT INTO account_balance VALUES (1, 1, 5135280, 'USD', 1760533200000)")
+        execSQL("INSERT INTO fetch_result VALUES (1, 1, 'Fetched', 3)")
+    }
+
+    @Test
+    @DisplayName("NFR-017: E-06, slussen.db at version 3, as the Operator's phone holds it, with rows in every table migrates to the current version, Room validates it, every row and value is kept, and the Description lists hold their defaults (ADR-002 §7)")
+    fun version3MigratesKeepingEveryValue() {
+        val name = "migration-version-3.db"
+        val (version3Tables, before) = helper.createDatabase(name, 3).use { db ->
+            db.inventedVersion3Data()
+            val tables = db.tables()
+            assertTrue(tables.all { db.select("SELECT COUNT(*) FROM `$it`").single().single() != "0" }, "every table holds a row")
+            tables to db.everything(tables)
+        }
+
+        helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
+            assertEquals(before, db.everything(version3Tables))
+            assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
+            assertEquals(NEW_IN_VERSION_4.sorted(), db.tables() - version3Tables.toSet())
+            assertEquals(DEFAULT_DESCRIPTIONS, db.select("SELECT kind, text FROM transfer_description ORDER BY id"))
+            (NEW_IN_VERSION_4 - "transfer_description").forEach { assertEquals(listOf(listOf("0")), db.select("SELECT COUNT(*) FROM `$it`"), it) }
+        }
+    }
+
+    @Test
+    @DisplayName("NFR-017: E-06, a version 3 slussen.db as the Operator's phone holds it is upgraded by the app itself, never cleared, its data is read back, and the new tables are usable (ADR-002 §7)")
+    fun theAppUpgradesAnInstalledVersion3() = runBlocking {
+        helper.createDatabase(SlussenDatabases.MAIN_FILE, 3).use { it.inventedVersion3Data() }
+
+        val main = SlussenDatabases.openMain(DeviceFiles.context)
+        try {
+            val connections = RoomConnectionStore(main.connections())
+            assertEquals(listOf("Kestrel Checking"), connections.bankAccounts().map { it.name })
+            assertEquals(listOf("acct-2290"), connections.leftOutBankAccounts().map { it.providerReference })
+            val fetches = RoomFetchStore(main.fetches())
+            assertEquals(listOf(StoredFetchResult(1, FetchResultOutcome.Fetched, 3)), fetches.fetchesOf(1).single().results)
+            assertEquals(listOf(Amount(5135280)), RoomImportStatusStore(main.fetches()).accountBalances().map { it.amount })
+            val db = main.openHelper.writableDatabase
+            assertEquals(DEFAULT_DESCRIPTIONS, db.select("SELECT kind, text FROM transfer_description ORDER BY id"))
+            db.execSQL(
+                "INSERT INTO bank_transaction (bank_account_id, stable_reference, reference_kind, occurrence_number, import_identifier, " +
+                    "booked_date, amount, currency, payee, memo, first_seen_at, status, transfer_id) VALUES (1, 'TX-0001', 'Supplied', 1, " +
+                    "'S1Rexample-identifier-0001', 20380, -42500, 'USD', 'Corner Grocer', NULL, 1760533200000, NULL, NULL)",
+            )
+            assertEquals(listOf(listOf("1", "TX-0001", null)), db.select("SELECT bank_account_id, stable_reference, status FROM bank_transaction"))
+        } finally {
+            main.close()
+        }
+    }
+
+    @Test
+    @DisplayName("NFR-017: E-06, a new slussen.db created by the app at the current version starts with the default Card Payment and Bank Transfer Descriptions of UC-010 BR-007 (entity model TRANSFER_DESCRIPTION; ADR-002 §8 step 3)")
+    fun aNewDatabaseStartsWithTheDefaultDescriptionLists() {
+        val main = SlussenDatabases.openMain(DeviceFiles.context)
+        try {
+            assertEquals(DEFAULT_DESCRIPTIONS, main.openHelper.readableDatabase.select("SELECT kind, text FROM transfer_description ORDER BY id"))
+        } finally {
+            main.close()
         }
     }
 
@@ -142,7 +208,21 @@ class SlussenDatabaseMigrationIT {
 
     private companion object {
         /** The schema version of `slussen.db` this build creates and migrates to (ADR-002 §7). */
-        const val CURRENT_VERSION = 3
+        const val CURRENT_VERSION = 4
+
+        /** The tables version 4 adds (ADR-002 §1, §2). */
+        val NEW_IN_VERSION_4 = listOf("bank_transaction", "budget_app_transaction", "transfer", "transfer_description", "unreadable_transaction")
+
+        /** The default Card Payment Descriptions and Bank Transfer Descriptions of UC-010 BR-007, as (kind, text), in the order the rule lists them. */
+        val DEFAULT_DESCRIPTIONS: List<List<String?>> =
+            listOf(
+                "AUTOPAY", "AUTOMATIC PAYMENT", "PAYMENT - THANK", "AUTO-PMT", "ACH PMT", "AMERICAN EXPRESS ACH PMT", "CITI AUTOPAY",
+                "CRD AUTOPAY", "CITICARDAP",
+            ).map { listOf("Card Payment", it) } +
+                listOf(
+                    "ÖVERFÖRING", "INTERNET TRANSFER", "EXPRESS INTERNET TRANSFER", "AMERICAN EXPRESS TRANSFER", "ONLINE TRANSFER",
+                    "TRANSFER", "XFER",
+                ).map { listOf("Bank Transfer", it) }
     }
 
     @Test

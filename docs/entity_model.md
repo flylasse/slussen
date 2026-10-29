@@ -480,7 +480,7 @@ One booked, non-zero transaction of a Bank Account as delivered by a Data Provid
 | memo              | Memo as delivered by the Source, in full                                                            | String    | 500              | Optional                                |
 | first_seen_at     | Time Slussen first received the transaction                                                         | DateTime  | -                | Not Null                                |
 | status            | Transaction Status from the latest Comparison, empty until a Comparison has read its Budget (UC-003 A1) | String    | 40               | Optional, Values: New, Match For Typed Entry, Already In Budget App, Possible Import By Other Path, Deferred, Deleted In Budget App, Merged In Budget App, Decision No Longer Holds, Needs Review, Before Start Date, Too Old, In The Future, Outcome Unknown, Transfer Leg, Guessed Transfer, Held Transfer, Arrived As Transfer Counterpart, Transfer Counterpart Changed |
-| transfer_id       | Transfer the transaction is a Transfer Leg of, empty for an ordinary transaction                    | Long      | 19               | Optional                                |
+| transfer_id       | Transfer the transaction is a Transfer Leg of, empty for an ordinary transaction                    | Long      | 19               | Optional, Foreign Key (TRANSFER.id)     |
 
 #### Constraints
 
