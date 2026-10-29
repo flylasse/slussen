@@ -23,7 +23,8 @@
   - third run on PR #28 at 3b635e1: `:app` **18 of 18 passed**. Phase 3 done: PR #28 merged on 2026-10-28, issue #5 closed.
 - Phase 4 built (a sub-agent; the orchestrator re-ran the full gate with `--rerun-tasks`: green). It found two specification conflicts, proposed as **S-T-12** and **S-T-13** (§6), to be approved before its PR merges.
 - Phase 4 done: the operator approved S-T-12, S-T-13 and the six `errlist` assumptions and merged PR #30 (2026-10-29). The SimpleFIN protocol (`www.simplefin.org`, allowed by the operator on 2026-10-29) confirms the codes, the shape of `errlist` and `balance-date`.
-- Phase 5 (schema version 4) in progress on the branch `transactions-phase5`, with the prompt in §4.
+- Phase 5 built (a sub-agent; the orchestrator re-ran the gate with `--rerun-tasks`: green). `slussen.db` version 4 with five tables and `MIGRATION_3_4`; the instrumented migration test runs on the phone in Phase 8 at the latest. It found two specification problems, proposed as **S-T-14** and **S-T-15** (§6).
+- Next: the operator approves S-T-14 and S-T-15 and merges the Phase 5 PR; then Phase 6.
 
 ## 1. Scope
 
@@ -238,6 +239,7 @@ Written for each phase when the phase before it is accepted, so that each prompt
 | 2 | 1 | Specification changes (`requirements`, `use-case-spec`, `entity-model`) | The orchestrator wrote Phase 1 itself instead of dispatching a sub-agent (§2): every change had been designed with the operator in the same session (issues #8, #9, #11, #16, O-T-06, O-T-07), and a sub-agent would have needed that whole conversation as its prompt. The semantic `/spec-review` was not run; the two linters were. | Yes |
 | 3 | 1 | `requirements` (NFR) | A usability requirement (NFR-023, O-T-06) is written as an NFR with the category Usability. The project rule on numbers (AGENTS.md §2) refused "within 1 second", so the measure is "before the action sends any request or waits for anything". | No |
 | 6 | 4 | `use-case-test`, then `use-case-implement` | Tests were written first, but they could not compile before the new types existed, so none was seen failing first: the recurring deviation of the construction plan (§7 there). | Yes |
+| 7 | 5 | `use-case-test`, `use-case-implement` | The sub-agent read the two skills from `origin/feat/layer-plugins` with `git show`, since the Marketplace clone is on a detached HEAD without them. Six new JVM tests were seen failing before the production change. | Yes (how the skills were read) |
 | 5 | 2b | Mockups (`use-case-spec` mockup step) | Phase 2b ran as a sub-agent with the accepted findings as its brief, as §2 says; it changed only `docs/mockups/` and reported nine specification observations instead of changing the specification. | No |
 | 4 | 2 | Adversarial review (Centaur cross-model rule) | The external UX reviewer (Codex CLI) worked only from this repository, as its prompt said, so it did not read the Marketplace `spec-review` skill that AGENTS.md names. Its review is a source walkthrough of the HTML mockups, not of the running app. | Yes (recorded as the reviewer asked) |
 
@@ -287,6 +289,15 @@ Phase 4, 2026-10-28: two specification conflicts the sub-agent found. **Approved
 |---|---|---|---|
 | S-T-12 | Phase 4 | ADR-001 §4.1 said both that a listed Bank Account the request did not read is `NotRead(NotSelected, balance)` (S-35) and that SimpleFIN's `con.auth` makes every Bank Account of the connection `SignInNeeded` (S-T-03). The error wins: an error the Data Provider reports for such a Bank Account, or its connection, replaces `NotRead`. | ADR-001 §4.1 |
 | S-T-13 | Phase 4 | UC-001 lists NFR-012 (no Data Provider text in the journal or on screen), which A20 already relies on, so its tests can name it. | UC-001 Requirements |
+
+Phase 5, 2026-10-29: two specification problems the sub-agent found. **Proposed, waiting for the operator's approval.**
+
+| ID | Found by | Change | Files |
+|---|---|---|---|
+| S-T-14 | Phase 5 | UC-010 BR-007's default Bank Transfer Descriptions held both ÖVERFÖRING and OVERFORING, which BR-008 forbids (no two entries equal without regard to case and accents). OVERFORING is dropped: ÖVERFÖRING already matches it, since matching ignores accents (UC-005 BR-012). | UC-010 BR-007, `transfer-descriptions.html`, the default list in `SlussenMigrations` |
+| S-T-15 | Phase 5 | `BANK_TRANSACTION.transfer_id` is a foreign key to `TRANSFER`, as the diagram already shows. | entity model |
+
+Phase 5's notes: a new installation also starts with the default description lists (ADR-002 §8 step 3); the rule that no two entries of a list are equal without regard to case and accents is the core's, since a unique index cannot compare that way; the new value columns join the startup check of stored values (`SlussenStorage.MAIN_VALUES`, ADR-002 §8 step 1) when Phases 6 and 7 add their core types; version 4's digest joins the pinned final versions when version 5 is added.
 
 Phase 4's assumptions about SimpleFIN's `errlist`, built and tested; **confirmed by the operator on 2026-10-29**:
 1. An error that names a connection applies to every account of that connection, whatever its code.
