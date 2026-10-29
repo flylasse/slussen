@@ -64,9 +64,21 @@ import slussen.core.port.StoredTransactionFile
 import slussen.core.port.UnreadablePart
 import java.time.Instant
 
-/** In-memory fake of [OperatorSettingsStore]; starts with every default. */
+/**
+ * In-memory fake of [OperatorSettingsStore]; starts with every default. A test holds a change with [beforeStore], to see
+ * it while it is being stored, and makes it fail with [failsToStore], as a storage that cannot be written would.
+ */
 class InMemoryOperatorSettingsStore(var settings: OperatorSettings = OperatorSettings.DEFAULT) : OperatorSettingsStore {
+    var beforeStore: suspend () -> Unit = {}
+    var failsToStore: Boolean = false
+
     override suspend fun current(): OperatorSettings = settings
+
+    override suspend fun storeFetchPeriod(days: Int) {
+        beforeStore()
+        if (failsToStore) throw IllegalStateException("The invented storage of this test cannot be written.")
+        settings = settings.copy(fetchPeriodDays = days)
+    }
 }
 
 /** In-memory fake of [CoordinatorStore]; a test sets the mode. */
@@ -85,10 +97,15 @@ class InMemoryDecisionJournal : DecisionJournalRecorder {
     }
 }
 
-/** In-memory fake of [PluginRegistryStore] with the matching rules of O-11, and of [DataProviderSettingsStore]. */
+/**
+ * In-memory fake of [PluginRegistryStore] with the matching rules of O-11, and of [DataProviderSettingsStore]. A test
+ * holds a change of a setting with [beforeStore] and makes it fail with [failsToStore].
+ */
 class InMemoryPluginRegistryStore : PluginRegistryStore, DataProviderSettingsStore {
     val dataProviders = mutableListOf<StoredDataProvider>()
     val fileFormats = mutableListOf<StoredFileFormat>()
+    var beforeStore: suspend () -> Unit = {}
+    var failsToStore: Boolean = false
     private var nextId = 1L
 
     override suspend fun reconcile(
@@ -133,7 +150,15 @@ class InMemoryPluginRegistryStore : PluginRegistryStore, DataProviderSettingsSto
     }
 
     override suspend fun storeRequestLimit(dataProviderId: Long, requests: Int) {
+        beforeStore()
+        if (failsToStore) throw IllegalStateException("The invented storage of this test cannot be written.")
         dataProviders.replaceAll { if (it.id == dataProviderId) it.copy(requestLimit = requests) else it }
+    }
+
+    override suspend fun storeFetchCooldown(dataProviderId: Long, minutes: Int) {
+        beforeStore()
+        if (failsToStore) throw IllegalStateException("The invented storage of this test cannot be written.")
+        dataProviders.replaceAll { if (it.id == dataProviderId) it.copy(fetchCooldownMinutes = minutes) else it }
     }
 }
 

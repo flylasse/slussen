@@ -18,6 +18,7 @@ import slussen.core.plugin.PluginRegistration
 import slussen.core.port.RandomSource
 import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
+import slussen.core.settings.GeneralSettings
 import slussen.core.status.ImportStatus
 import slussen.fileformat.hsacsv.HsaCsvFilePreprocessor
 import slussen.persistence.SlussenStorage
@@ -72,6 +73,7 @@ class CompositionRoot(log: SlussenLog) {
                 RandomSource { random.nextBytes(it) }, clock,
             ),
             providerSettings = DataProviderSettings(registered, storage.registry, coordinator, journal),
+            generalSettings = GeneralSettings(storage.settings, coordinator, journal),
             mappings = AccountMappings(registered, storage.connections, storage.mappings, storage.offered, coordinator, journal),
             status = ImportStatus(
                 budgetAppName = registered.budgetApp.profile.name,

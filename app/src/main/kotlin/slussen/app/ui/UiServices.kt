@@ -8,6 +8,7 @@ import slussen.core.mapping.AccountMappings
 import slussen.core.operation.RunningOperation
 import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
+import slussen.core.settings.GeneralSettings
 import slussen.core.status.ImportStatus
 
 /** The core services the screens of this build use, created once by the composition root (ADR-001 §5). */
@@ -16,6 +17,8 @@ class UiServices(
     val settingsOverview: SettingsOverview,
     val connect: BudgetsAndBankAccounts,
     val providerSettings: DataProviderSettings,
+    /** The Operator Settings that apply to everything, on Settings (UC-010): the fetch period. */
+    val generalSettings: GeneralSettings,
     val mappings: AccountMappings,
     val status: ImportStatus,
     val fetch: FetchTransactions,

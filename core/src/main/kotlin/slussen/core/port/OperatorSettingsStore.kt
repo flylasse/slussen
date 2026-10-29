@@ -58,7 +58,10 @@ data class OperatorSettings(
     }
 }
 
-/** Reads the one `OPERATOR_SETTINGS` record (ADR-001 §3). */
+/** Reads and changes the one `OPERATOR_SETTINGS` record (ADR-001 §3, ADR-002 §3 O-13 `SettingsStore`). */
 interface OperatorSettingsStore {
     suspend fun current(): OperatorSettings
+
+    /** Stores [days] as the fetch period, one update of the one record (UC-010 step 4). */
+    suspend fun storeFetchPeriod(days: Int)
 }

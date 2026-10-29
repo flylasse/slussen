@@ -24,6 +24,10 @@ abstract class OperatorSettingsDao {
 
     @Insert
     abstract suspend fun insert(settings: OperatorSettingsEntity)
+
+    /** The fetch period, an Operator Setting (UC-010 steps 2-4; O-13): one update of the one record. */
+    @Query("UPDATE operator_settings SET fetch_period_days = :days")
+    abstract suspend fun storeFetchPeriod(days: Int)
 }
 
 @Dao
@@ -56,6 +60,10 @@ abstract class PluginRegistryDao {
     // UC-001 BR-007: A Request Limit the Data Provider publishes is never changed by the Operator's setting.
     @Query("UPDATE data_provider SET request_limit = :requests WHERE id = :id AND request_limit_published = 0")
     abstract suspend fun storeRequestLimit(id: Long, requests: Int)
+
+    /** The Fetch Cooldown of a Data Provider, an Operator Setting (UC-010 BR-002, A10; O-13). */
+    @Query("UPDATE data_provider SET fetch_cooldown_minutes = :minutes WHERE id = :id")
+    abstract suspend fun storeFetchCooldown(id: Long, minutes: Int)
 
     /**
      * O-11 (ADR-002 §2, §3): every Data Provider and File Format of the build, matched by `source_key`, in one

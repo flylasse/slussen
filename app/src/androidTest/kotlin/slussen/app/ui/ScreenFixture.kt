@@ -3,6 +3,7 @@ package slussen.app.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import slussen.app.ui.service.ConnectActions
+import slussen.app.ui.service.PageSettingActions
 import slussen.app.ui.service.ServicePageScreen
 import slussen.app.ui.service.ServicePageViewModel
 import slussen.testing.TestSlice
@@ -19,6 +20,7 @@ class ScreenFixture(appVersion: AppVersion = AppVersion.of(packageName = "slusse
         settingsOverview = slice.settingsOverview,
         connect = slice.connect,
         providerSettings = slice.providerSettings,
+        generalSettings = slice.generalSettings,
         mappings = slice.mappings,
         status = slice.status,
         fetch = slice.fetch,
@@ -27,6 +29,18 @@ class ScreenFixture(appVersion: AppVersion = AppVersion.of(packageName = "slusse
         appVersion = appVersion,
         running = slice.coordinator.running,
     )
+}
+
+/** Settings of [viewModel] with every action wired as `SlussenScreens` wires it; the entries open nothing. */
+@Composable
+fun Settings(viewModel: slussen.app.ui.settings.SettingsViewModel) {
+    viewModel.state.collectAsState().value?.let {
+        slussen.app.ui.settings.SettingsScreen(
+            it, onEntry = {}, onAccountMappings = {}, onRecentFetches = {},
+            onEditFetchPeriod = viewModel::startEditingFetchPeriod, onFetchPeriodValue = viewModel::editFetchPeriod,
+            onSaveFetchPeriod = viewModel::saveFetchPeriod, onCancelFetchPeriod = viewModel::cancelFetchPeriod,
+        )
+    }
 }
 
 /** The page of [viewModel] with every action wired as `SlussenScreens` wires it; Map does [onMap]. */
@@ -50,6 +64,14 @@ fun ServicePage(viewModel: ServicePageViewModel, onMap: () -> Unit = {}) {
             ),
             onEditRequestLimit = viewModel::startEditingRequestLimit, onSaveRequestLimit = viewModel::saveRequestLimit,
             onResetRequestLimit = viewModel::resetRequestLimit, onCancelRequestLimit = viewModel::cancelRequestLimit,
+            settings = PageSettingActions(
+                onEditFetchCooldown = viewModel::startEditingFetchCooldown,
+                onFetchCooldownValue = viewModel::editFetchCooldown,
+                onSaveFetchCooldown = viewModel::saveFetchCooldown,
+                onResetFetchCooldown = viewModel::resetFetchCooldown,
+                onCancelFetchCooldown = viewModel::cancelFetchCooldown,
+                onRequestLimitValue = viewModel::editRequestLimit,
+            ),
             onFetch = viewModel::fetch, onConfirmFetch = viewModel::confirmFetch, onCancelFetch = viewModel::cancelFetch,
         )
     }

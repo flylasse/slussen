@@ -147,6 +147,12 @@ data class ServicePage(
     val bankAccounts: List<ServiceBankAccount>,
     val budgetsInUse: List<BudgetInUse>,
     val supportsClearedMarker: Boolean,
+    /** UC-010 BR-002: the allowed range of the Fetch Cooldown, in minutes; null on the Budget App's page. */
+    val fetchCooldownRange: IntRange? = null,
+    /** UC-014 BR-005: when the service refused Slussen's credentials at a Fetch, the time of that Fetch, or null. */
+    val credentialsRefusedAt: Instant? = null,
+    /** Whether a change on this page is recorded in the Decision Journal (UC-010 step 6, postconditions). */
+    val journalOn: Boolean = true,
 )
 
 /**
@@ -306,14 +312,16 @@ class SettingsOverview(
                 bankAccounts = emptyList(),
                 budgetsInUse = served.map { BudgetInUse(it.id, it.name, it.currency) },
                 supportsClearedMarker = plugins.budgetApp.profile.supportsClearedMarker,
+                journalOn = settings.current().journalOn,
             )
         }
         val provider = plugins.dataProvider(service)
+        val status = statusOf(provider)
         return ServicePage(
             service = service,
             name = provider.stored.name,
             isBudgetApp = false,
-            status = statusOf(provider),
+            status = status,
             credentialStatus = credentialStatus,
             credentialFields = form,
             needsBankConsent = provider.stored.needsBankConsent,
@@ -325,8 +333,19 @@ class SettingsOverview(
             },
             budgetsInUse = emptyList(),
             supportsClearedMarker = false,
+            fetchCooldownRange = AllowedRanges.FETCH_COOLDOWN_MINUTES,
+            credentialsRefusedAt = if (status == ServiceStatus.CredentialsRefused) lastFetchRefusedAt(provider) else null,
+            journalOn = settings.current().journalOn,
         )
     }
+
+    /** UC-014 BR-005: the time of the last Fetch of [provider], when it was refused for its credentials. */
+    private suspend fun lastFetchRefusedAt(provider: RegisteredDataProvider): Instant? =
+        importStatus.recentFetches()
+            .filter { it.dataProviderId == provider.stored.id }
+            .maxByOrNull { it.startedAt }
+            ?.takeIf { it.outcome == FetchOutcome.CredentialsRefused }
+            ?.startedAt
 
     // UC-010 BR-010: A Data Provider's page shows its Request Limit: published with its source and not changeable, or the Operator's value with the default and range its part declares.
     private fun requestLimitShown(provider: RegisteredDataProvider): RequestLimitShown =

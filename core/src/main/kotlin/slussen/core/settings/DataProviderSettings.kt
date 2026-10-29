@@ -25,12 +25,15 @@ sealed interface SettingOutcome {
 
     /** Precondition (UC-006 BR-005): an Upload Plan awaits confirmation or an Upload is written. */
     data class Unavailable(val reason: OperationRefusal) : SettingOutcome
+
+    /** Failure postconditions: the value could not be stored; the previous one is kept and nothing is recorded. */
+    data object NotStored : SettingOutcome
 }
 
 /**
  * The Operator Settings that belong to one Data Provider and are shown on its page, opened from its entry in Settings
- * (UC-010 step 1, BR-010), `:core` `settings` (ADR-001 §7): here the Request Limit of a Data Provider that publishes
- * none (UC-010 A11, BR-002, UC-001 BR-007).
+ * (UC-010 step 1, BR-010), `:core` `settings` (ADR-001 §7): its Fetch Cooldown (UC-010 A10, BR-002, UC-001 BR-006) and
+ * the Request Limit of a Data Provider that publishes none (UC-010 A11, BR-002, UC-001 BR-007).
  */
 class DataProviderSettings(
     private val plugins: RegisteredPlugins,
@@ -38,6 +41,37 @@ class DataProviderSettings(
     private val coordinator: OperationCoordinator,
     private val journal: DecisionJournal,
 ) {
+    /** Steps 2-6, A1: the Fetch Cooldown of [service] becomes [minutes]. */
+    suspend fun changeFetchCooldown(service: ServiceKey, minutes: Int): SettingOutcome =
+        storeFetchCooldown(service) { minutes }
+
+    /** A10: the Fetch Cooldown of [service] goes back to the default its part declares. */
+    suspend fun resetFetchCooldown(service: ServiceKey): SettingOutcome =
+        // UC-010 BR-006: The Fetch Cooldown of a Data Provider can be reset to the default its part declares, recorded like any other change.
+        storeFetchCooldown(service) { declaredDefault -> declaredDefault }
+
+    private suspend fun storeFetchCooldown(service: ServiceKey, value: (Int) -> Int): SettingOutcome {
+        val provider = plugins.dataProvider(service)
+        val minutes = value(provider.plugin.profile.defaultFetchCooldownMinutes)
+        val range = AllowedRanges.FETCH_COOLDOWN_MINUTES
+        val result = coordinator.run(OperationKind.OperatorSettingChange, StartedBy.Operator) {
+            // UC-010 BR-002: The Fetch Cooldown of each Data Provider lies between 0 and 1440 minutes; 0 switches it off.
+            if (minutes !in range) return@run SettingOutcome.OutsideRange(range)
+            val before = provider.stored.fetchCooldownMinutes
+            if (!storedSafely { store.storeFetchCooldown(provider.stored.id, minutes) }) return@run SettingOutcome.NotStored
+            provider.stored = provider.stored.copy(fetchCooldownMinutes = minutes)
+            journal.record(
+                JournalEventKind.ConfigurationChange,
+                "Fetch Cooldown of ${provider.stored.name} changed from $before to $minutes minutes",
+            )
+            SettingOutcome.Stored(minutes)
+        }
+        return when (result) {
+            is OperationResult.Ran -> result.value
+            is OperationResult.Refused -> SettingOutcome.Unavailable(result.reason)
+        }
+    }
+
     /** Steps 2-6, A1: the Request Limit of [service] becomes [requests]. */
     suspend fun changeRequestLimit(service: ServiceKey, requests: Int): SettingOutcome =
         storeRequestLimit(service) { requests }
@@ -60,7 +94,7 @@ class DataProviderSettings(
             // UC-010 BR-002: The Request Limit of a Data Provider that publishes none lies within the range its part declares.
             if (requests !in declared.range) return@run SettingOutcome.OutsideRange(declared.range)
             val before = provider.stored.requestLimit
-            store.storeRequestLimit(provider.stored.id, requests)
+            if (!storedSafely { store.storeRequestLimit(provider.stored.id, requests) }) return@run SettingOutcome.NotStored
             provider.stored = provider.stored.copy(requestLimit = requests)
             journal.record(
                 JournalEventKind.ConfigurationChange,

@@ -98,6 +98,10 @@ private fun currencyOf(text: String, part: String): CurrencyCode =
 class RoomOperatorSettingsStore(private val dao: OperatorSettingsDao) : OperatorSettingsStore {
     override suspend fun current(): OperatorSettings = dao.current()?.let(::toSettings) ?: OperatorSettings.DEFAULT
 
+    override suspend fun storeFetchPeriod(days: Int) {
+        dao.storeFetchPeriod(days)
+    }
+
     /** The default content of ADR-002 §8 step 3: one record with every default, when there is none. */
     suspend fun ensureDefault() {
         if (dao.count() == 0) dao.insert(toEntity(OperatorSettings.DEFAULT))
@@ -154,6 +158,10 @@ class RoomOperatorSettingsStore(private val dao: OperatorSettingsDao) : Operator
 class RoomPluginRegistryStore(private val dao: PluginRegistryDao) : PluginRegistryStore, DataProviderSettingsStore {
     override suspend fun storeRequestLimit(dataProviderId: Long, requests: Int) {
         dao.storeRequestLimit(dataProviderId, requests)
+    }
+
+    override suspend fun storeFetchCooldown(dataProviderId: Long, minutes: Int) {
+        dao.storeFetchCooldown(dataProviderId, minutes)
     }
 
     override suspend fun reconcile(

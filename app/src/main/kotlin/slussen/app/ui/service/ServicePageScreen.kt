@@ -15,9 +15,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -30,6 +27,10 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import slussen.app.ui.components.AccountLine
+import slussen.app.ui.components.AnswerLine
+import slussen.app.ui.components.RunningText
+import slussen.app.ui.components.SettingDialog
+import slussen.app.ui.components.SettingEditorUi
 import slussen.app.ui.components.Banner
 import slussen.app.ui.components.FetchButton
 import slussen.app.ui.components.FetchResultLine
@@ -54,11 +55,27 @@ class ConnectActions(
 )
 
 /**
+ * The Fetch Cooldown and the Request Limit on a Data Provider's page, each changed in its dialog (UC-010 steps 2-6, A1,
+ * A10, A11; `connections.html#fetch-cooldown`, `#request-limit`).
+ */
+class PageSettingActions(
+    val onEditFetchCooldown: () -> Unit,
+    val onFetchCooldownValue: (String) -> Unit,
+    val onSaveFetchCooldown: (String) -> Unit,
+    val onResetFetchCooldown: () -> Unit,
+    val onCancelFetchCooldown: () -> Unit,
+    val onRequestLimitValue: (String) -> Unit,
+)
+
+/**
  * The page of one service (UC-014, UC-010 BR-010, UC-013; `docs/mockups/connections.html`): status, credentials with the
  * form its part declares, and what else belongs to it. For the Budget App the Budgets in use, their choice and, under
  * each, its Budget Accounts with "Receives from Slussen" (UC-013 steps 2-4, A9); for a Data Provider its Fetch (UC-001,
  * A16 with its confirmation of a warning), its Fetch Cooldown and Request Limit (UC-010 A11) and its Offered Bank Accounts
- * with an import switch each (UC-013 steps 5-7, A3, A6, A10, A11). The Bank Consents come with UC-007.
+ * with an import switch each (UC-013 steps 5-7, A3, A6, A10, A11). The Bank Consents come with UC-007. Every action
+ * answers at its own control (NFR-023, UX-D4): the check of credentials at Save (the checking and check-refused states
+ * of a Data Provider's page), a refusal at a Fetch on the page (its refused state), a change of the Fetch Cooldown or
+ * the Request Limit at its line (`#fetch-cooldown-saved`, `#local-action-states`).
  */
 @Composable
 fun ServicePageScreen(
@@ -75,6 +92,7 @@ fun ServicePageScreen(
     onSaveRequestLimit: (String) -> Unit,
     onResetRequestLimit: () -> Unit,
     onCancelRequestLimit: () -> Unit,
+    settings: PageSettingActions,
     onFetch: () -> Unit,
     onConfirmFetch: () -> Unit,
     onCancelFetch: () -> Unit,
@@ -84,23 +102,30 @@ fun ServicePageScreen(
         item {
             ScreenTitle(ui.name, ui.kind, onBack)
             Muted(ui.status)
-            if (ui.blocked != null) Banner(ui.blocked, null)
+            if (ui.blocked != null) Banner(ui.blocked, ui.blockedDetail)
             if (ui.message != null) Banner(ui.message, null, SlussenColors.Surface2, SlussenColors.Text)
             SectionTitle("Credentials")
             SlussenCard {
                 Muted(ui.credentials)
                 if (ui.entering) {
-                    ui.fields.forEach { field -> CredentialFieldInput(field, values[field.key].orEmpty()) { values[field.key] = it } }
+                    ui.fields.forEach { field -> CredentialFieldInput(field, values[field.key].orEmpty(), !ui.checking) { values[field.key] = it } }
+                    // A1 of UC-014: the answer of the check, at the field it answers.
+                    ui.credentialAnswer?.let { AnswerLine(it) }
                     Row {
-                        Button(onClick = { onSave(values.toMap()) }) { Text("Save") }
+                        // NFR-023: Save shows that the service is being asked, before any answer; Cancel waits.
+                        Button(onClick = { onSave(values.toMap()) }, enabled = !ui.checking) {
+                            RunningText(if (ui.checking) "Checking with ${ui.name}…" else ui.saveAction, ui.checking)
+                        }
                         TextButton(onClick = {
                             values.clear()
                             onCancelEntering()
-                        }) { Text("Cancel") }
+                        }, enabled = !ui.checking) { Text("Cancel") }
                     }
+                    ui.earlierCredentialsNote?.let { Muted(it) }
                 } else {
+                    ui.credentialAnswer?.let { AnswerLine(it) }
                     Row {
-                        OutlinedButton(onClick = onStartEntering) { Text(if (ui.canRemove) "Replace" else "Enter credentials") }
+                        OutlinedButton(onClick = onStartEntering) { Text(ui.enterAction) }
                         if (ui.canRemove) TextButton(onClick = onRequestRemoval) { Text("Remove") }
                     }
                 }
@@ -119,11 +144,19 @@ fun ServicePageScreen(
                     }
                     // P9-13: the Fetch is shown unavailable, with the reason in plain words.
                     if (ui.fetchUnavailable != null) Muted(ui.fetchUnavailable)
+                    // NFR-023 (UX-22): each setting's line shows its saved value and the answer of its last change.
                     Text("Fetch Cooldown", fontSize = 13.sp)
                     Muted(ui.fetchCooldown)
+                    ui.fetchCooldownAnswer?.let { AnswerLine(it) }
+                    if (ui.fetchCooldownEditable) {
+                        OutlinedButton(onClick = settings.onEditFetchCooldown, modifier = Modifier.testTag("change-fetch-cooldown")) { Text("Change") }
+                    }
                     Text("Request Limit", fontSize = 13.sp)
                     Muted(ui.requestLimit.orEmpty())
-                    if (ui.requestLimitEditable) OutlinedButton(onClick = onEditRequestLimit) { Text("Change") }
+                    ui.requestLimitAnswer?.let { AnswerLine(it) }
+                    if (ui.requestLimitEditable) {
+                        OutlinedButton(onClick = onEditRequestLimit, modifier = Modifier.testTag("change-request-limit")) { Text("Change") }
+                    }
                 }
             }
             ui.offered?.let { offered -> OfferedSection(offered, connect) }
@@ -139,30 +172,31 @@ fun ServicePageScreen(
     }
     val editor = ui.requestLimitEditor
     if (editor != null) {
-        var value by remember(editor) { mutableStateOf(editor.value) }
-        AlertDialog(
-            onDismissRequest = onCancelRequestLimit,
-            title = { Text("Request Limit · ${ui.name}") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = value,
-                        onValueChange = { value = it },
-                        singleLine = true,
-                        label = { Text("New value · default ${editor.defaultRequests}") },
-                    )
-                    Muted(editor.hint)
-                    if (editor.unattendedNote != null) Muted(editor.unattendedNote)
-                    if (ui.message != null) Muted(ui.message)
-                }
-            },
-            confirmButton = { TextButton(onClick = { onSaveRequestLimit(value) }) { Text("Save") } },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = onResetRequestLimit) { Text("Reset to default") }
-                    TextButton(onClick = onCancelRequestLimit) { Text("Cancel") }
-                }
-            },
+        SettingDialog(
+            editor = SettingEditorUi(
+                title = "Request Limit · ${ui.name}",
+                fieldName = "New value · default ${editor.defaultRequests}",
+                value = editor.value,
+                explanation = editor.hint,
+                error = editor.error,
+                saving = editor.saving,
+                canReset = true,
+            ),
+            onValueChange = settings.onRequestLimitValue,
+            onSave = { onSaveRequestLimit(editor.value) },
+            onReset = onResetRequestLimit,
+            onCancel = onCancelRequestLimit,
+            notes = listOfNotNull(editor.unattendedNote),
+        )
+    }
+    val cooldownEditor = ui.fetchCooldownEditor
+    if (cooldownEditor != null) {
+        SettingDialog(
+            editor = cooldownEditor,
+            onValueChange = settings.onFetchCooldownValue,
+            onSave = { settings.onSaveFetchCooldown(cooldownEditor.value) },
+            onReset = settings.onResetFetchCooldown,
+            onCancel = settings.onCancelFetchCooldown,
         )
     }
     val warning = ui.fetchWarning
@@ -193,7 +227,7 @@ fun ServicePageScreen(
 
 /** One declared field: text, secret (hidden while typed) or a file chosen with the device's file picker (UC-014 BR-002). */
 @Composable
-private fun CredentialFieldInput(field: FieldUi, value: String, onValue: (String) -> Unit) {
+private fun CredentialFieldInput(field: FieldUi, value: String, enabled: Boolean, onValue: (String) -> Unit) {
     when (field.kind) {
         FieldKind.File -> {
             val context = LocalContext.current
@@ -203,7 +237,7 @@ private fun CredentialFieldInput(field: FieldUi, value: String, onValue: (String
                 }
             }
             Muted(field.description)
-            OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }) {
+            OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }, enabled = enabled) {
                 Text(if (value.isEmpty()) "Choose file" else "File chosen")
             }
         }
@@ -211,6 +245,7 @@ private fun CredentialFieldInput(field: FieldUi, value: String, onValue: (String
             value = value,
             onValueChange = onValue,
             modifier = Modifier.testTag("field-${field.key}"),
+            enabled = enabled,
             singleLine = true,
             placeholder = { Text(field.description) },
             supportingText = { Text(field.description) },

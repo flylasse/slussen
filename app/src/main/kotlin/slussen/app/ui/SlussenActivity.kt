@@ -37,6 +37,7 @@ import slussen.app.ui.mappings.cardActionsOf
 import slussen.app.ui.overview.OverviewScreen
 import slussen.app.ui.overview.OverviewViewModel
 import slussen.app.ui.service.ConnectActions
+import slussen.app.ui.service.PageSettingActions
 import slussen.app.ui.service.ServicePageScreen
 import slussen.app.ui.service.ServicePageViewModel
 import slussen.app.ui.settings.EntryPage
@@ -165,6 +166,10 @@ fun SlussenScreens(services: UiServices) {
                             },
                             onAccountMappings = { go(Screen.AccountMappings) },
                             onRecentFetches = { go(Screen.RecentFetches) },
+                            onEditFetchPeriod = vm::startEditingFetchPeriod,
+                            onFetchPeriodValue = vm::editFetchPeriod,
+                            onSaveFetchPeriod = vm::saveFetchPeriod,
+                            onCancelFetchPeriod = vm::cancelFetchPeriod,
                         )
                     }
                 }
@@ -198,6 +203,14 @@ fun SlussenScreens(services: UiServices) {
                             onSaveRequestLimit = vm::saveRequestLimit,
                             onResetRequestLimit = vm::resetRequestLimit,
                             onCancelRequestLimit = vm::cancelRequestLimit,
+                            settings = PageSettingActions(
+                                onEditFetchCooldown = vm::startEditingFetchCooldown,
+                                onFetchCooldownValue = vm::editFetchCooldown,
+                                onSaveFetchCooldown = vm::saveFetchCooldown,
+                                onResetFetchCooldown = vm::resetFetchCooldown,
+                                onCancelFetchCooldown = vm::cancelFetchCooldown,
+                                onRequestLimitValue = vm::editRequestLimit,
+                            ),
                             onFetch = vm::fetch,
                             onConfirmFetch = vm::confirmFetch,
                             onCancelFetch = vm::cancelFetch,

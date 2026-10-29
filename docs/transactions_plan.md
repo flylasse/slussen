@@ -26,7 +26,9 @@
 - Phase 5 built (a sub-agent; the orchestrator re-ran the gate with `--rerun-tasks`: green). `slussen.db` version 4 with five tables and `MIGRATION_3_4`; the instrumented migration test runs on the phone in Phase 8 at the latest. It found two specification problems, proposed as **S-T-14** and **S-T-15** (§6).
 - Phase 5 done: the operator approved S-T-14 and S-T-15 and merged PR #31 (2026-10-29).
 - Phase 6 is split in two (orchestrator, 2026-10-29), since it is the largest phase: **6a** stores the Bank Transactions of a Fetch (with the Import Identifier protocol of ADR-008, which nothing had built yet), A17, A19, A20, A21, #9 and the Decision Journal; **6b** the fetch period on Settings and UX-D4's credential and Fetch Cooldown screens. 6a built (a sub-agent, then two fixes by the orchestrator, below); it found one specification gap, proposed as **S-T-16** (§6).
-- Next: the operator approves S-T-16 and merges the Phase 6a PR; then Phase 6b.
+- Phase 6a done: the operator approved S-T-16 and merged PR #32 (2026-10-29); issues #8, #9 and #11 closed.
+- Phase 6b built (a sub-agent; the orchestrator re-ran the gate with `--rerun-tasks`: green). It found one specification gap, proposed as **S-T-17** (§6); the import switch's and credential removal's pending and failed states, not in its prompt, are issue #33.
+- Next: the operator approves S-T-17 and merges the Phase 6b PR; then Phase 7 (the Comparison).
 
 ## 1. Scope
 
@@ -279,6 +281,43 @@ matrix for UC-001 in short, gate result, Clarified / Assumed / Open, and any pla
 or wrong (do not change docs/; report it instead).
 ```
 
+### Phase 6b: the fetch period on Settings, answers in place (sub-agent)
+
+```text
+Work in /home/user/slussen on the branch transactions-phase6b (checked out). Do not commit, push or switch
+branches; leave the changes in the working tree for the orchestrator. Never read, print or write signing values
+or credentials; never run -PincludeLive; tests use invented data and local test servers only.
+
+Read AGENTS.md; docs/transactions_plan.md §1, §2, §3 (row 6b) and §6 (S-T-06, S-T-11, the UX findings UX-09,
+UX-21, UX-22 and decision UX-D4); UC-010 (steps 1-6, A1, BR-001, BR-002, BR-006); UC-014 (A1, BR-005: the earlier
+credentials stay until new ones are accepted); UC-001 BR-009 (S-T-11); NFR-023; ADR-004; docs/architecture/development.md;
+and the mockups settings.html#list-this-build, #fetch-period-edit, #fetch-period-saving, #fetch-period-saved,
+#fetch-period-cancelled, #fetch-period-out-of-range, #fetch-period-failed, #saved, and connections.html#simplefin-refused,
+#simplefin-checking, #simplefin-check-refused, #simplefin-replace, #simplefin-token, #fetch-cooldown,
+#fetch-cooldown-saved, #local-action-states. Follow aiup-core's use-case-test, then use-case-implement (read them
+with `git -C /home/user/marketplace show origin/feat/layer-plugins:<path>`): tests first; say which failed first.
+
+Build:
+1. The fetch period on Settings (UC-010 steps 1-4 and 6, A1; O-T-07): shown with its default, 30 days, edited,
+   checked against 7-180 days, stored, journaled; the states of the mockups above, each at its own control
+   (NFR-023). It changes no Transaction Status (step 5 does not apply, S-T-08 era). The note that it applies from the
+   next Fetch that contacts the Data Provider (S-T-11).
+2. UX-D4, the app screens built in construction checked against NFR-023 and fixed where they share the mockups'
+   gaps: a credential refusal leads to the service page in its refused state with the entry action (UX-21); the
+   credential check shows checking, refused and accepted at its control and keeps the earlier credentials until new
+   ones are accepted (UC-014 BR-005); the Fetch Cooldown and Request Limit edits show saving, saved and failed at
+   their row, and a saved row shows the saved value (UX-22).
+3. Tests: core tests for the fetch period rules (range, journal, default), ViewModel tests for every state, and
+   the UC-010 and UC-014 screen ITs extended (they run on the phone in Phase 8).
+
+Gate (run it; it must pass): ANDROID_HOME=/opt/android-sdk; sh ./gradlew --stop;
+sh ./gradlew check :app:assembleDebug :app:assembleDebugAndroidTest --rerun-tasks;
+python3 tools/lint_specs.py --strict; python3 tools/check_project_rules.py.
+
+Report (under 40 lines): files changed, tests added with their names, which failed first, gate result,
+Clarified / Assumed / Open, and any place the specification or a mockup was unclear or wrong (do not change docs/).
+```
+
 Written for each phase when the phase before it is accepted, so that each prompt carries what the gates decided. Every prompt starts with: read `AGENTS.md`, this plan's §1, §2 and §6, and the use cases and ADRs the phase names; follow `use-case-test` and then `use-case-implement` for code phases; return Clarified / Assumed / Open.
 
 ## 5. Methodology evaluation log
@@ -348,11 +387,23 @@ Phase 5, 2026-10-29: two specification problems the sub-agent found. **Approved 
 | S-T-14 | Phase 5 | UC-010 BR-007's default Bank Transfer Descriptions held both ÖVERFÖRING and OVERFORING, which BR-008 forbids (no two entries equal without regard to case and accents). OVERFORING is dropped: ÖVERFÖRING already matches it, since matching ignores accents (UC-005 BR-012). | UC-010 BR-007, `transfer-descriptions.html`, the default list in `SlussenMigrations` |
 | S-T-15 | Phase 5 | `BANK_TRANSACTION.transfer_id` is a foreign key to `TRANSFER`, as the diagram already shows. | entity model |
 
-Phase 6a, 2026-10-29: one specification gap. **Proposed, waiting for the operator's approval.**
+Phase 6a, 2026-10-29: one specification gap. **Approved by the operator on 2026-10-29.**
 
 | ID | Found by | Change | Files |
 |---|---|---|---|
 | S-T-16 | Phase 6a | A delivered transaction whose currency differs from its Bank Account's had no rule: it would have been stored as a Bank Transaction, and a later Comparison could have called it New. It is kept as an Unreadable Transaction with the reason "currency differs from the Bank Account's" (Needs Review, never uploaded, nothing converted). | UC-001 A17, BR-016 |
+
+Phase 6b, 2026-10-29: one specification gap. **Proposed, waiting for the operator's approval.**
+
+| ID | Found by | Change | Files |
+|---|---|---|---|
+| S-T-17 | Phase 6b | UC-014 lists NFR-023, which decision UX-D4 applies to the credential screens, so their tests can name it; NFR-023 becomes In Progress, since UC-014 is Implemented. | UC-014 Requirements, requirements |
+
+Phase 6b's notes:
+- The app had no Fetch Cooldown edit, only its value, so Phase 6b built UC-010 steps 2-6, A1 and A10 for it, with the fetch period's states.
+- A write that fails is answered "not stored" at its control (UC-010's failure postconditions and `settings.html#fetch-period-failed`); UC-010 still has no flow of its own for it.
+- On the refused credentials page the Fetch stays enabled and answers "Not fetched: credentials refused · enter them again" at its button, where `connections.html#simplefin-refused` draws it greyed out: an answer in place, as NFR-023 asks.
+- The import switch's and credential removal's pending and failed states, and the description-lists row of `settings.html#list-this-build`, are issue #33.
 
 Phase 6a's notes:
 - The orchestrator fixed one assumption of the sub-agent: a selected Bank Account the answer leaves out **while the Data Provider asks to wait** is affected by the wait (A5 step 2), not Not Delivered (A19); a test proves it, failing without the fix.

@@ -20,6 +20,7 @@ import slussen.core.port.StartKind
 import slussen.core.port.UnreadablePart
 import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
+import slussen.core.settings.GeneralSettings
 import slussen.core.status.ImportStatus
 import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.value.Secret
@@ -75,6 +76,7 @@ class TestSlice(
         plugins, credentials, connectionStore, offeredStore, coordinator, journal, random, clock,
     )
     val providerSettings = DataProviderSettings(plugins, registry, coordinator, journal)
+    val generalSettings = GeneralSettings(settings, coordinator, journal)
     val mappings = AccountMappings(plugins, connectionStore, connectionStore, offeredStore, coordinator, journal)
     val status = ImportStatus(
         budgetAppName = plugins.budgetApp.profile.name,

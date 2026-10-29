@@ -29,6 +29,7 @@ class UiFixture(
         settingsOverview = slice.settingsOverview,
         connect = slice.connect,
         providerSettings = slice.providerSettings,
+        generalSettings = slice.generalSettings,
         mappings = slice.mappings,
         status = slice.status,
         fetch = slice.fetch,

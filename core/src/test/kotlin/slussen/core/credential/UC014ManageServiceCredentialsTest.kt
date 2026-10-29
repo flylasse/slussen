@@ -414,6 +414,33 @@ class UC014ManageServiceCredentialsTest {
     }
 
     @Test
+    @UseCase(id = "UC-014", businessRules = ["BR-005"])
+    @DisplayName("BR-005 (UX-21): the page of a Data Provider refused at a Fetch keeps the refusal in view with the time of that Fetch, the earlier credentials still stored, until new ones are accepted")
+    fun refusedPageKeepsTheRefusalInView() = runTest {
+        slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        slice.clock.advance(Duration.ofHours(1))
+        val refusedAt = slice.clock.instant()
+        slice.importStatusStore.fetches += StoredFetch(
+            1, slice.feedsId, refusedAt, StartedBy.Operator, FetchOutcome.CredentialsRefused, emptyList(),
+        )
+
+        val refused = slice.settingsOverview.servicePage(slice.feedsKey)
+        assertEquals(ServiceStatus.CredentialsRefused, refused.status)
+        assertEquals(refusedAt, refused.credentialsRefusedAt)
+        assertEquals(ExampleData.EXCHANGED_ACCESS_CREDENTIAL, storedSecret(slice.feedsKey))
+
+        slice.feeds.credentials.answer = CredentialCheck.Refused
+        slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to "PLANTED-REFUSED-SETUP-KEY"))
+        assertEquals(refusedAt, slice.settingsOverview.servicePage(slice.feedsKey).credentialsRefusedAt)
+        assertEquals(ExampleData.EXCHANGED_ACCESS_CREDENTIAL, storedSecret(slice.feedsKey))
+
+        slice.clock.advance(Duration.ofMinutes(1))
+        slice.feeds.credentials.answer = CredentialCheck.Accepted(Secret(ExampleData.EXCHANGED_ACCESS_CREDENTIAL))
+        slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        assertNull(slice.settingsOverview.servicePage(slice.feedsKey).credentialsRefusedAt)
+    }
+
+    @Test
     @UseCase(id = "UC-014", businessRules = ["BR-006"], requirements = ["C-004"])
     @DisplayName("BR-006: every entered credential can be replaced and removed in the app, so exposed ones can be rotated")
     fun exposedCredentialsCanBeRotated() = runTest {
