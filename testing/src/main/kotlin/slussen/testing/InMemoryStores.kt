@@ -1,6 +1,13 @@
 package slussen.testing
 
+import slussen.core.fetch.BankTransactionIntake
+import slussen.core.identity.ImportIdentifierInput
+import slussen.core.identity.ImportIdentifierProtocol
 import slussen.core.port.AddOutcome
+import slussen.core.port.DeliveryStored
+import slussen.core.port.StoredBankTransaction
+import slussen.core.port.StoredUnreadableTransaction
+import slussen.core.port.UnreadableTransactionStatus
 import slussen.core.port.BankAccountDelivery
 import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
@@ -364,9 +371,15 @@ class FixedBackupSizeMonitor(
 /**
  * In-memory fake of [ImportStatusStore], the data the slices of UC-001, UC-002, UC-003 and UC-007 store, and of the
  * [FetchStore] of UC-001, which writes the same Fetches, Fetch Results, Account Balances and Back-offs the import status
- * reads, all or nothing like the real one (O-1).
+ * reads, and the Bank Transactions and Unreadable Transactions, all or nothing like the real one (O-1). [identify]
+ * computes the Import Identifiers; a test passes one with a test-only digest to plant a collision (ADR-008 §5).
  */
-class InMemoryImportStatusStore : ImportStatusStore, FetchStore {
+class InMemoryImportStatusStore(
+    private val identify: (ImportIdentifierInput) -> String = ImportIdentifierProtocol::importIdentifier,
+) : ImportStatusStore, FetchStore {
+    val bankTransactions = mutableListOf<StoredBankTransaction>()
+    val unreadableTransactions = mutableListOf<StoredUnreadableTransaction>()
+    private var nextStoredId = 1L
     val fetches = mutableListOf<StoredFetch>()
     val balances = mutableListOf<StoredAccountBalance>()
     val consents = mutableListOf<StoredBankConsent>()
@@ -399,18 +412,70 @@ class InMemoryImportStatusStore : ImportStatusStore, FetchStore {
         return id
     }
 
-    /** O-1: the Fetch Result of one Bank Account and, when reported, its Account Balance in place of the stored one. */
-    override suspend fun storeBankAccountDelivery(delivery: BankAccountDelivery) {
+    /**
+     * O-1: the Bank Transactions and Unreadable Transactions of one Bank Account as the core's intake rules decide them,
+     * its Fetch Result and, when given, its Account Balance in place of the stored one; nothing of it when a check fails.
+     */
+    override suspend fun storeBankAccountDelivery(delivery: BankAccountDelivery): DeliveryStored {
         val index = fetches.indexOfFirst { it.id == delivery.fetchId }
         require(index >= 0) { "No Fetch ${delivery.fetchId}: a Fetch Result belongs to a recorded Fetch (FETCH_RESULT.fetch_id)" }
         val fetch = fetches[index]
         require(fetch.results.none { it.bankAccountId == delivery.bankAccountId }) { "One Fetch Result per Fetch and Bank Account" }
+        val plan = delivery.transactions?.let { delivered ->
+            BankTransactionIntake.plan(
+                bankTransactionsOf(delivery.bankAccountId),
+                unreadableTransactionsOf(delivery.bankAccountId),
+                delivered,
+                identify,
+            )
+        }
         fetches[index] = fetch.copy(results = fetch.results + StoredFetchResult(delivery.bankAccountId, delivery.outcome, delivery.transactionCount))
         delivery.balance?.let { balance ->
             balances.removeAll { it.bankAccountId == delivery.bankAccountId }
             balances += StoredAccountBalance(delivery.bankAccountId, balance.amount, balance.currency, balance.reportedAt)
         }
+        if (plan == null) return DeliveryStored()
+        plan.changed.forEach { changed -> bankTransactions.replaceAll { if (it.id == changed.id) changed else it } }
+        plan.inserts.forEach {
+            bankTransactions += StoredBankTransaction(
+                id = nextStoredId++,
+                bankAccountId = delivery.bankAccountId,
+                stableReference = it.stableReference,
+                referenceKind = it.referenceKind,
+                occurrenceNumber = it.occurrenceNumber,
+                importIdentifier = it.importIdentifier,
+                bookedDate = it.bookedDate,
+                amount = it.amount,
+                currency = it.currency,
+                payee = it.payee,
+                memo = it.memo,
+                firstSeenAt = it.firstSeenAt,
+                status = null,
+                transferId = null,
+            )
+        }
+        plan.unreadable.forEach {
+            unreadableTransactions += StoredUnreadableTransaction(
+                id = nextStoredId++,
+                bankAccountId = delivery.bankAccountId,
+                bookedDate = it.bookedDate,
+                amount = it.amount,
+                currency = it.currency,
+                payee = it.payee,
+                memo = it.memo,
+                reason = it.reason.text,
+                firstSeenAt = delivery.transactions!!.receivedAt,
+                status = UnreadableTransactionStatus.NeedsReview,
+            )
+        }
+        return plan.stored
     }
+
+    override suspend fun bankTransactionsOf(bankAccountId: Long): List<StoredBankTransaction> =
+        bankTransactions.filter { it.bankAccountId == bankAccountId }
+
+    override suspend fun unreadableTransactionsOf(bankAccountId: Long): List<StoredUnreadableTransaction> =
+        unreadableTransactions.filter { it.bankAccountId == bankAccountId }
 
     override suspend fun backOffsOf(dataProviderId: Long): List<StoredBackOff> = backOffList.filter { it.dataProviderId == dataProviderId }
 

@@ -4,7 +4,9 @@ import slussen.core.operation.OperationRefusal
 import slussen.core.port.ServiceKey
 import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.request.RefusalReason
+import slussen.pluginapi.value.CurrencyCode
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * What one Fetch of a Data Provider that the Operator started came to (UC-001), as the screens show it. Every report
@@ -22,7 +24,9 @@ sealed interface FetchReport {
      * the same answer has, which are neither kept nor identified (A10, UC-009 BR-004).
      * [waitingUntil] is set when the Data Provider asked Slussen to wait while delivering (A5), [warning] when it warned
      * about its Request Limit (A15). [failed] names the identified Bank Accounts the Data Provider reported a failure
-     * for, whose stored data stays unchanged (A8).
+     * for, whose stored data stays unchanged (A8). [notDelivered] names the selected Bank Accounts the answer did not
+     * contain at all (A19), [signInNeeded] those whose Bank's sign-in at the Data Provider is needed (A20), and
+     * [balancesInOtherCurrency] those whose balance was reported in another currency and not stored (A21).
      */
     data class Fetched(
         override val service: ServiceKey,
@@ -35,6 +39,9 @@ sealed interface FetchReport {
         val warning: RequestLimitWarningShown?,
         val failed: List<String> = emptyList(),
         val sharedReference: Int = 0,
+        val notDelivered: List<String> = emptyList(),
+        val signInNeeded: List<String> = emptyList(),
+        val balancesInOtherCurrency: List<BalanceInOtherCurrency> = emptyList(),
     ) : FetchReport
 
     /**
@@ -115,6 +122,39 @@ sealed interface FetchReport {
  * warning pause from the first warning ends; further requests can get Slussen's access to the Data Provider disabled.
  */
 data class RequestLimitWarningShown(val warnedAt: Instant, val endsAt: Instant)
+
+/**
+ * UC-001 A21: the Data Provider [dataProviderName] reported the balance of [bankAccountName] in [reported], not in the
+ * Bank Account's own currency [expected], at the Fetch of [fetchedAt]; it was not stored and nothing was converted.
+ */
+data class BalanceInOtherCurrency(
+    val bankAccountId: Long,
+    val bankAccountName: String,
+    val dataProviderName: String,
+    val reported: CurrencyCode,
+    val expected: CurrencyCode,
+    val fetchedAt: Instant,
+)
+
+/**
+ * UC-001 A21 step 2: what the last Fetch of each Bank Account found that nothing stored can show, kept in memory while
+ * the app runs. The entity model has no place for a balance that was not stored, so it is shown until a later Fetch
+ * stores the Bank Account's balance in its own currency, or the app restarts.
+ */
+class FetchNotices {
+    private val balances = ConcurrentHashMap<Long, BalanceInOtherCurrency>()
+
+    /** The balance of [bankAccountId] that its last Fetch reported in another currency, or null. */
+    fun balanceInOtherCurrency(bankAccountId: Long): BalanceInOtherCurrency? = balances[bankAccountId]
+
+    internal fun noteBalanceInOtherCurrency(notice: BalanceInOtherCurrency) {
+        balances[notice.bankAccountId] = notice
+    }
+
+    internal fun balanceStored(bankAccountId: Long) {
+        balances.remove(bankAccountId)
+    }
+}
 
 /** The outcome of starting a Fetch (UC-001 step 1, A11, precondition). */
 sealed interface FetchStart {

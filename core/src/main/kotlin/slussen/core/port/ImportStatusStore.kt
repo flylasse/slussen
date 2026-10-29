@@ -29,6 +29,8 @@ enum class FetchResultOutcome(val text: String) {
     NotRecognised("Not Recognised"),
     AmbiguousBankAccount("Ambiguous Bank Account"),
     AccessLimitReached("Access Limit Reached"),
+    NotDelivered("Not Delivered"),
+    SignInNeeded("Sign-In Needed"),
 }
 
 /** `FETCH` with its `FETCH_RESULT`s (entity model), as stored. */

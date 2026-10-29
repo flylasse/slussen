@@ -360,7 +360,7 @@ class UC008CheckImportStatusViewModelTest {
     }
     @Test
     @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-005"])
-    @DisplayName("Steps 6-7 after a Fetch (P9-15): each Bank Account card shows the Source Health and Freshness of its Fetch Result and its Account Balance next to the Budget Account's, with the difference; the tab says that Bank Transactions are not fetched in this build")
+    @DisplayName("Steps 6-7 after a Fetch (P9-15): each Bank Account card shows the Source Health and Freshness of its Fetch Result and its Account Balance next to the Budget Account's, with the difference; the tab says that the Bank Transactions are not compared in this build")
     fun budgetShowsWhatAFetchStored() {
         household()
         slice.feeds.fetchAnswer = {
@@ -381,7 +381,8 @@ class UC008CheckImportStatusViewModelTest {
         assertTrue(account.blocked.isEmpty())
         assertEquals("Source Health: Fetched 2026-10-15 14:00 · started by you", ui.sources.single().health)
         assertEquals(
-            "Bank Transactions are not fetched in this build yet: a Fetch stores the Account Balances, so the counts stay at 0.",
+            "Bank Transactions are fetched and stored, but not compared with the Budget App in this build yet: they have no " +
+                "Transaction Status, so the counts stay at 0. Nothing is uploaded.",
             ui.note,
         )
     }

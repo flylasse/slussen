@@ -190,7 +190,7 @@
 
 ### A17: Transaction Cannot Be Interpreted
 
-**Trigger:** The Data Provider delivers a transaction for an identified Bank Account that Slussen cannot interpret, for example because its date or amount is missing or unreadable, or whose Import Identifier collides with the Import Identifier of a different stored Bank Transaction of the same Bank Account (UC-003 BR-002) (step 7)  
+**Trigger:** The Data Provider delivers a transaction for an identified Bank Account that Slussen cannot interpret, for example because its date or amount is missing or unreadable, or whose currency differs from the Bank Account's, or whose Import Identifier collides with the Import Identifier of a different stored Bank Transaction of the same Bank Account (UC-003 BR-002) (step 7)  
 **Flow:**
 
 1. Slussen keeps it as an Unreadable Transaction of that Bank Account, with whatever fields could be read, the reason and the status Needs Review (BR-016).
@@ -317,4 +317,4 @@ When a Data Provider warns that Slussen is near or over its Request Limit, Sluss
 
 ### BR-016: Unreadable Transactions Are Kept
 
-A delivered transaction that Slussen cannot interpret, or whose Import Identifier collides with the Import Identifier of a different stored Bank Transaction of the same Bank Account (UC-003 BR-002), is never dropped and never completed by guessing. Slussen keeps it as an Unreadable Transaction with whatever fields could be read and the reason, shows it as Needs Review for the Operator's review (UC-004) and never uploads it (UC-003 BR-012). A later Fetch that delivers as many Unreadable Transactions with the same readable fields and reason as are stored adds none; when it delivers more, only the additional ones are added.
+A delivered transaction that Slussen cannot interpret, whose currency differs from its Bank Account's (no amount is ever converted), or whose Import Identifier collides with the Import Identifier of a different stored Bank Transaction of the same Bank Account (UC-003 BR-002), is never dropped and never completed by guessing. Slussen keeps it as an Unreadable Transaction with whatever fields could be read and the reason, shows it as Needs Review for the Operator's review (UC-004) and never uploads it (UC-003 BR-012). A later Fetch that delivers as many Unreadable Transactions with the same readable fields and reason as are stored adds none; when it delivers more, only the additional ones are added.

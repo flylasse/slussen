@@ -24,7 +24,9 @@
 - Phase 4 built (a sub-agent; the orchestrator re-ran the full gate with `--rerun-tasks`: green). It found two specification conflicts, proposed as **S-T-12** and **S-T-13** (§6), to be approved before its PR merges.
 - Phase 4 done: the operator approved S-T-12, S-T-13 and the six `errlist` assumptions and merged PR #30 (2026-10-29). The SimpleFIN protocol (`www.simplefin.org`, allowed by the operator on 2026-10-29) confirms the codes, the shape of `errlist` and `balance-date`.
 - Phase 5 built (a sub-agent; the orchestrator re-ran the gate with `--rerun-tasks`: green). `slussen.db` version 4 with five tables and `MIGRATION_3_4`; the instrumented migration test runs on the phone in Phase 8 at the latest. It found two specification problems, proposed as **S-T-14** and **S-T-15** (§6).
-- Next: the operator approves S-T-14 and S-T-15 and merges the Phase 5 PR; then Phase 6.
+- Phase 5 done: the operator approved S-T-14 and S-T-15 and merged PR #31 (2026-10-29).
+- Phase 6 is split in two (orchestrator, 2026-10-29), since it is the largest phase: **6a** stores the Bank Transactions of a Fetch (with the Import Identifier protocol of ADR-008, which nothing had built yet), A17, A19, A20, A21, #9 and the Decision Journal; **6b** the fetch period on Settings and UX-D4's credential and Fetch Cooldown screens. 6a built (a sub-agent, then two fixes by the orchestrator, below); it found one specification gap, proposed as **S-T-16** (§6).
+- Next: the operator approves S-T-16 and merges the Phase 6a PR; then Phase 6b.
 
 ## 1. Scope
 
@@ -96,7 +98,8 @@ In addition:
 | 3 | Device baseline (#5): `gradlew connectedDebugAndroidTest` on an emulator (API 26 and current) or the phone, then E-13 with `adb shell bmgr` | results into §6 and issue #5 | operator | every instrumented test passes, or each failure becomes an issue | — (results recorded by the orchestrator in Phase 4's commit) |
 | 4 | Data Provider contract and SimpleFIN: `Read` carries each transaction and the balance time (#16.1); SimpleFIN maps `transactions`, `pending`, `balance-date` and `errlist` (#11) | `:plugin-api`, `provider-simplefin`, contract tests | `inherit` | `gradlew check` passes; the contract tests cover a pending item, a zero amount, an item without a date, `con.auth` and `act.failed` | `feat: phase 4 - transactions in the Data Provider contract and SimpleFIN` |
 | 5 | Storage: `slussen.db` version 4 with `BANK_TRANSACTION`, `UNREADABLE_TRANSACTION`, `BUDGET_APP_TRANSACTION`, `TRANSFER` and `TRANSFER_DESCRIPTION` (entity model), the default description lists, and a hand-written Migration from version 3 (S-39) | `:persistence`, schema JSON, `SlussenDatabaseMigrationIT` | `inherit` | `gradlew check` passes; the S-39 check accepts version 4; the Migration IT covers versions 1, 2 and 3 to 4 (run on a device in Phase 8 at the latest) | `feat: phase 5 - schema version 4 for Bank Transactions` |
-| 6 | UC-001 steps 7-10 in the core, A8, A10, A17, #8, #9, #16.3b; the fetch period on Settings (UC-010, O-T-07); then the screens | `:core` `fetch`, `:core` `settings`, `:app` | `inherit` | `gradlew check` and `:app:assembleDebug` pass; every in-scope BR and flow of §1 has a test that names it; `uc-coverage-layered` matrix in the phase report | `feat: phase 6 - Bank Transactions from a Fetch` |
+| 6a | UC-001 steps 7-9 in the core and `:persistence`: the Fetch asks for transactions and balance (ending O-P2-54), stores booked, non-zero Bank Transactions with their Import Identifiers (ADR-008, built here with its test vectors) and occurrence numbers, Unreadable Transactions (A17, BR-016), the Decision Journal (step 9); A19, A20 (with #11), A21, BR-006 (#9); the fetch period default 30 days in the code; the Fetch result and Blocked Reason texts | `:core` `fetch`, `identity`, `journal`; `:persistence`; `:app` texts | `inherit` | `gradlew check` and `:app:assembleDebug` pass; every in-scope BR and flow has a test that names it; ADR-008's vectors pass; `uc-coverage-layered` matrix in the report | `feat: phase 6a - Bank Transactions from a Fetch` |
+| 6b | The fetch period on Settings (UC-010 steps 1-4, 6, A1); UX-D4: the credential and Fetch Cooldown screens checked against NFR-023 and fixed | `:core` `settings`, `:app` | `inherit` | as 6a | `feat: phase 6b - fetch period on Settings, answers in place` |
 | 7 | UC-003: YNAB `readChanges`, the stored copy, the Comparison in the order of BR-001, Eligible Transactions, the Decision Journal, the "⟳" read; the Budget tab and Bank Account screen as the UX gate approved them | `budgetapp-ynab`, `:core` (a comparison package, ADR-001 §7), `:app` | `inherit` | as Phase 6, and no Comparison writes to YNAB (BR-015, a contract-test property) | `feat: phase 7 - the Comparison` |
 | 7b | UC-005 detection inside the Comparison (UC-003 step 4): Transfers, Transfer Legs, Guessed Transfers, Lonely Transfers and the grace period, the description lists; the Transfers shown on the Budget tab without decisions | `:core` (a transfer package, ADR-001 §7), `:app` | `inherit` | as Phase 6; a test for each in-scope BR of UC-005, including a Transfer never across Budgets or currencies (BR-004) | `feat: phase 7b - Transfers detected` |
 | 8 | **Acceptance: operator, on the phone** | release build 0.1.x → this build over it; a Fetch of SimpleFIN; YNAB read | operator | every Bank Account shows its Bank Transactions with plausible Transaction Statuses; nothing reached YNAB; no stored item lost in the upgrade; the instrumented Migration test passes on the phone | operator's verdict into §6 |
@@ -229,6 +232,53 @@ Report (under 40 lines): files changed, tests added with their names, the plain 
 Clarified / Assumed / Open, and any place the specification was unclear or wrong (do not change docs/).
 ```
 
+### Phase 6a: Bank Transactions from a Fetch (sub-agent)
+
+```text
+Work in /home/user/slussen on the branch transactions-phase6a (checked out). Do not commit, push or switch
+branches; leave the changes in the working tree for the orchestrator. Never read, print or write signing values
+or credentials; never run -PincludeLive; tests use invented data and local test servers only.
+
+Read AGENTS.md; docs/transactions_plan.md §1, §2, §3 (row 6a) and §6 (S-T-01..S-T-15); UC-001 (all of it, especially
+steps 3-11, A2, A8, A10, A17-A21, BR-002, BR-003, BR-006, BR-009, BR-016); UC-003 BR-002 (Import Identifier) and A1
+(S-T-08: a stored Bank Transaction has no Transaction Status until Phase 7's Comparison); UC-011 BR-001; UC-008
+BR-006; the entity model (BANK_TRANSACTION, UNREADABLE_TRANSACTION, FETCH_RESULT, ACCOUNT_BALANCE, BANK_ACCOUNT);
+ADR-001 §4.1, ADR-002 §3 (O-1) and §8, ADR-004, ADR-006, ADR-008 (all of it); docs/architecture/development.md;
+the mockups budget.html#not-delivered, #sign-in-needed, bank-account.html#balance-other-currency. Follow aiup-core's
+use-case-test, then use-case-implement (read them with `git -C /home/user/marketplace show
+origin/feat/layer-plugins:<path>`): tests first, and say which tests you saw fail first.
+
+Build:
+1. ADR-008: `slussen.core.identity.ImportIdentifierProtocol` (kinds R, F, U; canonical encoding §2; occurrence
+   allocation and collision detection §5), with the committed vectors file
+   `core/src/test/resources/import-identifier-v1.vectors` holding every vector of §3 plus the ones §3 says the
+   first slice adds, and a test that recomputes each. Konsist K-15 must hold.
+2. The Fetch asks every selected Bank Account for its transactions and balance (ReadKind.TransactionsAndBalance; a
+   file-imported one for its balance only), ending O-P2-54 (UC-001 step 4).
+3. O-1 `FetchStore.storeBankAccountDelivery` in `:core` and `:persistence` (one storage operation per identified
+   Bank Account): booked, non-zero transactions (BR-002, BR-003) stored as Bank Transactions with their Import
+   Identifier and occurrence_number, status empty (S-T-08); a known one with changed content updated; Unreadable
+   Transactions counted against stored ones (BR-016) and an Import Identifier collision kept as Unreadable (A17,
+   ADR-008 §5); the Account Balance (A21: not stored when its currency differs from the Bank Account's); the
+   Fetch Result. Add the new value columns this phase writes to `SlussenStorage.MAIN_VALUES` (ADR-002 §8 step 1).
+4. Step 9: a Decision Journal entry for each Bank Transaction received for the first time or with changed content
+   (UC-011 BR-001), naming its Bank Account and Import Identifier, never a Data Provider text (NFR-012).
+5. A19 (outcome Not Delivered), A20 (outcome Sign-In Needed, completing #11; S-T-12 already in the plug-in), A21
+   (balance in another currency shown, nothing converted), BR-006 (#9: within the Fetch Cooldown a Bank Account is
+   read until it has a Fetch Result Fetched since its identified_at), each with its Blocked Reason or line in
+   `:app`'s Texts and the Budget tab as the mockups name it. The code default of the fetch period becomes 30 days
+   for a new installation (S-T-06); a stored value is never changed.
+6. Instrumented tests: extend the UC-001 persistence IT for O-1 (they run on the phone in Phase 8).
+
+Gate (run it; it must pass): ANDROID_HOME=/opt/android-sdk; sh ./gradlew --stop;
+sh ./gradlew check :app:assembleDebug :app:assembleDebugAndroidTest :persistence:assembleDebugAndroidTest
+--rerun-tasks; python3 tools/lint_specs.py --strict; python3 tools/check_project_rules.py.
+
+Report (under 50 lines): files changed, tests added with their names, which failed first, the uc-coverage-layered
+matrix for UC-001 in short, gate result, Clarified / Assumed / Open, and any place the specification was unclear
+or wrong (do not change docs/; report it instead).
+```
+
 Written for each phase when the phase before it is accepted, so that each prompt carries what the gates decided. Every prompt starts with: read `AGENTS.md`, this plan's §1, §2 and §6, and the use cases and ADRs the phase names; follow `use-case-test` and then `use-case-implement` for code phases; return Clarified / Assumed / Open.
 
 ## 5. Methodology evaluation log
@@ -240,6 +290,7 @@ Written for each phase when the phase before it is accepted, so that each prompt
 | 3 | 1 | `requirements` (NFR) | A usability requirement (NFR-023, O-T-06) is written as an NFR with the category Usability. The project rule on numbers (AGENTS.md §2) refused "within 1 second", so the measure is "before the action sends any request or waits for anything". | No |
 | 6 | 4 | `use-case-test`, then `use-case-implement` | Tests were written first, but they could not compile before the new types existed, so none was seen failing first: the recurring deviation of the construction plan (§7 there). | Yes |
 | 7 | 5 | `use-case-test`, `use-case-implement` | The sub-agent read the two skills from `origin/feat/layer-plugins` with `git show`, since the Marketplace clone is on a detached HEAD without them. Six new JVM tests were seen failing before the production change. | Yes (how the skills were read) |
+| 8 | 6a | `use-case-test` | 31 core tests were seen failing first against stubs; the `:app` ViewModel tests were written after the texts and were not seen failing. | Yes (partly) |
 | 5 | 2b | Mockups (`use-case-spec` mockup step) | Phase 2b ran as a sub-agent with the accepted findings as its brief, as §2 says; it changed only `docs/mockups/` and reported nine specification observations instead of changing the specification. | No |
 | 4 | 2 | Adversarial review (Centaur cross-model rule) | The external UX reviewer (Codex CLI) worked only from this repository, as its prompt said, so it did not read the Marketplace `spec-review` skill that AGENTS.md names. Its review is a source walkthrough of the HTML mockups, not of the running app. | Yes (recorded as the reviewer asked) |
 
@@ -290,12 +341,25 @@ Phase 4, 2026-10-28: two specification conflicts the sub-agent found. **Approved
 | S-T-12 | Phase 4 | ADR-001 §4.1 said both that a listed Bank Account the request did not read is `NotRead(NotSelected, balance)` (S-35) and that SimpleFIN's `con.auth` makes every Bank Account of the connection `SignInNeeded` (S-T-03). The error wins: an error the Data Provider reports for such a Bank Account, or its connection, replaces `NotRead`. | ADR-001 §4.1 |
 | S-T-13 | Phase 4 | UC-001 lists NFR-012 (no Data Provider text in the journal or on screen), which A20 already relies on, so its tests can name it. | UC-001 Requirements |
 
-Phase 5, 2026-10-29: two specification problems the sub-agent found. **Proposed, waiting for the operator's approval.**
+Phase 5, 2026-10-29: two specification problems the sub-agent found. **Approved by the operator on 2026-10-29.**
 
 | ID | Found by | Change | Files |
 |---|---|---|---|
 | S-T-14 | Phase 5 | UC-010 BR-007's default Bank Transfer Descriptions held both ÖVERFÖRING and OVERFORING, which BR-008 forbids (no two entries equal without regard to case and accents). OVERFORING is dropped: ÖVERFÖRING already matches it, since matching ignores accents (UC-005 BR-012). | UC-010 BR-007, `transfer-descriptions.html`, the default list in `SlussenMigrations` |
 | S-T-15 | Phase 5 | `BANK_TRANSACTION.transfer_id` is a foreign key to `TRANSFER`, as the diagram already shows. | entity model |
+
+Phase 6a, 2026-10-29: one specification gap. **Proposed, waiting for the operator's approval.**
+
+| ID | Found by | Change | Files |
+|---|---|---|---|
+| S-T-16 | Phase 6a | A delivered transaction whose currency differs from its Bank Account's had no rule: it would have been stored as a Bank Transaction, and a later Comparison could have called it New. It is kept as an Unreadable Transaction with the reason "currency differs from the Bank Account's" (Needs Review, never uploaded, nothing converted). | UC-001 A17, BR-016 |
+
+Phase 6a's notes:
+- The orchestrator fixed one assumption of the sub-agent: a selected Bank Account the answer leaves out **while the Data Provider asks to wait** is affected by the wait (A5 step 2), not Not Delivered (A19); a test proves it, failing without the fix.
+- The notice of a balance in another currency (A21) is kept in memory, not stored: the entity model has no place for a balance that was not stored. It is shown again by the next Fetch; after a restart the Bank Account shows its last stored balance with its own time.
+- A transaction without a Stable Reference (kind F) has no "changed content": its content is its identity (ADR-008).
+- BR-006 (#9) counts a Fetch Result Fetched of a Fetch started at or after `identified_at`; one trimmed by the number of recent Fetches kept can cost one more read.
+- Journal entries name the Bank Account, the Import Identifier, the date and the amount, never the payee or memo.
 
 Phase 5's notes: a new installation also starts with the default description lists (ADR-002 §8 step 3); the rule that no two entries of a list are equal without regard to case and accents is the core's, since a unique index cannot compare that way; the new value columns join the startup check of stored values (`SlussenStorage.MAIN_VALUES`, ADR-002 §8 step 1) when Phases 6 and 7 add their core types; version 4's digest joins the pinned final versions when version 5 is added.
 

@@ -1,6 +1,7 @@
 package slussen.core.status
 
 import slussen.core.credential.CredentialStatusReader
+import slussen.core.fetch.BalanceInOtherCurrency
 import slussen.core.firstupload.FirstUploadMatchingNotice
 import slussen.core.journal.DecisionJournal
 import slussen.core.port.BackupSizeMonitor
@@ -36,6 +37,12 @@ enum class BlockedReason {
     CredentialsMissing,
     CurrencyMismatch,
     UploadsWaitForFirstUploadMatching,
+
+    /** UC-001 A19: "not delivered by the Data Provider". */
+    NotDelivered,
+
+    /** UC-001 A20: "the Bank's sign-in at the Data Provider needs you". */
+    SignInNeeded,
 }
 
 /** The action that removes a Blocked Reason (UC-008 BR-006, A6). */
@@ -60,10 +67,22 @@ enum class Remedy {
 
     /** "Start First Upload Matching": compare with the Budget App and confirm (BR-006, BR-009, A9). */
     StartFirstUploadMatching,
+
+    /** UC-001 A20: sign in to the Bank again at the Data Provider, then fetch again. */
+    SignInAtDataProvider,
 }
 
-/** One Blocked Reason of a Source, a Bank Account or a Budget, with its remedy and the time it ends or happened. */
-data class Blocked(val reason: BlockedReason, val remedy: Remedy, val at: Instant?, val subject: String)
+/**
+ * One Blocked Reason of a Source, a Bank Account or a Budget, with its remedy and the time it ends or happened, and the
+ * Data Provider it names when its words name one (UC-001 A19, A20).
+ */
+data class Blocked(
+    val reason: BlockedReason,
+    val remedy: Remedy,
+    val at: Instant?,
+    val subject: String,
+    val dataProviderName: String? = null,
+)
 
 /** Source Health: only the outcome of the last Fetch or Transaction File import (BR-003). */
 sealed interface SourceHealth {
@@ -123,6 +142,8 @@ data class BankAccountStatus(
     val blocked: List<Blocked>,
     /** The Data Provider that fetches the Bank Account, whose Fetch removes a failed Fetch (BR-006, A6); null for a file-imported one. */
     val dataProviderId: Long?,
+    /** UC-001 A21: the balance its last Fetch reported in another currency and did not store, or null. */
+    val balanceInOtherCurrency: BalanceInOtherCurrency? = null,
 )
 
 /** One Source of the selected Budget (steps 5-6). */

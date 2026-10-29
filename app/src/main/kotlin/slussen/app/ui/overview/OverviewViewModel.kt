@@ -141,7 +141,7 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
                     counts = "Eligible ${budget.notYetUploaded.eligible} · waiting for a decision " +
                         "${budget.notYetUploaded.waitingForDecision}",
                     blocked = budget.blocked.filterNot { it.reason == BlockedReason.UploadsWaitForFirstUploadMatching }
-                        .map { blocked -> "Blocked: ${blocked.subject}, ${Texts.blockedReason(blocked.reason)}" }
+                        .map { blocked -> "Blocked: ${blocked.subject}, ${Texts.blockedReason(blocked.reason, blocked.dataProviderName)}" }
                         .distinct(),
                     // UC-008 BR-006: The Blocked Reason "Uploads wait for First Upload Matching", in the tone of BR-009.
                     firstUploadMatching = firstUploadMatching?.takeIf {

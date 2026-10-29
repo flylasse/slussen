@@ -15,8 +15,21 @@ class DecisionJournal(
     private val settings: OperatorSettingsStore,
     private val clock: Clock,
 ) {
-    suspend fun record(kind: JournalEventKind, details: String) {
+    /**
+     * Records one entry; an entry about a Bank Transaction names its Bank Account and its Import Identifier, both or
+     * neither (UC-011 BR-001, `DECISION_JOURNAL_ENTRY` constraints).
+     */
+    suspend fun record(kind: JournalEventKind, details: String, importIdentifier: String? = null, bankAccountName: String? = null) {
+        require((importIdentifier == null) == (bankAccountName == null)) { "An Import Identifier is unique only within its Bank Account." }
         if (!settings.current().journalOn) return
-        recorder.record(JournalEntry(recordedAt = clock.instant(), eventKind = kind, details = details))
+        recorder.record(
+            JournalEntry(
+                recordedAt = clock.instant(),
+                eventKind = kind,
+                details = details,
+                importIdentifier = importIdentifier,
+                bankAccountName = bankAccountName,
+            ),
+        )
     }
 }

@@ -2,6 +2,7 @@ package slussen.core.status
 
 import slussen.core.credential.CredentialStatus
 import slussen.core.credential.CredentialStatusReader
+import slussen.core.fetch.FetchNotices
 import slussen.core.firstupload.FirstUploadMatching
 import slussen.core.firstupload.FirstUploadMatchingNotice
 import slussen.core.firstupload.FirstUploadMatchingStart
@@ -58,6 +59,8 @@ class ImportStatus(
     private val clock: Clock,
     /** A10, BR-011: the next thing to do in setting up Slussen (UC-013 BR-008), read from the Settings read model. */
     private val firstRunNext: suspend () -> NextThing? = { null },
+    /** UC-001 A21: what the last Fetch of each Bank Account found that nothing stored can show. */
+    private val fetchNotices: FetchNotices = FetchNotices(),
 ) {
     private val dataProviders: List<StoredDataProvider> get() = currentDataProviders()
 
@@ -265,6 +268,8 @@ class ImportStatus(
             balance = balance(bankAccount, budget, snapshot),
             blocked = bankAccountBlocked(bankAccount, budget, snapshot),
             dataProviderId = bankAccount.dataProviderId,
+            // A21 of UC-001: the balance the last Fetch reported in another currency, named with both currencies.
+            balanceInOtherCurrency = fetchNotices.balanceInOtherCurrency(bankAccount.id),
         )
     }
 
@@ -339,7 +344,7 @@ class ImportStatus(
                     .maxByOrNull { it.endsAt }
                     ?.let { add(Blocked(BlockedReason.WaitingForProvider, Remedy.WaitUntilItEnds, it.endsAt, subject)) }
                 lastResult(bankAccount, snapshot)?.let { (fetch, result) ->
-                    resultBlocked(result.outcome, fetch, bankAccount, snapshot)?.let { add(it) }
+                    resultBlocked(result.outcome, fetch, bankAccount, provider, snapshot)?.let { add(it) }
                 }
             }
             // UC-008 BR-006: A currency mismatch is shown with the action that moves the Account Mapping (UC-009 A8).
@@ -352,6 +357,7 @@ class ImportStatus(
         outcome: FetchResultOutcome,
         fetch: StoredFetch,
         bankAccount: StoredBankAccount,
+        provider: StoredDataProvider,
         snapshot: Snapshot,
     ): Blocked? = when (outcome) {
         // UC-008 BR-006: An unrecognised Bank Account is shown with the action that confirms or identifies it (UC-009).
@@ -365,6 +371,12 @@ class ImportStatus(
             accessFreesUpAt(bankAccount, snapshot),
             bankAccount.name,
         )
+        // UC-008 BR-006: Not delivered by the Data Provider is shown with the time of the Fetch and the action that fetches again (UC-001 A19).
+        FetchResultOutcome.NotDelivered ->
+            Blocked(BlockedReason.NotDelivered, Remedy.FetchAgain, fetch.startedAt, bankAccount.name, provider.name)
+        // UC-008 BR-006: The Bank's sign-in at the Data Provider is shown with the action to sign in there again and fetch again (UC-001 A20).
+        FetchResultOutcome.SignInNeeded ->
+            Blocked(BlockedReason.SignInNeeded, Remedy.SignInAtDataProvider, null, bankAccount.name, provider.name)
         FetchResultOutcome.Fetched, FetchResultOutcome.NotConsented -> null
     }
 

@@ -112,13 +112,14 @@ class UC008CheckImportStatusScreenIT {
                 ),
             ),
             bankAccounts = emptyList(),
-            note = "Bank Transactions are not fetched in this build yet: a Fetch stores the Account Balances, so the counts stay at 0.",
+            note = "Bank Transactions are fetched and stored, but not compared with the Budget App in this build yet: they have no " +
+                "Transaction Status, so the counts stay at 0. Nothing is uploaded.",
         )
         setContent { SlussenTheme { BudgetScreen(ui, onRemedy = { opened = it.service }, onStartFirstUploadMatching = {}) } }
 
         onNodeWithText("Grant Bank Consent").assertIsNotEnabled()
         onNodeWithText("Bank Consents are not in this build yet").assertExists()
-        onNodeWithText("Bank Transactions are not fetched in this build yet", substring = true).assertExists()
+        onNodeWithText("not compared with the Budget App in this build yet", substring = true).assertExists()
         onNodeWithText("Fetch again").assertIsEnabled()
         onNodeWithText("Enter credentials").performClick()
         assertEquals(ServiceKey.dataProvider(1), opened)

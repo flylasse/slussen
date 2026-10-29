@@ -1,6 +1,11 @@
 package slussen.persistence
 
+import slussen.core.identity.ImportIdentifierInput
+import slussen.core.identity.ImportIdentifierProtocol
 import slussen.core.port.AddOutcome
+import slussen.core.port.DeliveryStored
+import slussen.core.port.StoredBankTransaction
+import slussen.core.port.StoredUnreadableTransaction
 import slussen.core.port.BackOffCause
 import slussen.core.port.BankAccountDelivery
 import slussen.core.port.BankAccountType
@@ -72,6 +77,7 @@ import slussen.persistence.main.OperatorSettingsEntity
 import slussen.persistence.main.PluginRegistryDao
 import slussen.persistence.main.ProviderRequestDao
 import slussen.persistence.main.ProviderRequestEntity
+import slussen.persistence.main.stored
 import slussen.persistence.main.FirstUploadMatchingDao
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
@@ -449,11 +455,24 @@ private fun BackOffEntity.stored() = StoredBackOff(
     endsAt = endsAt,
 )
 
-/** `FETCH`, `FETCH_RESULT`, `ACCOUNT_BALANCE` and `BACK_OFF` in `slussen.db` (UC-001, ADR-002 §1, O-1). */
-class RoomFetchStore(private val dao: FetchDao) : FetchStore {
+/**
+ * `FETCH`, `FETCH_RESULT`, `ACCOUNT_BALANCE`, `BANK_TRANSACTION`, `UNREADABLE_TRANSACTION` and `BACK_OFF` in `slussen.db`
+ * (UC-001, ADR-002 §1, O-1). [identify] computes the Import Identifiers O-1 stores: the protocol of ADR-008, which an
+ * instrumented test replaces with a test-only digest to plant a collision (ADR-008 §5).
+ */
+class RoomFetchStore(
+    private val dao: FetchDao,
+    private val identify: (ImportIdentifierInput) -> String = ImportIdentifierProtocol::importIdentifier,
+) : FetchStore {
     override suspend fun fetchesOf(dataProviderId: Long): List<StoredFetch> = withResults(dao.of(dataProviderId), dao.resultsOf(dataProviderId))
 
-    override suspend fun storeBankAccountDelivery(delivery: BankAccountDelivery) = dao.storeBankAccountDelivery(
+    override suspend fun bankTransactionsOf(bankAccountId: Long): List<StoredBankTransaction> =
+        dao.bankTransactionsOf(bankAccountId).map { it.stored() }
+
+    override suspend fun unreadableTransactionsOf(bankAccountId: Long): List<StoredUnreadableTransaction> =
+        dao.unreadableTransactionsOf(bankAccountId).map { it.stored() }
+
+    override suspend fun storeBankAccountDelivery(delivery: BankAccountDelivery): DeliveryStored = dao.storeBankAccountDelivery(
         FetchResultEntity(
             fetchId = delivery.fetchId,
             bankAccountId = delivery.bankAccountId,
@@ -468,6 +487,8 @@ class RoomFetchStore(private val dao: FetchDao) : FetchStore {
                 reportedAt = it.reportedAt,
             )
         },
+        delivery.transactions,
+        identify,
     )
 
     override suspend fun recordFetch(fetch: NewFetch, keep: Int): Long = dao.record(

@@ -28,6 +28,18 @@ import slussen.core.port.StoredAccountBalance
 import slussen.core.port.StoredBackOff
 import slussen.core.port.StoredFetchResult
 import slussen.core.port.StoredLeftOutBankAccount
+import slussen.core.port.StoredUnreadableTransaction
+import slussen.core.port.StableReferenceKind
+import slussen.core.port.UnreadableTransactionStatus
+import slussen.core.port.JournalEventKind
+import slussen.core.fetch.BalanceInOtherCurrency
+import slussen.core.identity.ImportIdentifierInput
+import slussen.core.identity.ImportIdentifierProtocol
+import slussen.core.status.Blocked
+import slussen.core.status.BlockedReason
+import slussen.core.status.Remedy
+import slussen.pluginapi.provider.ProviderTransaction
+import slussen.pluginapi.provider.UnreadableReason
 import slussen.core.settings.ServiceStatus
 import slussen.pluginapi.provider.BankAccountResult
 import slussen.pluginapi.provider.BankAccountSelection
@@ -322,7 +334,8 @@ class UC001FetchTransactionsTest {
 
         val request = slice.feeds.fetchRequests.single()
         assertEquals(BankAccountSelection.AllForIdentification(ReadKind.Balance), request.bankAccounts)
-        assertEquals(today.minusDays(60), request.periodFrom)
+        // UC-001 BR-009 (S-T-06): the last 30 days by default.
+        assertEquals(today.minusDays(30), request.periodFrom)
         assertEquals(today, request.periodTo)
         assertEquals(OperatorPresence.OperatorPresent, request.presence)
         assertTrue(request.sessions.isEmpty())
@@ -334,8 +347,9 @@ class UC001FetchTransactionsTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-009"])
-    @DisplayName("BR-009: the fetch period is the Operator Setting, the last 60 days by default")
+    @DisplayName("BR-009 (S-T-06): the fetch period is the Operator Setting, the last 30 days by default for a new installation")
     fun fetchPeriodIsTheOperatorSetting() = runTest {
+        assertEquals(30, slussen.core.port.OperatorSettings.DEFAULT.fetchPeriodDays)
         ready()
         answerFeeds()
         slice.settings.settings = slice.settings.settings.copy(fetchPeriodDays = 14)
@@ -449,7 +463,7 @@ class UC001FetchTransactionsTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-011"])
-    @DisplayName("Step 3: Slussen reads every Bank Account the Operator added with an Account Mapping that is not a Retired Account, and for its balance only one whose transactions come from Transaction Files; until steps 7-10 are built, the added ones too are read for their balance only (O-P2-54)")
+    @DisplayName("Step 3: Slussen reads every Bank Account the Operator added with an Account Mapping that is not a Retired Account, and for its balance only one whose transactions come from Transaction Files")
     fun selectsTheAddedMappedBankAccounts() = runTest {
         ready()
         addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
@@ -470,19 +484,19 @@ class UC001FetchTransactionsTest {
         assertEquals(
             BankAccountSelection.Selected(
                 listOf(
-                    BankAccountToRead("acct-4410", ReadKind.Balance),
+                    BankAccountToRead("acct-4410", ReadKind.TransactionsAndBalance),
                     BankAccountToRead("acct-6324", ReadKind.Balance),
                 ),
             ),
             slice.feeds.fetchRequests.single().bankAccounts,
         )
-        assertEquals(ProviderRequestKind.Balance, slice.providerRequests.requests.last().kind)
+        assertEquals(ProviderRequestKind.Transactions, slice.providerRequests.requests.last().kind)
     }
 
     @Test
-    @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-011"], requirements = ["NFR-002"])
-    @DisplayName("Step 4 (O-P2-54): until steps 7-10 are built, every selected Bank Account is asked for its balance only, so no transaction is delivered and none is dropped (NFR-002); the request is kept as a Provider Request of the balance")
-    fun selectedBankAccountsAreAskedForTheirBalanceOnly() = runTest {
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-009", "BR-011"])
+    @DisplayName("Step 4: every selected Bank Account is asked for its transactions and its balance for the fetch period, one whose transactions come from Transaction Files for its balance only (BR-011); the request is kept as a Provider Request of transactions")
+    fun selectedBankAccountsAreAskedForTransactionsAndBalance() = runTest {
         ready()
         addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
         addFeedsBankAccount("acct-1182", "Pinecrest Rewards Card", "Rewards Card")
@@ -493,9 +507,16 @@ class UC001FetchTransactionsTest {
         val report = fetchFeeds() as FetchReport.Fetched
 
         val selection = slice.feeds.fetchRequests.single().bankAccounts as BankAccountSelection.Selected
-        assertEquals(listOf("acct-4410", "acct-1182", "acct-6324"), selection.bankAccounts.map { it.providerReference })
-        assertTrue(selection.bankAccounts.all { it.read == ReadKind.Balance }, "$selection")
-        assertEquals(listOf(ProviderRequestKind.Balance), slice.providerRequests.requests.drop(before).map { it.kind })
+        assertEquals(
+            listOf(
+                BankAccountToRead("acct-4410", ReadKind.TransactionsAndBalance),
+                BankAccountToRead("acct-1182", ReadKind.TransactionsAndBalance),
+                BankAccountToRead("acct-6324", ReadKind.Balance),
+            ),
+            selection.bankAccounts,
+        )
+        assertEquals(today.minusDays(30), slice.feeds.fetchRequests.single().periodFrom)
+        assertEquals(listOf(ProviderRequestKind.Transactions), slice.providerRequests.requests.drop(before).map { it.kind })
         assertEquals(listOf("Kestrel Checking", "Pinecrest Rewards Card", "Harbor Health Savings"), report.identified)
     }
 
@@ -625,7 +646,7 @@ class UC001FetchTransactionsTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "A2: Within the Fetch Cooldown", businessRules = ["BR-006", "BR-007"])
-    @DisplayName("A2, BR-006: a Bank Account added since the last successful Fetch is read within the Fetch Cooldown, alone; the read counts against the Request Limit and neither starts nor extends the Fetch Cooldown")
+    @DisplayName("A2, BR-006: a Bank Account added since the last successful Fetch is read within the Fetch Cooldown, alone; the read counts against the Request Limit and neither starts nor extends the Fetch Cooldown; once read, the Fetch Cooldown serves it (S-T-02)")
     fun bankAccountAddedSinceIsReadWithinTheCooldown() = runTest {
         ready()
         addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
@@ -640,7 +661,7 @@ class UC001FetchTransactionsTest {
         val report = fetchFeeds() as FetchReport.ServedFromFetchCooldown
 
         assertEquals(
-            BankAccountSelection.Selected(listOf(BankAccountToRead("acct-7731", ReadKind.Balance))),
+            BankAccountSelection.Selected(listOf(BankAccountToRead("acct-7731", ReadKind.TransactionsAndBalance))),
             slice.feeds.fetchRequests.last().bankAccounts,
         )
         assertEquals(listOf("Kestrel Reserve"), report.read?.identified)
@@ -649,12 +670,13 @@ class UC001FetchTransactionsTest {
         assertEquals(FetchOutcome.ServedFromFetchCooldown, fetchesOfFeeds().first().outcome)
 
         // ADR-002 §2: the read is recorded as Served From Fetch Cooldown, so the Fetch Cooldown still counts from the
-        // last Fetch with outcome Fetched, and a later Fetch within it reads that Bank Account again.
+        // last Fetch with outcome Fetched. BR-006 (S-T-02): Kestrel Reserve now has a Fetch Result Fetched since it was
+        // added, so a later Fetch within the Fetch Cooldown serves it like the others and contacts nobody.
         slice.clock.advance(Duration.ofMinutes(10))
         val third = fetchFeeds() as FetchReport.ServedFromFetchCooldown
-        assertEquals(listOf("Kestrel Reserve"), third.read?.identified)
+        assertNull(third.read)
         assertEquals(first.plus(Duration.ofMinutes(60)), third.contactsAgainAt)
-        assertEquals(3, slice.feeds.fetches)
+        assertEquals(2, slice.feeds.fetches)
     }
 
     @Test
@@ -1042,7 +1064,7 @@ class UC001FetchTransactionsTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-011"])
-    @DisplayName("Steps 8, 11: the Account Balance of each identified Bank Account is stored with the time the Data Provider reported it, a file-imported one's too (BR-011), and the Fetch records a Fetch Result Fetched for each; no Bank Transaction is delivered while a Fetch asks for balances only (O-P2-54)")
+    @DisplayName("Steps 8, 11: the Account Balance of each identified Bank Account is stored with the time the Data Provider reported it, a file-imported one's too (BR-011), and the Fetch records a Fetch Result Fetched for each, with the number of booked Bank Transactions delivered")
     fun accountBalanceAndFetchResultOfEachReadBankAccountAreStored() = runTest {
         ready()
         val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
@@ -1108,7 +1130,7 @@ class UC001FetchTransactionsTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "A20: Bank's Sign-In at the Data Provider Needed")
-    @DisplayName("A20 step 1: a Bank Account whose Bank's sign-in at the Data Provider is needed keeps its stored Account Balance and starts no Back-off, while the others are stored as usual")
+    @DisplayName("A20 steps 1-2: a Bank Account whose Bank's sign-in at the Data Provider is needed keeps its stored Account Balance, starts no Back-off and gets the Fetch Result Sign-In Needed, while the others are stored as usual")
     fun signInNeededKeepsTheStoredAccountBalance() = runTest {
         ready()
         val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
@@ -1124,31 +1146,36 @@ class UC001FetchTransactionsTest {
             ),
         )
 
-        fetchFeeds()
+        val report = fetchFeeds() as FetchReport.Fetched
 
         assertEquals(StoredAccountBalance(checking, amount(4140, 50), USD, first), balances().getValue(checking))
         assertEquals(StoredAccountBalance(card, amount(-547, 900), USD, slice.clock.instant()), balances().getValue(card))
         assertTrue(slice.importStatusStore.backOffList.isEmpty(), "no Back-off starts")
         assertEquals(FetchOutcome.Fetched, fetchesOfFeeds().first().outcome)
+        assertEquals(
+            listOf(StoredFetchResult(checking, FetchResultOutcome.SignInNeeded, 0), StoredFetchResult(card, FetchResultOutcome.Fetched, 0)),
+            fetchesOfFeeds().first().results.sortedBy { it.bankAccountId },
+        )
+        assertEquals(listOf("Kestrel Checking"), report.signInNeeded)
     }
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario")
-    @DisplayName("Step 8: the Account Balance keeps the currency the Data Provider reports, or the Bank Account's own when it reports none")
+    @DisplayName("Step 8: the Account Balance is stored in the currency the Data Provider reports when it is the Bank Account's own, or in the Bank Account's own when it reports none")
     fun accountBalanceKeepsTheReportedCurrency() = runTest {
         ready()
         val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
         val reserve = addFeedsBankAccount("acct-7731", "Kestrel Reserve", "Reserve Savings")
         answerFeeds(
             accounts = listOf(
-                delivered("acct-4410", "CHK", amount(4140, 50), currency = ExampleData.EUR),
+                delivered("acct-4410", "CHK", amount(4140, 50), currency = USD),
                 delivered("acct-7731", "Reserve Saver", amount(12000), currency = null),
             ),
         )
 
         fetchFeeds()
 
-        assertEquals(ExampleData.EUR, balances().getValue(checking).currency)
+        assertEquals(USD, balances().getValue(checking).currency)
         assertEquals(USD, balances().getValue(reserve).currency)
     }
 
@@ -1214,7 +1241,7 @@ class UC001FetchTransactionsTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "A10: Bank Account Not Identified With Certainty")
-    @DisplayName("A10, UC-009 BR-004: two delivered Bank Accounts with the same reference are neither kept as Offered Bank Accounts nor identified, and the Fetch says so")
+    @DisplayName("A10, UC-009 BR-004: two delivered Bank Accounts with the same reference are neither kept as Offered Bank Accounts nor identified, the Fetch says so and records Ambiguous Bank Account for the Bank Account selected with that reference")
     fun sharedReferenceIdentifiesNeither() = runTest {
         ready()
         val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
@@ -1233,7 +1260,8 @@ class UC001FetchTransactionsTest {
         assertEquals(1, report.offered)
         assertEquals(1, report.notAdded)
         assertFalse(checking in balances().keys)
-        assertTrue(fetchesOfFeeds().single().results.isEmpty())
+        // A10 step 3: the selected Bank Account whose reference two delivered Bank Accounts share is Ambiguous Bank Account.
+        assertEquals(listOf(StoredFetchResult(checking, FetchResultOutcome.AmbiguousBankAccount, 0)), fetchesOfFeeds().single().results)
         val offered = slice.connect.pairing().sources.single { it.dataProviderId == slice.feedsId }.offered
         assertEquals(listOf("Reserve Saver"), offered.map { it.nameOrProduct })
     }
@@ -1334,6 +1362,26 @@ class UC001FetchTransactionsTest {
     }
 
     @Test
+    @UseCase(id = "UC-001", scenario = "A5: Data Provider Asks Slussen to Wait", businessRules = ["BR-004"])
+    @DisplayName("A5 step 2: a selected Bank Account that the answer leaves out while the Data Provider asks to wait is affected by the wait, not Not Delivered: its data is kept and it gets no Fetch Result")
+    fun bankAccountLeftOutWhileWaitingIsNotNotDelivered() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        val card = addFeedsBankAccount("acct-1182", "Pinecrest Rewards Card", "Rewards Card")
+        answerFeeds()
+        val first = slice.clock.instant()
+        fetchFeeds()
+        slice.clock.advance(Duration.ofMinutes(61))
+        answerFeeds(outcome = SourceOutcome.AskedToWait(null), accounts = listOf(delivered("acct-4410", "CHK", amount(4001))))
+
+        val report = fetchFeeds() as FetchReport.Fetched
+
+        assertEquals(StoredAccountBalance(card, amount(-1268, 400), USD, first), balances().getValue(card))
+        assertEquals(listOf(StoredFetchResult(checking, FetchResultOutcome.Fetched, 0)), fetchesOfFeeds().first().results)
+        assertTrue(report.notDelivered.isEmpty())
+    }
+
+    @Test
     @UseCase(id = "UC-001", scenario = "A2: Within the Fetch Cooldown", businessRules = ["BR-006"])
     @DisplayName("A2: within the Fetch Cooldown the Bank Account added since is read and its Account Balance stored, with its Fetch Result on the Fetch Served From Fetch Cooldown; the other Bank Accounts keep theirs from the last Fetch")
     fun withinTheCooldownTheBankAccountAddedSinceStoresItsBalance() = runTest {
@@ -1372,5 +1420,526 @@ class UC001FetchTransactionsTest {
         assertEquals(2, kept.size)
         assertTrue(kept.all { it.results == listOf(StoredFetchResult(checking, FetchResultOutcome.Fetched, 0)) })
         assertEquals(setOf(checking), balances().keys)
+    }
+
+    // ---- Bank Transactions (transactions plan Phase 6a) -------------------------------------------------------------
+
+    private fun tx(
+        reference: String?,
+        date: LocalDate,
+        amount: Amount,
+        payee: String? = "Corner Grocer",
+        memo: String? = null,
+        booked: Boolean = true,
+        currency: CurrencyCode = USD,
+    ) = ProviderTransaction.Interpretable(reference, date, amount, currency, payee, memo, booked)
+
+    private fun unreadable(
+        reason: UnreadableReason,
+        date: LocalDate? = null,
+        amount: Amount? = null,
+        payee: String? = "Harbor Fuel",
+        booked: Boolean? = true,
+    ) = ProviderTransaction.Uninterpretable(date, amount, USD.takeIf { amount != null }, payee, null, booked, reason)
+
+    /** Kestrel Feeds answers with [transactions] and [balance] for Kestrel Checking (`acct-4410`). */
+    private fun answerChecking(vararg transactions: ProviderTransaction, balance: Amount? = amount(4140, 50), currency: CurrencyCode? = USD) {
+        answerFeeds(accounts = listOf(delivered("acct-4410", "CHK", currency = currency, result = BankAccountResult.Read(transactions.toList(), balance))))
+    }
+
+    /** The next Fetch, after the Fetch Cooldown of the last one has ended. */
+    private suspend fun fetchFeedsLater(): FetchReport {
+        slice.clock.advance(Duration.ofMinutes(61))
+        return fetchFeeds()
+    }
+
+    private suspend fun storedTransactions(bankAccountId: Long) = slice.importStatusStore.bankTransactionsOf(bankAccountId)
+
+    private suspend fun storedUnreadable(bankAccountId: Long) = slice.importStatusStore.unreadableTransactionsOf(bankAccountId)
+
+    private fun r(reference: String) = ImportIdentifierProtocol.importIdentifier(ImportIdentifierInput.WithStableReference("example-feeds", reference))
+
+    private val oct14: LocalDate = LocalDate.of(2026, 10, 14)
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-003"], requirements = ["NFR-002"])
+    @DisplayName("Steps 7-8, BR-002, BR-003: only booked transactions with an amount other than zero are stored as Bank Transactions; a pending one and one of zero are left out, and the Fetch Result counts the booked ones delivered")
+    fun onlyBookedNonZeroTransactionsAreStored() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerChecking(
+            tx("TX-1", oct14, amount(-64, 180)),
+            tx("TX-2", oct14, amount(-12), booked = false),
+            tx("TX-3", oct14, Amount(0)),
+            tx("TX-4", oct14.minusDays(1), amount(2500), payee = "Example Employer"),
+        )
+
+        fetchFeeds()
+
+        assertEquals(listOf("TX-1", "TX-4"), storedTransactions(checking).map { it.stableReference })
+        assertEquals(listOf(StoredFetchResult(checking, FetchResultOutcome.Fetched, 2)), fetchesOfFeeds().single().results)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-002"])
+    @DisplayName("BR-002: a transaction left out while pending is stored once a later Fetch delivers it as booked")
+    fun pendingTransactionIsStoredOnceBooked() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerChecking(tx("TX-1", oct14, amount(-64, 180), booked = false))
+        fetchFeeds()
+        assertTrue(storedTransactions(checking).isEmpty())
+        answerChecking(tx("TX-1", oct14, amount(-64, 180)))
+
+        fetchFeedsLater()
+
+        assertEquals(listOf("TX-1"), storedTransactions(checking).map { it.stableReference })
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", requirements = ["NFR-020"])
+    @DisplayName("Step 8, UC-003 BR-002 (S-T-08): a Bank Transaction is stored with its Import Identifier from the Source Key and the Stable Reference, occurrence_number 1, the reference as Supplied, the time first received, the content as delivered, and no Transaction Status until a Comparison")
+    fun bankTransactionIsStoredWithItsImportIdentifier() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerChecking(tx("TX-1", oct14, amount(-64, 180), payee = "Corner Grocer", memo = "card 0042"))
+        val receivedAt = slice.clock.instant()
+
+        fetchFeeds()
+
+        val stored = storedTransactions(checking).single()
+        assertEquals(checking, stored.bankAccountId)
+        assertEquals("TX-1", stored.stableReference)
+        assertEquals(StableReferenceKind.Supplied, stored.referenceKind)
+        assertEquals(1, stored.occurrenceNumber)
+        assertEquals(r("TX-1"), stored.importIdentifier)
+        assertEquals(oct14, stored.bookedDate)
+        assertEquals(amount(-64, 180), stored.amount)
+        assertEquals(USD, stored.currency)
+        assertEquals("Corner Grocer", stored.payee)
+        assertEquals("card 0042", stored.memo)
+        assertEquals(receivedAt, stored.firstSeenAt)
+        assertNull(stored.status)
+        assertNull(stored.transferId)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("Step 8: a Bank Transaction delivered again unchanged is stored once; one delivered again with changed content is updated in place and keeps its Import Identifier and the time first received")
+    fun knownBankTransactionIsUpdatedInPlace() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerChecking(tx("TX-1", oct14, amount(-64, 180), payee = "CORNER GROCER 0042"), tx("TX-2", oct14, amount(-5)))
+        val firstSeen = slice.clock.instant()
+        fetchFeeds()
+        answerChecking(tx("TX-1", oct14, amount(-64, 180), payee = "Corner Grocer", memo = "weekly shop"), tx("TX-2", oct14, amount(-5)))
+
+        fetchFeedsLater()
+
+        val stored = storedTransactions(checking)
+        assertEquals(2, stored.size)
+        val changed = stored.single { it.stableReference == "TX-1" }
+        assertEquals("Corner Grocer", changed.payee)
+        assertEquals("weekly shop", changed.memo)
+        assertEquals(r("TX-1"), changed.importIdentifier)
+        assertEquals(firstSeen, changed.firstSeenAt)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", requirements = ["NFR-020"])
+    @DisplayName("Step 8, ADR-008 §5: transactions without a Stable Reference that are identical in date, amount, payee and memo get occurrence_number 1, 2, … in the order delivered; a later Fetch that delivers as many adds none, one that delivers more adds only the additional ones")
+    fun identicalTransactionsWithoutStableReferenceGetTheirOccurrence() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        val coffee = tx(null, oct14, amount(-4, 500), payee = "Harbor Caf\u00e9")
+        // ADR-008 §2: the same payee with a combining accent is identical in Normalization Form C.
+        val decomposed = coffee.copy(payee = "Harbor Cafe\u0301")
+        answerChecking(coffee, decomposed, tx(null, oct14, amount(-9)))
+        fetchFeeds()
+
+        val first = storedTransactions(checking)
+        assertEquals(listOf(1, 2, 1), first.map { it.occurrenceNumber })
+        assertTrue(first.all { it.stableReference == null && it.referenceKind == StableReferenceKind.None })
+        val expected = (1..2).map {
+            ImportIdentifierProtocol.importIdentifier(
+                ImportIdentifierInput.WithoutStableReference("example-feeds", oct14, amount(-4, 500), "Harbor Caf\u00e9", null, it),
+            )
+        }
+        assertEquals(expected, first.take(2).map { it.importIdentifier })
+
+        answerChecking(coffee, coffee, tx(null, oct14, amount(-9)))
+        fetchFeedsLater()
+        assertEquals(3, storedTransactions(checking).size)
+
+        answerChecking(coffee, coffee.copy(memo = ""), coffee, tx(null, oct14, amount(-9)))
+        fetchFeedsLater()
+        assertEquals(listOf(1, 2, 1, 3), storedTransactions(checking).map { it.occurrenceNumber })
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("Step 9, UC-011 BR-001: each Bank Transaction received for the first time or with changed content is recorded in the Decision Journal with its Bank Account and Import Identifier; one delivered again unchanged is not")
+    fun receivedBankTransactionsAreJournaled() = runTest {
+        ready()
+        addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerChecking(tx("TX-1", oct14, amount(-64, 180)), tx("TX-2", oct14, amount(-5)))
+        val before = slice.journalRecorder.entries.size
+        fetchFeeds()
+
+        val firstTime = slice.journalRecorder.entries.drop(before)
+        assertEquals(listOf(JournalEventKind.TransactionSeen, JournalEventKind.TransactionSeen), firstTime.map { it.eventKind })
+        assertEquals(listOf(r("TX-1"), r("TX-2")), firstTime.map { it.importIdentifier })
+        assertTrue(firstTime.all { it.bankAccountName == "Kestrel Checking" })
+        assertEquals("Bank Transaction received for the first time: booked 2026-10-14, -64.180 USD", firstTime.first().details)
+
+        val beforeSecond = slice.journalRecorder.entries.size
+        answerChecking(tx("TX-1", oct14, amount(-64, 180), payee = "Corner Grocer Ltd"), tx("TX-2", oct14, amount(-5)))
+        fetchFeedsLater()
+
+        val changed = slice.journalRecorder.entries.drop(beforeSecond).single()
+        assertEquals(JournalEventKind.TransactionChanged, changed.eventKind)
+        assertEquals(r("TX-1"), changed.importIdentifier)
+        assertEquals("Kestrel Checking", changed.bankAccountName)
+        assertEquals("Bank Transaction received with changed content (payee): booked 2026-10-14, -64.180 USD", changed.details)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", requirements = ["NFR-012"])
+    @DisplayName("Step 9, NFR-012: a Decision Journal entry about a Bank Transaction holds no text the Data Provider delivered and no identifier it gives a Bank Account; with the Decision Journal switched off nothing is recorded")
+    fun journalHoldsNoDataProviderText() = runTest {
+        ready()
+        addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerChecking(tx("PLANTED-REF-9c1", oct14, amount(-64, 180), payee = "PLANTED-PAYEE-77d", memo = "PLANTED-MEMO-3e0"))
+        val before = slice.journalRecorder.entries.size
+
+        fetchFeeds()
+
+        val entries = slice.journalRecorder.entries.drop(before)
+        assertEquals(1, entries.size)
+        listOf("PLANTED", "acct-4410", "CHK").forEach { planted -> assertTrue(entries.none { planted in it.toString() }, planted) }
+
+        slice.settings.settings = slice.settings.settings.copy(journalOn = false)
+        answerChecking(tx("TX-NEW", oct14, amount(-1)))
+        val whileOff = slice.journalRecorder.entries.size
+        fetchFeedsLater()
+        assertEquals(whileOff, slice.journalRecorder.entries.size)
+        assertEquals(2, storedTransactions(slice.connectionStore.bankAccounts().single().id).size)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A17: Transaction Cannot Be Interpreted", businessRules = ["BR-016"], requirements = ["NFR-002"])
+    @DisplayName("A17 (S-T-16): a booked transaction in another currency than its Bank Account's is kept as an Unreadable Transaction for review, never stored as a Bank Transaction and never converted")
+    fun transactionInAnotherCurrencyIsKeptAsUnreadable() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        val receivedAt = slice.clock.instant()
+        answerChecking(
+            tx("TX-1", oct14, amount(-64, 180)),
+            tx("TX-2", oct14, amount(-12, 500), currency = ExampleData.EUR),
+        )
+
+        fetchFeeds()
+
+        assertEquals(listOf("TX-1"), storedTransactions(checking).map { it.stableReference })
+        val kept = storedUnreadable(checking).single()
+        assertEquals(
+            StoredUnreadableTransaction(kept.id, checking, oct14, amount(-12, 500), ExampleData.EUR, "Corner Grocer", null, "currency differs from the Bank Account's", receivedAt, UnreadableTransactionStatus.NeedsReview),
+            kept,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A17: Transaction Cannot Be Interpreted", businessRules = ["BR-002", "BR-016"], requirements = ["NFR-002"])
+    @DisplayName("A17, BR-016: a transaction Slussen cannot interpret is kept as an Unreadable Transaction with whatever fields could be read, its reason and the status Needs Review, never as a Bank Transaction; one known to be pending is left out")
+    fun uninterpretableTransactionIsKeptAsUnreadable() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        val receivedAt = slice.clock.instant()
+        answerChecking(
+            tx("TX-1", oct14, amount(-64, 180)),
+            unreadable(UnreadableReason.MissingDate, amount = amount(-30)),
+            unreadable(UnreadableReason.UnreadableAmount, date = oct14, booked = null),
+            unreadable(UnreadableReason.MissingAmount, date = oct14, booked = false),
+        )
+
+        fetchFeeds()
+
+        assertEquals(1, storedTransactions(checking).size)
+        val kept = storedUnreadable(checking)
+        assertEquals(
+            listOf(
+                StoredUnreadableTransaction(kept[0].id, checking, null, amount(-30), USD, "Harbor Fuel", null, "date missing", receivedAt, UnreadableTransactionStatus.NeedsReview),
+                StoredUnreadableTransaction(kept[1].id, checking, oct14, null, null, "Harbor Fuel", null, "amount unreadable", receivedAt, UnreadableTransactionStatus.NeedsReview),
+            ),
+            kept,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A17: Transaction Cannot Be Interpreted", businessRules = ["BR-016"])
+    @DisplayName("BR-016: a later Fetch that delivers as many Unreadable Transactions with the same readable fields and reason as are stored adds none; when it delivers more, only the additional ones are added; none is ever removed")
+    fun unreadableTransactionsAreCountedAgainstTheStoredOnes() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        val fuel = unreadable(UnreadableReason.MissingDate, amount = amount(-30))
+        answerChecking(fuel, fuel)
+        fetchFeeds()
+        assertEquals(2, storedUnreadable(checking).size)
+
+        answerChecking(fuel, fuel)
+        fetchFeedsLater()
+        assertEquals(2, storedUnreadable(checking).size)
+
+        answerChecking(fuel, fuel, fuel, unreadable(UnreadableReason.MissingDate, amount = amount(-31)))
+        fetchFeedsLater()
+        assertEquals(4, storedUnreadable(checking).size)
+
+        answerChecking()
+        fetchFeedsLater()
+        assertEquals(4, storedUnreadable(checking).size)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A17: Transaction Cannot Be Interpreted", businessRules = ["BR-016"])
+    @DisplayName("A17, ADR-008 §2 (B-08): a transaction whose Stable Reference is not well-formed Unicode is kept as an Unreadable Transaction, never stored with a replaced character")
+    fun malformedStableReferenceIsUnreadable() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerChecking(tx("TX-\uD83E", oct14, amount(-64, 180)))
+
+        fetchFeeds()
+
+        assertTrue(storedTransactions(checking).isEmpty())
+        val kept = storedUnreadable(checking).single()
+        assertEquals("transaction unreadable", kept.reason)
+        assertEquals(amount(-64, 180), kept.amount)
+        assertEquals(oct14, kept.bookedDate)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A17: Transaction Cannot Be Interpreted", businessRules = ["BR-016"], requirements = ["NFR-020"])
+    @DisplayName("A17, NFR-020, ADR-008 §5: a new transaction whose Import Identifier is held by a different stored Bank Transaction of the same Bank Account is kept as an Unreadable Transaction with the reason Import Identifier collision, never merged; the collision is recorded in the Decision Journal")
+    fun importIdentifierCollisionIsKeptAsUnreadable() = runTest {
+        val planted = TestSlice(identify = { ImportIdentifierProtocol.importIdentifier(it) { ByteArray(32) } })
+        planted.enterCredentials()
+        val read = planted.connect.readBudgets() as BudgetsRead.Listed
+        planted.connect.chooseBudgets(read.budgets, setOf("budget-household"))
+        val budgetAccount = planted.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Checking" }.id
+        val checking = (
+            planted.connectionStore.addBankAccount(
+                NewBankAccount(
+                    generatedIdentifier = "00000000-0000-4000-8000-000000004410",
+                    bank = BankChoice.Named("Kestrel Bank"),
+                    providerBankId = null,
+                    dataProviderId = planted.feedsId,
+                    fileFormatId = null,
+                    balanceDataProviderId = null,
+                    balanceProviderReference = null,
+                    name = "Kestrel Checking",
+                    currency = USD,
+                    type = BankAccountType.Checking,
+                    providerReference = "acct-4410",
+                    bankAccountFingerprint = null,
+                    identifiedAt = planted.clock.instant(),
+                    startDate = null,
+                    budgetAccountId = budgetAccount,
+                ),
+            ) as AddOutcome.Added
+            ).bankAccountId
+        planted.feeds.fetchAnswer = {
+            FetchResponse(
+                SourceOutcome.Completed,
+                emptyList(),
+                listOf(delivered("acct-4410", "CHK", result = BankAccountResult.Read(listOf(tx("TX-1", oct14, amount(-64, 180)), tx("TX-2", oct14, amount(-5))), amount(100)))),
+            )
+        }
+        val before = planted.journalRecorder.entries.size
+
+        planted.fetch.fetch(planted.feedsKey)
+
+        val stored = planted.importStatusStore.bankTransactionsOf(checking).single()
+        assertEquals("TX-1", stored.stableReference)
+        val collided = planted.importStatusStore.unreadableTransactionsOf(checking).single()
+        assertEquals("Import Identifier collision", collided.reason)
+        assertEquals(amount(-5), collided.amount)
+        assertEquals(UnreadableTransactionStatus.NeedsReview, collided.status)
+        val entries = planted.journalRecorder.entries.drop(before)
+        assertEquals(listOf(JournalEventKind.TransactionSeen, JournalEventKind.StatusChanged), entries.map { it.eventKind })
+        assertEquals(stored.importIdentifier, entries.last().importIdentifier)
+        assertEquals("Kestrel Checking", entries.last().bankAccountName)
+
+        // BR-016: the same collision delivered again adds no second Unreadable Transaction.
+        planted.clock.advance(Duration.ofMinutes(61))
+        planted.fetch.fetch(planted.feedsKey)
+        assertEquals(1, planted.importStatusStore.unreadableTransactionsOf(checking).size)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-011"])
+    @DisplayName("BR-011: a Bank Account whose transactions come from Transaction Files stores only its balance from the Data Provider, never a transaction the Data Provider delivers for it")
+    fun fileImportedBankAccountStoresNoTransactionFromTheDataProvider() = runTest {
+        ready()
+        val hsa = addFileBankAccount("acct-6324", "Harbor Health Savings", "Health Savings")
+        answerFeeds(
+            accounts = listOf(delivered("acct-6324", "HSA", result = BankAccountResult.Read(listOf(tx("TX-H", oct14, amount(-20))), amount(6310, 200)))),
+        )
+
+        fetchFeeds()
+
+        assertTrue(storedTransactions(hsa).isEmpty())
+        assertEquals(amount(6310, 200), balances().getValue(hsa).amount)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account", businessRules = ["BR-010"])
+    @DisplayName("Failure postconditions, BR-010: no transaction of one Bank Account is stored as one of another, and a Bank Account with a failure keeps its stored Bank Transactions unchanged")
+    fun transactionsStayWithTheirBankAccount() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        val card = addFeedsBankAccount("acct-1182", "Pinecrest Rewards Card", "Rewards Card")
+        answerFeeds(
+            accounts = listOf(
+                delivered("acct-4410", "CHK", result = BankAccountResult.Read(listOf(tx("TX-1", oct14, amount(-64, 180))), amount(100))),
+                delivered("acct-1182", "Visa", result = BankAccountResult.Read(listOf(tx("TX-1", oct14, amount(-12))), amount(-5))),
+            ),
+        )
+        fetchFeeds()
+        answerFeeds(
+            accounts = listOf(
+                delivered("acct-4410", "CHK", result = BankAccountResult.Failed(FailureKind.Incomplete)),
+                delivered("acct-1182", "Visa", result = BankAccountResult.Read(listOf(tx("TX-1", oct14, amount(-12)), tx("TX-2", oct14, amount(-3))), amount(-5))),
+            ),
+        )
+
+        fetchFeedsLater()
+
+        assertEquals(listOf(amount(-64, 180)), storedTransactions(checking).map { it.amount })
+        assertEquals(listOf(amount(-12), amount(-3)), storedTransactions(card).map { it.amount })
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A19: Selected Bank Account Not Delivered", businessRules = ["BR-010"])
+    @DisplayName("A19 steps 1-2: a selected Bank Account the answer does not contain at all keeps its stored Bank Transactions and Account Balance and gets the Fetch Result Not Delivered; the others are stored as usual")
+    fun selectedBankAccountNotDeliveredKeepsItsData() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        val reserve = addFeedsBankAccount("acct-7731", "Kestrel Reserve", "Reserve Savings")
+        answerFeeds(
+            accounts = listOf(
+                delivered("acct-4410", "CHK", result = BankAccountResult.Read(listOf(tx("TX-1", oct14, amount(-64, 180))), amount(100))),
+                delivered("acct-7731", "Reserve", result = BankAccountResult.Read(listOf(tx("TX-R", oct14, amount(50))), amount(12000))),
+            ),
+        )
+        val first = slice.clock.instant()
+        fetchFeeds()
+        answerFeeds(accounts = listOf(delivered("acct-4410", "CHK", result = BankAccountResult.Read(emptyList(), amount(90)))))
+
+        val report = fetchFeedsLater() as FetchReport.Fetched
+
+        assertEquals(StoredAccountBalance(reserve, amount(12000), USD, first), balances().getValue(reserve))
+        assertEquals(listOf("TX-R"), storedTransactions(reserve).map { it.stableReference })
+        assertEquals(
+            listOf(StoredFetchResult(checking, FetchResultOutcome.Fetched, 0), StoredFetchResult(reserve, FetchResultOutcome.NotDelivered, 0)),
+            fetchesOfFeeds().first().results.sortedBy { it.bankAccountId },
+        )
+        assertEquals(listOf("Kestrel Reserve"), report.notDelivered)
+        assertEquals(amount(90), balances().getValue(checking).amount)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A19: Selected Bank Account Not Delivered")
+    @DisplayName("A19 step 3, UC-008 BR-006: the Bank Account not delivered shows the Blocked Reason not delivered by the Data Provider, naming it, with the time of the Fetch and the action that fetches again")
+    fun notDeliveredIsShownAsBlockedReason() = runTest {
+        ready()
+        val reserve = addFeedsBankAccount("acct-7731", "Kestrel Reserve", "Reserve Savings")
+        answerFeeds(accounts = listOf(delivered("acct-4410", "CHK")))
+        val fetchedAt = slice.clock.instant()
+
+        fetchFeeds()
+
+        val household = slice.connectionStore.budgets().single { it.name == "Household" }.id
+        val card = slice.status.workspace(household).bankAccounts.single { it.bankAccountId == reserve }
+        assertEquals(
+            listOf(Blocked(BlockedReason.NotDelivered, Remedy.FetchAgain, fetchedAt, "Kestrel Reserve", dataProviderName = "Kestrel Feeds")),
+            card.blocked,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A20: Bank's Sign-In at the Data Provider Needed", requirements = ["NFR-012"])
+    @DisplayName("A20 step 3, UC-008 BR-006, NFR-012: a Bank Account whose Bank's sign-in at the Data Provider is needed shows that Blocked Reason in Slussen's words, naming the Data Provider, with the action to sign in again there and fetch again")
+    fun signInNeededIsShownAsBlockedReason() = runTest {
+        ready()
+        val card = addFeedsBankAccount("acct-1182", "Pinecrest Rewards Card", "Rewards Card")
+        answerFeeds(accounts = listOf(delivered("acct-1182", "Visa", result = BankAccountResult.SignInNeeded)))
+        val before = slice.journalRecorder.entries.size
+
+        fetchFeeds()
+
+        val household = slice.connectionStore.budgets().single { it.name == "Household" }.id
+        val status = slice.status.workspace(household).bankAccounts.single { it.bankAccountId == card }
+        assertEquals(
+            listOf(Blocked(BlockedReason.SignInNeeded, Remedy.SignInAtDataProvider, null, "Pinecrest Rewards Card", dataProviderName = "Kestrel Feeds")),
+            status.blocked,
+        )
+        assertEquals(before, slice.journalRecorder.entries.size)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A21: Balance in Another Currency")
+    @DisplayName("A21: a balance reported in another currency than the Bank Account's is not stored and nothing is converted; the previous Account Balance stays, the Bank Transactions are stored as usual, and the Bank Account shows both currencies until a later Fetch stores its balance")
+    fun balanceInAnotherCurrencyIsNotStored() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerChecking(balance = amount(5071, 100))
+        val first = slice.clock.instant()
+        fetchFeeds()
+        answerChecking(tx("TX-1", oct14, amount(-64, 180)), balance = amount(4700), currency = ExampleData.EUR)
+
+        val report = fetchFeedsLater() as FetchReport.Fetched
+
+        assertEquals(StoredAccountBalance(checking, amount(5071, 100), USD, first), balances().getValue(checking))
+        assertEquals(1, storedTransactions(checking).size)
+        val notice = BalanceInOtherCurrency(checking, "Kestrel Checking", "Kestrel Feeds", ExampleData.EUR, USD, slice.clock.instant())
+        assertEquals(listOf(notice), report.balancesInOtherCurrency)
+        assertEquals(StoredFetchResult(checking, FetchResultOutcome.Fetched, 1), fetchesOfFeeds().first().results.single())
+        val household = slice.connectionStore.budgets().single { it.name == "Household" }.id
+        assertEquals(notice, slice.status.workspace(household).bankAccounts.single().balanceInOtherCurrency)
+
+        answerChecking(balance = amount(5000))
+        fetchFeedsLater()
+        assertNull(slice.status.workspace(household).bankAccounts.single().balanceInOtherCurrency)
+        assertEquals(amount(5000), balances().getValue(checking).amount)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A2: Within the Fetch Cooldown", businessRules = ["BR-006"])
+    @DisplayName("BR-006 (S-T-02, #9): within the Fetch Cooldown a Bank Account is read until it has a Fetch Result Fetched since it was added or identified again; a read that failed does not count, a later identification makes it read again")
+    fun withinTheCooldownABankAccountIsReadUntilItWasFetched() = runTest {
+        ready()
+        addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        answerFeeds()
+        fetchFeeds()
+        slice.clock.advance(Duration.ofMinutes(5))
+        val reserve = addFeedsBankAccount("acct-7731", "Kestrel Reserve", "Reserve Savings")
+        answerFeeds(accounts = listOf(delivered("acct-7731", "Reserve", result = BankAccountResult.Failed(FailureKind.Timeout))))
+        slice.clock.advance(Duration.ofMinutes(5))
+
+        fetchFeeds()
+        slice.clock.advance(Duration.ofMinutes(5))
+        answerFeeds(accounts = listOf(delivered("acct-7731", "Reserve")))
+        val readAgain = fetchFeeds() as FetchReport.ServedFromFetchCooldown
+
+        assertEquals(listOf("Kestrel Reserve"), readAgain.read?.identified)
+        assertEquals(3, slice.feeds.fetches)
+        slice.clock.advance(Duration.ofMinutes(5))
+        assertNull((fetchFeeds() as FetchReport.ServedFromFetchCooldown).read)
+        assertEquals(3, slice.feeds.fetches)
+
+        slice.clock.advance(Duration.ofMinutes(5))
+        slice.connectionStore.bankAccountList.replaceAll { if (it.id == reserve) it.copy(identifiedAt = slice.clock.instant()) else it }
+        slice.clock.advance(Duration.ofMinutes(1))
+        assertEquals(listOf("Kestrel Reserve"), (fetchFeeds() as FetchReport.ServedFromFetchCooldown).read?.identified)
+        assertEquals(4, slice.feeds.fetches)
     }
 }
