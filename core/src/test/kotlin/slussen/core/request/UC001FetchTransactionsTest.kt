@@ -1075,6 +1075,65 @@ class UC001FetchTransactionsTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("Step 8 (S-T-04): the Account Balance is stored with the time the Data Provider says it was reported, or the time Slussen received the answer when the Data Provider gives none")
+    fun accountBalanceIsStoredWithTheTimeItWasReported() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        val reserve = addFeedsBankAccount("acct-7731", "Kestrel Reserve", "Reserve Savings")
+        val reportedAt = slice.clock.instant().minus(Duration.ofHours(6))
+        val receivedAt = slice.clock.instant().plusSeconds(5)
+        slice.feeds.fetchAnswer = {
+            // The answer arrives a few seconds after the Fetch started.
+            slice.clock.set(receivedAt)
+            FetchResponse(
+                SourceOutcome.Completed,
+                emptyList(),
+                listOf(
+                    delivered("acct-4410", "CHK", result = BankAccountResult.Read(emptyList(), amount(4140, 50), balanceReportedAt = reportedAt)),
+                    delivered("acct-7731", "Reserve Saver", result = BankAccountResult.Read(emptyList(), amount(12000), balanceReportedAt = null)),
+                ),
+            )
+        }
+
+        fetchFeeds()
+
+        assertEquals(
+            mapOf(
+                checking to StoredAccountBalance(checking, amount(4140, 50), USD, reportedAt),
+                reserve to StoredAccountBalance(reserve, amount(12000), USD, receivedAt),
+            ),
+            balances(),
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A20: Bank's Sign-In at the Data Provider Needed")
+    @DisplayName("A20 step 1: a Bank Account whose Bank's sign-in at the Data Provider is needed keeps its stored Account Balance and starts no Back-off, while the others are stored as usual")
+    fun signInNeededKeepsTheStoredAccountBalance() = runTest {
+        ready()
+        val checking = addFeedsBankAccount("acct-4410", "Kestrel Checking", "Checking")
+        val card = addFeedsBankAccount("acct-1182", "Pinecrest Rewards Card", "Rewards Card")
+        answerFeeds()
+        val first = slice.clock.instant()
+        fetchFeeds()
+        slice.clock.advance(Duration.ofMinutes(61))
+        answerFeeds(
+            accounts = listOf(
+                delivered("acct-4410", "CHK", result = BankAccountResult.SignInNeeded),
+                delivered("acct-1182", "Pinecrest Rewards Visa", amount(-547, 900), bank = "Pinecrest Card Services"),
+            ),
+        )
+
+        fetchFeeds()
+
+        assertEquals(StoredAccountBalance(checking, amount(4140, 50), USD, first), balances().getValue(checking))
+        assertEquals(StoredAccountBalance(card, amount(-547, 900), USD, slice.clock.instant()), balances().getValue(card))
+        assertTrue(slice.importStatusStore.backOffList.isEmpty(), "no Back-off starts")
+        assertEquals(FetchOutcome.Fetched, fetchesOfFeeds().first().outcome)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
     @DisplayName("Step 8: the Account Balance keeps the currency the Data Provider reports, or the Bank Account's own when it reports none")
     fun accountBalanceKeepsTheReportedCurrency() = runTest {
         ready()

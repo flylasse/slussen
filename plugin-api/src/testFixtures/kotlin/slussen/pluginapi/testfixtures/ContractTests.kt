@@ -29,12 +29,14 @@ import slussen.pluginapi.provider.FetchResponse
 import slussen.pluginapi.provider.NotReadCause
 import slussen.pluginapi.provider.ProviderTransaction
 import slussen.pluginapi.provider.SourceOutcome
+import slussen.pluginapi.provider.UnreadableReason
 import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.request.RefusalReason
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.Secret
 import java.time.Duration
+import java.time.Instant
 
 /** One credential check the contract tests run: the capability under test and what the Operator entered. */
 public class CredentialScenario(
@@ -268,6 +270,32 @@ public class RecordedFetch(
     public val itemsPerBankAccount: Map<String, Int>,
     /** How many of those items have no readable date or amount. */
     public val uninterpretable: Int,
+    /** How many of those items the Data Provider marks as pending, not booked yet (UC-001 BR-002). */
+    public val pending: Int,
+    /** How many of those items have a readable amount of zero (UC-001 BR-003). */
+    public val zeroAmount: Int,
+    /** How many of those items have no date at all (UC-001 A17). */
+    public val withoutDate: Int,
+    /**
+     * The time the Data Provider says each read Bank Account's balance was reported, by `providerReference`; null where
+     * it gives none (S-T-04, ADR-001 §4.1).
+     */
+    public val balanceReportedAt: Map<String, Instant?>,
+)
+
+/**
+ * What a recorded answer holds that reports the Data Provider's own errors for some Banks and Bank Accounts
+ * (S-T-03, ADR-001 §4.1), with texts of its own that must not leave the plug-in (NFR-012).
+ */
+public class RecordedProviderErrors(
+    /** The Bank Accounts of the Banks the Operator must sign in to again at the Data Provider (UC-001 A20). */
+    public val signInNeeded: Set<String>,
+    /** The Bank Accounts the Data Provider reports a failure for, with the kind the plug-in gives it (UC-001 A8). */
+    public val failed: Map<String, FailureKind>,
+    /** The Bank Accounts of the same answer that the errors do not concern, read as usual. */
+    public val read: Set<String>,
+    /** Every text of the Data Provider's own errors in the answer. */
+    public val texts: List<String>,
 )
 
 /**
@@ -301,6 +329,14 @@ public abstract class DataProviderFetchContractTest : DataProviderContractTest()
     protected abstract fun fetchReadingSome(): FetchScenario
 
     protected abstract fun recordedListedBalances(): RecordedListedBalances
+
+    /**
+     * The Data Provider answers with the recorded answer of [recordedProviderErrors], which reports its own errors: a
+     * Bank whose sign-in at the Data Provider is needed, and a failure for a Bank Account, each with a text of its own.
+     */
+    protected abstract fun fetchWithProviderErrors(): FetchScenario
+
+    protected abstract fun recordedProviderErrors(): RecordedProviderErrors
 
     /** The Data Provider answers that the stored credential is not valid or not allowed. */
     protected abstract fun fetchCredentialRefused(): FetchScenario
@@ -343,6 +379,112 @@ public abstract class DataProviderFetchContractTest : DataProviderContractTest()
             .count { it is ProviderTransaction.Uninterpretable }
         assertEquals(recorded.uninterpretable, unreadable, "items without a readable date or amount are Uninterpretable")
         assertNoBalanceUnlessNotSelected(response)
+    }
+
+    /** Every item the read Bank Accounts of [response] carry. */
+    private fun itemsOf(response: FetchResponse): List<ProviderTransaction> =
+        response.bankAccounts.flatMap { (it.result as? BankAccountResult.Read)?.transactions.orEmpty() }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-002"])
+    @DisplayName("ADR-001 §4.1, BR-002: a pending item is passed on with booked = false; leaving it out is the core's rule")
+    public fun pendingItemIsPassedOnNotBooked() {
+        val scenario = fetchAnswered()
+        val items = itemsOf(fetch(scenario, TestRequestContext(credential = scenario.credential)))
+        val notBooked = items.count {
+            when (it) {
+                is ProviderTransaction.Interpretable -> !it.booked
+                is ProviderTransaction.Uninterpretable -> it.booked == false
+            }
+        }
+        assertTrue(recordedFetch().pending >= 1, "the recorded answer holds a pending item")
+        assertEquals(recordedFetch().pending, notBooked, "pending items passed on with booked = false")
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-003"])
+    @DisplayName("ADR-001 §4.1, BR-003: an item with an amount of zero is passed on; leaving it out is the core's rule")
+    public fun zeroAmountIsPassedOn() {
+        val scenario = fetchAnswered()
+        val items = itemsOf(fetch(scenario, TestRequestContext(credential = scenario.credential)))
+        val zero = items.count { it is ProviderTransaction.Interpretable && it.amount == Amount(0) }
+        assertTrue(recordedFetch().zeroAmount >= 1, "the recorded answer holds an item with an amount of zero")
+        assertEquals(recordedFetch().zeroAmount, zero, "items with an amount of zero passed on")
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A17: Transaction Cannot Be Interpreted", businessRules = ["BR-016"])
+    @DisplayName("ADR-001 §4.1, A17: an item without a date is passed on as Uninterpretable(MissingDate)")
+    public fun itemWithoutADateIsUninterpretable() {
+        val scenario = fetchAnswered()
+        val items = itemsOf(fetch(scenario, TestRequestContext(credential = scenario.credential)))
+        val withoutDate = items.filterIsInstance<ProviderTransaction.Uninterpretable>().count { it.reason == UnreadableReason.MissingDate }
+        assertTrue(recordedFetch().withoutDate >= 1, "the recorded answer holds an item without a date")
+        assertEquals(recordedFetch().withoutDate, withoutDate, "items without a date are Uninterpretable(MissingDate)")
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("ADR-001 §4.1 (S-T-04), step 8: a read Bank Account carries the time the Data Provider says its balance was reported, or none when it gives none")
+    public fun balanceTimeIsCarried() {
+        val scenario = fetchAnswered()
+        val response = fetch(scenario, TestRequestContext(credential = scenario.credential))
+        val recorded = recordedFetch().balanceReportedAt
+        assertTrue(recorded.values.any { it != null }, "the recorded answer gives a balance time")
+        recorded.forEach { (reference, reportedAt) ->
+            val result = response.bankAccounts.single { it.providerReference == reference }.result
+            assertTrue(result is BankAccountResult.Read, "$reference was not read: $result")
+            assertEquals(reportedAt, (result as BankAccountResult.Read).balanceReportedAt, "balance time of $reference")
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A20: Bank's Sign-In at the Data Provider Needed")
+    @DisplayName("ADR-001 §4.1 (S-T-03), A20: the Bank Accounts of a Bank whose sign-in at the Data Provider is needed are SignInNeeded and carry nothing; the other Bank Accounts of the same answer are read as usual")
+    public fun signInNeededConcernsThatBanksBankAccountsOnly() {
+        val scenario = fetchWithProviderErrors()
+        val response = fetch(scenario, TestRequestContext(credential = scenario.credential))
+        val recorded = recordedProviderErrors()
+        assertEquals(SourceOutcome.Completed, response.sourceOutcome)
+        assertTrue(recorded.signInNeeded.isNotEmpty() && recorded.read.isNotEmpty(), "the recorded answer concerns some Bank Accounts only")
+        recorded.signInNeeded.forEach { reference ->
+            assertEquals(BankAccountResult.SignInNeeded, response.bankAccounts.single { it.providerReference == reference }.result, reference)
+        }
+        recorded.read.forEach { reference ->
+            val result = response.bankAccounts.single { it.providerReference == reference }.result
+            assertTrue(result is BankAccountResult.Read, "$reference is read as usual: $result")
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account", businessRules = ["BR-010"])
+    @DisplayName("ADR-001 §4.1 (S-T-03), A8: a Bank Account the Data Provider reports a failure for is Failed with its kind and carries none of its transactions; the others are read as usual")
+    public fun reportedFailureIsFailedForThatBankAccount() {
+        val scenario = fetchWithProviderErrors()
+        val response = fetch(scenario, TestRequestContext(credential = scenario.credential))
+        val recorded = recordedProviderErrors()
+        assertTrue(recorded.failed.isNotEmpty(), "the recorded answer reports a failure for a Bank Account")
+        recorded.failed.forEach { (reference, kind) ->
+            assertEquals(BankAccountResult.Failed(kind), response.bankAccounts.single { it.providerReference == reference }.result, reference)
+        }
+        recorded.read.forEach { reference ->
+            val result = response.bankAccounts.single { it.providerReference == reference }.result
+            assertTrue(result is BankAccountResult.Read, "$reference is read as usual: $result")
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A20: Bank's Sign-In at the Data Provider Needed")
+    @DisplayName("NFR-012, ADR-001 §4.1: no text of the Data Provider's own errors appears in any toString() of the response")
+    public fun noProviderErrorTextLeavesThePlugin() {
+        val scenario = fetchWithProviderErrors()
+        val response = fetch(scenario, TestRequestContext(credential = scenario.credential))
+        val shown = listOf(response.toString(), response.sourceOutcome.toString()) +
+            response.bankOutcomes.map { it.toString() } +
+            response.bankAccounts.flatMap { listOf(it.toString(), it.result.toString()) }
+        val texts = recordedProviderErrors().texts
+        assertTrue(texts.isNotEmpty(), "the recorded answer holds texts of the Data Provider's errors")
+        texts.forEach { text -> shown.forEach { assertFalse(text in it, "a toString() shows the Data Provider's text: $it") } }
     }
 
     @Test

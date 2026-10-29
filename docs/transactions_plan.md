@@ -20,7 +20,9 @@
   - first run: `:app` 17 of 18 failed, all from Espresso 3.6.1 calling the removed `InputManager.getInstance`; fixed by pinning Espresso 3.7.0 (PR #28);
   - second run: `:persistence` **29 of 29 passed**, among them `SlussenDatabaseMigrationIT` 4 of 4 (E-06: versions 1 and 2 upgraded on the phone); `:app` 15 of 18 passed; the 3 failures were stale tests (a text the Budget card now repeats, a section title drawn in capitals, a tap below the screen edge), fixed in PR #28;
   - **E-13 passed**: after a backup with `bmgr`, an uninstall, a reinstall and a restore, YNAB showed credentials missing while the chosen Budgets and their Budget Accounts were kept.
-- Next: the operator reruns `:app`'s instrumented tests on PR #28's branch; when they pass, #28 merges and Phase 4 starts.
+  - third run on PR #28 at 3b635e1: `:app` **18 of 18 passed**. Phase 3 done: PR #28 merged on 2026-10-28, issue #5 closed.
+- Phase 4 built (a sub-agent; the orchestrator re-ran the full gate with `--rerun-tasks`: green). It found two specification conflicts, proposed as **S-T-12** and **S-T-13** (§6), to be approved before its PR merges.
+- Next: the operator approves S-T-12, S-T-13 and the Phase 4 assumptions (§6), and checks the SimpleFIN error codes against the protocol (the host `www.simplefin.org` is not allowed in the cloud session); then PR merges and Phase 5 (schema version 4) starts.
 
 ## 1. Scope
 
@@ -151,6 +153,46 @@ need to guess; Minor: friction), and a proposal in one or two sentences. End wit
 would fix first. Use invented names and amounts only. Do not read scratch/ or any other repository.
 ```
 
+### Phase 4: Data Provider contract and SimpleFIN (sub-agent)
+
+```text
+Work in /home/user/slussen on the branch transactions-phase4 (checked out). Do not commit, push or switch
+branches; leave the changes in the working tree for the orchestrator.
+
+Read AGENTS.md, docs/transactions_plan.md §1, §2 and §6 (S-T-03, S-T-04), ADR-001 §4.1 (the Data Provider
+contract, including the bullets "The time of a balance" and "SimpleFIN's error list"), UC-001 A8, A20, A21,
+ADR-004 (traceability markers), ADR-006 (logging) and docs/architecture/development.md. Follow aiup-core's
+use-case-test and then use-case-implement (read from /home/user/marketplace, branch feat/layer-plugins):
+tests first.
+
+Build:
+1. :plugin-api: `BankAccountResult.Read` gains `balanceReportedAt: Instant?` (default null);
+   `BankAccountResult.SignInNeeded` (an object, carries nothing), with KDoc citing UC-001 A20 and ADR-001 §4.1.
+2. provider-simplefin: read each account's `balance-date` (a Unix time) into `balanceReportedAt`; read the
+   answer's `errlist` (protocol version 2: objects with `code`, and `conn_id` or `account_id`) and map it:
+   `con.auth` -> `SignInNeeded` for every account of that connection; `act.failed`, `act.missingdata` ->
+   `Failed(FailureKind.Incomplete)` for that account; any other code -> `Failed(UnreadableAnswer)` for the
+   accounts it names, ignored when it names none. Never pass any SimpleFIN text on (NFR-012). Remove the
+   KDoc sentence that says errlist is not read.
+3. The Data Provider contract tests (plugin-api testFixtures, DataProviderFetchContractTest) and the
+   SimpleFIN tests cover: a pending item passed on with booked=false, a zero amount passed on, an item without
+   a date as Uninterpretable(MissingDate), balance-date carried, con.auth -> SignInNeeded for the accounts of
+   that connection only, act.failed -> Failed(Incomplete), and that no errlist text appears in any
+   toString() of the response. Invented data and the local test server only; never -PincludeLive.
+4. Enable Banking and every other user of these types compile unchanged in behaviour.
+5. :core: the Account Balance stored in step 8 takes `reported_at` from `balanceReportedAt`, or the time the
+   answer arrived when it is null (S-T-04), with a test naming UC-001 step 8. A `SignInNeeded` Bank Account
+   keeps its stored data and gets no Fetch Result yet (UC-001 A20 is built in Phase 6): handle it in every
+   `when`, and say so in a comment naming Phase 6.
+
+Gate (run it; it must pass): ANDROID_HOME=/opt/android-sdk; sh ./gradlew --stop;
+sh ./gradlew check :app:assembleDebug --rerun-tasks; python3 tools/lint_specs.py --strict;
+python3 tools/check_project_rules.py.
+
+Report (under 40 lines): files changed, tests added with their names, gate result, Clarified / Assumed /
+Open, and any place the specification was unclear or wrong (do not change docs/; report it instead).
+```
+
 Written for each phase when the phase before it is accepted, so that each prompt carries what the gates decided. Every prompt starts with: read `AGENTS.md`, this plan's §1, §2 and §6, and the use cases and ADRs the phase names; follow `use-case-test` and then `use-case-implement` for code phases; return Clarified / Assumed / Open.
 
 ## 5. Methodology evaluation log
@@ -160,6 +202,7 @@ Written for each phase when the phase before it is accepted, so that each prompt
 | 1 | Draft | Initiative intake (AGENTS.md §6) | The plan names the use cases, requirements and issues it takes on, and its first phase writes the specification changes. | No |
 | 2 | 1 | Specification changes (`requirements`, `use-case-spec`, `entity-model`) | The orchestrator wrote Phase 1 itself instead of dispatching a sub-agent (§2): every change had been designed with the operator in the same session (issues #8, #9, #11, #16, O-T-06, O-T-07), and a sub-agent would have needed that whole conversation as its prompt. The semantic `/spec-review` was not run; the two linters were. | Yes |
 | 3 | 1 | `requirements` (NFR) | A usability requirement (NFR-023, O-T-06) is written as an NFR with the category Usability. The project rule on numbers (AGENTS.md §2) refused "within 1 second", so the measure is "before the action sends any request or waits for anything". | No |
+| 6 | 4 | `use-case-test`, then `use-case-implement` | Tests were written first, but they could not compile before the new types existed, so none was seen failing first: the recurring deviation of the construction plan (§7 there). | Yes |
 | 5 | 2b | Mockups (`use-case-spec` mockup step) | Phase 2b ran as a sub-agent with the accepted findings as its brief, as §2 says; it changed only `docs/mockups/` and reported nine specification observations instead of changing the specification. | No |
 | 4 | 2 | Adversarial review (Centaur cross-model rule) | The external UX reviewer (Codex CLI) worked only from this repository, as its prompt said, so it did not read the Marketplace `spec-review` skill that AGENTS.md names. Its review is a source walkthrough of the HTML mockups, not of the running app. | Yes (recorded as the reviewer asked) |
 
@@ -202,6 +245,25 @@ Phase 2b, 2026-10-28: four specification gaps the mockup revision found. **Appro
 | S-T-09 | Phase 2b | The glossary's Fetch Result lists the two outcomes S-T-01 and S-T-03 added: not delivered, sign-in needed. | glossary |
 | S-T-10 | Phase 2b (NFR-023) | UC-001 A21 names its next action: nothing is needed now; if it happens again, check the Bank Account's currency at the Data Provider. | UC-001 A21 |
 | S-T-11 | Phase 2b (UX-19) | A changed fetch period applies from the next Fetch that contacts the Data Provider; a Fetch served from the Fetch Cooldown asks for nothing. | UC-001 BR-009 |
+
+Phase 4, 2026-10-28: two specification conflicts the sub-agent found. **Proposed, waiting for the operator's approval.**
+
+| ID | Found by | Change | Files |
+|---|---|---|---|
+| S-T-12 | Phase 4 | ADR-001 §4.1 said both that a listed Bank Account the request did not read is `NotRead(NotSelected, balance)` (S-35) and that SimpleFIN's `con.auth` makes every Bank Account of the connection `SignInNeeded` (S-T-03). The error wins: an error the Data Provider reports for such a Bank Account, or its connection, replaces `NotRead`. | ADR-001 §4.1 |
+| S-T-13 | Phase 4 | UC-001 lists NFR-012 (no Data Provider text in the journal or on screen), which A20 already relies on, so its tests can name it. | UC-001 Requirements |
+
+Phase 4's assumptions about SimpleFIN's `errlist`, built and tested; the operator confirms them:
+1. An error that names a connection applies to every account of that connection, whatever its code.
+2. `con.auth` that names only an account applies to that account alone.
+3. Several errors for one account: the sign-in wins, then `Failed(Incomplete)`, then `Failed(UnreadableAnswer)`.
+4. A malformed entry, a protocol-1 list of strings, and a code that names no account or connection are ignored.
+5. A `balance-date` that is missing, 0 or unreadable is null, so the core takes the time the answer arrived.
+6. No balance time is carried when no balance is.
+
+Phase 4's other notes:
+- The codes `con.auth`, `act.failed`, `act.missingdata` and the shape of `errlist` come from issue #11 and the construction plan (O-P2-61); they are to be checked against the SimpleFIN protocol before acceptance. `www.simplefin.org` is not an allowed host in the cloud session.
+- The core test `fetchWithNoBankAccountAddedAsksForTheOfferedBankAccounts` still expects 60 days: the code's default fetch period moves to 30 days (S-T-06) in Phase 6.
 
 Phase 2b's other observations, no specification change:
 - Plan §1 listed Already In Budget App among this version's statuses; corrected, since it needs a sent Import Identifier.

@@ -142,10 +142,29 @@ public data class DeliveredBankAccount(
 )
 
 public sealed interface BankAccountResult {
-    public data class Read(val transactions: List<ProviderTransaction>, val balance: Amount?) : BankAccountResult
+    public data class Read(
+        val transactions: List<ProviderTransaction>,
+        val balance: Amount?,
+        /**
+         * The time the Data Provider says [balance] was reported, or null when it gives none; the core stores it as
+         * `ACCOUNT_BALANCE.reported_at`, or the time it received the answer when it is null (S-T-04, ADR-001 §4.1,
+         * UC-001 step 8).
+         */
+        val balanceReportedAt: Instant? = null,
+    ) : BankAccountResult
 
-    /** A paged read that did not finish is `Failed(Incomplete)` and carries none of its transactions (UC-001 A8). */
+    /**
+     * A failure for this Bank Account alone, carrying none of its transactions (UC-001 A8): a paged read that did not
+     * finish, or a read the Data Provider reports as failed or incomplete, is `Failed(Incomplete)`.
+     */
     public data class Failed(val kind: FailureKind) : BankAccountResult
+
+    /**
+     * The Operator must sign in to this Bank Account's Bank again at the Data Provider before it can be read, as the
+     * Data Provider reports it. It carries nothing, no Data Provider text included (NFR-012); the core keeps the
+     * stored data of the Bank Account unchanged and starts no Back-off (UC-001 A20, S-T-03, ADR-001 §4.1).
+     */
+    public data object SignInNeeded : BankAccountResult
 
     /**
      * Listed but not read. For [NotReadCause.NotSelected], [balance] is the balance the Data Provider gave with the list

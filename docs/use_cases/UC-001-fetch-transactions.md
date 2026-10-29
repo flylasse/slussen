@@ -10,7 +10,7 @@
 **Trigger:** Operator starts a Fetch of one Data Provider, of the Data Providers that have a Bank Account in one Budget, or of all Data Providers, or the time of a Scheduled Fetch arrives  
 **Status:** Approved  
 
-**Requirements:** [FR-001, FR-004, FR-005, FR-008, FR-009, FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-058, FR-064, FR-066, FR-076, FR-077, FR-078, FR-079, FR-080, FR-098, FR-102, FR-105, NFR-002, NFR-004, NFR-007, NFR-008, NFR-016, NFR-018, NFR-020, NFR-022, NFR-023, C-006, C-007, C-012](../requirements.md)
+**Requirements:** [FR-001, FR-004, FR-005, FR-008, FR-009, FR-013, FR-014, FR-015, FR-016, FR-017, FR-018, FR-058, FR-064, FR-066, FR-076, FR-077, FR-078, FR-079, FR-080, FR-098, FR-102, FR-105, NFR-002, NFR-004, NFR-007, NFR-008, NFR-012, NFR-016, NFR-018, NFR-020, NFR-022, NFR-023, C-006, C-007, C-012](../requirements.md)
 
 ## Preconditions
 
