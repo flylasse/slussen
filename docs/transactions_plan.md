@@ -28,7 +28,8 @@
 - Phase 6 is split in two (orchestrator, 2026-10-29), since it is the largest phase: **6a** stores the Bank Transactions of a Fetch (with the Import Identifier protocol of ADR-008, which nothing had built yet), A17, A19, A20, A21, #9 and the Decision Journal; **6b** the fetch period on Settings and UX-D4's credential and Fetch Cooldown screens. 6a built (a sub-agent, then two fixes by the orchestrator, below); it found one specification gap, proposed as **S-T-16** (§6).
 - Phase 6a done: the operator approved S-T-16 and merged PR #32 (2026-10-29); issues #8, #9 and #11 closed.
 - Phase 6b built (a sub-agent; the orchestrator re-ran the gate with `--rerun-tasks`: green). It found one specification gap, proposed as **S-T-17** (§6); the import switch's and credential removal's pending and failed states, not in its prompt, are issue #33.
-- Next: the operator approves S-T-17 and merges the Phase 6b PR; then Phase 7 (the Comparison).
+- Phase 6b done: the operator merged PR #34 (2026-10-29), approving S-T-17.
+- Phase 7 is split in three (orchestrator, 2026-10-29): **7a** reads YNAB and runs the Comparison in the core (UC-003), **7b** detects Transfers (UC-005), **7c** builds the screens (UC-008, the `-this-build` states). 7a in progress on the branch `transactions-phase7a`, with the prompt in §4.
 
 ## 1. Scope
 
@@ -102,7 +103,8 @@ In addition:
 | 5 | Storage: `slussen.db` version 4 with `BANK_TRANSACTION`, `UNREADABLE_TRANSACTION`, `BUDGET_APP_TRANSACTION`, `TRANSFER` and `TRANSFER_DESCRIPTION` (entity model), the default description lists, and a hand-written Migration from version 3 (S-39) | `:persistence`, schema JSON, `SlussenDatabaseMigrationIT` | `inherit` | `gradlew check` passes; the S-39 check accepts version 4; the Migration IT covers versions 1, 2 and 3 to 4 (run on a device in Phase 8 at the latest) | `feat: phase 5 - schema version 4 for Bank Transactions` |
 | 6a | UC-001 steps 7-9 in the core and `:persistence`: the Fetch asks for transactions and balance (ending O-P2-54), stores booked, non-zero Bank Transactions with their Import Identifiers (ADR-008, built here with its test vectors) and occurrence numbers, Unreadable Transactions (A17, BR-016), the Decision Journal (step 9); A19, A20 (with #11), A21, BR-006 (#9); the fetch period default 30 days in the code; the Fetch result and Blocked Reason texts | `:core` `fetch`, `identity`, `journal`; `:persistence`; `:app` texts | `inherit` | `gradlew check` and `:app:assembleDebug` pass; every in-scope BR and flow has a test that names it; ADR-008's vectors pass; `uc-coverage-layered` matrix in the report | `feat: phase 6a - Bank Transactions from a Fetch` |
 | 6b | The fetch period on Settings (UC-010 steps 1-4, 6, A1); UX-D4: the credential and Fetch Cooldown screens checked against NFR-023 and fixed | `:core` `settings`, `:app` | `inherit` | as 6a | `feat: phase 6b - fetch period on Settings, answers in place` |
-| 7 | UC-003: YNAB `readChanges`, the stored copy, the Comparison in the order of BR-001, Eligible Transactions, the Decision Journal, the "⟳" read; the Budget tab and Bank Account screen as the UX gate approved them | `budgetapp-ynab`, `:core` (a comparison package, ADR-001 §7), `:app` | `inherit` | as Phase 6, and no Comparison writes to YNAB (BR-015, a contract-test property) | `feat: phase 7 - the Comparison` |
+| 7a | UC-003 in the core and YNAB: `readChanges` and the stored copy (BR-016, BR-020, O-4), the Comparison in the order of BR-001 for the rules in scope, Eligible Transactions (BR-014), the Decision Journal (step 6), A1-A3, A7, S-T-08 (not compared yet); the Comparison after a Fetch (UC-001 step 10) and on its own (the YNAB read) | `budgetapp-ynab`, `:core` `comparison`, `:persistence` | `inherit` | as Phase 6a; no Comparison writes to YNAB (BR-015) | `feat: phase 7a - the Comparison` |
+| 7c | The screens: the Budget tab and Bank Account screen as the UX gate approved them (`-this-build` states, chronological list, statuses explained, times, counts), the YNAB read on its line, the build-state lines updated | `:app` | `inherit` | as Phase 6a | `feat: phase 7c - Bank Transactions on screen` |
 | 7b | UC-005 detection inside the Comparison (UC-003 step 4): Transfers, Transfer Legs, Guessed Transfers, Lonely Transfers and the grace period, the description lists; the Transfers shown on the Budget tab without decisions | `:core` (a transfer package, ADR-001 §7), `:app` | `inherit` | as Phase 6; a test for each in-scope BR of UC-005, including a Transfer never across Budgets or currencies (BR-004) | `feat: phase 7b - Transfers detected` |
 | 8 | **Acceptance: operator, on the phone** | release build 0.1.x → this build over it; a Fetch of SimpleFIN; YNAB read | operator | every Bank Account shows its Bank Transactions with plausible Transaction Statuses; nothing reached YNAB; no stored item lost in the upgrade; the instrumented Migration test passes on the phone | operator's verdict into §6 |
 | 9 | Close: §7, requirement statuses, open work turned into issues, plan to `docs/archive/` | this plan, `docs/requirements.md`, issues | `inherit` | `lint_specs.py --strict` and `check_project_rules.py` exit 0; §7 lists issue numbers, not open work | `docs: phase 9 - close the transactions plan` |
@@ -318,6 +320,45 @@ Report (under 40 lines): files changed, tests added with their names, which fail
 Clarified / Assumed / Open, and any place the specification or a mockup was unclear or wrong (do not change docs/).
 ```
 
+### Phase 7a: the Comparison (sub-agent)
+
+```text
+Work in /home/user/slussen on the branch transactions-phase7a (checked out). Do not commit, push or switch
+branches; leave the changes in the working tree for the orchestrator. Never read, print or write signing values
+or credentials; never run -PincludeLive; tests use invented data and local test servers only.
+
+Read AGENTS.md; docs/transactions_plan.md §1 (the UC-003 row: what is built and what is left), §2, §3 (row 7a) and
+§6; UC-003 (all of it), UC-001 step 10, UC-011 BR-001; the glossary's Transaction Statuses; the entity model
+(BANK_TRANSACTION, BUDGET_APP_TRANSACTION, BUDGET_ACCOUNT, OPERATOR_SETTINGS); ADR-001 §4.2 (the Budget App
+contract, §4.2.3 reading), §7 (UC-003 row); ADR-002 §3 (O-4, O-5) and §8; ADR-007 (the operation coordinator and the
+Comparison-pending marker, as far as it concerns a Comparison); ADR-008 §1 (recognising Slussen's marker);
+docs/architecture/development.md. Follow aiup-core's use-case-test, then use-case-implement (read them with
+`git -C /home/user/marketplace show origin/feat/layer-plugins:<path>`): tests first; say which failed first.
+
+Build:
+1. budgetapp-ynab: `readChanges` (ADR-001 §4.2.3), with recorded answers on the local test server: the read period
+   of BR-016, deletions and merges, the link of a linked transfer, Cleared and approved, entry kinds; the
+   Budget App contract tests for it.
+2. :core comparison and :persistence: O-4 stores the read with its cursor (BR-020); the Comparison gives each
+   stored Bank Transaction of a Bank Account that is not a Retired Account its Transaction Status in the order of
+   BR-001, for the rules in scope (BR-002..BR-007, BR-011..BR-016, BR-018; A1-A3, A7); Eligible Transactions
+   (BR-014); a Bank Transaction stays without a status ("not compared yet") until a Comparison has read its Budget
+   (S-T-08); Transfer statuses are left to Phase 7b, so a Transfer Leg is not yet detected; the Decision Journal
+   records every changed Transaction Status (step 6); never a write to YNAB (BR-015).
+3. The Comparison runs after a Fetch (UC-001 step 10) and on its own when the Operator reads YNAB again, through
+   the operation coordinator; the counts of UC-008 (Eligible, waiting for a decision) come from it. Screens are
+   Phase 7c: change `:app` only where the build needs it.
+4. Instrumented: extend the persistence ITs for O-4/O-5 (they run on the phone in Phase 8).
+
+Gate (run it; it must pass): ANDROID_HOME=/opt/android-sdk; sh ./gradlew --stop;
+sh ./gradlew check :app:assembleDebug :app:assembleDebugAndroidTest :persistence:assembleDebugAndroidTest
+--rerun-tasks; python3 tools/lint_specs.py --strict; python3 tools/check_project_rules.py.
+
+Report (under 50 lines): files changed, tests added with their names, which failed first, the uc-coverage-layered
+matrix for UC-003 in short, gate result, Clarified / Assumed / Open, and any place the specification was unclear
+or wrong (do not change docs/; report it instead).
+```
+
 Written for each phase when the phase before it is accepted, so that each prompt carries what the gates decided. Every prompt starts with: read `AGENTS.md`, this plan's §1, §2 and §6, and the use cases and ADRs the phase names; follow `use-case-test` and then `use-case-implement` for code phases; return Clarified / Assumed / Open.
 
 ## 5. Methodology evaluation log
@@ -393,7 +434,7 @@ Phase 6a, 2026-10-29: one specification gap. **Approved by the operator on 2026-
 |---|---|---|---|
 | S-T-16 | Phase 6a | A delivered transaction whose currency differs from its Bank Account's had no rule: it would have been stored as a Bank Transaction, and a later Comparison could have called it New. It is kept as an Unreadable Transaction with the reason "currency differs from the Bank Account's" (Needs Review, never uploaded, nothing converted). | UC-001 A17, BR-016 |
 
-Phase 6b, 2026-10-29: one specification gap. **Proposed, waiting for the operator's approval.**
+Phase 6b, 2026-10-29: one specification gap. **Approved by the operator on 2026-10-29 (PR #34 merged).**
 
 | ID | Found by | Change | Files |
 |---|---|---|---|
