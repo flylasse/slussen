@@ -518,8 +518,11 @@ abstract class BudgetAppCopyDao {
     @Query("SELECT change_cursor FROM budget_read_state WHERE budget_id = :budgetId")
     abstract suspend fun cursorOf(budgetId: Long): String?
 
-    @Query("DELETE FROM budget_read_state WHERE budget_id = :budgetId")
-    abstract suspend fun forgetCursor(budgetId: Long)
+    @Query("UPDATE budget_read_state SET period_read_owed = 1 WHERE budget_id = :budgetId")
+    abstract suspend fun owePeriodRead(budgetId: Long)
+
+    @Query("SELECT period_read_owed FROM budget_read_state WHERE budget_id = :budgetId")
+    abstract suspend fun periodReadOwed(budgetId: Long): Boolean?
 
     @Query("SELECT * FROM budget_app_transaction WHERE budget_account_id IN (SELECT id FROM budget_account WHERE budget_id = :budgetId) ORDER BY id")
     abstract suspend fun copyOf(budgetId: Long): List<BudgetAppTransactionEntity>

@@ -126,6 +126,7 @@ object SlussenMigrations {
         4,
         5,
         "CREATE TABLE IF NOT EXISTS `budget_read_state` (`budget_id` INTEGER NOT NULL, `change_cursor` TEXT NOT NULL, " +
+            "`period_read_owed` INTEGER NOT NULL DEFAULT 0, " +
             "PRIMARY KEY(`budget_id`), FOREIGN KEY(`budget_id`) REFERENCES `budget`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
     )
 

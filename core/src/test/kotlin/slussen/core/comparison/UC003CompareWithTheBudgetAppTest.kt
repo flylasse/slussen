@@ -233,7 +233,7 @@ class UC003CompareWithTheBudgetAppTest {
 
     @Test
     @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-016"])
-    @DisplayName("BR-016 (S-T-18): when a served Budget gains a Budget Account, its cursor is forgotten and the next read covers the read period again, so the new Budget Account's earlier transactions are in the copy")
+    @DisplayName("BR-016 (S-T-18): when a served Budget gains a Budget Account, its next read covers the read period and then the changes since its cursor, so the new Budget Account's earlier transactions are in the copy and a deletion since the previous read is not missed")
     fun budgetGainingABudgetAccountIsReadAgain() = runTest {
         ready()
         bankAccount("Kestrel Checking", "Checking")
@@ -242,6 +242,52 @@ class UC003CompareWithTheBudgetAppTest {
         answerHousehold(onNewAccount, read("ynab-1", oct14, amount(-8)), next = "k-1")
         compare()
         assertEquals(listOf("ynab-1"), slice.copyStore.budgetAppTransactionsOf(household).map { it.budgetAppReference })
+        gainNewCard()
+
+        assertEquals(ChangeCursor("k-1"), slice.copyStore.changeCursorOf(household))
+        assertTrue(slice.copyStore.periodReadOwed(household))
+        // ynab-1 was deleted in the Budget App since k-1: a read of the period no longer reports it; only the changes since k-1 do.
+        answerHouseholdPeriodAndChanges(
+            period = ReadResult.Answered(ChangeSet(listOf(onNewAccount), ChangeCursor("k-2"))),
+            changes = ReadResult.Answered(ChangeSet(listOf(read("ynab-1", oct14, amount(-8), state = ReadState.Deleted)), ChangeCursor("k-3"))),
+        )
+        compare()
+
+        val reads = slice.budgetApp.reader.changeReads.filter { it.budgetReference == "budget-household" }
+        assertEquals(listOf(null, null, ChangeCursor("k-1")), reads.map { it.since })
+        assertEquals(
+            mapOf("ynab-1" to BudgetAppTransactionState.Deleted, "ynab-new" to BudgetAppTransactionState.Present),
+            slice.copyStore.budgetAppTransactionsOf(household).associate { it.budgetAppReference to it.state },
+        )
+        assertEquals(ChangeCursor("k-3"), slice.copyStore.changeCursorOf(household))
+        assertFalse(slice.copyStore.periodReadOwed(household))
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A1", businessRules = ["BR-016", "BR-020"])
+    @DisplayName("BR-016 (S-T-18), A1: when the changes since the cursor cannot be read after the read period was, nothing of the read is stored and the read of the period stays owed")
+    fun periodReadOwedSurvivesAFailedChangesRead() = runTest {
+        ready()
+        bankAccount("Kestrel Checking", "Checking")
+        val household = budget("Household").id
+        answerHousehold(read("ynab-1", oct14, amount(-8)), next = "k-1")
+        compare()
+        gainNewCard()
+        answerHouseholdPeriodAndChanges(
+            period = ReadResult.Answered(ChangeSet(listOf(read("ynab-new", oct14, amount(-25), account = "ba-new-card")), ChangeCursor("k-2"))),
+            changes = ReadResult.TransientFailure(FailureKind.ConnectionLost),
+        )
+
+        val report = compare() as ComparisonReport.Compared
+
+        assertInstanceOf(BudgetReadOutcome.NotRead::class.java, report.budgets.single { it.budgetName == "Household" })
+        assertEquals(listOf("ynab-1"), slice.copyStore.budgetAppTransactionsOf(household).map { it.budgetAppReference })
+        assertEquals(ChangeCursor("k-1"), slice.copyStore.changeCursorOf(household))
+        assertTrue(slice.copyStore.periodReadOwed(household))
+    }
+
+    /** UC-013: the Budget App lists a new Budget Account "New Card" in Household, and the Operator chooses the Budgets again. */
+    private suspend fun gainNewCard() {
         slice.budgetApp.reader.readBudgetsAnswer = ReadResult.Answered(
             ExampleData.budgetsRead().map { budget ->
                 if (budget.reference != "budget-household") budget
@@ -250,13 +296,17 @@ class UC003CompareWithTheBudgetAppTest {
         )
         val listed = slice.connect.readBudgets() as BudgetsRead.Listed
         slice.connect.chooseBudgets(listed.budgets, listed.budgets.map { it.budgetAppReference }.toSet())
+    }
 
-        assertNull(slice.copyStore.changeCursorOf(household))
-        answerHousehold(onNewAccount, read("ynab-1", oct14, amount(-8)), next = "k-2")
-        compare()
-
-        assertEquals(null, slice.budgetApp.reader.changeReads.last { it.budgetReference == "budget-household" }.since)
-        assertEquals(setOf("ynab-1", "ynab-new"), slice.copyStore.budgetAppTransactionsOf(household).map { it.budgetAppReference }.toSet())
+    /** Household answers [period] to a read of the read period (no cursor) and [changes] to a read since a cursor. */
+    private fun answerHouseholdPeriodAndChanges(period: ReadResult<ChangeSet>, changes: ReadResult<ChangeSet>) {
+        slice.budgetApp.reader.changesAnswer = { asked ->
+            when {
+                asked.budgetReference != "budget-household" -> ReadResult.Answered(ChangeSet(emptyList(), ChangeCursor("other-${asked.budgetReference}")))
+                asked.since == null -> period
+                else -> changes
+            }
+        }
     }
 
     @Test

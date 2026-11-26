@@ -182,6 +182,28 @@ class UC003CompareWithTheBudgetAppPersistenceIT {
 
     @Test
     @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-016", "BR-020"])
+    @DisplayName("BR-016 (S-T-18): a read of the period is owed only by a Budget with a cursor, keeps that cursor, survives a restart, and is settled by the next stored read")
+    fun periodReadOwedIsKeptBesideTheCursor() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        val (budget, _) = household(storage)
+        storage.comparisons.owePeriodRead(budget)
+        assertFalse(storage.comparisons.periodReadOwed(budget))
+        storage.comparisons.applyChangeSet(BudgetReadToStore(budget, null, listOf(read("ynab-1", -42500)), ChangeCursor("1"), emptyMap(), now))
+
+        storage.comparisons.owePeriodRead(budget)
+        storage.close()
+        val restarted = SlussenStorage.open(DeviceFiles.context, clock)
+
+        assertTrue(restarted.comparisons.periodReadOwed(budget))
+        assertEquals(ChangeCursor("1"), restarted.comparisons.changeCursorOf(budget))
+        restarted.comparisons.applyChangeSet(BudgetReadToStore(budget, ChangeCursor("1"), emptyList(), ChangeCursor("2"), emptyMap(), now.plusSeconds(60)))
+        assertFalse(restarted.comparisons.periodReadOwed(budget))
+        assertEquals(ChangeCursor("2"), restarted.comparisons.changeCursorOf(budget))
+        restarted.close()
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-016", "BR-020"])
     @DisplayName("BR-016 (O-4): a later read is applied only from the stored cursor; one that started from another cursor stores nothing; a deletion updates the stored transaction by its reference and keeps it")
     fun laterReadIsAppliedFromTheStoredCursor() = runBlocking {
         val storage = SlussenStorage.open(DeviceFiles.context, clock)

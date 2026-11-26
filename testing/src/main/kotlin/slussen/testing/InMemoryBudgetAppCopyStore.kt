@@ -22,15 +22,18 @@ class InMemoryBudgetAppCopyStore(
 ) : BudgetAppCopyStore, ComparisonStore {
     val copy = mutableListOf<StoredBudgetAppTransaction>()
     val cursors = mutableMapOf<Long, ChangeCursor>()
+    val periodOwed = mutableSetOf<Long>()
     var pending: Boolean = false
     var failsToConclude: Boolean = false
     private var nextId = 1L
 
     override suspend fun changeCursorOf(budgetId: Long): ChangeCursor? = cursors[budgetId]
 
-    override suspend fun forgetCursor(budgetId: Long) {
-        cursors.remove(budgetId)
+    override suspend fun owePeriodRead(budgetId: Long) {
+        if (budgetId in cursors) periodOwed += budgetId
     }
+
+    override suspend fun periodReadOwed(budgetId: Long): Boolean = budgetId in periodOwed
 
     override suspend fun applyChangeSet(read: BudgetReadToStore): ChangeSetApplied {
         if (cursors[read.budgetId] != read.startedFrom) return ChangeSetApplied.CursorMoved
@@ -70,6 +73,7 @@ class InMemoryBudgetAppCopyStore(
             }
         }
         cursors[read.budgetId] = read.next
+        periodOwed -= read.budgetId
         pending = true
         return ChangeSetApplied.Stored(records.size)
     }

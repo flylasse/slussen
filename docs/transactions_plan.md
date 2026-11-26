@@ -457,6 +457,7 @@ Phase 7a's notes:
 - "Waiting for a decision" (UC-008 BR-003) counts as UC-001 BR-014 does, Unreadable Transactions with Needs Review included.
 - A2 midway: a Budget already stored in the same Comparison is concluded, so that no read is left pending. A Comparison left pending at a restart is concluded from the stored copy, which can move a status by the date (Too Old).
 - "Not compared yet" (S-T-08) is a Bank Transaction first received after its Budget's last successful read.
+- Review of PR #35 (2026-11-26): S-T-18 as first proposed forgot the cursor, and a read of the period reports no deleted transactions in YNAB, so a deletion or merge since the previous read was missed. S-T-18 is amended: the read of the period is followed by the changes since the kept cursor, and `budget_read_state.period_read_owed` marks it (version 5 not yet merged, so its schema file changed in place). The test of the main case was seen failing first; the A1 test passed before the change, since it guards the new path. A Windows-only fault of `SchemaVersionCheckTest` (CRLF made twice, since Phase 5) was fixed with it.
 
 Phase 6b's notes:
 - The app had no Fetch Cooldown edit, only its value, so Phase 6b built UC-010 steps 2-6, A1 and A10 for it, with the fetch period's states.

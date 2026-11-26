@@ -480,8 +480,9 @@ data class CoordinatorStateEntity(
 
 /**
  * The technical table `budget_read_state` of ADR-002 §2: the opaque `ChangeCursor` of ADR-001 §4.2.3 of one Budget, which
- * lets every later read take all changes since the previous read (UC-003 BR-016). Written only by O-4, together with the
- * copy it read (BR-020).
+ * lets every later read take all changes since the previous read (UC-003 BR-016), and whether the next read owes the read
+ * period as well, set when a served Budget gains a Budget Account (S-T-18). Written by O-4, together with the copy it read
+ * (BR-020); `period_read_owed` is set by UC-013.
  */
 @Entity(
     tableName = "budget_read_state",
@@ -490,4 +491,5 @@ data class CoordinatorStateEntity(
 data class BudgetReadStateEntity(
     @PrimaryKey @ColumnInfo(name = "budget_id") val budgetId: Long,
     @ColumnInfo(name = "change_cursor") val changeCursor: String,
+    @ColumnInfo(name = "period_read_owed", defaultValue = "0") val periodReadOwed: Boolean = false,
 )

@@ -90,16 +90,21 @@ interface BudgetAppCopyStore {
     suspend fun changeCursorOf(budgetId: Long): ChangeCursor?
 
     /**
-     * Forgets the cursor of [budgetId], so that its next read covers the read period again (UC-003 BR-016, S-T-18): run
-     * before a served Budget gains a Budget Account, whose earlier transactions no cursor-based read would bring.
+     * Marks the next read of [budgetId] as owing the read period (UC-003 BR-016, S-T-18), when it has a cursor: run before
+     * a served Budget gains a Budget Account, whose earlier transactions no read since the cursor would bring. The cursor
+     * is kept, so that the changes since it, deletions and merges included, are still read.
      */
-    suspend fun forgetCursor(budgetId: Long)
+    suspend fun owePeriodRead(budgetId: Long)
+
+    /** Whether the next read of [budgetId] owes the read period as well as the changes since its cursor (S-T-18). */
+    suspend fun periodReadOwed(budgetId: Long): Boolean
 
     /**
      * O-4, all or nothing: only when the stored cursor of the Budget still equals [BudgetReadToStore.startedFrom], the
      * changed Budget App Transactions upserted by their reference with every field and their `entered_by` as the core
      * decides it ([slussen.core.comparison.BudgetAppCopy]), the balances of the Budget's stored Budget Accounts,
-     * `budget.last_read_at`, the next cursor, and `coordinator_state.comparison_pending` set (ADR-007 §3a).
+     * `budget.last_read_at`, the next cursor with no read of the period owed, and `coordinator_state.comparison_pending`
+     * set (ADR-007 §3a).
      */
     suspend fun applyChangeSet(read: BudgetReadToStore): ChangeSetApplied
 

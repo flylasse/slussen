@@ -364,7 +364,7 @@ class SlussenDatabaseMigrationTest {
     }
 
     @Test
-    @DisplayName("NFR-017: after the Migration 4 to 5 a Budget has at most one read cursor, and only a stored Budget has one (ADR-002 §2; UC-003 BR-020)")
+    @DisplayName("NFR-017: after the Migration 4 to 5 a Budget has at most one read cursor, only a stored Budget has one, and a cursor owes no read of the period until one is marked (ADR-002 §2; UC-003 BR-016, BR-020)")
     fun migratedVersion5TableKeepsItsRules() {
         create(SlussenDatabase::class.java, 4)
         connection.execSQL("DELETE FROM transfer_description")
@@ -378,7 +378,7 @@ class SlussenDatabaseMigrationTest {
 
         assertTrue(twice.isFailure)
         assertTrue(noBudget.isFailure)
-        assertEquals(listOf(listOf("1", "4182")), query("SELECT budget_id, change_cursor FROM budget_read_state"))
+        assertEquals(listOf(listOf("1", "4182", "0")), query("SELECT budget_id, change_cursor, period_read_owed FROM budget_read_state"))
     }
 
     @Test

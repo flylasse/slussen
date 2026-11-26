@@ -110,8 +110,8 @@ class BudgetsAndBankAccounts(
                     budget.budgetAccounts.map { BudgetAccountToStore(it.budgetAppReference, it.name, it.balance) },
                 )
             }
-            // UC-003 BR-016: A served Budget that gains a Budget Account is read again over the read period (S-T-18); the cursor is forgotten first, so that a stop in between costs one more read, never a lost transaction.
-            gainingBudgetAccounts(toServe, chosen).forEach { copies.forgetCursor(it) }
+            // UC-003 BR-016: A served Budget that gains a Budget Account is read again over the read period, with the changes since the previous read (S-T-18); it is marked before the Budgets are stored, so that a stop in between costs one more read, never a lost transaction.
+            gainingBudgetAccounts(toServe, chosen).forEach { copies.owePeriodRead(it) }
             // UC-013 BR-001: Slussen serves only the Budgets the Operator chose from those the Budget App lists.
             when (val outcome = store.serveBudgets(toServe, chosen, clock.instant())) {
                 ServeOutcome.Served -> {

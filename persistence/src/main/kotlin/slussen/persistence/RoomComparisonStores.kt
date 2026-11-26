@@ -71,7 +71,9 @@ class RoomComparisonStore(
 
     override suspend fun changeCursorOf(budgetId: Long): ChangeCursor? = dao.cursorOf(budgetId)?.let(::ChangeCursor)
 
-    override suspend fun forgetCursor(budgetId: Long) = dao.forgetCursor(budgetId)
+    override suspend fun owePeriodRead(budgetId: Long) = dao.owePeriodRead(budgetId)
+
+    override suspend fun periodReadOwed(budgetId: Long): Boolean = dao.periodReadOwed(budgetId) ?: false
 
     override suspend fun applyChangeSet(read: BudgetReadToStore): ChangeSetApplied = db.withTransaction {
         // UC-003 BR-020: the copy and the point up to which the Budget App was read are stored together, only from the cursor the read started from.
@@ -89,7 +91,7 @@ class RoomComparisonStore(
             read.balances[account.budgetAppReference]?.let { dao.storeBalance(account.id, it.thousandths, read.readAt) }
         }
         dao.storeLastReadAt(read.budgetId, read.readAt)
-        dao.storeCursor(BudgetReadStateEntity(read.budgetId, read.next.value))
+        dao.storeCursor(BudgetReadStateEntity(read.budgetId, read.next.value, periodReadOwed = false))
         dao.storeComparisonPending(true)
         ChangeSetApplied.Stored(records.size)
     }

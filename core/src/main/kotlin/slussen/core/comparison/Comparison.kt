@@ -21,6 +21,8 @@ import slussen.core.port.StatusChange
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredBudget
 import slussen.pluginapi.budgetapp.BudgetRead
+import slussen.pluginapi.budgetapp.ChangeCursor
+import slussen.pluginapi.budgetapp.ChangeSet
 import slussen.pluginapi.budgetapp.ReadResult
 import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.request.RequestContext
@@ -115,7 +117,8 @@ class Comparison(
         val since = copies.changeCursorOf(budget.id)
         // UC-003 BR-016: The first read of a Budget covers the read period; every later read takes all changes since the previous one.
         val from = ComparisonRules.readFrom(settings.current(), plugins.budgetApp.profile.matchingDateWindowDays, today())
-        return when (val read = plugins.budgetApp.reader.readChanges(budget.budgetAppReference, since, from, context)) {
+        val periodOwed = since != null && copies.periodReadOwed(budget.id)
+        return when (val read = readChanges(budget, since, from, periodOwed, context)) {
             is ReadResult.Answered -> {
                 val balances = listed.firstOrNull { it.reference == budget.budgetAppReference }
                     ?.budgetAccounts?.associate { it.reference to it.balance }
@@ -131,6 +134,36 @@ class Comparison(
             // A1: this Budget cannot be read; its statuses and stored copy are kept, and the other Budgets are read.
             is ReadResult.TransientFailure -> notRead(budget, read.kind)
             is ReadResult.StoppedByGate -> notRead(budget, null)
+        }
+    }
+
+    /**
+     * The changes of [budget] since [since], or from [from] on for its first read (BR-016). When [periodOwed], the read
+     * period is read first and the changes since [since] after it, and the two are stored as one read with the later
+     * cursor (S-T-18): a read of the period brings the earlier transactions of a Budget Account the Budget gained, and only
+     * the changes since the cursor bring what was deleted or merged since the previous read. A failure of either is the
+     * failure of the read, and nothing of it is stored.
+     */
+    private suspend fun readChanges(
+        budget: StoredBudget,
+        since: ChangeCursor?,
+        from: LocalDate,
+        periodOwed: Boolean,
+        context: RequestContext,
+    ): ReadResult<ChangeSet> {
+        val reader = plugins.budgetApp.reader
+        if (!periodOwed) return reader.readChanges(budget.budgetAppReference, since, from, context)
+        val period = reader.readChanges(budget.budgetAppReference, null, from, context)
+        if (period !is ReadResult.Answered) return period
+        return when (val changes = reader.readChanges(budget.budgetAppReference, since, from, context)) {
+            // The changes since the cursor are the later answer: where both report a transaction, theirs is kept.
+            is ReadResult.Answered -> ReadResult.Answered(
+                ChangeSet(
+                    (period.value.transactions + changes.value.transactions).associateBy { it.reference }.values.toList(),
+                    changes.value.next,
+                ),
+            )
+            else -> changes
         }
     }
 
