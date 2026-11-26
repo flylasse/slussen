@@ -194,6 +194,7 @@ class ImportStatus(
             lastReadAt = budget.lastReadAt,
             statusesAsOf = statusesAsOf(budget, accounts),
             notComparedYet = accounts.sumOf { snapshot.counts[it.id]?.notComparedYet ?: 0 },
+            budgetAppCredentials = credentialBlocked(snapshot.credentials.getValue(ServiceKey.budgetApp), budgetAppName)?.reason,
         )
     }
 
@@ -352,7 +353,7 @@ class ImportStatus(
         val limit = Duration.ofHours(snapshot.settings.outdatedBalanceHours.toLong())
         // UC-008 BR-004: An Account Balance older than the outdated-balance limit hides the difference and is marked outdated.
         if (Duration.between(accountBalance.reportedAt, snapshot.now) > limit) {
-            // UC-008 BR-004: A newer Account Balance comes with a Fetch of the Data Provider that reports it (UX-24).
+            // A2 of UC-008 (UX-24): the remedy of an outdated Account Balance is a Fetch of the Data Provider that reports it.
             val reportedBy = bankAccount.dataProviderId ?: bankAccount.balanceDataProviderId
             return BalanceComparison.Outdated(
                 accountBalance.amount, budgetBalance, accountBalance.reportedAt,

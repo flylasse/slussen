@@ -160,9 +160,6 @@ class UC008CheckImportStatusScreenIT {
         val fixture = ScreenFixture()
         aBankAccountIsAdded(fixture)
         val name = slussen.testing.ExampleData.BUDGET_APP_NAME
-        fixture.slice.budgetApp.reader.changesAnswer = {
-            slussen.pluginapi.budgetapp.ReadResult.TransientFailure(slussen.pluginapi.request.FailureKind.ServiceUnavailable)
-        }
         val care = kotlinx.coroutines.runBlocking { fixture.slice.connectionStore.budgets().single { it.served }.id }
         val viewModel = slussen.app.ui.budget.BudgetViewModel(fixture.services, care)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.load() }
@@ -174,10 +171,19 @@ class UC008CheckImportStatusScreenIT {
             }
         }
 
+        // A successful read first, then one an hour later that fails.
         onNodeWithText("Read $name again").performClick()
-        waitUntil(5_000) { onAllNodesWithText("$name not read 14:00", substring = true).fetchSemanticsNodes().isNotEmpty() }
-        onNodeWithText("$name · read failed 14:00 · the service is unavailable").assertExists()
-        onNodeWithText("No Transaction Statuses yet: the read of 14:00 failed: the service is unavailable").assertExists()
+        waitUntil(5_000) { onAllNodesWithText("$name read 14:00 · statuses as of 14:00").fetchSemanticsNodes().isNotEmpty() }
+        fixture.slice.clock.advance(java.time.Duration.ofHours(1))
+        fixture.slice.budgetApp.reader.changesAnswer = {
+            slussen.pluginapi.budgetapp.ReadResult.TransientFailure(slussen.pluginapi.request.FailureKind.ServiceUnavailable)
+        }
+        onNodeWithText("Read $name again").performClick()
+        waitUntil(5_000) { onAllNodesWithText("$name not read 15:00", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("$name · last read 14:00 · read failed 15:00").assertExists()
+        onNodeWithText(
+            "Statuses as of 14:00, its last successful read · the read of 15:00 failed: the service is unavailable",
+        ).assertExists()
         onNodeWithText("Read $name again to bring them up to date; nothing else is needed.").assertExists()
     }
 

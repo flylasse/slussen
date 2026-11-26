@@ -31,4 +31,6 @@ class UiServices(
     val appVersion: AppVersion,
     /** The operation that runs now, from the operation coordinator, so that a screen shows it (ADR-007 §1, P9-16). */
     val running: StateFlow<RunningOperation?>,
+    /** How many operations have ended, from the operation coordinator, so that a screen shows the stored data again (NFR-023). */
+    val ended: StateFlow<Long>,
 )

@@ -111,6 +111,7 @@ class CompositionRoot(log: SlussenLog) {
             clock = clock,
             appVersion = context.installedAppVersion(),
             running = coordinator.running,
+            ended = coordinator.ended,
         )
     }
 

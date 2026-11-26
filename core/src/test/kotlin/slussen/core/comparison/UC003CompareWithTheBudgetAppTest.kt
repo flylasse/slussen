@@ -724,6 +724,12 @@ class UC003CompareWithTheBudgetAppTest {
         val firstRead = slice.clock.instant()
         assertEquals(StatusesAsOf.LastRead(firstRead, failedRead = null), summary("Household").statusesAsOf)
         assertEquals(0, summary("Household").notComparedYet)
+        // The boundary (review 5d): a failure noted at the time of the last successful read is not after it, one a second later is.
+        slice.comparisonNotices.noteFailed(budget("Household").id, BudgetReadFailure(firstRead, FailureKind.Timeout))
+        assertEquals(StatusesAsOf.LastRead(firstRead, failedRead = null), summary("Household").statusesAsOf)
+        val justAfter = BudgetReadFailure(firstRead.plusSeconds(1), FailureKind.Timeout)
+        slice.comparisonNotices.noteFailed(budget("Household").id, justAfter)
+        assertEquals(StatusesAsOf.LastRead(firstRead, justAfter), summary("Household").statusesAsOf)
 
         slice.clock.advance(Duration.ofHours(2))
         stored(checking, "TX-2", oct14, amount(-20), firstSeenAt = slice.clock.instant())

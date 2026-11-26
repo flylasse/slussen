@@ -58,7 +58,7 @@ class UC003CompareWithTheBudgetAppViewModelTest {
 
     /** Household (USD) with Kestrel Checking, Summer House (EUR) with Aurora Current, Care Fund (USD) without a Bank Account. */
     private fun budgets(): Long = runBlocking {
-        slice.enterCredentials()
+        runBlocking { slice.enterCredentials() }
         val listed = ExampleData.budgetsRead().map { budget ->
             BudgetToServe(budget.reference, budget.name, budget.currency, budget.budgetAccounts.map { BudgetAccountToStore(it.reference, it.name, it.balance) })
         }
@@ -186,7 +186,9 @@ class UC003CompareWithTheBudgetAppViewModelTest {
         assertNull(viewModel.state.value!!.budgetAppLine.result)
 
         gate.complete(Unit)
-        runBlocking { while (viewModel.state.value!!.budgetAppLine.result == null) kotlinx.coroutines.delay(10) }
+        runBlocking {
+            kotlinx.coroutines.withTimeout(5_000) { while (viewModel.state.value!!.budgetAppLine.result == null) kotlinx.coroutines.delay(10) }
+        }
         assertEquals(FetchResultKind.Fetched, viewModel.state.value!!.budgetAppLine.result!!.kind)
         assertEquals(ready, viewModel.state.value!!.budgetAppLine.button)
     }
@@ -239,8 +241,9 @@ class UC003CompareWithTheBudgetAppViewModelTest {
         val ui = viewModel.state.value!!
         assertEquals(
             FetchResultUi(
-                "$name not read 14:00: the service is unavailable · no statuses yet",
-                "The stored statuses are kept; read again at any time. No Bank Fetch is needed.",
+                "$name not read 14:00: the service is unavailable",
+                "Household: no statuses yet · Summer House: no statuses yet · The stored statuses are kept; read again at " +
+                    "any time. No Bank Fetch is needed.",
                 FetchResultKind.Failed,
                 1,
             ),
@@ -256,11 +259,107 @@ class UC003CompareWithTheBudgetAppViewModelTest {
         slice.clock.advance(Duration.ofMinutes(5))
         slice.budgetApp.reader.changesAnswer = { ReadResult.TransientFailure(FailureKind.ConnectionLost) }
         viewModel.readAgain()
-        assertEquals(
-            "$name not read 14:05: the connection was lost · statuses as of 14:00",
-            viewModel.state.value!!.budgetAppLine.result!!.text,
-        )
+        assertEquals("$name not read 14:05: the connection was lost", viewModel.state.value!!.budgetAppLine.result!!.text)
         assertEquals("$name · last read 14:00 · read failed 14:05", viewModel.state.value!!.budgetAppLine.status)
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read", requirements = ["NFR-023"])
+    @DisplayName("A1 (review 2b): when no Budget is read, the line claims no one time for every Budget: each keeps its own last successful read, and each failure keeps its own kind, a read not completed included")
+    fun noBudgetReadNamesEachBudget() {
+        budgets()
+        val viewModel = overview()
+        viewModel.readAgain()
+        slice.clock.advance(Duration.ofHours(2))
+        householdDoesNotAnswer()
+        viewModel.readAgain()
+        slice.clock.advance(Duration.ofHours(1))
+        slice.budgetApp.reader.changesAnswer = { asked ->
+            if (asked.budgetReference == "budget-household") ReadResult.TransientFailure(FailureKind.Timeout)
+            else ReadResult.StoppedByGate(slussen.pluginapi.request.RefusalReason.OperationEnded)
+        }
+
+        viewModel.readAgain()
+
+        val ui = viewModel.state.value!!
+        assertEquals(
+            FetchResultUi(
+                "$name not read 17:00 · Household: no answer within the request timeout, an Operator Setting · " +
+                    "Summer House: the read was not completed",
+                "Household: statuses as of 14:00 · Summer House: statuses as of 16:00 · The stored statuses are kept; read " +
+                    "again at any time. No Bank Fetch is needed.",
+                FetchResultKind.Failed,
+                3,
+            ),
+            ui.budgetAppLine.result,
+        )
+        assertEquals("$name · last read 16:00 · read failed 17:00", ui.budgetAppLine.status)
+        assertEquals(
+            "Statuses as of 16:00, its last successful read · the read of 17:00 failed: the read was not completed",
+            ui.budgets.single { it.name == "Summer House" }.statuses,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A2: Budget App Refuses Slussen's Credentials", requirements = ["NFR-023"])
+    @DisplayName("A2 (review 2a): while the Budget App's credentials are missing or refused, a Budget whose statuses are not current names entering them as the next action, on the Overview and on its tab, never only a read")
+    fun credentialsAreTheNextAction() {
+        val checking = budgets()
+        stored(checking)
+        runBlocking { slice.credentials.remove(ServiceKey.budgetApp) }
+        val missing = "Enter the credentials of $name in Settings, then read $name again; nothing else is needed."
+        assertEquals(missing, overview().state.value!!.budgets.single { it.name == "Household" }.readAgainNote)
+        assertEquals(missing, budgetTab("Household").state.value!!.readAgainNote)
+
+        runBlocking { slice.enterCredentials() }
+        slice.budgetApp.reader.readBudgetsAnswer = ReadResult.CredentialsRefused
+        overview().readAgain()
+
+        val refused = "$name refused Slussen's credentials: enter them again in Settings, then read $name again; nothing else is needed."
+        assertEquals(refused, overview().state.value!!.budgets.single { it.name == "Household" }.readAgainNote)
+        assertEquals(refused, budgetTab("Household").state.value!!.readAgainNote)
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "Main Success Scenario", requirements = ["NFR-023"])
+    @DisplayName("NFR-023 (review 4a): when an operation another screen started ends, a screen shows the stored status again: the Overview shows the read the Household tab made")
+    fun otherScreensShowTheEndedRead() {
+        budgets()
+        val viewModel = overview()
+        assertEquals("$name · not read yet", viewModel.state.value!!.budgetAppLine.status)
+
+        budgetTab("Household").readAgain()
+
+        val ui = viewModel.state.value!!
+        assertEquals("$name · read 14:00", ui.budgetAppLine.status)
+        assertEquals("Statuses as of 14:00", ui.budgets.single { it.name == "Household" }.statuses)
+        assertEquals(ready, ui.budgetAppLine.button)
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "Main Success Scenario", requirements = ["NFR-023"])
+    @DisplayName("NFR-023 (review 4b): when the stored status cannot be read after the read of the Budget App, the line answers so on the Overview and on a Budget tab, and the app does not crash")
+    fun statusThatCannotBeReadIsAnAnswer() {
+        budgets()
+        val viewModel = overview()
+        val tab = budgetTab("Household")
+        slice.budgetApp.reader.changesAnswer = { asked ->
+            slice.importStatusStore.failsToRead = true
+            ReadResult.Answered(ChangeSet(emptyList(), ChangeCursor("k-${asked.budgetReference}")))
+        }
+
+        viewModel.readAgain()
+        assertEquals(
+            "The status stored on this device could not be read; nothing was changed by it. Open the screen again to see it.",
+            viewModel.state.value!!.budgetAppLine.result!!.detail,
+        )
+        assertEquals(ready, viewModel.state.value!!.budgetAppLine.button)
+
+        tab.readAgain()
+        assertEquals(
+            "The status stored on this device could not be read; nothing was changed by it. Open the screen again to see it.",
+            tab.state.value!!.budgetAppLine.result!!.detail,
+        )
     }
 
     @Test

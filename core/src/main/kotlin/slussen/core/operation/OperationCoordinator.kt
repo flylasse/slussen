@@ -82,6 +82,14 @@ class OperationCoordinator(private val store: CoordinatorStore) {
     /** The operation on the lane, or null while none runs (ADR-007 §1: the screen shows what is running). */
     val running: StateFlow<RunningOperation?> = runningNow.asStateFlow()
 
+    private val endedCount = MutableStateFlow(0L)
+
+    /**
+     * How many operations have ended since the start, so that every screen shows the stored data again when one ends,
+     * whichever screen started it (NFR-023); unlike [running], no ending is lost when two changes come quickly.
+     */
+    val ended: StateFlow<Long> = endedCount.asStateFlow()
+
     suspend fun <T> run(
         kind: OperationKind,
         startedBy: StartedBy,
@@ -102,6 +110,7 @@ class OperationCoordinator(private val store: CoordinatorStore) {
         } finally {
             permit.active = false
             runningNow.value = null
+            endedCount.value = endedCount.value + 1
         }
     }
 }

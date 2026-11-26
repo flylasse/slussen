@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import slussen.app.ui.Formats
 import slussen.app.ui.ReadAgain
@@ -97,6 +99,21 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                 mutableState.value = mutableState.value?.copy(budgetAppLine = budgetAppLine())
             }
         }
+        viewModelScope.launch {
+            // NFR-023: when an operation ends, whichever screen started it, the stored status it changed is shown again.
+            services.ended.drop(1).collect { if (!reading.pending && mutableState.value != null) reload() }
+        }
+    }
+
+    /** Shows the stored status again; a storage that cannot be read leaves the tab as it is, never a crash (NFR-023). */
+    private suspend fun reload() {
+        try {
+            show()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Unit
+        }
     }
 
     private fun budgetAppLine() = reading.line(budgetAppStatus, running, budgetAppName)
@@ -111,7 +128,15 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
         mutableState.value = current.copy(budgetAppLine = budgetAppLine())
         viewModelScope.launch {
             reading.run(budgetAppName)
-            show()
+            try {
+                show()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                // NFR-023: the stored status could not be read again; said at the line, never a crash.
+                reading.statusNotRead()
+                mutableState.value = mutableState.value?.copy(budgetAppLine = budgetAppLine())
+            }
         }
     }
 
@@ -169,7 +194,7 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                 budgetAppLine = budgetAppLine(),
                 statuses = Texts.statusesAsOf(workspace.summary.statusesAsOf, workspace.budgetAppName, formats, now),
                 notComparedYet = Texts.notComparedYet(workspace.summary.notComparedYet, workspace.budgetAppName),
-                readAgainNote = if (Texts.waitsForARead(workspace.summary)) Texts.readAgainNote(workspace.budgetAppName) else null,
+                readAgainNote = Texts.readAgainNote(workspace.summary, workspace.budgetAppName),
             )
         }
     }

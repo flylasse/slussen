@@ -29,6 +29,7 @@ class ScreenFixture(appVersion: AppVersion = AppVersion.of(packageName = "slusse
         clock = slice.clock,
         appVersion = appVersion,
         running = slice.coordinator.running,
+        ended = slice.coordinator.ended,
     )
 }
 

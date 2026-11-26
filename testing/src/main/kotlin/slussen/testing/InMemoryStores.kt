@@ -415,7 +415,13 @@ class InMemoryImportStatusStore(
     val files = mutableListOf<StoredTransactionFile>()
     val counts = mutableListOf<StoredTransactionCounts>()
 
-    override suspend fun recentFetches(): List<StoredFetch> = fetches.sortedByDescending { it.startedAt }
+    /** Makes every read of the import status fail, as a storage that cannot be read would (NFR-023). */
+    var failsToRead: Boolean = false
+
+    override suspend fun recentFetches(): List<StoredFetch> {
+        if (failsToRead) throw IllegalStateException("The invented storage of this test cannot be read.")
+        return fetches.sortedByDescending { it.startedAt }
+    }
 
     override suspend fun accountBalances(): List<StoredAccountBalance> = balances.toList()
 

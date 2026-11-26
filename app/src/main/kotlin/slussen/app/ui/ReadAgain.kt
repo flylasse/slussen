@@ -48,6 +48,12 @@ class ReadAgain(private val services: UiServices) {
         return true
     }
 
+    /** NFR-023: the stored status could not be read again after the read; the line says so beside its result. */
+    fun statusNotRead() {
+        result = result?.copy(detail = Texts.STATUS_NOT_READ)
+            ?: FetchResultUi(Texts.STATUS_NOT_READ, null, slussen.app.ui.components.FetchResultKind.Failed, taps)
+    }
+
     /** Reads [budgetAppName] again through the coordinator; whatever the read throws is answered at the line (NFR-023). */
     suspend fun run(budgetAppName: String) {
         val tap = taps

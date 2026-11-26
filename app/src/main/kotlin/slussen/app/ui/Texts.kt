@@ -473,11 +473,25 @@ object Texts {
         } ?: "Statuses as of ${formats.moment(asOf.readAt, now)}"
     }
 
-    /** UC-003 A1 step 2: whether a Budget's statuses wait for a read of the Budget App, which is then their remedy. */
-    fun waitsForARead(summary: BudgetSummary): Boolean = when (val asOf = summary.statusesAsOf) {
-        StatusesAsOf.NothingToCompare -> false
-        is StatusesAsOf.NotReadYet -> true
-        is StatusesAsOf.LastRead -> asOf.failedRead != null || summary.notComparedYet > 0
+    /**
+     * UC-003 A1 step 2: the next action for a Budget whose statuses are not current, or null while they are: a read of
+     * the Budget App, after entering its credentials while they are missing or refused (UC-014, A2).
+     */
+    fun readAgainNote(summary: BudgetSummary, budgetAppName: String): String? {
+        val waits = when (val asOf = summary.statusesAsOf) {
+            StatusesAsOf.NothingToCompare -> false
+            is StatusesAsOf.NotReadYet -> true
+            is StatusesAsOf.LastRead -> asOf.failedRead != null || summary.notComparedYet > 0
+        }
+        if (!waits) return null
+        return when (summary.budgetAppCredentials) {
+            BlockedReason.CredentialsMissing ->
+                "Enter the credentials of $budgetAppName in Settings, then read $budgetAppName again; nothing else is needed."
+            BlockedReason.CredentialsRefused ->
+                "$budgetAppName refused Slussen's credentials: enter them again in Settings, then read $budgetAppName again; " +
+                    "nothing else is needed."
+            else -> readAgainNote(budgetAppName)
+        }
     }
 
     /** UC-008 BR-003, UC-003 A1 (S-T-08): the counts, with the Bank Transactions not compared yet apart from them. */
@@ -524,10 +538,14 @@ object Texts {
             outcome.lastReadAt?.let { "statuses as of ${formats.moment(it, now)}" } ?: "no statuses yet"
         val readAt = read.maxOfOrNull { it.readAt }
         return when {
+            // A1 of UC-003: no Budget read; each keeps its own last successful read, and each failure its own kind.
             readAt == null -> FetchResultUi(
-                "$budgetAppName not read ${formats.moment(now, now)}: ${readFailure(notRead.first().kind)} · " +
-                    (notRead.mapNotNull { it.lastReadAt }.maxOrNull()?.let { "statuses as of ${formats.moment(it, now)}" } ?: "no statuses yet"),
-                READ_FAILED_DETAIL,
+                "$budgetAppName not read ${formats.moment(now, now)}" + if (notRead.map { it.kind }.distinct().size == 1) {
+                    ": ${readFailure(notRead.first().kind)}"
+                } else {
+                    notRead.joinToString("") { " · ${it.budgetName}: ${readFailure(it.kind)}" }
+                },
+                notRead.joinToString(" · ") { "${it.budgetName}: ${asOf(it)}" } + " · " + READ_FAILED_DETAIL,
                 FetchResultKind.Failed,
                 tap,
             )
@@ -551,6 +569,9 @@ object Texts {
     /** NFR-023: a read that could not be completed is an answer at its line, never a crash. */
     fun readNotCompleted(budgetAppName: String, tap: Int): FetchResultUi =
         FetchResultUi("$budgetAppName not read: the read could not be completed", READ_FAILED_DETAIL, FetchResultKind.Failed, tap)
+
+    /** NFR-023: the stored status could not be read again after an action; said at the action's line, never a crash. */
+    const val STATUS_NOT_READ = "The status stored on this device could not be read; nothing was changed by it. Open the screen again to see it."
 
     private const val READ_FAILED_DETAIL = "The stored statuses are kept; read again at any time. No Bank Fetch is needed."
 

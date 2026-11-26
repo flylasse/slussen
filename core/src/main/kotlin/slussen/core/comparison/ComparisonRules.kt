@@ -219,7 +219,7 @@ object EligibleTransactions {
         } else {
             transactions.count { it.status in WAITING } + unreadable.count { it.status == UnreadableTransactionStatus.NeedsReview }
         },
-        // UC-003 BR-001: a Bank Transaction stored since its Budget's last successful read has no Transaction Status yet and is shown as not compared yet (A1).
+        // A1 step 2 of UC-003 (S-T-08): a Bank Transaction stored since its Budget's last successful read is counted as not compared yet.
         notComparedYet = if (bankAccount.retired) 0 else transactions.count { it.status == null },
     )
 }

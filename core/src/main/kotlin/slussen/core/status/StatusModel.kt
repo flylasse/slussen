@@ -180,6 +180,11 @@ data class BudgetSummary(
     val statusesAsOf: StatusesAsOf = StatusesAsOf.NothingToCompare,
     /** UC-003 A1, S-T-08: its Bank Transactions not compared yet, counted neither as Eligible nor as waiting. */
     val notComparedYet: Int = 0,
+    /**
+     * UC-014 BR-005, UC-003 A2: credentials missing or credentials refused when the Budget App cannot be read for want of
+     * credentials, so that entering them is the next action before a read; null while they are accepted.
+     */
+    val budgetAppCredentials: BlockedReason? = null,
 )
 
 /** When the Transaction Statuses of one Budget were given (UC-003 step 7, A1 step 2). */

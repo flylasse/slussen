@@ -38,6 +38,7 @@ class UiFixture(
         clock = slice.clock,
         appVersion = appVersion,
         running = slice.coordinator.running,
+        ended = slice.coordinator.ended,
     )
 }
 

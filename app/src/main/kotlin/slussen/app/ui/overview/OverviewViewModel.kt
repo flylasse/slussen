@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import slussen.app.ui.ReadAgain
 import slussen.app.ui.Texts
@@ -107,6 +109,21 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
                 }
             }
         }
+        viewModelScope.launch {
+            // NFR-023: when an operation ends, whichever screen started it, the stored status it changed is shown again.
+            services.ended.drop(1).collect { if (!reading.pending && mutableState.value != null) reload() }
+        }
+    }
+
+    /** Shows the stored status again; a storage that cannot be read leaves the screen as it is, never a crash (NFR-023). */
+    private suspend fun reload() {
+        try {
+            show(services.status.overview())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Unit
+        }
     }
 
     private fun budgetAppLine() = reading.line(budgetAppStatus, running, budgetAppName)
@@ -121,7 +138,15 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
         mutableState.value = current.copy(budgetAppLine = budgetAppLine())
         viewModelScope.launch {
             reading.run(budgetAppName)
-            show(services.status.overview())
+            try {
+                show(services.status.overview())
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                // NFR-023: the stored status could not be read again; said at the line, never a crash.
+                reading.statusNotRead()
+                mutableState.value = mutableState.value?.copy(budgetAppLine = budgetAppLine())
+            }
         }
     }
 
@@ -189,7 +214,7 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
                         budget.blocked.any { it.reason == BlockedReason.UploadsWaitForFirstUploadMatching }
                     }?.let { FirstUploadMatchingChip(Texts.UPLOADS_WAIT_FOR_FIRST_UPLOAD_MATCHING, it.tone) },
                     statuses = Texts.statusesAsOf(budget.statusesAsOf, overview.budgetAppName, formats, now),
-                    readAgainNote = if (Texts.waitsForARead(budget)) Texts.readAgainNote(overview.budgetAppName) else null,
+                    readAgainNote = Texts.readAgainNote(budget, overview.budgetAppName),
                 )
             },
             noBankAccountAdded = overview.noBankAccountAdded,
