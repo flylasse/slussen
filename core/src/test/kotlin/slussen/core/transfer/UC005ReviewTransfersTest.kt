@@ -695,24 +695,63 @@ class UC005ReviewTransfersTest {
     }
 
     @Test
-    @UseCase(id = "UC-005", scenario = "A4: Lonely Transfer", businessRules = ["BR-002"])
-    @DisplayName("BR-002 (S-T-21): when the other side of a Bank Transaction has arrived and an earlier rule of the Comparison gave it its status (Too Old), the Bank Transaction is an ordinary Bank Transaction, not a Lonely Transfer, also with a matching description and a Funded By; without that other side it is a Lonely Transfer")
-    fun otherSideConcludedByAnEarlierRuleLeavesAnOrdinaryBankTransaction() = runTest {
+    @UseCase(id = "UC-005", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-010"])
+    @DisplayName("BR-002, BR-010 (S-T-21): a Transfer stays one Transfer when a Transfer Leg leaves the Upload Window: that Transfer Leg is Too Old, the other keeps the status Transfer Leg, the stored Transfer and its Transfer Legs are the same, and nothing of it is eligible; when the Operator widens the Upload Window it is eligible again")
+    fun transferStaysTogetherWhenATransferLegLeavesTheUploadWindow() = runTest {
         ready()
         val checking = checking()
         val card = rewardsCard()
         slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
-        val tooOld = stored(checking, "TX-1", today.minusDays(8), amount(-120))
-        val received = stored(card, "TX-2", today.minusDays(4), amount(120), payee = "AUTOPAY")
-        val alone = stored(card, "TX-3", today.minusDays(4), amount(121), payee = "AUTOPAY")
+        val paid = stored(checking, "TX-1", today.minusDays(7), amount(-120))
+        val received = stored(card, "TX-2", today.minusDays(5), amount(120))
+        compare()
+        val detected = slice.copyStore.transfers.single()
+        assertEquals(TransactionStatus.TransferLeg, status(paid))
+        assertEquals(1, eligibleOf(checking))
+
+        // The Operator did not upload: a day later the outflow side is outside the Upload Window of 7 days.
+        slice.clock.advance(Duration.ofDays(1))
+        compare()
+
+        assertEquals(TransactionStatus.TooOld, status(paid))
+        assertEquals(TransactionStatus.TransferLeg, status(received))
+        assertEquals(listOf(detected), slice.copyStore.transfers)
+        assertEquals(setOf(paid, received), legsOf(detected))
+        assertEquals(0, eligibleOf(checking))
+        assertEquals(0, eligibleOf(card))
+        assertEquals(NotYetUploaded(0, 0), counts("Household"))
+
+        // Two days later both sides are outside it: still the same Transfer.
+        slice.clock.advance(Duration.ofDays(2))
+        compare()
+        assertEquals(TransactionStatus.TooOld, status(received))
+        assertEquals(setOf(paid, received), legsOf(slice.copyStore.transfers.single()))
+
+        slice.settings.settings = slice.settings.settings.copy(uploadWindowDays = 14)
+        compare()
+        assertEquals(TransactionStatus.TransferLeg, status(paid))
+        assertEquals(TransactionStatus.TransferLeg, status(received))
+        assertEquals(listOf(detected), slice.copyStore.transfers)
+        assertEquals(1, eligibleOf(checking))
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-010"])
+    @DisplayName("BR-002, BR-010 (S-T-21): two Bank Transactions that are already Too Old when first compared are still one Transfer, with both Transfer Legs Too Old and nothing eligible")
+    fun oldBankTransactionsAreStillOneTransfer() = runTest {
+        ready()
+        val checking = checking()
+        val card = rewardsCard()
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
+        val paid = stored(checking, "TX-1", today.minusDays(20), amount(-300))
+        val received = stored(card, "TX-2", today.minusDays(19), amount(300))
 
         compare()
 
-        assertEquals(TransactionStatus.TooOld, status(tooOld))
-        assertEquals(TransactionStatus.New, status(received))
-        assertNull(transaction(received).transferId)
-        assertEquals(TransactionStatus.TransferLeg, status(alone))
-        assertEquals(setOf(alone), legsOf(slice.copyStore.transfers.single()))
+        assertEquals(TransactionStatus.TooOld, status(paid))
+        assertEquals(TransactionStatus.TooOld, status(received))
+        assertEquals(setOf(paid, received), legsOf(slice.copyStore.transfers.single()))
+        assertEquals(NotYetUploaded(0, 0), counts("Household"))
     }
 
     // ---- Matching a Transfer Description (BR-012) -------------------------------------------------------------------
@@ -812,7 +851,7 @@ class UC005ReviewTransfersTest {
 
     @Test
     @UseCase(id = "UC-005", scenario = "Main Success Scenario", businessRules = ["BR-010"])
-    @DisplayName("BR-010, UC-003 BR-001: a Bank Transaction that an earlier rule of the Comparison concluded (Too Old, Already In Budget App) is not a Transfer Leg, and a Transfer Leg follows its Transfer before a match for a Typed Entry")
+    @DisplayName("BR-010, UC-003 BR-001: a Transfer Leg that an earlier rule of the Comparison gave its status (Too Old, Already In Budget App) keeps that status and stays a Transfer Leg of its Transfer, of which nothing is eligible; a Transfer Leg follows its Transfer before a match for a Typed Entry")
     fun transferLegStandsWhereTheOrderOfTheComparisonPutsIt() = runTest {
         ready()
         val checking = checking()
@@ -839,12 +878,17 @@ class UC005ReviewTransfersTest {
         compare()
 
         assertEquals(TransactionStatus.TooOld, status(tooOld))
-        assertEquals(TransactionStatus.New, status(inWindow))
+        assertEquals(TransactionStatus.TransferLeg, status(inWindow))
+        assertEquals(setOf(tooOld, inWindow), legsOf(transferOf(tooOld)!!))
         assertEquals(TransactionStatus.AlreadyInBudgetApp, status(alreadyThere))
-        assertEquals(TransactionStatus.New, status(itsOtherSide))
+        assertEquals(TransactionStatus.TransferLeg, status(itsOtherSide))
+        assertEquals(setOf(alreadyThere, itsOtherSide), legsOf(transferOf(alreadyThere)!!))
         assertEquals(TransactionStatus.TransferLeg, status(typedToo))
         assertEquals(TransactionStatus.TransferLeg, status(typedOtherSide))
-        assertEquals(1, slice.copyStore.transfers.size)
+        assertEquals(3, slice.copyStore.transfers.size)
+        // UC-003 BR-014: only the Transfer none of whose Transfer Legs has a status of an earlier rule is eligible, through its outflow side.
+        assertEquals(1, eligibleOf(checking))
+        assertEquals(0, eligibleOf(card))
     }
 
     // ---- Stored with the statuses (O-5), released, journaled --------------------------------------------------------

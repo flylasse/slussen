@@ -17,14 +17,15 @@ import java.time.temporal.ChronoUnit
 import kotlin.math.abs
 
 /**
- * A compared Bank Transaction of [bankAccount] that no rule standing before a Transfer Leg in UC-003 BR-001 concluded,
- * so that it can be a Transfer Leg. [doubt] is its Transaction Status when it is Needs Review or Possible Import By
- * Other Path, which it keeps as a Transfer Leg while its Transfer waits (UC-005 BR-013), and null otherwise.
+ * A compared Bank Transaction of [bankAccount], which can be a Transfer Leg whatever rule of UC-003 BR-001 gave it its
+ * Transaction Status (UC-005 BR-002). [earlier] is the status a rule standing before a Transfer Leg in that order gave
+ * it (Too Old, Before Start Date, Needs Review, ...), which it keeps as a Transfer Leg (UC-005 BR-010, BR-013), and
+ * null when none did.
  */
 data class TransferCandidate(
     val transaction: StoredBankTransaction,
     val bankAccount: StoredBankAccount,
-    val doubt: TransactionStatus?,
+    val earlier: TransactionStatus?,
 )
 
 /** One Transfer detected among the Bank Transactions of one Budget: a pair, or a Lonely Transfer with one Transfer Leg. */
@@ -78,15 +79,12 @@ object TransferDetection {
     /**
      * The Transfers among [candidates], the Bank Transactions of the Bank Accounts [bankAccounts] mapped into [budget],
      * judged by the stored [descriptions], the transfer pairing days [pairingDays] and the Lonely Transfer grace period
-     * [graceDays] (Operator Settings) and [today]. [concluded] are the compared Bank Transactions of those Bank Accounts
-     * that an earlier rule of UC-003 BR-001 gave their status: none is a Transfer Leg, and one that is the arrived other
-     * side of a candidate leaves that candidate an ordinary Bank Transaction.
+     * [graceDays] (Operator Settings) and [today].
      */
     fun detect(
         budget: StoredBudget,
         bankAccounts: List<StoredBankAccount>,
         candidates: List<TransferCandidate>,
-        concluded: List<TransferCandidate>,
         descriptions: List<StoredTransferDescription>,
         pairingDays: Int,
         graceDays: Int,
@@ -94,14 +92,11 @@ object TransferDetection {
     ): TransfersDetected {
         val sides = sidesOf(budget, bankAccounts)
         val legs = candidates.filter { sides[it.bankAccount.mapping?.budgetAccountId]?.id == it.bankAccount.id }
-        val arrived = concluded.filter { sides[it.bankAccount.mapping?.budgetAccountId]?.id == it.bankAccount.id }
         val pairs = pairsAmong(legs, sides, descriptions, pairingDays)
         val paired = pairs.flatMap { it.legs }.map { it.id }.toSet()
         val statuses = mutableMapOf<Long, TransactionStatus>()
         val lonely = legs.filterNot { it.id in paired }.mapNotNull { single ->
             val known = oneSided(single, sides, descriptions) ?: return@mapNotNull null
-            // UC-005 BR-002: When the other side of a Bank Transaction has arrived and an earlier rule of the Comparison gave it its status, the Bank Transaction is an ordinary Bank Transaction, not a Lonely Transfer.
-            if (arrived.any { other -> pairs(single, other, sides, descriptions, pairingDays) }) return@mapNotNull null
             // UC-005 BR-005: A Lonely Transfer whose other Transfer Leg has not arrived within the grace period becomes an ordinary Bank Transaction.
             if (today.isAfter(single.transaction.bookedDate.plusDays(graceDays.toLong()))) return@mapNotNull null
             if (known.otherSide == null) {
@@ -127,8 +122,8 @@ object TransferDetection {
     // UC-005 BR-010: The Transfer Legs of a Transfer have the status Transfer Leg, those of a Guessed Transfer the status Guessed Transfer.
     /** The Transaction Status [leg] follows as a Transfer Leg of a Transfer that is [guessed] or not. */
     private fun statusOf(leg: TransferCandidate, guessed: Boolean): TransactionStatus =
-        // UC-005 BR-013: A Transfer Leg that is Needs Review or Possible Import By Other Path keeps that status, and its Transfer waits for the Review Decision.
-        leg.doubt ?: if (guessed) TransactionStatus.GuessedTransfer else TransactionStatus.TransferLeg
+        // UC-005 BR-010: A Transfer Leg to which an earlier rule of the Comparison gave its Transaction Status keeps that status and stays a Transfer Leg of its Transfer.
+        leg.earlier ?: if (guessed) TransactionStatus.GuessedTransfer else TransactionStatus.TransferLeg
 
     // UC-005 BR-014: The other side of a Transfer is always a Budget Account Slussen fetches, never a Manually Kept Account or one only a Retired Account is mapped to.
     /**
@@ -190,16 +185,6 @@ object TransferDetection {
             else -> null
         }
     }
-
-    /** Whether [one] and [other], an outflow and an inflow in either order, could be the two sides of one Transfer (BR-002). */
-    private fun pairs(
-        one: TransferCandidate,
-        other: TransferCandidate,
-        sides: Map<Long, StoredBankAccount>,
-        descriptions: List<StoredTransferDescription>,
-        pairingDays: Int,
-    ): Boolean = one.outflow != other.outflow &&
-        (if (one.outflow) pairing(one, other, sides, descriptions, pairingDays) else pairing(other, one, sides, descriptions, pairingDays)) != null
 
     // UC-005 BR-003: A Bank Transaction belongs to at most one Transfer; with more than one candidate Slussen proposes one pairing as a Guessed Transfer: the one in the Funded By or Transfer Partner first, then the nearest booked date, then the one received first.
     /** The pairs among [legs]: each Bank Transaction in at most one, a pair guessed when one of its sides had another candidate. */

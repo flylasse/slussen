@@ -82,7 +82,6 @@ object ComparisonRules {
             // UC-003 BR-014: The Bank Transactions of a Retired Account are not compared.
             val bankAccounts = data.bankAccounts.filter { !it.retired && it.mapping?.budgetAccountId in accountIds }
             val candidates = mutableListOf<TransferCandidate>()
-            val concluded = mutableListOf<TransferCandidate>()
             bankAccounts.forEach { bankAccount ->
                 val budgetAccountId = bankAccount.mapping!!.budgetAccountId
                 val held = data.budgetAppTransactions.filter { it.budgetAccountId == budgetAccountId }
@@ -94,20 +93,16 @@ object ComparisonRules {
                     .forEach { transaction ->
                         val status = statusOf(transaction, bankAccount, budget, held, windows)
                         statuses[transaction.id] = status
-                        // UC-003 BR-001: A Bank Transaction is a Transfer Leg only when no rule before it applies; Needs Review and Possible Import By Other Path apply also to a Transfer Leg.
-                        if (status in AFTER_TRANSFER_LEG || status in DOUBTFUL) {
-                            candidates += TransferCandidate(transaction, bankAccount, doubt = status.takeIf { it in DOUBTFUL })
-                        } else {
-                            concluded += TransferCandidate(transaction, bankAccount, doubt = null)
-                        }
+                        // UC-005 BR-002: Whether two Bank Transactions form a Transfer does not depend on the Upload Window or on any other rule that gives a Bank Transaction its Transaction Status.
+                        candidates += TransferCandidate(transaction, bankAccount, earlier = status.takeUnless { it in AFTER_TRANSFER_LEG })
                     }
             }
             // UC-005 BR-001: Slussen always detects Transfers; no setting switches detection off.
             val detected = TransferDetection.detect(
-                budget, bankAccounts, candidates, concluded, data.transferDescriptions,
+                budget, bankAccounts, candidates, data.transferDescriptions,
                 windows.transferPairingDays, windows.lonelyTransferGraceDays, windows.today,
             )
-            // UC-003 BR-001: A Bank Transaction that is a Transfer Leg follows its Transfer, before a match for a Typed Entry.
+            // UC-003 BR-001: The first rule that applies gives the Transaction Status: a Transfer Leg follows its Transfer before a match for a Typed Entry, and keeps the status an earlier rule gave it.
             statuses += detected.statuses
             transfers += detected.transfers
         }
@@ -192,13 +187,15 @@ object EligibleTransactions {
                 else -> false
             }
 
-    // UC-003 BR-014: A Transfer Leg is an Eligible Transaction only when it writes its Transfer and no Transfer Leg of that Transfer waits for a Review Decision.
+    // UC-003 BR-014: A Transfer Leg is an Eligible Transaction only when it writes its Transfer and no Transfer Leg of that Transfer waits for a Review Decision or has a status that an earlier rule gave it.
     /** Whether [transaction], with the status Transfer Leg, is the Transfer Leg its Transfer is written through. */
     private fun writesItsTransfer(transaction: StoredBankTransaction, transferLegs: List<StoredBankTransaction>): Boolean {
         val transferId = transaction.transferId ?: return false
         val otherLegs = transferLegs.filter { it.transferId == transferId && it.id != transaction.id }
         // UC-005 BR-013: A Transfer with a Transfer Leg that is Needs Review or Possible Import By Other Path is in no Upload Plan, from either side.
         if (otherLegs.any { it.status in DOUBTFUL }) return false
+        // UC-005 BR-010: While a Transfer has a Transfer Leg to which an earlier rule of the Comparison gave its Transaction Status, the whole Transfer is in no Upload Plan, from either side.
+        if (otherLegs.any { it.status != TransactionStatus.TransferLeg }) return false
         // UC-006 BR-009: A Transfer is written through exactly one Transfer Leg, the outflow side when both Transfer Legs are present.
         return otherLegs.isEmpty() || transaction.amount.thousandths < 0
     }
