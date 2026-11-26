@@ -437,7 +437,10 @@ class InMemoryImportStatusStore(
             .filter { account -> bankTransactions.any { it.bankAccountId == account.id } || unreadableTransactions.any { it.bankAccountId == account.id } }
             .map { account ->
                 val budget = budgets.firstOrNull { budget -> budget.budgetAccounts.any { it.id == account.mapping?.budgetAccountId } }
-                EligibleTransactions.countsOf(account, budget, bankTransactionsOf(account.id), unreadableTransactionsOf(account.id))
+                EligibleTransactions.countsOf(
+                    account, budget, bankTransactionsOf(account.id), unreadableTransactionsOf(account.id),
+                    transferLegs = bankTransactions.filter { it.transferId != null },
+                )
             }
         return counts.toList() + computed
     }

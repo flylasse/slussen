@@ -30,14 +30,15 @@ import java.time.Clock
 import java.time.LocalDate
 
 /**
- * Compare With the Budget App (UC-003), `:core` `comparison` (ADR-001 §7), as far as the transactions plan's Phase 7a
- * builds it: the read of every Budget a Bank Account is mapped to, stored with its cursor (step 1, O-4, BR-016,
- * BR-020), the Transaction Statuses concluded from that stored copy alone (steps 2-3, O-5, BR-001), the Eligible
+ * Compare With the Budget App (UC-003), `:core` `comparison` (ADR-001 §7), as far as the transactions plan's Phases 7a
+ * and 7b build it: the read of every Budget a Bank Account is mapped to, stored with its cursor (step 1, O-4, BR-016,
+ * BR-020), the Transaction Statuses concluded from that stored copy alone (steps 2-3, O-5, BR-001), the Transfers
+ * detected among them and stored with those statuses (step 4, UC-005, `slussen.core.transfer`), the Eligible
  * Transactions (step 5, BR-014), the Decision Journal (step 6), A1 and A2. It runs on its own when the Operator reads
  * the Budget App again, and within a Fetch (UC-001 step 10), always through the operation coordinator (ADR-007 §1); it
  * reads the Budget App only (BR-015). A Comparison left between O-4 and O-5 is concluded from the stored data alone at
- * the next start and whenever its marker is found (ADR-007 §3a, §8). Transfers (step 4), Sent Records (BR-017, BR-021),
- * Review Decisions and First Upload Matching (BR-019) come with later phases.
+ * the next start and whenever its marker is found (ADR-007 §3a, §8). Sent Records (BR-017, BR-021), Review Decisions,
+ * Transfer Decisions and First Upload Matching (BR-019) come with later phases.
  */
 class Comparison(
     private val plugins: RegisteredPlugins,
@@ -183,7 +184,10 @@ class Comparison(
         return conclude(budgetIds)
     }
 
-    /** Steps 2-3 and 6 (O-5): the Transaction Statuses from the stored copy alone, and the Decision Journal of each change. */
+    /**
+     * Steps 2-4 and 6 (O-5): the Transaction Statuses and the Transfers from the stored data alone, and the Decision
+     * Journal of each changed status, also that of a Transfer Leg (UC-011 BR-001).
+     */
     private suspend fun conclude(budgetIds: Set<Long>): List<StatusChange> {
         val windows = ComparisonWindows.of(settings.current(), plugins.budgetApp.profile.matchingDateWindowDays, today())
         val changes = comparisons.applyComparison(budgetIds) { data -> ComparisonRules.conclude(data, windows) }

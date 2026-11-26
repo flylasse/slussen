@@ -34,7 +34,7 @@ dependencies {
     // The screen tests need the test activity in the debug manifest (ADR-005 §3).
     debugImplementation(libs.compose.ui.test.manifest)
 
-    // ViewModel tests on the JVM against the fakes of :testing (docs/architecture/development.md, Integration layer).
+    // ViewModel tests on the JVM against the fakes of :testing (docs/architecture/stack.md, Integration layer).
     testImplementation(project(":testing"))
     testImplementation(testFixtures(project(":plugin-api")))
     testImplementation(libs.kotlinx.coroutines.test)

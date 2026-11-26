@@ -22,6 +22,9 @@ import slussen.core.port.FirstUploadMatchingCause
 import slussen.core.port.StableReferenceKind
 import slussen.core.port.StartKind
 import slussen.core.port.TransactionStatus
+import slussen.core.port.TransferDecision
+import slussen.core.port.TransferDescriptionKind
+import slussen.core.port.TransferType
 import slussen.core.port.UnreadableTransactionStatus
 import slussen.core.port.StartedBy
 import slussen.core.port.StartState
@@ -138,6 +141,10 @@ class SlussenStorage private constructor(
             // Transactions plan Phase 7a: the value columns O-4 writes (ADR-002 §8 step 1).
             ValueColumn("budget_app_transaction", "entered_by", EnteredBy.entries.map { it.text }),
             ValueColumn("budget_app_transaction", "state", BudgetAppTransactionState.entries.map { it.text }),
+            // Transactions plan Phase 7b: the value columns O-5 writes for a Transfer and reads for the description lists.
+            ValueColumn("transfer", "transfer_type", TransferType.entries.map { it.text }),
+            ValueColumn("transfer", "decision", TransferDecision.entries.map { it.text }),
+            ValueColumn("transfer_description", "kind", TransferDescriptionKind.entries.map { it.text }),
         )
 
         val JOURNAL_VALUES: List<ValueColumn> = listOf(

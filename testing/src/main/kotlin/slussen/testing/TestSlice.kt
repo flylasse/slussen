@@ -29,7 +29,7 @@ import java.util.Random
 
 /**
  * The slices of Phase 7, 7a and 8a wired the way the composition root wires it (ADR-001 §5), on the fakes of `:testing`: the
- * Integration layer of `docs/architecture/development.md` (Service, on fakes).
+ * Integration layer of `docs/architecture/stack.md` (Service, on fakes).
  */
 class TestSlice(
     startKind: StartKind = StartKind.Normal,

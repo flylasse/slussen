@@ -4,17 +4,23 @@ import slussen.core.comparison.BudgetAppCopy
 import slussen.core.port.BudgetAppCopyStore
 import slussen.core.port.BudgetReadToStore
 import slussen.core.port.ChangeSetApplied
+import slussen.core.port.ComparisonConclusions
 import slussen.core.port.ComparisonData
 import slussen.core.port.ComparisonStore
 import slussen.core.port.StatusChange
 import slussen.core.port.StoredBudgetAppTransaction
-import slussen.core.port.TransactionStatus
+import slussen.core.port.StoredTransfer
+import slussen.core.port.StoredTransferDescription
+import slussen.core.port.TransferDecision
+import slussen.core.port.TransferDescriptionKind
 import slussen.pluginapi.budgetapp.ChangeCursor
 
 /**
  * In-memory fake of O-4 [BudgetAppCopyStore] and O-5 [ComparisonStore] (ADR-002 §3), all or nothing like the real ones,
- * on the Budgets of [connections] and the Bank Transactions of [transactions]. A test makes O-5 fail with
- * [failsToConclude], as a process that stops between O-4 and O-5 would leave it (ADR-007 §3a).
+ * on the Budgets of [connections] and the Bank Transactions of [transactions], with the stored Transfers ([transfers])
+ * and the description lists ([transferDescriptions], which start as the default lists of UC-010 BR-007, as the real
+ * storage does). A test makes O-5 fail with [failsToConclude], as a process that stops between O-4 and O-5 would leave
+ * it (ADR-007 §3a).
  */
 class InMemoryBudgetAppCopyStore(
     private val connections: InMemoryConnectionStore,
@@ -23,6 +29,9 @@ class InMemoryBudgetAppCopyStore(
     val copy = mutableListOf<StoredBudgetAppTransaction>()
     val cursors = mutableMapOf<Long, ChangeCursor>()
     val periodOwed = mutableSetOf<Long>()
+    val transfers = mutableListOf<StoredTransfer>()
+    val transferDescriptions: MutableList<StoredTransferDescription> = DEFAULT_TRANSFER_DESCRIPTIONS.toMutableList()
+    private var nextTransferId = 9000L
     var pending: Boolean = false
     var failsToConclude: Boolean = false
     private var nextId = 1L
@@ -87,28 +96,72 @@ class InMemoryBudgetAppCopyStore(
 
     override suspend fun applyComparison(
         budgetIds: Set<Long>,
-        conclude: (ComparisonData) -> Map<Long, TransactionStatus>,
+        conclude: (ComparisonData) -> ComparisonConclusions,
     ): List<StatusChange> {
         if (failsToConclude) throw IllegalStateException("The invented process of this test stops before O-5 is committed.")
         val budgets = connections.budgetList.filter { it.id in budgetIds }
         val accountIds = budgets.flatMap { it.budgetAccounts }.map { it.id }.toSet()
         val bankAccounts = connections.bankAccountList.filter { it.mapping?.budgetAccountId in accountIds }
         val bankAccountIds = bankAccounts.map { it.id }.toSet()
+        val bankTransactions = transactions.bankTransactions.filter { it.bankAccountId in bankAccountIds }
+        val transferIds = bankTransactions.mapNotNull { it.transferId }.toSet()
         val data = ComparisonData(
             budgets = budgets,
             bankAccounts = bankAccounts,
-            bankTransactions = transactions.bankTransactions.filter { it.bankAccountId in bankAccountIds },
+            bankTransactions = bankTransactions,
             budgetAppTransactions = copy.filter { it.budgetAccountId in accountIds },
+            transfers = transfers.filter { it.id in transferIds },
+            transferDescriptions = transferDescriptions.toList(),
         )
-        val statuses = conclude(data)
+        val conclusions = conclude(data)
+        val proposedIds = data.transfers.filter { it.decision == TransferDecision.Proposed }.map { it.id }.toSet()
+        conclusions.transfers.forEach { detected ->
+            require(detected.legs.isNotEmpty()) { "A Transfer has one or two Transfer Legs." }
+            require(detected.continues == null || detected.continues in proposedIds) { "A Comparison continues only a Transfer with the decision Proposed." }
+        }
         val changes = data.bankTransactions.mapNotNull { stored ->
-            val status = statuses[stored.id] ?: return@mapNotNull null
+            val status = conclusions.statuses[stored.id] ?: return@mapNotNull null
             if (status == stored.status) null else StatusChange(stored.id, stored.bankAccountId, stored.importIdentifier, stored.status, status)
         }
         changes.forEach { change ->
             transactions.bankTransactions.replaceAll { if (it.id == change.storedBankTransaction) it.copy(status = change.to) else it }
         }
+        val continued = mutableSetOf<Long>()
+        conclusions.transfers.forEach { detected ->
+            val id = detected.continues ?: nextTransferId++
+            continued += id
+            val stored = StoredTransfer(
+                id, detected.outflowBudgetAccountId, detected.inflowBudgetAccountId, detected.amount, detected.type, detected.guessed,
+                TransferDecision.Proposed, decidedAt = null,
+            )
+            val index = transfers.indexOfFirst { it.id == id }
+            if (index < 0) transfers += stored else transfers[index] = stored
+            transactions.bankTransactions.replaceAll {
+                when {
+                    it.id in detected.legs -> it.copy(transferId = id)
+                    it.transferId == id -> it.copy(transferId = null)
+                    else -> it
+                }
+            }
+        }
+        // A Transfer that no longer holds releases its Transfer Legs; one the Operator decided on is never changed here.
+        val released = data.transfers.filter { it.decision == TransferDecision.Proposed && it.id !in continued }.map { it.id }.toSet()
+        transactions.bankTransactions.replaceAll { if (it.transferId in released) it.copy(transferId = null) else it }
+        transfers.removeAll { it.id in released }
         pending = false
         return changes
+    }
+
+    companion object {
+        /** The default lists of UC-010 BR-007, in the order the rule lists them, as a new `slussen.db` holds them. */
+        val DEFAULT_TRANSFER_DESCRIPTIONS: List<StoredTransferDescription> =
+            listOf(
+                "AUTOPAY", "AUTOMATIC PAYMENT", "PAYMENT - THANK", "AUTO-PMT", "ACH PMT", "AMERICAN EXPRESS ACH PMT", "CITI AUTOPAY",
+                "CRD AUTOPAY", "CITICARDAP",
+            ).map { StoredTransferDescription(TransferDescriptionKind.CardPayment, it) } +
+                listOf(
+                    "ÖVERFÖRING", "INTERNET TRANSFER", "EXPRESS INTERNET TRANSFER", "AMERICAN EXPRESS TRANSFER", "ONLINE TRANSFER",
+                    "TRANSFER", "XFER",
+                ).map { StoredTransferDescription(TransferDescriptionKind.BankTransfer, it) }
     }
 }

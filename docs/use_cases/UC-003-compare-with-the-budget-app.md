@@ -157,7 +157,7 @@ A Bank Account whose currency differs from its Budget's currency is blocked from
 
 ### BR-014: Eligible Transactions
 
-A Bank Transaction is an Eligible Transaction when its status is New, Match For Typed Entry, Outcome Unknown under the conditions of BR-017, or Transfer Leg for the Transfer Leg that writes its Transfer (UC-006 BR-009) when no Transfer Leg of that Transfer waits for a Review Decision (UC-005 BR-013), it lies in the Upload Window that applies to it (BR-011) and not before the Start Date of its Bank Account, and its Bank Account is neither blocked nor a Retired Account.
+A Bank Transaction is an Eligible Transaction when its status is New, Match For Typed Entry, Outcome Unknown under the conditions of BR-017, or Transfer Leg for the Transfer Leg that writes its Transfer (UC-006 BR-009) when no Transfer Leg of that Transfer waits for a Review Decision (UC-005 BR-013) or has a status that an earlier rule gave it (UC-005 BR-010), it lies in the Upload Window that applies to it (BR-011) and not before the Start Date of its Bank Account, and its Bank Account is neither blocked nor a Retired Account.
 
 ### BR-015: Comparing Never Writes
 

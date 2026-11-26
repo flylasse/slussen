@@ -3,7 +3,7 @@
 **Initiative (AGENTS.md §6):** Fetch the Operator's booked Bank Transactions from SimpleFIN, store them, read YNAB, and give every Bank Transaction a Transaction Status, so that each Budget shows which transactions are new, already in YNAB, or need a decision. Nothing is uploaded yet: Uploads (UC-006) are the next initiative.
 **Target repo / branch:** `flylasse/slussen`, branch `transactions-plan` (from `main` at `b5ace27`, VERSION 0.1.4). One PR per gate (O-T-08): this PR (#24) carries the plan and Phase 1's specification, the next the revised mockups (Phases 2-2b), then one per code phase or pair of phases.
 **Specification (input):** `docs/vision.md`, `docs/requirements.md`, `docs/glossary.md`, `docs/entity_model.md`, `docs/use_cases/UC-001..UC-014`, ADR-001..ADR-008, `docs/mockups/`. All use cases are Approved; UC-014 is Implemented.
-**Method:** as in the closed construction plan (`docs/archive/construction_kickoff_plan.md` §1): AIUP Marketplace, with `aiup-core` 3.0.0's `use-case-test`, `use-case-implement` and `uc-coverage-layered` read from the branch `feat/layer-plugins` of Marketplace PR #38 while it is open (issue #18). Every deviation goes into §5.
+**Method:** as in the closed construction plan (`docs/archive/construction_kickoff_plan.md` §1): AIUP Marketplace, read since 2026-11-25 from the read-only snapshot `vendor/aiup-marketplace/` at commit `93e8d5926c2b5f46ebac60a49f7a61e0e0826858` (`aiup-core` 3.0.0, the merge of Marketplace PR #38; its README says how it is refreshed). It replaces both the pin `05af816` and the branch `feat/layer-plugins` (issue #18, §5 row 10). Every deviation goes into §5.
 **Status:** Draft, for the operator's review. No phase starts before the operator approves this plan and answers §6's open questions.
 
 ## 0. Resume here (state as of 2026-10-28)
@@ -30,7 +30,13 @@
 - Phase 6b built (a sub-agent; the orchestrator re-ran the gate with `--rerun-tasks`: green). It found one specification gap, proposed as **S-T-17** (§6); the import switch's and credential removal's pending and failed states, not in its prompt, are issue #33.
 - Phase 6b done: the operator merged PR #34 (2026-10-29), approving S-T-17.
 - Phase 7 is split in three (orchestrator, 2026-10-29): **7a** reads YNAB and runs the Comparison in the core (UC-003), **7b** detects Transfers (UC-005), **7c** builds the screens (UC-008, the `-this-build` states). 7a built (a sub-agent, then one fix by the orchestrator); it found one specification gap, proposed as **S-T-18** (§6).
-- Next: the operator approves S-T-18 and merges the Phase 7a PR; then Phase 7b (Transfers).
+- Phase 7a done: the operator approved S-T-18, as amended in the review of PR #35 (§6), and merged PR #35 (2026-11-26).
+- 2026-11-25: the AIUP Marketplace is read from the in-repository snapshot `vendor/aiup-marketplace/` at `93e8d59` (`aiup-core` 3.0.0, the merge of Marketplace PR #38), so cloud sessions and sub-agents reach it. This settles issue #18. The snapshot's construction skills read `docs/architecture/stack.md`, not `development.md` (§5 row 10): an operator decision before Phase 7b.
+- 2026-11-26: **S-T-19** (§6) proposes that decision: `docs/architecture/development.md` is renamed `docs/architecture/stack.md`, as the skills read it.
+- Phase 7b in progress on the branch `7b-transfers`, with the prompt in §4. It builds Transfer detection in the core and its storage; showing the Transfers on the Budget tab moves to Phase 7c with the other screens (orchestrator, 2026-11-26).
+- Phase 7b built (a sub-agent; the orchestrator read the rules and the storage and re-ran the gate with `--rerun-tasks`: green). `slussen.db` stays at version 5. It changed no specification and left four questions, **O-T-09..O-T-12** (§6).
+- The operator answered O-T-09..O-T-12 on 2026-11-26; **S-T-20** and **S-T-21** (§6) follow from the answers, with the code changed to them.
+- Next: the operator approves S-T-19, S-T-20 and S-T-21 and merges the Phase 7b PR; then Phase 7c (the screens).
 
 ## 1. Scope
 
@@ -45,7 +51,7 @@
 | UC-008 Check Import Status | The Bank Transactions with their Transaction Statuses on the Budget tab and the Bank Account screen (`budget.html`, `bank-account.html`); the counts that now stop being 0 | Upload Plan entry points |
 | UC-011 Export the Decision Journal | BR-001 recording for the events above (the journal exists since construction) | The export itself |
 
-The requirements are those these use cases list; their statuses are derived again at close (`docs/architecture/development.md`, REFERENCE.md rule). Phase 1 adds or changes requirements only where §6's issues need it.
+The requirements are those these use cases list; their statuses are derived again at close (`docs/architecture/stack.md`, REFERENCE.md rule). Phase 1 adds or changes requirements only where §6's issues need it.
 
 ### Issues this initiative takes on
 
@@ -105,8 +111,8 @@ In addition:
 | 6a | UC-001 steps 7-9 in the core and `:persistence`: the Fetch asks for transactions and balance (ending O-P2-54), stores booked, non-zero Bank Transactions with their Import Identifiers (ADR-008, built here with its test vectors) and occurrence numbers, Unreadable Transactions (A17, BR-016), the Decision Journal (step 9); A19, A20 (with #11), A21, BR-006 (#9); the fetch period default 30 days in the code; the Fetch result and Blocked Reason texts | `:core` `fetch`, `identity`, `journal`; `:persistence`; `:app` texts | `inherit` | `gradlew check` and `:app:assembleDebug` pass; every in-scope BR and flow has a test that names it; ADR-008's vectors pass; `uc-coverage-layered` matrix in the report | `feat: phase 6a - Bank Transactions from a Fetch` |
 | 6b | The fetch period on Settings (UC-010 steps 1-4, 6, A1); UX-D4: the credential and Fetch Cooldown screens checked against NFR-023 and fixed | `:core` `settings`, `:app` | `inherit` | as 6a | `feat: phase 6b - fetch period on Settings, answers in place` |
 | 7a | UC-003 in the core and YNAB: `readChanges` and the stored copy (BR-016, BR-020, O-4), the Comparison in the order of BR-001 for the rules in scope, Eligible Transactions (BR-014), the Decision Journal (step 6), A1-A3, A7, S-T-08 (not compared yet); the Comparison after a Fetch (UC-001 step 10) and on its own (the YNAB read) | `budgetapp-ynab`, `:core` `comparison`, `:persistence` | `inherit` | as Phase 6a; no Comparison writes to YNAB (BR-015) | `feat: phase 7a - the Comparison` |
-| 7c | The screens: the Budget tab and Bank Account screen as the UX gate approved them (`-this-build` states, chronological list, statuses explained, times, counts), the YNAB read on its line, the build-state lines updated | `:app` | `inherit` | as Phase 6a | `feat: phase 7c - Bank Transactions on screen` |
-| 7b | UC-005 detection inside the Comparison (UC-003 step 4): Transfers, Transfer Legs, Guessed Transfers, Lonely Transfers and the grace period, the description lists; the Transfers shown on the Budget tab without decisions | `:core` (a transfer package, ADR-001 §7), `:app` | `inherit` | as Phase 6; a test for each in-scope BR of UC-005, including a Transfer never across Budgets or currencies (BR-004) | `feat: phase 7b - Transfers detected` |
+| 7c | The screens: the Budget tab and Bank Account screen as the UX gate approved them (`-this-build` states, chronological list, statuses explained, times, counts), the Transfers of a Budget without decisions (`transfers.html`, statuses only), the YNAB read on its line, the build-state lines updated | `:app` | `inherit` | as Phase 6a | `feat: phase 7c - Bank Transactions on screen` |
+| 7b | UC-005 detection inside the Comparison (UC-003 step 4): Transfers, Transfer Legs, Guessed Transfers, Lonely Transfers and the grace period, the description lists, stored with the statuses (O-5) | `:core` (a transfer package, ADR-001 §7), `:persistence` | `inherit` | as Phase 6; a test for each in-scope BR of UC-005, including a Transfer never across Budgets or currencies (BR-004) | `feat: phase 7b - Transfers detected` |
 | 8 | **Acceptance: operator, on the phone** | release build 0.1.x → this build over it; a Fetch of SimpleFIN; YNAB read | operator | every Bank Account shows its Bank Transactions with plausible Transaction Statuses; nothing reached YNAB; no stored item lost in the upgrade; the instrumented Migration test passes on the phone | operator's verdict into §6 |
 | 9 | Close: §7, requirement statuses, open work turned into issues, plan to `docs/archive/` | this plan, `docs/requirements.md`, issues | `inherit` | `lint_specs.py --strict` and `check_project_rules.py` exit 0; §7 lists issue numbers, not open work | `docs: phase 9 - close the transactions plan` |
 
@@ -362,6 +368,75 @@ or wrong (do not change docs/; report it instead).
 
 Written for each phase when the phase before it is accepted, so that each prompt carries what the gates decided. Every prompt starts with: read `AGENTS.md`, this plan's §1, §2 and §6, and the use cases and ADRs the phase names; follow `use-case-test` and then `use-case-implement` for code phases; return Clarified / Assumed / Open.
 
+### Phase 7b: Transfers detected (sub-agent)
+
+```text
+Work in /home/user/slussen on the branch 7b-transfers (checked out). Do not commit, push or switch branches;
+leave the changes in the working tree for the orchestrator. Never read, print or write signing values or
+credentials; never run -PincludeLive; tests use invented data and local test servers only. Change nothing under
+vendor/ or docs/.
+
+Read AGENTS.md; docs/transactions_plan.md §1 (the UC-005 row: what is built and what is left), §2, §3 (row 7b) and
+§6 (O-T-01, O-T-02, S-T-08, Phase 7a's notes); UC-005 (all of it); UC-003 steps 3-5, BR-001 (where a Transfer Leg
+stands in the order, and a doubtful Transfer Leg), BR-013, BR-014; UC-010 BR-007 (the description lists); UC-011
+BR-001; the glossary's Transfer terms and Transaction Statuses; the entity model (TRANSFER, BANK_TRANSACTION,
+BANK_ACCOUNT with its Funded By and Transfer Partner, TRANSFER_DESCRIPTION, OPERATOR_SETTINGS); ADR-001 §7 (the
+UC-003 and UC-005 rows); ADR-002 §3 (O-5) and §7; ADR-004 (markers; T-02: a `scenario` is the whole heading, for
+example "A5: Other Side Not Arrived Within the Grace Period"); ADR-007 §3a; docs/architecture/stack.md; and Phase
+7a's code: the `comparison` package of :core, BudgetAppCopyStore.kt (ComparisonData, ComparisonStore),
+RoomComparisonStores.kt, InMemoryBudgetAppCopyStore.kt and UC003CompareWithTheBudgetAppTest.kt.
+Follow aiup-core's use-case-test, then use-case-implement, read from the snapshot
+vendor/aiup-marketplace/aiup-core/skills/<skill>/SKILL.md (the coverage agent is
+vendor/aiup-marketplace/aiup-core/agents/uc-coverage-layered.md): tests first; say which failed first.
+
+Build:
+1. :core `transfer` (ADR-001 §7): Transfer detection as pure rules on stored data, run inside the Comparison's
+   conclusions (UC-003 step 4, O-5), after the rules that stand before a Transfer Leg in UC-003 BR-001:
+   - BR-002: a pair with equal and opposite amounts, in two Bank Accounts mapped into the same Budget and
+     currency, within the transfer pairing days; a Card Payment when one side is a credit card, a Bank Transfer
+     only when a Bank Transfer Description matches; a Lonely Transfer when the other side is known from the
+     Funded By or the Transfer Partner and the right description matches; never a credit card inferred from the
+     paying side;
+   - BR-003: at most one Transfer per Bank Transaction; with more than one candidate a Guessed Transfer, proposed
+     in the order the rule gives;
+   - BR-004 and BR-014: never across Budgets or currencies; the other side is always a Budget Account Slussen
+     fetches, never a Manually Kept Account or one only a Retired Account is mapped to; a Funded By or Transfer
+     Partner that no longer applies is not used;
+   - BR-005, A5: a Lonely Transfer whose other side has not arrived within the grace period becomes an ordinary
+     Bank Transaction;
+   - A8: an inflow to a credit card without a Funded By that matches a Card Payment Description is a Guessed
+     Transfer with the proposal the flow describes;
+   - BR-012: a description matches anywhere in payee or memo, without regard to case and accents, `*` for any
+     characters;
+   - BR-010, BR-013 as far as they give a status: the Transfer Legs of a Transfer are Transfer Leg, those of a
+     Guessed Transfer are Guessed Transfer; a Transfer Leg that is Needs Review or Possible Import By Other Path
+     keeps that status and its Transfer waits (UC-003 BR-001); the Eligible Transactions and the counts of UC-008
+     follow UC-003 BR-014 (the Transfer Leg that writes its Transfer; nothing of a Guessed Transfer or of a
+     Transfer that waits).
+2. Storage (O-5, :persistence and the fake of :testing): the `transfer` rows, with the decision Proposed, and
+   `bank_transaction.transfer_id` are written with the Transaction Statuses in the one transaction of
+   `applyComparison`; a Transfer that no longer holds (a Transfer Leg changed, the grace period passed, an Account
+   Mapping moved) releases its Transfer Legs. The description lists are read from `transfer_description`. Use
+   `slussen.db` version 5 as it is when it suffices; if it does not, stop building storage and report what is
+   missing (version 5 is merged, so a change needs version 6 with a Migration, an operator decision).
+3. Decision Journal: every changed Transaction Status as Phase 7a records it (UC-011 BR-001); what else UC-011
+   BR-001 names for a detected Transfer.
+4. Not in this phase: the Transfer Decisions (steps 2-6, A1-A3, A9, BR-007, BR-008, BR-011), A6, A7, BR-009,
+   editing the description lists, Funded By or Transfer Partner, and every screen (Phase 7c): change :app only
+   where the build needs it.
+5. Instrumented: a persistence IT for the stored Transfers (it runs on the phone in Phase 8).
+
+Gate (run it; it must pass): ANDROID_HOME=/opt/android-sdk; sh ./gradlew --stop;
+sh ./gradlew check :app:assembleDebug :app:assembleDebugAndroidTest :persistence:assembleDebugAndroidTest
+--rerun-tasks --continue; python3 tools/lint_specs.py --strict; python3 tools/check_project_rules.py.
+Every in-scope BR and flow of UC-005 has a test that names it, among them a Transfer never across Budgets or
+currencies (BR-004).
+
+Report (under 50 lines): files changed, tests added with their names, which failed first, the uc-coverage-layered
+matrix for UC-005 in short, gate result, Clarified / Assumed / Open, and any place the specification was unclear
+or wrong (do not change docs/; report it instead).
+```
+
 ## 5. Methodology evaluation log
 
 | # | Phase | AIUP step | What happened | Deviation? |
@@ -373,6 +448,8 @@ Written for each phase when the phase before it is accepted, so that each prompt
 | 7 | 5 | `use-case-test`, `use-case-implement` | The sub-agent read the two skills from `origin/feat/layer-plugins` with `git show`, since the Marketplace clone is on a detached HEAD without them. Six new JVM tests were seen failing before the production change. | Yes (how the skills were read) |
 | 8 | 6a | `use-case-test` | 31 core tests were seen failing first against stubs; the `:app` ViewModel tests were written after the texts and were not seen failing. | Yes (partly) |
 | 9 | 7a | `use-case-test` | 29 of 36 core tests and 11 of 12 YNAB tests seen failing first; the schema version 5 and its migration tests were written before the tests. | Yes (partly) |
+| 10 | Before 7b | Where the skills are read | The skills are now read from an in-repository snapshot, `vendor/aiup-marketplace/`, because cloud sessions and sub-agents cannot reach the clone `C:\work\marketplace`. The snapshot holds one commit, `93e8d59` (`aiup-core` 3.0.0, the merge of Marketplace PR #38 on 2026-10-24). It replaces the pin `05af816` and the branch `feat/layer-plugins`, whose last commit read here (`7429182`) is four commits short of the merge. Current `main` (`aiup-core` 3.21.4, `0448f20`) was not taken: moving to it is a later operator decision. From `05af816` to `93e8d59` the specification skills gained an optional split by module (`entity-model`, `use-case-diagram`, `reverse-engineer`, which also gained `references/stack-signals.md`), an optional `**Layers:**` line (`use-case-spec`, checked by `validate_use_case.py` and `spec_lint.py`) and hand-offs to `/use-case-coverage` (`spec-review`); `requirements` is unchanged; `spec_lint.py --strict` still passes. Between `7429182` and `93e8d59`, `/architecture` became `/stack`: the construction skills read `docs/architecture/stack.md`, and Slussen's is `docs/architecture/development.md`, an operator decision before Phase 7b. This settles issue #18. | Yes (where the skills are read) |
+| 11 | 7b | `use-case-test`, `use-case-implement`, `uc-coverage-layered` | First phase with the skills read from the snapshot (`vendor/aiup-marketplace/`). 22 of 25 core tests seen failing first, against stubs that let them compile; the three that passed assert that nothing is detected (BR-004 checked by removing its guard). The five instrumented tests were not run. The coverage matrix was made by the executor, not by a separate auditor. | Yes (partly) |
 | 5 | 2b | Mockups (`use-case-spec` mockup step) | Phase 2b ran as a sub-agent with the accepted findings as its brief, as §2 says; it changed only `docs/mockups/` and reported nine specification observations instead of changing the specification. | No |
 | 4 | 2 | Adversarial review (Centaur cross-model rule) | The external UX reviewer (Codex CLI) worked only from this repository, as its prompt said, so it did not read the Marketplace `spec-review` skill that AGENTS.md names. Its review is a source walkthrough of the HTML mockups, not of the running app. | Yes (recorded as the reviewer asked) |
 
@@ -442,7 +519,7 @@ Phase 6b, 2026-10-29: one specification gap. **Approved by the operator on 2026-
 |---|---|---|---|
 | S-T-17 | Phase 6b | UC-014 lists NFR-023, which decision UX-D4 applies to the credential screens, so their tests can name it; NFR-023 becomes In Progress, since UC-014 is Implemented. | UC-014 Requirements, requirements |
 
-Phase 7a, 2026-10-29: one specification gap. **Proposed, waiting for the operator's approval.**
+Phase 7a, 2026-10-29: one specification gap. **Approved by the operator on 2026-11-26 (PR #35 merged), as amended in its review (Phase 7a's notes, last item).**
 
 | ID | Found by | Change | Files |
 |---|---|---|---|
@@ -458,6 +535,37 @@ Phase 7a's notes:
 - A2 midway: a Budget already stored in the same Comparison is concluded, so that no read is left pending. A Comparison left pending at a restart is concluded from the stored copy, which can move a status by the date (Too Old).
 - "Not compared yet" (S-T-08) is a Bank Transaction first received after its Budget's last successful read.
 - Review of PR #35 (2026-11-26): S-T-18 as first proposed forgot the cursor, and a read of the period reports no deleted transactions in YNAB, so a deletion or merge since the previous read was missed. S-T-18 is amended: the read of the period is followed by the changes since the kept cursor, and `budget_read_state.period_read_owed` marks it (version 5 not yet merged, so its schema file changed in place). The test of the main case was seen failing first; the A1 test passed before the change, since it guards the new path. A Windows-only fault of `SchemaVersionCheckTest` (CRLF made twice, since Phase 5) was fixed with it.
+
+Before Phase 7b, 2026-11-26: one specification change. **Proposed, waiting for the operator's approval.**
+
+| ID | Found by | Change | Files |
+|---|---|---|---|
+| S-T-19 | The Marketplace snapshot (§5 row 10) | `docs/architecture/development.md` is renamed `docs/architecture/stack.md`, with the title Stack and the opening lines of the snapshot's template (`skills/stack/references/stack.md`), since the `aiup-core` 3.0.0 skills `use-case-test`, `use-case-implement` and `use-case-coverage` read that path. Its Layers, Module layout, Commands and Markers are unchanged; it has no API contract section, since Slussen has no API layer. ADR-004 names the new path and reads the coverage agent from the snapshot. The phase prompts of §4 written before this keep the old name. | `docs/architecture/stack.md`, ADR-004 Context, §4 and its consequences; two code comments |
+
+Phase 7b, 2026-11-26: four questions, **answered by the operator on 2026-11-26**, and from the answers two specification changes, **proposed, waiting for the operator's approval.**
+
+| ID | Question | Recommendation | Operator's answer |
+|---|---|---|---|
+| O-T-09 | **A paired Card Payment to a card without a Funded By.** UC-005 A8 starts from a single inflow to the card. BR-002's last sentence and FR-092 say that a Card Payment to a card without a Funded By is a Guessed Transfer, without saying "single". Phase 7b made only the single inflow guessed: a pair of card and paying Bank Account is a Transfer that is not guessed. | Guessed for the pair too, as BR-002 and FR-092 read: the Operator's first answer is what sets the Funded By. A small change in `TransferDetection`, and A8's trigger says so. | As recommended: S-T-20. |
+| O-T-10 | **A8 with no proposal.** When the Budget has not exactly one Bank Account that is not a credit card, A8 proposes no Budget Account. `TRANSFER.outflow_budget_account_id` is Not Null, so such a Guessed Transfer has its status but no `transfer` record. | Leave it so in this initiative; decide with the Transfer Decisions (A3 fills the side) whether `TRANSFER` gets an optional side, which needs schema version 6. | Leave it. |
+| O-T-11 | **A5's reason.** "Its other side did not arrive in time" is stored nowhere: after the grace period the Bank Transaction is ordinary. | Phase 7c derives it when it shows the Bank Transaction (a description match, an other side known, older than the grace period); no stored field. | Agreed. |
+| O-T-12 | **Two silences.** BR-005 does not say from which day the grace period counts. UC-003 BR-001 does not say what the other Transfer Leg becomes when an earlier rule concludes one (Too Old, Before Start Date, Already In Budget App). | Say what Phase 7b does: the grace period counts from the booked date of the arrived Transfer Leg, that day included; a Bank Transaction an earlier rule concluded is no Transfer Leg, and its other side is ordinary or a Lonely Transfer. A specification change (S-T-nn) with Phase 7c. | Fill the gap now: S-T-21, and a Transfer stays together once detected. |
+
+| ID | Found by | Change | Files |
+|---|---|---|---|
+| S-T-20 | O-T-09 | A Card Payment to a credit card Bank Account without a Funded By is a Guessed Transfer also when both sides have arrived: A8 starts from the card's inflow that matches a Card Payment Description or forms a Card Payment with an arrived outflow, and the pair proposes the Budget Account of the outflow. | UC-005 A8, BR-002 |
+| S-T-21 | O-T-12 | The grace period of a Lonely Transfer counts from the booked date of the Transfer Leg that has arrived, the last day included. Revised on the operator's word the same day ("a Transfer stays together once detected; it goes from eligible to not eligible, but does not change in nature"): detection does not depend on the Upload Window or on any other earlier rule of UC-003 BR-001. A Transfer Leg that such a rule gave its status (Too Old, Before Start Date, Already In Budget App) keeps that status and stays a Transfer Leg; while a Transfer has such a Transfer Leg the whole Transfer is in no Upload Plan, and it is eligible again when none has. The first form of S-T-21 made the other side an ordinary Bank Transaction, which dissolved a Transfer when one Transfer Leg left the Upload Window. | UC-005 BR-002, BR-005, BR-010; UC-003 BR-014 |
+
+Phase 7b's notes:
+- Detection is `slussen.core.transfer`, pure, run inside O-5 after the rules that stand before a Transfer Leg in UC-003 BR-001. O-5 stores the `transfer` records (decision Proposed) and `bank_transaction.transfer_id` with the statuses in one transaction; a Proposed Transfer that no longer holds is removed and its Transfer Legs released; a Lonely Transfer whose other side arrives stays the same record.
+- A Transfer Leg that is Needs Review or Possible Import By Other Path keeps that status, and nothing of its Transfer is Eligible (BR-013). Plan §1 lists BR-013 under "left for later": its status part is built, the Review Decision outcomes are not.
+- Eligible Transactions: the Transfer Leg that writes its Transfer (the outflow side of a pair, the one side of a Lonely Transfer, UC-006 BR-009); nothing of a Guessed Transfer.
+- A Card Payment pair holds in either direction. A Funded By or Transfer Partner that no longer applies counts as none. An outflow with several cards funded by its Budget Account proposes the card added first. An entry holding only `*` matches nothing.
+- A Transfer with a decision other than Proposed and its Transfer Legs are left untouched by a Comparison (a guard; no decision can exist in this build).
+- The released Transfer Legs of a Retired Account, or of a Budget not compared this time, keep their stored status until their own Comparison.
+- UC-011 BR-001 names nothing for a detected Transfer beyond the changed Transaction Status, so only those are journaled.
+- Phase 2b's note is settled: BR-002 says how the card of a paying-side Lonely Transfer is known (the card whose Funded By is the outflow's Budget Account).
+- After the operator's answers (2026-11-26), the orchestrator changed the code to S-T-20 and S-T-21: a Card Payment pair into a card without a Funded By that applies is a Guessed Transfer; and, after S-T-21 was revised, every compared Bank Transaction can be a Transfer Leg whatever status an earlier rule gave it, it keeps that status, and its Transfer is not Eligible while one Transfer Leg has such a status. So a first Fetch shows older payments between the Operator's Bank Accounts as Transfers that are Too Old, not as separate Bank Transactions. The new tests were seen failing first (two for S-T-20 and the first form of S-T-21, three for the revised S-T-21); six tests that pair a payment with a card, and one instrumented test, now give the card its Funded By, since they test other rules.
 
 Phase 6b's notes:
 - The app had no Fetch Cooldown edit, only its value, so Phase 6b built UC-010 steps 2-6, A1 and A10 for it, with the fetch period's states.

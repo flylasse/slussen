@@ -430,6 +430,10 @@ abstract class FetchDao {
     @Query("SELECT * FROM unreadable_transaction WHERE bank_account_id = :bankAccountId ORDER BY id")
     abstract suspend fun unreadableTransactionsOf(bankAccountId: Long): List<UnreadableTransactionEntity>
 
+    /** The stored Bank Transactions that are a Transfer Leg (`transfer_id` filled), of every Bank Account. */
+    @Query("SELECT * FROM bank_transaction WHERE transfer_id IS NOT NULL ORDER BY id")
+    abstract suspend fun transferLegs(): List<BankTransactionEntity>
+
     @Insert
     protected abstract suspend fun insertBankTransactions(transactions: List<BankTransactionEntity>)
 
@@ -556,4 +560,49 @@ abstract class BudgetAppCopyDao {
 
     @Query("UPDATE bank_transaction SET status = :status WHERE id = :id")
     abstract suspend fun storeStatus(id: Long, status: String)
+
+    /** The stored Transfers that a Bank Transaction of [bankAccountId] is a Transfer Leg of. */
+    @Query(
+        "SELECT * FROM transfer WHERE id IN " +
+            "(SELECT transfer_id FROM bank_transaction WHERE bank_account_id = :bankAccountId AND transfer_id IS NOT NULL) ORDER BY id",
+    )
+    abstract suspend fun transfersOf(bankAccountId: Long): List<TransferEntity>
+
+    @Query("SELECT * FROM transfer ORDER BY id")
+    abstract suspend fun transfers(): List<TransferEntity>
+
+    @Query("SELECT * FROM transfer_description ORDER BY id")
+    abstract suspend fun transferDescriptions(): List<TransferDescriptionEntity>
+
+    @Insert
+    abstract suspend fun insertTransfer(transfer: TransferEntity): Long
+
+    /** What a Comparison detected of a stored Transfer, only while its decision is [proposed]: O-5 never changes a decided one. */
+    @Query(
+        "UPDATE transfer SET outflow_budget_account_id = :outflowBudgetAccountId, inflow_budget_account_id = :inflowBudgetAccountId, " +
+            "amount = :amount, transfer_type = :transferType, guessed = :guessed WHERE id = :id AND decision = :proposed",
+    )
+    abstract suspend fun updateProposedTransfer(
+        id: Long,
+        outflowBudgetAccountId: Long,
+        inflowBudgetAccountId: Long,
+        amount: Long,
+        transferType: String,
+        guessed: Boolean,
+        proposed: String,
+    )
+
+    @Query("DELETE FROM transfer WHERE id = :id AND decision = :proposed")
+    abstract suspend fun deleteProposedTransfer(id: Long, proposed: String)
+
+    @Query("UPDATE bank_transaction SET transfer_id = :transferId WHERE id IN (:legs)")
+    abstract suspend fun storeTransferOf(legs: List<Long>, transferId: Long)
+
+    /** Releases the Transfer Legs of [transferId] that are not among [legs]: they are ordinary Bank Transactions again. */
+    @Query("UPDATE bank_transaction SET transfer_id = NULL WHERE transfer_id = :transferId AND id NOT IN (:legs)")
+    abstract suspend fun releaseOtherLegs(transferId: Long, legs: List<Long>)
+
+    /** Releases every Transfer Leg of [transferId]. */
+    @Query("UPDATE bank_transaction SET transfer_id = NULL WHERE transfer_id = :transferId")
+    abstract suspend fun releaseLegs(transferId: Long)
 }

@@ -137,7 +137,10 @@ class UC003CompareWithTheBudgetAppPersistenceIT {
     private fun pending(storage: SlussenStorage): Boolean =
         storage.main.openHelper.readableDatabase.query("SELECT comparison_pending FROM coordinator_state WHERE id = 1").use { it.moveToFirst(); it.getInt(0) == 1 }
 
-    private val windows = ComparisonWindows(uploadWindowDays = 7, fileUploadWindowDays = 60, matchingDateWindowDays = 10, today = LocalDate.of(2026, 10, 15))
+    private val windows = ComparisonWindows(
+        uploadWindowDays = 7, fileUploadWindowDays = 60, matchingDateWindowDays = 10, transferPairingDays = 5, lonelyTransferGraceDays = 6,
+        today = LocalDate.of(2026, 10, 15),
+    )
 
     @Test
     @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-016", "BR-020"])
@@ -278,7 +281,8 @@ class UC003CompareWithTheBudgetAppPersistenceIT {
 
         val failed = runCatching {
             storage.comparisons.applyComparison(setOf(budget)) { data ->
-                ComparisonRules.conclude(data, windows).mapValues { (id, status) -> if (id == data.bankTransactions.last().id) error("planted failure") else status }
+                val concluded = ComparisonRules.conclude(data, windows)
+                concluded.copy(statuses = concluded.statuses.mapValues { (id, status) -> if (id == data.bankTransactions.last().id) error("planted failure") else status })
             }
         }
 

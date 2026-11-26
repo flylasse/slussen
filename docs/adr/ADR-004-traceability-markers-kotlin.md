@@ -30,7 +30,7 @@ The `aiup-vaadin-jooq` `implement` skill (first chosen as the pattern for Phase 
 implementing the rule; a business rule without a marker is one still to implement. `aiup-core` 3.0.0 (Marketplace
 PR #38, open on 2026-10-18; O-P2-38) deprecates that plugin and moves the same rule into `use-case-implement`; its
 `use-case-coverage` agent `uc-coverage-layered` also counts a requirement marker in `@UseCase`
-(`requirements = {"NFR-002"}`) and reads the project's markers from `docs/architecture/development.md`.
+(`requirements = {"NFR-002"}`) and reads the project's markers from `docs/architecture/stack.md`.
 
 There is no Android or Kotlin stack plugin. Slussen's tests run on JUnit 5 (Jupiter), as in the Predecessor App
 (5.11.4), on the JVM for every module and on the device for instrumented tests (ADR-005).
@@ -141,9 +141,9 @@ until the tests and markers follow, which is AIUP's "change the specification fi
 ### 4. Coverage and requirement status
 
 There is no coverage agent written for this stack. The coverage check of a use case is run by an agent given the
-`aiup-core` agent definition `agents/uc-coverage-layered.md` together with `docs/architecture/development.md`, whose
-Markers table restates this ADR's markers; while Marketplace PR #38 is open, the definition is read from its branch
-`feat/layer-plugins` (O-P2-38). This replaces the `aiup-vaadin-jooq` `agents/uc-coverage.md` and `workflow.md`
+`aiup-core` agent definition `agents/uc-coverage-layered.md` together with `docs/architecture/stack.md`, whose
+Markers table restates this ADR's markers; the definition is read from the snapshot `vendor/aiup-marketplace/`
+(`aiup-core` 3.0.0, the merge of Marketplace PR #38; O-P2-38, S-T-19). This replaces the `aiup-vaadin-jooq` `agents/uc-coverage.md` and `workflow.md`
 (`05af816`) route, which `aiup-core` 3.0.0 deprecates. The use case's `**Status:**` and the derived requirement statuses follow `workflow.md`
 *Requirement status*; nothing in the build changes a status.
 
@@ -182,7 +182,7 @@ Markers table restates this ADR's markers; while Marketplace PR #38 is open, the
 - AIUP has no marker for a rule of the entity model (its constraints), as opposed to a use case's business rule;
   such code gets no marker unless a business rule states the same constraint.
 - There is no coverage agent written for this stack; §4 uses `aiup-core`'s stack-neutral `uc-coverage-layered` with
-  the Markers table of `docs/architecture/development.md`.
+  the Markers table of `docs/architecture/stack.md`.
 - AIUP has no notion of a test that only the Operator may run (live tests against a real Budget App with private
   credentials); §2 defines it.
 
@@ -202,3 +202,6 @@ Markers table restates this ADR's markers; while Marketplace PR #38 is open, the
   read from its branch: §2 (`requirements` added to `@UseCase` as the NFR and C marker, `@DisplayName("NFR-…")`
   still accepted), §3 (T-02 checks `requirements` against the use case's `**Requirements:**` line), §4 (coverage by
   `agents/uc-coverage-layered.md` with `docs/architecture/development.md`), Context and AIUP guidance aligned.
+- S-T-19 (2026-11-26): `docs/architecture/development.md` is renamed `docs/architecture/stack.md`, the name the
+  `aiup-core` 3.0.0 skills read since the merge of Marketplace PR #38; §4 reads the agent definition from the snapshot
+  `vendor/aiup-marketplace/`. The entry above keeps the names of its date.
