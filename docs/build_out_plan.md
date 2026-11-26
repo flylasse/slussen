@@ -157,7 +157,11 @@ Smaller choices taken without asking, to be confirmed at the end: the Decision J
 
 ### Specification changes (S-B-nn)
 
-None yet.
+Proposed with their code, for the operator's approval at the end (§2).
+
+| ID | Phase | Change | Files |
+|---|---|---|---|
+| S-B-01 | A-5 (issue #26) | The notice for stored data that could not be read says, for each of the three stored parts, what it started from and the next action, or that none is needed (new UC-008 BR-012); the Decision Journal is never said to start from a last good copy (ADR-002 §8.5). The backup-size warning says that Slussen offers no action that makes the backed-up data smaller and that none is needed (UC-008 A7, BR-010). The mockup states `#damaged`, `#damaged-critical` and `#backup-warning` carry the texts. | UC-008 A1, A7, BR-010, BR-012; `overview.html` |
 
 ## 7. End checklist (the operator)
 

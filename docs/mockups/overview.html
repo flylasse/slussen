@@ -414,14 +414,16 @@
 </div>
 </div>
 <div class="state" id="damaged">
-<div class="step-label"><span class="n">UC-008 A1</span><p><b>Stored data damaged</b>, not Decision-Critical Data: a notice only.</p></div>
+<div class="step-label"><span class="n">UC-008 A1 · BR-012</span><p><b>Stored data damaged</b>, not Decision-Critical Data, here both such parts: a notice each, with what the part started from and the next action or that none is needed; no First Upload Matching.</p></div>
 <div class="phone">
 <div class="screen-title">Slussen</div>
 <p class="screen-sub">Overview</p>
 <div class="body">
 
 <div class="banner grey"><span class="txt"><b>Stored data could not be read: Decision Journal</b>
-<span class="d">Started from its last good copy · Uploads not affected</span></span></div>
+<span class="d">Started empty: the Decision Journal has no last good copy · the unreadable original is kept on this device · nothing else is affected, no action is needed</span></span></div>
+<div class="banner grey"><span class="txt"><b>Stored data could not be read: service credentials, Bank Consents and Offered Bank Accounts</b>
+<span class="d">Started empty: this part has no last good copy · the unreadable original is kept on this device · enter the credentials of each service again in Settings and grant each Bank Consent again; the Offered Bank Accounts come back with the next Fetch or Bank Consent</span></span></div>
 <a class="card amber" href="budget.html#household" style="display:block">
   <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="r dot amber"></span></div>
   <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
@@ -442,14 +444,14 @@
 </div>
 </div>
 <div class="state" id="damaged-critical">
-<div class="step-label"><span class="n">UC-008 A1</span><p><b>Decision-Critical Data damaged:</b> the notice names the part, and First Upload Matching opens (cause Last Good Copy, BR-009): amber, a caution, never red.</p></div>
+<div class="step-label"><span class="n">UC-008 A1 · BR-012</span><p><b>Decision-Critical Data damaged:</b> the notice names the part, and First Upload Matching opens (cause Last Good Copy, BR-009): amber, a caution, never red.</p></div>
 <div class="phone">
 <div class="screen-title">Slussen</div>
 <p class="screen-sub">Overview</p>
 <div class="body">
 
-<div class="banner grey"><span class="txt"><b>Stored data could not be read: Bank Transactions and Sent Record</b>
-<span class="d">Started from the last good copy</span></span></div>
+<div class="banner grey"><span class="txt"><b>Stored data could not be read: stored transactions, decisions and settings</b>
+<span class="d">Started from its last good copy, made at an earlier start · the unreadable original is kept on this device · check in Settings that your Budgets, Bank Accounts and Account Mappings are as you left them, and see First Upload Matching below</span></span></div>
 <a class="banner" href="first-upload-matching.html#last-good-copy"><span class="txt"><b>Uploads wait for First Upload Matching</b>
 <span class="d">Before Slussen uploads anything, it compares the transactions it fetched with what is already in YNAB and marks every match, so that no transaction ends up in YNAB twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual.</span>
 <span class="d">Slussen's records could not be read, so it started from its last good copy, or from empty records when it had none. Anything uploaded after that copy was made is not in its records.</span></span> <span class="cta-btn">Start First Upload Matching</span></a>
@@ -465,7 +467,7 @@
 <div class="body">
 
 <div class="banner"><span class="txt"><b>Backed-up data nears Android's backup limit</b>
-<span class="d">21.3 MB of 25 MB, Android's limit · above it Android backs up nothing</span></span></div>
+<span class="d">21.3 MB of 25 MB, Android's limit · above it Android backs up nothing · Slussen has no action that makes it smaller, and none is needed: Slussen goes on working, and First Upload Matching covers a restore of an older backup</span></span></div>
 <a class="card amber" href="budget.html#household" style="display:block">
   <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="r dot amber"></span></div>
   <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>

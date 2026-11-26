@@ -34,7 +34,7 @@ _None — opening Slussen before any Bank Account is added is handled by A10._
 **Flow:**
 
 1. Slussen keeps the unreadable original unchanged and starts that part from its last good content, or from its default content when there is none.
-2. Slussen shows a notice naming the part that could not be read.
+2. Slussen shows a notice naming the part that could not be read, what that part started from and the next action, or that none is needed (BR-012).
 3. When the part holds Decision-Critical Data, Slussen opens a First Upload Matching, so that no Upload Plan is prepared until the Operator has confirmed it (BR-009); damage to any other part, such as the Decision Journal, opens none and changes no Upload Plan or Upload.
 4. Use case continues at step 2.
 
@@ -83,7 +83,7 @@ _None — opening Slussen before any Bank Account is added is handled by A10._
 **Trigger:** The data Slussen includes in device backups has reached the backup warning threshold of the backup size limit Android sets (step 1)  
 **Flow:**
 
-1. Slussen shows a warning with the current size of the backed-up data and Android's limit, and that Android makes no backup at all once the limit is passed (BR-010).
+1. Slussen shows a warning with the current size of the backed-up data and Android's limit, that Android makes no backup at all once the limit is passed, and that Slussen offers no action that makes the backed-up data smaller and none is needed (BR-010).
 2. Use case continues at step 2.
 
 ### A8: First Upload Matching Open
@@ -174,6 +174,16 @@ The Operator can confirm First Upload Matching only after a Comparison that read
 
 Android backs up at most 25 MB of an app's data and makes no backup at all when the data is larger, a limit Android sets (C-015). When the data Slussen includes in device backups reaches the backup warning threshold of that limit (80% by default, a number the Operator can change, UC-010), every opening of Slussen shows a warning with the current size and the limit. The Decision Journal, logs, Bank Consents, Bank Sessions and other data that are never backed up do not count.
 
+Slussen has no action that makes the backed-up data smaller and keeps what it stores; only Start Over (UC-010 A12) makes it smaller, by deleting everything. So the warning also says that Slussen offers no action for it and that none is needed: Slussen goes on working above the limit, and when a restore brings back an older backup, First Upload Matching covers what that backup lacks (BR-009).
+
 ### BR-011: First Opening Leads to Settings
 
 While no Bank Account is added, opening Slussen shows nothing but one card that leads to Settings, where setting up Slussen starts (UC-013 BR-008), and names the next thing to do there, the first one UC-013 BR-008 recommends that is not yet done: for example entering the Budget App's credentials, choosing the Budgets, fetching a Data Provider or granting a Bank Consent, or mapping the imported Bank Accounts. Nothing else is shown, not even the First Upload Matching that a new installation opens (A8, UC-006 BR-017), since nothing can be prepared for Upload before a Bank Account is added. From the first added Bank Account on, opening Slussen shows the overview of the main success scenario.
+
+### BR-012: Notices of Stored Data That Could Not Be Read
+
+The notice of A1 names the part that could not be read with the name below, says that its unreadable original is kept unchanged on the device, and says what the part started from and what comes next:
+
+- Stored transactions, decisions and settings: Slussen started from its last good copy, made at an earlier start of Slussen, so anything changed after that copy was made is not in it. The next actions are to check in Settings that the Budgets, Bank Accounts and Account Mappings are as the Operator left them, and the First Upload Matching shown with the notice (BR-009). Without a last good copy Slussen started from empty records with every default; no Bank Account is then added, so opening Slussen shows only the card of BR-011, which leads to setting Slussen up again in Settings.
+- Service credentials, Bank Consents and Offered Bank Accounts: this part has no last good copy, so it started empty. The next actions are to enter the credentials of each service again on its page in Settings (UC-014) and to grant each Bank Consent again (UC-007); the Offered Bank Accounts come back with the next Fetch or Bank Consent. Nothing else is affected, and no First Upload Matching is opened.
+- Decision Journal: it has no last good copy, so it started empty and is never said to start from one. Nothing else is affected and no action is needed (NFR-006).
