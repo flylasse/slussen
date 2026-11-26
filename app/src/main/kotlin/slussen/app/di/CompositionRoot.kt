@@ -22,6 +22,7 @@ import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.settings.GeneralSettings
 import slussen.core.status.BankAccountTransactions
+import slussen.core.status.BudgetTransfers
 import slussen.core.status.ImportStatus
 import slussen.fileformat.hsacsv.HsaCsvFilePreprocessor
 import slussen.persistence.SlussenStorage
@@ -110,6 +111,9 @@ class CompositionRoot(log: SlussenLog) {
             bankAccountTransactions = BankAccountTransactions(
                 status, storage.connections, storage.fetches, storage.comparisons, storage.settings,
                 registered.budgetApp.profile.matchingDateWindowDays, clock, WeekFields.of(Locale.getDefault()).firstDayOfWeek,
+            ),
+            transfers = BudgetTransfers(
+                status, storage.connections, storage.comparisons, storage.settings, registered.budgetApp.profile.matchingDateWindowDays, clock,
             ),
             fetch = FetchTransactions(
                 registered, credentials, storage.connections, storage.offered, storage.fetches, storage.providerRequests,

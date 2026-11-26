@@ -41,6 +41,7 @@ fun BankAccountScreen(
     onStatuses: () -> Unit,
     onClose: () -> Unit,
     onRemedy: (RemedyAction) -> Unit = {},
+    onTransfer: (Long) -> Unit = {},
 ) {
     val ui = state.ui
     if (ui == null) {
@@ -53,7 +54,7 @@ fun BankAccountScreen(
     // System back closes an open sheet first, before it leaves the Bank Account.
     BackHandler(enabled = ui.sheet != null || ui.statusesSheet != null) { onClose() }
     ui.sheet?.let { sheet ->
-        TransactionSheet(ui.title, sheet, onClose)
+        TransactionSheet(ui.title, sheet, onClose, onTransfer)
         return
     }
     ui.statusesSheet?.let { sheet ->
@@ -114,7 +115,7 @@ private fun TransactionLineView(line: TransactionLineUi, onOpen: (TransactionKey
 
 /** The read-only details of one line, with Close. */
 @Composable
-private fun TransactionSheet(bankAccountName: String, sheet: TransactionSheetUi, onClose: () -> Unit) {
+private fun TransactionSheet(bankAccountName: String, sheet: TransactionSheetUi, onClose: () -> Unit, onTransfer: (Long) -> Unit) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
             ScreenTitle(bankAccountName, onBack = onClose)
@@ -126,6 +127,8 @@ private fun TransactionSheet(bankAccountName: String, sheet: TransactionSheetUi,
                     Text(detail.text, color = SlussenColors.Text, fontSize = 12.sp)
                 }
                 Muted(sheet.closing)
+                // Step 1 of UC-005: from a Transfer Leg to its Transfer, with both sides.
+                sheet.transferLeg?.let { leg -> TextButton(onClick = { onTransfer(leg) }) { Text(slussen.app.ui.transfers.TransfersTexts.OPEN_ITS_TRANSFER) } }
                 OutlinedButton(onClick = onClose) { Text("Close") }
             }
         }

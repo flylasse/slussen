@@ -28,6 +28,24 @@ data class TransferCandidate(
     val earlier: TransactionStatus?,
 )
 
+/** Why detection could not settle a Transfer for certain, so that it is a Guessed Transfer (UC-005 BR-002, BR-003, A8). */
+sealed interface GuessReason {
+    /**
+     * BR-003: a Transfer Leg of the pair could pair with more than one Bank Transaction; [others] are the Bank
+     * Transactions it was not proposed with, each of which could have taken the place of the Transfer Leg of its own sign.
+     */
+    data class OtherPairings(val others: List<StoredBankTransaction>) : GuessReason
+
+    /**
+     * BR-002, BR-003: an outflow that matches a Card Payment Description, from a Bank Account that is the Funded By of
+     * more than one credit card Bank Account; [otherBudgetAccountIds] are the Budget Accounts of the cards not proposed.
+     */
+    data class OtherCards(val otherBudgetAccountIds: List<Long>) : GuessReason
+
+    /** BR-002, A8: a Card Payment to the credit card Bank Account [cardBankAccountId], which has no Funded By that applies. */
+    data class NoFundedBy(val cardBankAccountId: Long) : GuessReason
+}
+
 /** One Transfer detected among the Bank Transactions of one Budget: a pair, or a Lonely Transfer with one Transfer Leg. */
 data class DetectedTransfer(
     val outflowBudgetAccountId: Long,
@@ -35,14 +53,24 @@ data class DetectedTransfer(
     /** The amount moved, positive, in the Budget's currency. */
     val amount: Amount,
     val type: TransferType,
-    val guessed: Boolean,
     /** The Transfer Leg of the outflow side, null while it has not arrived. */
     val outflowLeg: StoredBankTransaction?,
     /** The Transfer Leg of the inflow side, null while it has not arrived. */
     val inflowLeg: StoredBankTransaction?,
+    /** Why it is a Guessed Transfer; empty when it is not one. */
+    val whyGuessed: List<GuessReason> = emptyList(),
 ) {
     val legs: List<StoredBankTransaction> get() = listOfNotNull(outflowLeg, inflowLeg)
+
+    val guessed: Boolean get() = whyGuessed.isNotEmpty()
 }
+
+/**
+ * UC-005 A8: a card's inflow that is a Guessed Transfer for which Slussen proposes no Budget Account, so that no
+ * Transfer is stored for it (O-T-10): its card [cardBankAccountId] has no Funded By, and the Budget has
+ * [payingBankAccounts] Bank Accounts that are not credit cards, not exactly one.
+ */
+data class WithoutProposal(val cardBankAccountId: Long, val payingBankAccounts: Int)
 
 /**
  * UC-005 A5: the Budget Account of the other side of a Bank Transaction whose grace period ended; [guessed] when it was
@@ -59,6 +87,8 @@ data class TransfersDetected(
      * side (A8), which is in no stored Transfer.
      */
     val statuses: Map<Long, TransactionStatus> = emptyMap(),
+    /** The Guessed Transfers without a proposed other side (A8, O-T-10), by the id of their one Bank Transaction. */
+    val withoutProposal: Map<Long, WithoutProposal> = emptyMap(),
 )
 
 /**
@@ -71,8 +101,18 @@ object TransferDetection {
     /** An outflow and an inflow that could be the two Transfer Legs of one Transfer (BR-002). */
     private data class Pairing(val outflow: TransferCandidate, val inflow: TransferCandidate, val type: TransferType, val first: Boolean)
 
-    /** The other side Slussen knows for a single Bank Transaction (BR-002); [otherSide] is null when it proposes none (A8). */
-    private data class OneSided(val otherSide: Long?, val type: TransferType, val guessed: Boolean)
+    /**
+     * The other side Slussen knows for a single Bank Transaction (BR-002); [otherSide] is null when it proposes none (A8),
+     * among [payingBankAccounts] Bank Accounts that are not credit cards; [whyGuessed] is empty when it is not guessed.
+     */
+    private data class OneSided(
+        val otherSide: Long?,
+        val type: TransferType,
+        val whyGuessed: List<GuessReason>,
+        val payingBankAccounts: Int = 0,
+    ) {
+        val guessed: Boolean get() = whyGuessed.isNotEmpty()
+    }
 
     private val TransferCandidate.id: Long get() = transaction.id
 
@@ -101,11 +141,13 @@ object TransferDetection {
         val pairs = pairsAmong(legs, sides, descriptions, pairingDays)
         val paired = pairs.flatMap { it.legs }.map { it.id }.toSet()
         val statuses = mutableMapOf<Long, TransactionStatus>()
+        val withoutProposal = mutableMapOf<Long, WithoutProposal>()
         val lonely = legs.filterNot { it.id in paired }.mapNotNull { single ->
             val known = oneSided(single, sides, descriptions) ?: return@mapNotNull null
             if (graceEnded(single.transaction, graceDays, today)) return@mapNotNull null
             if (known.otherSide == null) {
                 statuses[single.id] = statusOf(single, guessed = true)
+                withoutProposal[single.id] = WithoutProposal(single.bankAccount.id, known.payingBankAccounts)
                 return@mapNotNull null
             }
             DetectedTransfer(
@@ -113,15 +155,15 @@ object TransferDetection {
                 inflowBudgetAccountId = if (single.outflow) known.otherSide else single.budgetAccountId,
                 amount = Amount(abs(single.transaction.amount.thousandths)),
                 type = known.type,
-                guessed = known.guessed,
                 outflowLeg = single.transaction.takeIf { single.outflow },
                 inflowLeg = single.transaction.takeUnless { single.outflow },
+                whyGuessed = known.whyGuessed,
             )
         }
         val byId = legs.associateBy { it.id }
         val transfers = pairs + lonely
         transfers.forEach { transfer -> transfer.legs.forEach { statuses[it.id] = statusOf(byId.getValue(it.id), transfer.guessed) } }
-        return TransfersDetected(transfers, statuses)
+        return TransfersDetected(transfers, statuses, withoutProposal)
     }
 
     // UC-005 BR-005: The grace period counts from the booked date of the Transfer Leg that has arrived, the last of its days included.
@@ -241,7 +283,6 @@ object TransferDetection {
         val outflows = legs.filter { it.outflow }
         val inflows = legs.filterNot { it.outflow }
         val pairings = outflows.flatMap { outflow -> inflows.mapNotNull { inflow -> pairing(outflow, inflow, sides, descriptions, pairingDays) } }
-        val candidates = pairings.flatMap { listOf(it.outflow.id, it.inflow.id) }.groupingBy { it }.eachCount()
         val proposedFirst = compareBy<Pairing>(
             { !it.first },
             { abs(ChronoUnit.DAYS.between(it.outflow.transaction.bookedDate, it.inflow.transaction.bookedDate)) },
@@ -255,14 +296,20 @@ object TransferDetection {
             if (pairing.outflow.id in taken || pairing.inflow.id in taken) return@mapNotNull null
             taken += pairing.outflow.id
             taken += pairing.inflow.id
+            // UC-005 BR-003: When a Transfer Leg could pair with more than one Bank Transaction, the proposed pairing is a Guessed Transfer.
+            val others = pairings.filter { it !== pairing && (it.outflow.id == pairing.outflow.id || it.inflow.id == pairing.inflow.id) }
+                .map { if (it.outflow.id == pairing.outflow.id) it.inflow.transaction else it.outflow.transaction }
             DetectedTransfer(
                 outflowBudgetAccountId = pairing.outflow.budgetAccountId,
                 inflowBudgetAccountId = pairing.inflow.budgetAccountId,
                 amount = pairing.inflow.transaction.amount,
                 type = pairing.type,
-                guessed = candidates.getValue(pairing.outflow.id) > 1 || candidates.getValue(pairing.inflow.id) > 1 || firstCardPayment(pairing, sides),
                 outflowLeg = pairing.outflow.transaction,
                 inflowLeg = pairing.inflow.transaction,
+                whyGuessed = listOfNotNull(
+                    GuessReason.OtherPairings(others).takeIf { others.isNotEmpty() },
+                    GuessReason.NoFundedBy(pairing.inflow.bankAccount.id).takeIf { firstCardPayment(pairing, sides) },
+                ),
             )
         }
     }
@@ -280,21 +327,28 @@ object TransferDetection {
         if (bankAccount.creditCard) {
             if (single.outflow || !cardPayment) return null
             // UC-005 BR-002: An inflow to a credit card Bank Account that matches a Card Payment Description has the card's Funded By as its other side.
-            fundedBy(bankAccount, sides)?.let { return OneSided(it, TransferType.CardPayment, guessed = false) }
+            fundedBy(bankAccount, sides)?.let { return OneSided(it, TransferType.CardPayment, whyGuessed = emptyList()) }
             // UC-005 BR-002: A Card Payment to a credit card Bank Account without a Funded By is a Guessed Transfer that proposes the only Bank Account of the Budget that is not a credit card, or no Budget Account (A8).
-            val paying = sides.values.filterNot { it.creditCard }.singleOrNull()
-            return OneSided(paying?.mapping?.budgetAccountId, TransferType.CardPayment, guessed = true)
+            val paying = sides.values.filterNot { it.creditCard }
+            return OneSided(
+                paying.singleOrNull()?.mapping?.budgetAccountId, TransferType.CardPayment, listOf(GuessReason.NoFundedBy(bankAccount.id)), paying.size,
+            )
         }
         if (single.outflow && cardPayment) {
             // UC-005 BR-002: An outflow that matches a Card Payment Description has as its other side the credit card whose Funded By is its Budget Account; Slussen never infers a credit card from the paying Bank Account.
             val cards = sides.values.filter { it.creditCard && fundedBy(it, sides) == single.budgetAccountId }.sortedBy { it.id }
             // UC-005 BR-003: When more than one credit card Bank Account has that Funded By, the outflow is a Guessed Transfer.
-            if (cards.isNotEmpty()) return OneSided(cards.first().mapping!!.budgetAccountId, TransferType.CardPayment, guessed = cards.size > 1)
+            if (cards.isNotEmpty()) {
+                val others = cards.drop(1).map { it.mapping!!.budgetAccountId }
+                return OneSided(
+                    cards.first().mapping!!.budgetAccountId, TransferType.CardPayment, listOfNotNull(GuessReason.OtherCards(others).takeIf { others.isNotEmpty() }),
+                )
+            }
         }
         if (!TransferDescriptions.matchesAny(descriptions, TransferDescriptionKind.BankTransfer, single.transaction)) return null
         // UC-005 BR-002: A Bank Transaction of a Bank Account that is not a credit card that matches a Bank Transfer Description has its Transfer Partner as its other side.
         val partner = transferPartner(bankAccount, sides) ?: return null
-        return OneSided(partner, typeOf(bankAccount, sides.getValue(partner)), guessed = false)
+        return OneSided(partner, typeOf(bankAccount, sides.getValue(partner)), whyGuessed = emptyList())
     }
 
     /**

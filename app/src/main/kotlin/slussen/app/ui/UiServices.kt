@@ -11,6 +11,7 @@ import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.settings.GeneralSettings
 import slussen.core.status.BankAccountTransactions
+import slussen.core.status.BudgetTransfers
 import slussen.core.status.ImportStatus
 
 /** The core services the screens of this build use, created once by the composition root (ADR-001 §5). */
@@ -25,6 +26,8 @@ class UiServices(
     val status: ImportStatus,
     /** One Bank Account's Bank Transactions with their Transaction Statuses and reasons (UC-008 step 5), from stored data only. */
     val bankAccountTransactions: BankAccountTransactions,
+    /** The Transfers of one Budget with why each is guessed and whether it is eligible (UC-005 step 1), from stored data only. */
+    val transfers: BudgetTransfers,
     val fetch: FetchTransactions,
     /** Reading the Budget App again and comparing (UC-003, FR-040), from the line of the Budget App of the Overview and every Budget tab. */
     val comparison: Comparison,

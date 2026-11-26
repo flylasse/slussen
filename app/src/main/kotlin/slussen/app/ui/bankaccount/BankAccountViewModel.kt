@@ -34,7 +34,14 @@ data class WeekUi(val heading: String, val lines: List<TransactionLineUi>)
 data class DetailLine(val name: String, val text: String)
 
 /** The read-only details of one transaction (`#tx-match-this-build`, `#tx-possible-import-this-build`, `#tx-unreadable-this-build`). */
-data class TransactionSheetUi(val title: String, val subtitle: String, val details: List<DetailLine>, val closing: String)
+data class TransactionSheetUi(
+    val title: String,
+    val subtitle: String,
+    val details: List<DetailLine>,
+    val closing: String,
+    /** UC-005 step 1: the Bank Transaction to open on the Transfers of its Budget, for a Transfer Leg; null otherwise. */
+    val transferLeg: Long? = null,
+)
 
 /** One Transaction Status in "What the statuses mean", with what it means and what to do now. */
 data class StatusMeaningUi(val status: String, val meaning: String, val now: String)

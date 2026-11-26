@@ -245,7 +245,11 @@ object BankAccountTexts {
                 DetailLine("Eligible", if (line.eligible) "Yes, for a later Upload Plan; nothing is uploaded in this version" else "No"),
             )
         }
-        return TransactionSheetUi(title, subtitle, details, "It stays visible with its reason. Nothing is uploaded, and no decision is needed now.")
+        return TransactionSheetUi(
+            title, subtitle, details, "It stays visible with its reason. Nothing is uploaded, and no decision is needed now.",
+            // Step 1 of UC-005: a Transfer Leg, or a Guessed Transfer without a stored Transfer (O-T-10), leads to its Transfer.
+            transferLeg = line.key.id.takeIf { !line.key.unreadable && (line.transfer != null || line.status == TransactionStatus.GuessedTransfer) },
+        )
     }
 
     private fun reasonEntry(reason: StatusReason, formats: Formats): String? = when (reason) {

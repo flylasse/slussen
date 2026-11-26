@@ -17,6 +17,7 @@ import slussen.core.port.UnreadableTransactionStatus
 import slussen.core.transfer.DetectedTransfer
 import slussen.core.transfer.TransferCandidate
 import slussen.core.transfer.TransferDetection
+import slussen.core.transfer.TransfersDetected
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import kotlin.math.abs
@@ -75,38 +76,60 @@ object ComparisonRules {
     fun conclude(data: ComparisonData, windows: ComparisonWindows): ComparisonConclusions {
         val statuses = mutableMapOf<Long, TransactionStatus>()
         val transfers = mutableListOf<DetectedTransfer>()
-        val decided = data.transfers.filter { it.decision != TransferDecision.Proposed }.map { it.id }.toSet()
         data.budgets.forEach { budget ->
-            val lastReadAt = budget.lastReadAt ?: return@forEach
-            val accountIds = budget.budgetAccounts.map { it.id }.toSet()
-            // UC-003 BR-014: The Bank Transactions of a Retired Account are not compared.
-            val bankAccounts = data.bankAccounts.filter { !it.retired && it.mapping?.budgetAccountId in accountIds }
-            val candidates = mutableListOf<TransferCandidate>()
-            bankAccounts.forEach { bankAccount ->
-                val budgetAccountId = bankAccount.mapping!!.budgetAccountId
-                val held = data.budgetAppTransactions.filter { it.budgetAccountId == budgetAccountId }
-                data.bankTransactions
-                    .filter { it.bankAccountId == bankAccount.id }
-                    // UC-003 BR-001: a Bank Transaction stored since its Budget's last successful read has no Transaction Status yet (A1).
-                    .filterNot { it.firstSeenAt.isAfter(lastReadAt) }
-                    .filterNot { it.transferId in decided }
-                    .forEach { transaction ->
-                        val status = statusOf(transaction, bankAccount, budget, held, windows)
-                        statuses[transaction.id] = status
-                        // UC-005 BR-002: Whether two Bank Transactions form a Transfer does not depend on the Upload Window or on any other rule that gives a Bank Transaction its Transaction Status.
-                        candidates += TransferCandidate(transaction, bankAccount, earlier = status.takeUnless { it in AFTER_TRANSFER_LEG })
-                    }
-            }
-            // UC-005 BR-001: Slussen always detects Transfers; no setting switches detection off.
-            val detected = TransferDetection.detect(
-                budget, bankAccounts, candidates, data.transferDescriptions,
-                windows.transferPairingDays, windows.lonelyTransferGraceDays, windows.today,
-            )
-            // UC-003 BR-001: The first rule that applies gives the Transaction Status: a Transfer Leg follows its Transfer before a match for a Typed Entry, and keeps the status an earlier rule gave it.
-            statuses += detected.statuses
-            transfers += detected.transfers
+            val concluded = concludeFor(budget, data, windows) ?: return@forEach
+            statuses += concluded.first
+            transfers += concluded.second.transfers
         }
         return ComparisonConclusions(statuses, TransferDetection.toStore(transfers, data.transfers))
+    }
+
+    /**
+     * Step 4 for the one Budget [budgetId] of [data]: the Transfers that [conclude] detects among its Bank Transactions,
+     * with why each Guessed Transfer is guessed, by the same rules on the same stored data, for the screens that show
+     * them (UC-005 step 1); nothing is stored. Empty when the Budget has not been read yet.
+     */
+    fun transfersOf(budgetId: Long, data: ComparisonData, windows: ComparisonWindows): TransfersDetected {
+        val budget = data.budgets.firstOrNull { it.id == budgetId } ?: return TransfersDetected()
+        return concludeFor(budget, data, windows)?.second ?: TransfersDetected()
+    }
+
+    /** The statuses of [budget]'s compared Bank Transactions and the Transfers among them; null before its first read. */
+    private fun concludeFor(
+        budget: StoredBudget,
+        data: ComparisonData,
+        windows: ComparisonWindows,
+    ): Pair<Map<Long, TransactionStatus>, TransfersDetected>? {
+        val lastReadAt = budget.lastReadAt ?: return null
+        val decided = data.transfers.filter { it.decision != TransferDecision.Proposed }.map { it.id }.toSet()
+        val statuses = mutableMapOf<Long, TransactionStatus>()
+        val accountIds = budget.budgetAccounts.map { it.id }.toSet()
+        // UC-003 BR-014: The Bank Transactions of a Retired Account are not compared.
+        val bankAccounts = data.bankAccounts.filter { !it.retired && it.mapping?.budgetAccountId in accountIds }
+        val candidates = mutableListOf<TransferCandidate>()
+        bankAccounts.forEach { bankAccount ->
+            val budgetAccountId = bankAccount.mapping!!.budgetAccountId
+            val held = data.budgetAppTransactions.filter { it.budgetAccountId == budgetAccountId }
+            data.bankTransactions
+                .filter { it.bankAccountId == bankAccount.id }
+                // UC-003 BR-001: a Bank Transaction stored since its Budget's last successful read has no Transaction Status yet (A1).
+                .filterNot { it.firstSeenAt.isAfter(lastReadAt) }
+                .filterNot { it.transferId in decided }
+                .forEach { transaction ->
+                    val status = statusOf(transaction, bankAccount, budget, held, windows)
+                    statuses[transaction.id] = status
+                    // UC-005 BR-002: Whether two Bank Transactions form a Transfer does not depend on the Upload Window or on any other rule that gives a Bank Transaction its Transaction Status.
+                    candidates += TransferCandidate(transaction, bankAccount, earlier = status.takeUnless { it in AFTER_TRANSFER_LEG })
+                }
+        }
+        // UC-005 BR-001: Slussen always detects Transfers; no setting switches detection off.
+        val detected = TransferDetection.detect(
+            budget, bankAccounts, candidates, data.transferDescriptions,
+            windows.transferPairingDays, windows.lonelyTransferGraceDays, windows.today,
+        )
+        // UC-003 BR-001: The first rule that applies gives the Transaction Status: a Transfer Leg follows its Transfer before a match for a Typed Entry, and keeps the status an earlier rule gave it.
+        statuses += detected.statuses
+        return statuses to detected
     }
 
     // UC-003 BR-001: The first rule that applies gives the Transaction Status.

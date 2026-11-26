@@ -18,6 +18,7 @@ import slussen.app.ui.components.ScreenTitle
 import slussen.app.ui.components.SectionTitle
 import slussen.app.ui.components.SlussenCard
 import slussen.app.ui.Texts
+import slussen.app.ui.transfers.TransfersTexts
 import slussen.app.ui.theme.SlussenColors
 
 /**
@@ -33,6 +34,7 @@ fun BudgetScreen(
     onStartFirstUploadMatching: () -> Unit,
     onReadAgain: () -> Unit = {},
     onBankAccount: (Long) -> Unit = {},
+    onTransfers: () -> Unit = {},
 ) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
@@ -47,6 +49,8 @@ fun BudgetScreen(
             ui.notComparedYet?.let { Muted(it) }
             ui.readAgainNote?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
             if (ui.note != null) Muted(ui.note)
+            // Step 1 of UC-005 (`budget.html` → `transfers.html#list`): the entry to the Transfers, whose counts agree with its list (UX-27).
+            SlussenCard { NavigationLine(TransfersTexts.OPEN_TRANSFERS, ui.transfers, onTransfers) }
             SectionTitle("Sources")
         }
         items(ui.sources) { source ->

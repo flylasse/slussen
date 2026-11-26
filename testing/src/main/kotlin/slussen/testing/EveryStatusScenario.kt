@@ -148,9 +148,10 @@ class EveryStatusScenario(val slice: TestSlice) {
 
     /**
      * Plants every Bank Transaction, the Unreadable Transaction and the Budget App's copy, reads the Budget App once
-     * (a real Comparison, UC-003), and then stores one more Bank Transaction, not compared yet (S-T-08).
+     * (a real Comparison, UC-003), and then stores one more Bank Transaction, not compared yet (S-T-08). [withLonelyTransfer]
+     * adds a Lonely Transfer of 120.00 into Kestrel Reserve from its Transfer Partner Checking on 10-13 (UC-005 A4).
      */
-    suspend fun compareEveryStatus() {
+    suspend fun compareEveryStatus(withLonelyTransfer: Boolean = false) {
         serve()
         val checking = addBankAccount("Kestrel Checking", "Checking", startDate = startDate)
         val card = addBankAccount("Pinecrest Rewards Card", "Rewards Card", BankAccountType.CreditCard)
@@ -176,6 +177,7 @@ class EveryStatusScenario(val slice: TestSlice) {
         store("guessed-alone", card, day(14), amount(33), "AUTOPAY RECEIVED")
         store("leg-in", reserve, day(11), amount(500), "INTERNET TRANSFER FROM CHECKING")
         store("late-side", reserve, day(8), amount(75), "INTERNET TRANSFER FROM CHECKING")
+        if (withLonelyTransfer) store("lonely-in", reserve, day(13), amount(120), "INTERNET TRANSFER FROM CHECKING")
         slice.importStatusStore.unreadableTransactions += StoredUnreadableTransaction(
             id = 4900, bankAccountId = checking, bookedDate = null, amount = amount(-7, 250), currency = USD, payee = "Kiosk Nord",
             memo = null, reason = UnreadableTransactionReason.MissingDate.text, firstSeenAt = now.minus(Duration.ofHours(1)),

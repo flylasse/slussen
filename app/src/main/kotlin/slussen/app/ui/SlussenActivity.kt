@@ -46,6 +46,8 @@ import slussen.app.ui.settings.EntryPage
 import slussen.app.ui.settings.SettingsScreen
 import slussen.app.ui.settings.SettingsViewModel
 import slussen.app.ui.theme.SlussenColors
+import slussen.app.ui.transfers.TransfersScreen
+import slussen.app.ui.transfers.TransfersViewModel
 import slussen.app.ui.theme.SlussenTheme
 import slussen.core.port.ServiceKey
 
@@ -74,6 +76,12 @@ sealed interface Screen {
 
     /** UC-008 step 5: one Bank Account of the Budget [budgetId], reached from its card on the Budget tab. */
     data class BankAccount(val bankAccountId: Long, val budgetId: Long) : Screen
+
+    /**
+     * UC-005 step 1: the Transfers of the Budget [budgetId], from its tab, or from a Transfer Leg on the Bank Account screen
+     * with the Transfer of the Bank Transaction [selectLeg] open.
+     */
+    data class Transfers(val budgetId: Long, val selectLeg: Long?) : Screen
 
     data object RecentFetches : Screen
 
@@ -115,7 +123,8 @@ fun SlussenScreens(services: UiServices) {
                 overviewUi?.budgets.orEmpty().forEach { budget ->
                     NavigationBarItem(
                         selected = (current as? Screen.Budget)?.budgetId == budget.budgetId ||
-                            (current as? Screen.BankAccount)?.budgetId == budget.budgetId,
+                            (current as? Screen.BankAccount)?.budgetId == budget.budgetId ||
+                            (current as? Screen.Transfers)?.budgetId == budget.budgetId,
                         onClick = { tab(Screen.Budget(budget.budgetId, budget.name)) },
                         icon = { Text(budget.currency) },
                         label = { Text(budget.name) },
@@ -154,6 +163,7 @@ fun SlussenScreens(services: UiServices) {
                             onStartFirstUploadMatching = { overview.startFirstUploadMatching() },
                             onReadAgain = vm::readAgain,
                             onBankAccount = { id -> go(Screen.BankAccount(id, current.budgetId)) },
+                            onTransfers = { go(Screen.Transfers(current.budgetId, selectLeg = null)) },
                         )
                     }
                 }
@@ -169,7 +179,13 @@ fun SlussenScreens(services: UiServices) {
                         onStatuses = vm::openStatuses,
                         onClose = vm::close,
                         onRemedy = { action -> action.service?.let { go(Screen.Service(it)) } },
+                        onTransfer = { leg -> go(Screen.Transfers(current.budgetId, leg)) },
                     )
+                }
+                is Screen.Transfers -> {
+                    val vm: TransfersViewModel = viewModel(key = "transfers-${current.budgetId}") { TransfersViewModel(services, current.budgetId) }
+                    LaunchedEffect(current) { vm.load(current.selectLeg) }
+                    TransfersScreen(state = vm.state.collectAsState().value, onBack = ::back, onOpen = vm::open, onClose = vm::close)
                 }
                 Screen.RecentFetches -> {
                     val vm: RecentFetchesViewModel = viewModel(key = "fetches") { RecentFetchesViewModel(services) }

@@ -24,6 +24,7 @@ import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.settings.GeneralSettings
 import slussen.core.status.BankAccountTransactions
+import slussen.core.status.BudgetTransfers
 import slussen.core.status.ImportStatus
 import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.value.Secret
@@ -111,6 +112,9 @@ class TestSlice(
         status, connectionStore, importStatusStore, copyStore, settings, plugins.budgetApp.profile.matchingDateWindowDays, clock,
         DayOfWeek.MONDAY,
     )
+
+    /** UC-005 step 1: the Transfers of one Budget with why each is guessed and whether it is eligible. */
+    val budgetTransfers = BudgetTransfers(status, connectionStore, copyStore, settings, plugins.budgetApp.profile.matchingDateWindowDays, clock)
 
     val feedsKey: ServiceKey get() = plugins.dataProviders.single { it.plugin === feeds }.key
     val openBankingKey: ServiceKey get() = plugins.dataProviders.single { it.plugin === openBanking }.key

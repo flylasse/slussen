@@ -162,6 +162,12 @@ class ImportStatus(
         )
     }
 
+    /** The summary of the served Budget [budgetId] (step 1), or null when it is not served. */
+    suspend fun summaryOf(budgetId: Long): BudgetSummary? {
+        val snapshot = snapshot()
+        return snapshot.budgets.firstOrNull { it.id == budgetId }?.let { summary(it, snapshot) }
+    }
+
     /**
      * Steps 5-8 for the one Bank Account [bankAccountId] (`bank-account.html`): its Budget's summary, its status and the
      * name of its Source, or null when it is not mapped into a served Budget or is a Retired Account.

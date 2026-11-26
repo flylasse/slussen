@@ -13,6 +13,7 @@ import slussen.app.ui.Texts
 import slussen.app.ui.UiServices
 import slussen.app.ui.components.BudgetAppLineUi
 import slussen.app.ui.components.FetchButtonUi
+import slussen.app.ui.transfers.TransfersTexts
 import slussen.core.operation.RunningOperation
 import slussen.app.ui.components.FirstUploadMatchingUi
 import slussen.core.port.ServiceKey
@@ -77,6 +78,11 @@ data class BudgetUi(
     val notComparedYet: String? = null,
     /** UC-003 A1 step 2: the remedy of statuses that are not current, a read of the Budget App; null while they are. */
     val readAgainNote: String? = null,
+    /**
+     * UC-005 step 1, UX-27 (`budget.html` → `transfers.html#list`): the counts of the entry that leads to the Transfers,
+     * from the same read model as the list, or that they could not be read.
+     */
+    val transfers: String = "",
 )
 
 /** A Budget tab (UC-008 steps 4-8), from stored data only. */
@@ -198,8 +204,18 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                 statuses = Texts.statusesAsOf(workspace.summary.statusesAsOf, workspace.budgetAppName, formats, now),
                 notComparedYet = Texts.notComparedYet(workspace.summary.notComparedYet, workspace.budgetAppName),
                 readAgainNote = Texts.readAgainNote(workspace.summary, workspace.budgetAppName),
+                transfers = transfersEntry(),
             )
         }
+    }
+
+    /** UX-27: the entry's counts come from the read model the Transfers list shows; a read that fails is said there (NFR-023). */
+    private suspend fun transfersEntry(): String = try {
+        TransfersTexts.entry(services.transfers.of(budgetId))
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        TransfersTexts.ENTRY_NOT_READ
     }
 
     private fun counts(counts: NotYetUploaded) = Texts.counts(counts, notComparedYet = 0)
