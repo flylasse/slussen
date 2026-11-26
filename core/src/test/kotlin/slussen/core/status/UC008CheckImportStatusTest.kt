@@ -489,29 +489,6 @@ class UC008CheckImportStatusTest {
     }
 
     @Test
-    @UseCase(id = "UC-008", scenario = "A5: Recent Fetch Outcomes", businessRules = ["BR-008"])
-    @DisplayName("A5: the most recent Fetches, as many as the Operator Setting keeps, with Source, time, who started them and outcome")
-    fun recentFetchesAreShown() = runTest {
-        household()
-        repeat(12) { index ->
-            fetch(
-                if (index % 2 == 0) slice.feedsId else slice.openBankingId,
-                now.minus(Duration.ofHours(index.toLong())),
-                if (index == 0) FetchOutcome.Failed else FetchOutcome.Fetched,
-                startedBy = if (index == 1) StartedBy.Schedule else StartedBy.Operator,
-            )
-        }
-        slice.settings.settings = slice.settings.settings.copy(fetchHistorySize = 10)
-
-        val recent = slice.status.recentFetches()
-
-        assertEquals(10, recent.size)
-        assertEquals(RecentFetch("Kestrel Feeds", now, StartedBy.Operator, FetchOutcome.Failed), recent[0])
-        assertEquals(RecentFetch("Aurora Open Banking", now.minus(Duration.ofHours(1)), StartedBy.Schedule, FetchOutcome.Fetched), recent[1])
-        assertEquals(recent.sortedByDescending { it.startedAt }, recent)
-    }
-
-    @Test
     @UseCase(id = "UC-008", scenario = "A7: Backed-Up Data Nears the Backup Limit", businessRules = ["BR-010"], requirements = ["NFR-019", "C-015"])
     @DisplayName("A7: from the backup warning threshold (80% by default) of Android's 25 MB limit, the size and the limit are shown")
     fun backupSizeWarning() = runTest {

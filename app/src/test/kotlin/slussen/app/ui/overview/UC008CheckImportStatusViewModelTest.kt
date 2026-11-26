@@ -12,7 +12,6 @@ import slussen.app.ui.MainDispatcherExtension
 import slussen.app.ui.UiFixture
 import slussen.app.ui.budget.BudgetViewModel
 import slussen.app.ui.budget.RemedyAction
-import slussen.app.ui.fetches.RecentFetchesViewModel
 import slussen.app.ui.components.FirstUploadMatchingChip
 import slussen.app.ui.components.FirstUploadMatchingUi
 import slussen.core.firstupload.FirstUploadMatchingTone
@@ -353,17 +352,6 @@ class UC008CheckImportStatusViewModelTest {
         )
     }
 
-    @Test
-    @UseCase(id = "UC-008", scenario = "A5: Recent Fetch Outcomes", businessRules = ["BR-008"], requirements = ["NFR-018"])
-    @DisplayName("A5: the recent Fetches are listed with Source, local time, who started them and outcome")
-    fun recentFetchesAreListed() {
-        household()
-        slice.importStatusStore.fetches += StoredFetch(1, slice.feedsId, slice.clock.instant(), StartedBy.Schedule, FetchOutcome.Fetched, emptyList())
-
-        val lines = RecentFetchesViewModel(fixture.services).also { it.load() }.state.value!!
-
-        assertEquals(listOf("Kestrel Feeds · 2026-10-15 14:00 · Fetch Schedule · Fetched"), lines)
-    }
     @Test
     @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-005"])
     @DisplayName("Steps 6-7 after a Fetch (UX-08): each Bank Account card shows the Source Health and Freshness of its Fetch Result and its Account Balance next to the Budget Account's, with the difference; the tab no longer says that the Bank Transactions are not compared, only that nothing is uploaded yet and no action is needed for it")

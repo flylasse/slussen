@@ -182,12 +182,33 @@ class ImportStatus(
         return BankAccountInBudget(summary(budget, snapshot), bankAccountStatus(bankAccount, budget, snapshot), sourceName)
     }
 
-    // UC-008 BR-008: Slussen shows the most recent Fetches, as many as the Operator Setting keeps, with Source, time, who started them and outcome.
-    suspend fun recentFetches(): List<RecentFetch> {
+    /**
+     * UC-008 A5: the recent Fetches with, for each, what it recorded for each Bank Account and whether it still asks
+     * something of the Operator now, read from stored data only (BR-001).
+     */
+    suspend fun recentFetches(): RecentFetches {
         val snapshot = snapshot()
-        return snapshot.fetches.take(snapshot.settings.fetchHistorySize).map { fetch ->
-            RecentFetch(dataProviderName(fetch.dataProviderId), fetch.startedAt, fetch.startedBy, fetch.outcome)
-        }
+        val everyBankAccount = connections.bankAccounts().associateBy { it.id }
+        val rules = FetchHistoryRules(
+            now = snapshot.now,
+            fetches = snapshot.fetches,
+            accounts = everyBankAccount,
+            backOffs = snapshot.backOffs,
+            sourceName = ::dataProviderName,
+            credentialsAcceptedAt = { (snapshot.credentials[ServiceKey.dataProvider(it)] as? CredentialStatus.Accepted)?.acceptedAt },
+            accountBlocked = { account -> blockedNow(account, snapshot) },
+            sourceBlocked = { providerId, last -> sourceBlocked(dataProviders.single { it.id == providerId }, last, snapshot) },
+        )
+        // UC-008 BR-008: Slussen shows the most recent Fetches, as many as the Operator Setting keeps, with Source, time, who started them and outcome.
+        val kept = snapshot.settings.fetchHistorySize
+        return RecentFetches(kept, snapshot.fetches.take(kept).map(rules::entry))
+    }
+
+    /** The Blocked Reasons of [bankAccount] as its Budget shows them, or null when it is not fetched now: a Retired Account, unmapped, or in a Budget that is not served. */
+    private fun blockedNow(bankAccount: StoredBankAccount, snapshot: Snapshot): List<Blocked>? {
+        val fetched = snapshot.bankAccounts.firstOrNull { it.id == bankAccount.id } ?: return null
+        val budget = snapshot.budgets.firstOrNull { budget -> budget.budgetAccounts.any { it.id == fetched.mapping?.budgetAccountId } } ?: return null
+        return bankAccountBlocked(fetched, budget, snapshot)
     }
 
     /** A9: the Operator chooses "Start First Upload Matching" (BR-006, BR-009). */

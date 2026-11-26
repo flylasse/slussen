@@ -194,7 +194,14 @@ fun SlussenScreens(services: UiServices) {
                 Screen.RecentFetches -> {
                     val vm: RecentFetchesViewModel = viewModel(key = "fetches") { RecentFetchesViewModel(services) }
                     LaunchedEffect(current) { vm.load() }
-                    vm.state.collectAsState().value?.let { RecentFetchesScreen(it, ::back) }
+                    RecentFetchesScreen(
+                        state = vm.state.collectAsState().value,
+                        onBack = ::back,
+                        onOpen = vm::open,
+                        onClose = vm::close,
+                        onFetchAll = { tab(Screen.Overview) },
+                        onRemedy = { action -> action.service?.let { go(Screen.Service(it)) } },
+                    )
                 }
                 Screen.Settings -> {
                     val vm: SettingsViewModel = viewModel(key = "settings") { SettingsViewModel(services) }

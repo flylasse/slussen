@@ -277,6 +277,77 @@ class UC008CheckImportStatusScreenIT {
         onNodeWithText("Source Health: Fetched 2026-10-15 13:45 · started by you").assertExists()
     }
 
+    /** The Recent Fetches of [viewModel], wired as `SlussenScreens` wires them. */
+    @androidx.compose.runtime.Composable
+    private fun RecentFetches(
+        viewModel: slussen.app.ui.fetches.RecentFetchesViewModel,
+        onRemedy: (RemedyAction) -> Unit = {},
+        onFetchAll: () -> Unit = {},
+    ) = slussen.app.ui.fetches.RecentFetchesScreen(
+        state = viewModel.state.collectAsState().value,
+        onBack = {},
+        onOpen = viewModel::open,
+        onClose = viewModel::close,
+        onFetchAll = onFetchAll,
+        onRemedy = onRemedy,
+    )
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A5: Recent Fetch Outcomes", businessRules = ["BR-008"])
+    @DisplayName("A5, UC-001 A19, A20 (fetch-history.html#list, #fetch-detail): a Fetch that delivered one Bank Account and not the others says so in its line and that something is still needed now; a tap opens the outcome of each Bank Account with the action that leads to its remedy, which Close and system back close again")
+    fun recentFetchDetail() = compose.use {
+        val fixture = ScreenFixture()
+        val scenario = slussen.testing.EveryStatusScenario(fixture.slice)
+        kotlinx.coroutines.runBlocking {
+            scenario.serve()
+            scenario.addBankAccount("Kestrel Checking", "Checking")
+            scenario.addBankAccount("Kestrel Reserve", "Reserve Savings", slussen.core.port.BankAccountType.Savings)
+        }
+        fixture.slice.importStatusStore.fetches += slussen.core.port.StoredFetch(
+            77, fixture.slice.feedsId, fixture.slice.clock.instant().minus(java.time.Duration.ofMinutes(30)), slussen.core.port.StartedBy.Operator,
+            slussen.core.port.FetchOutcome.Fetched,
+            listOf(
+                slussen.core.port.StoredFetchResult(scenario.bankAccount("Kestrel Checking"), slussen.core.port.FetchResultOutcome.Fetched, 2),
+                slussen.core.port.StoredFetchResult(scenario.bankAccount("Kestrel Reserve"), slussen.core.port.FetchResultOutcome.NotDelivered, 0),
+            ),
+        )
+        val viewModel = slussen.app.ui.fetches.RecentFetchesViewModel(fixture.services)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.load() }
+        var remedy: RemedyAction? = null
+        setContent { SlussenTheme { RecentFetches(viewModel, onRemedy = { remedy = it }) } }
+
+        onNodeWithText("2026-10-15 13:30 · Kestrel Feeds · started by you").assertExists()
+        onNodeWithText("Bank Accounts fetched: 1 of 2 · Kestrel Reserve: not delivered").assertExists()
+        onNodeWithText("Still needed now: Kestrel Reserve, not delivered by Kestrel Feeds (13:30): fetch again").assertExists()
+        onNodeWithText("2026-10-15 13:30 · Kestrel Feeds · started by you").performClick()
+        onNodeWithText("Fetch of 2026-10-15 13:30").assertExists()
+        onNodeWithText("Kestrel Checking").assertExists()
+        onNodeWithText("Still needed: Kestrel Reserve, not delivered by Kestrel Feeds (13:30): fetch again").assertExists()
+        onNodeWithText("Fetch again").performClick()
+        assertEquals(ServiceKey.dataProvider(fixture.slice.feedsId), remedy?.service)
+        androidx.test.espresso.Espresso.pressBack()
+        onNodeWithText("Fetch of 2026-10-15 13:30").assertDoesNotExist()
+        onNodeWithText("2026-10-15 13:30 · Kestrel Feeds · started by you").performClick()
+        onNodeWithText("Close").performClick()
+        onNodeWithText("Fetch of 2026-10-15 13:30").assertDoesNotExist()
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A5: Recent Fetch Outcomes", businessRules = ["BR-008"])
+    @DisplayName("A5 (fetch-history.html#empty): without a Fetch the screen says why it is empty and its action leads to the Overview")
+    fun recentFetchesEmpty() = compose.use {
+        val fixture = ScreenFixture()
+        val viewModel = slussen.app.ui.fetches.RecentFetchesViewModel(fixture.services)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.load() }
+        var overview = false
+        setContent { SlussenTheme { RecentFetches(viewModel, onFetchAll = { overview = true }) } }
+
+        onNodeWithText("No Fetches yet").assertExists()
+        onNodeWithText("an Operator Setting (60 now)", substring = true).assertExists()
+        onNodeWithText("Fetch all Data Providers on the Overview").performClick()
+        assertEquals(true, overview)
+    }
+
     /** UC-008 A10, BR-011: the overview is shown from the first added Bank Account on; here one of the File Format. */
     private fun aBankAccountIsAdded(fixture: ScreenFixture) = kotlinx.coroutines.runBlocking {
         val slice = fixture.slice
