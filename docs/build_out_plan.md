@@ -17,8 +17,9 @@
 | Phase | Commits | Gate | Review | Notes |
 |---|---|---|---|---|
 | A-1 | 695249e, 201b7a3 | green at 201b7a3 | `docs/reviews/build_out_reviews/A-1.md`: 10 findings fixed, 3 to §6 (G-01..G-03) | A regular expression in the migration test overflowed the stack at random in one gate run; fixed in 16bf178 |
+| A-2 | fd3e1b9, 7936c10 | green at 7936c10 | `docs/reviews/build_out_reviews/A-2.md`: 12 findings fixed, 2 to §6 (G-07, G-08); the reviewer compared the reshaped Comparison and Transfer rules with the old ones line by line: no behaviour changed | The reasons on screen call the Comparison's own rules; `ComparisonStore.comparisonDataOf` has no instrumented test of its own yet |
 
-- Next: phase A-2.
+- Next: phase A-3.
 
 ## 1. Scope
 
@@ -137,6 +138,10 @@ Smaller choices taken without asking, to be confirmed at the end: the Decision J
 | G-03 | A-1 | An outdated balance of a file-imported Bank Account without a balance Data Provider would say "Fetch again for a newer one". Not reachable until Wave 5. | A text and a condition, with Wave 5. |
 | G-04 | A-1 | The read shows "Reading YNAB · no Bank Fetch", not the mockups' "Budgets: n of m": the coordinator reports no progress within a read. | A progress report from the Comparison through the coordinator. |
 | G-05 | A-1 | The remedy of an outdated balance is a line of text, not a button: the Budget tab has no Fetch control yet. | With the Budget tab's Fetch (UC-001's trigger per Budget, Wave 5). |
+| G-07 | A-2 | A New or Match For Typed Entry line that left the Upload Window since the latest Comparison still shows as Eligible, by its stored status; only "statuses as of" says so. | The re-status of Wave 3 (A-6) or a Comparison brings it up to date. |
+| G-08 | A-2 | The reason "its other side did not arrive in time" (O-T-11) is given for New only; a Match For Typed Entry past its grace period shows the Typed Entry. | Text and one condition. |
+| G-09 | A-2 | A Fetch does not store the period it asked for, so "fetched, and nothing in it" names no dates (the mockup `#fetched-empty` does). | A field on `FETCH` (a schema version). |
+| G-10 | A-2 | Week headings are this week, last week, "Earlier" and "Without a readable date"; a sheet is a full-screen view with Close; no retirement date is shown (none is stored); Funded By and Transfer Partner read "set in a later version" until Wave 2. | Layout and text only; a retirement date needs a stored field. |
 | G-06 | A-1 | Times show as HH:mm today, MM-dd HH:mm earlier in the year, the full date before that, as the mockups do. | Text only. |
 
 ### Specification changes (S-B-nn)
