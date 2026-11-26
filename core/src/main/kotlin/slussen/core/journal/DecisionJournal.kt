@@ -6,6 +6,7 @@ import slussen.core.port.JournalEntry
 import slussen.core.port.JournalEventKind
 import slussen.core.port.OperatorSettingsStore
 import java.time.Clock
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Records Decision Journal entries through the write-only recorder (ADR-001 §3). No entry is recorded while the
@@ -16,6 +17,14 @@ class DecisionJournal(
     private val settings: OperatorSettingsStore,
     private val clock: Clock,
 ) {
+    private val droppedEntries = AtomicLong()
+
+    /**
+     * ADR-002 §9: the entries dropped here, in memory since this process started, because what they need could not be
+     * read; the recorder counts its own drops apart.
+     */
+    val dropped: Long get() = droppedEntries.get()
+
     /**
      * Records one entry; an entry about a Bank Transaction names its Bank Account and its Import Identifier, both or
      * neither (UC-011 BR-001, `DECISION_JOURNAL_ENTRY` constraints).
@@ -37,7 +46,7 @@ class DecisionJournal(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            Unit
+            droppedEntries.incrementAndGet()
         }
     }
 }

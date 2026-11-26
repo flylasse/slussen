@@ -602,4 +602,20 @@ class UC001FetchTransactionsViewModelTest {
         assertEquals(listOf("Corner Grocer"), ui.weeks.flatMap { it.lines }.map { it.payee })
         assertTrue(ui.blocked.isEmpty())
     }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", requirements = ["NFR-023"])
+    @DisplayName("NFR-023 (review 6): a Fetch on a Data Provider's page that stops because the stored data cannot be used says so at the Fetch, with fetching again as the next action, instead of a crash")
+    fun fetchThatStopsOnTheStoredData() {
+        runBlocking { slice.enterCredentials() }
+        val page = page(slice.feedsKey)
+        slice.coordinatorStore.failsToRead = true
+
+        page.fetch()
+
+        val result = page.ui().fetchResult!!
+        assertEquals("The Fetch stopped: Slussen could not use the data stored on this device", result.text)
+        assertEquals("Fetch again; Recent Fetches shows what was stored.", result.detail)
+        assertEquals(slussen.app.ui.components.FetchResultKind.Failed, result.kind)
+    }
 }

@@ -857,6 +857,7 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
         offer()
         val hold = CompletableDeferred<Unit>()
         slice.connectionStore.beforeStore = { hold.await() }
+        val endedBefore = slice.coordinator.ended.value
 
         feedsPage.switchImport(offeredLine("Aurora Dollar"), on = false)
         assertEquals("Switching off…", offeredLine("Aurora Dollar").pending)
@@ -869,6 +870,24 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
         assertEquals(false, offeredLine("Aurora Dollar").importOn)
         assertEquals(listOf("acct-5520"), leftOutReferences())
         assertEquals(1, slice.journalRecorder.entries.count { "Aurora Dollar" in it.details })
+        // Review 4a: the second tap started no operation of its own.
+        assertEquals(endedBefore + 1, slice.coordinator.ended.value)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-011", "BR-012"])
+    @DisplayName("Steps 6-7 (review 4b): a switch-off that is stored but cannot be read back says that it is not imported, with no Undo, only OK; its switch on the page brings it back")
+    fun switchOffNotReadBackHasNoUndo() {
+        throughBudgets()
+        offer()
+        slice.connectionStore.beforeStore = { slice.connectionStore.failsToReadLeftOut = true }
+
+        feedsPage.switchImport(offeredLine("Aurora Dollar"), on = false)
+
+        assertEquals(SnackUi("Aurora Dollar ••5520 not imported · never read", null), feedsPage.ui().snack)
+        feedsPage.undo()
+        slice.connectionStore.failsToReadLeftOut = false
+        assertEquals(listOf("acct-5520"), leftOutReferences())
     }
 
     @Test
@@ -982,4 +1001,43 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
 
         assertNull(offeredLine("Aurora Dollar").answer)
     }
+
+    // ---- The Budgets with a storage that cannot be read or written (review 6) -----------------------------------------
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-001"])
+    @DisplayName("Steps 2-3 (review 6): reading the Budgets while the stored data cannot be used says so with the Budgets unchanged, instead of a crash")
+    fun budgetsNotReadWhenTheStoredDataCannotBeUsed() {
+        runBlocking { slice.enterCredentials() }
+        budgetPage.load()
+        slice.coordinatorStore.failsToRead = true
+
+        budgetPage.chooseBudgets()
+
+        assertEquals("Budgets not read: Slussen could not use the data stored on this device · Budgets unchanged · try again", budgetPage.ui().message)
+        assertNull(budgetPage.ui().budgets!!.choosing)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-001"])
+    @DisplayName("Steps 3-4 (review 6): ticked Budgets that cannot be stored say so, the Budgets in use stay as they were, and the choice stays open; Cancel with a page that cannot be read again closes it and says so")
+    fun budgetsNotStored() {
+        runBlocking { slice.enterCredentials() }
+        budgetPage.chooseBudgets()
+        budgetPage.toggleBudget("budget-household")
+        slice.coordinatorStore.failsToRead = true
+
+        budgetPage.serveBudgets()
+
+        assertEquals("Not stored: Slussen could not store the chosen Budgets · the Budgets in use stay as they were · try again", budgetPage.ui().message)
+        assertTrue(budgetPage.ui().budgets!!.choosing != null)
+        assertTrue(runBlocking { slice.connectionStore.budgets().none { it.served } })
+
+        slice.offeredStore.failsToRead = true
+        budgetPage.cancelChoosing()
+        assertNull(budgetPage.ui().budgets!!.choosing)
+        assertEquals("$PAGE_NOT_READ", budgetPage.ui().message)
+    }
+
+    private val PAGE_NOT_READ = "This page could not be read again from the data stored on this device. Open it again to see it as stored."
 }

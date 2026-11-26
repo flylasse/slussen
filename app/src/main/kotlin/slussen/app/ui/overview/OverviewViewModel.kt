@@ -84,6 +84,10 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
     private val mutableState = MutableStateFlow<OverviewUi?>(null)
     val state: StateFlow<OverviewUi?> = mutableState
 
+    /** NFR-023 (review 6): why the screen could not be shown, with the next action, while its stored data cannot be read. */
+    private val mutableNotOpened = MutableStateFlow<String?>(null)
+    val notOpened: StateFlow<String?> = mutableNotOpened
+
     private var opened = false
 
     /** UC-001 A11, P9-16: the result of the last tap, one per Data Provider. */
@@ -157,7 +161,17 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
 
     /** UC-008 steps 1-3: the first load of a session records its start; later loads only read the stored status again. */
     fun load() {
-        viewModelScope.launch { show(if (opened) services.status.overview() else services.status.open().also { opened = true }) }
+        viewModelScope.launch {
+            try {
+                show(if (opened) services.status.overview() else services.status.open().also { opened = true })
+                mutableNotOpened.value = null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                // NFR-023 (review 6): an Overview never shown says why, with the next action; one shown keeps what it shows.
+                if (mutableState.value == null) mutableNotOpened.value = NOT_OPENED
+            }
+        }
     }
 
     /** P9-16 (`budget.html#fetch-states`): "Fetching <Data Provider>…", disabled, while a Fetch runs. */
@@ -191,7 +205,7 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
         mutableState.value = OverviewUi(
             heading = "Overview · ${formats.dateTime(now)} · device time",
             budgetAppLine = budgetAppLine(),
-            unreadableNotices = overview.unreadable.map(Texts::unreadableNotice),
+            unreadableNotices = overview.unreadable.map { Texts.unreadableNotice(it, firstUploadMatchingShown = firstUploadMatching != null) },
             // UC-008 BR-009: Every opening shows that Uploads wait for First Upload Matching, as information, never as an error.
             firstUploadMatching = firstUploadMatching?.let { Texts.firstUploadMatching(it, overview.budgetAppName) },
             backupWarning = overview.backupWarning?.let {
@@ -238,13 +252,13 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
         )
     }
 
-    // UC-008 BR-011: While no Bank Account is added, the Overview shows nothing but the card that leads to Settings and names the next thing, not even First Upload Matching.
+    // UC-008 BR-011: While no Bank Account is added, the Overview shows nothing but the notices of stored data that could not be read and below them the card that leads to Settings and names the next thing, not even First Upload Matching.
     private fun showFirstRun(overview: Overview, card: FirstRunCard) {
         val (next, then) = card.next?.let(Texts::next) ?: ("Next: open Settings" to null)
         mutableState.value = OverviewUi(
             heading = "Overview · ${services.formats.dateTime(services.clock.instant())} · device time",
             budgetAppLine = BudgetAppLineUi("", FetchButtonUi(Texts.readAgain(overview.budgetAppName), enabled = false, running = false)),
-            unreadableNotices = emptyList(),
+            unreadableNotices = overview.unreadable.map { Texts.unreadableNotice(it, firstUploadMatchingShown = false) },
             firstUploadMatching = null,
             backupWarning = null,
             expiringConsents = emptyList(),
@@ -267,7 +281,8 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
         fetchResults = emptyList()
         mutableState.value = mutableState.value?.copy(fetchResults = fetchResults, message = null)
         viewModelScope.launch {
-            when (val start = services.fetch.fetchAll()) {
+            when (val start = stoppedOr { services.fetch.fetchAll() }) {
+                null -> fetchResults = listOf(stopped(tap))
                 is FetchStart.Unavailable ->
                     fetchResults = listOf(FetchResultUi(Texts.refusal(start.reason), null, FetchResultKind.NotFetched, tap))
                 is FetchStart.Ran -> {
@@ -276,9 +291,28 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
                         .map { Texts.fetchWarning(it, services.formats) }
                 }
             }
-            show(services.status.overview())
+            reload()
+            mutableState.value = mutableState.value?.copy(fetchResults = fetchResults, fetchWarning = pendingWarnings.firstOrNull())
         }
     }
+
+    /** NFR-023: the outcome of [fetch], or null when it stopped because the stored data could not be used. */
+    private suspend fun stoppedOr(fetch: suspend () -> FetchStart): FetchStart? =
+        try {
+            fetch()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            null
+        }
+
+    /** NFR-023: a Fetch that stopped may have stored part of what it read, so the answer says only that it stopped. */
+    private fun stopped(tap: Int) = FetchResultUi(
+        "The Fetch stopped: Slussen could not use the data stored on this device",
+        "Fetch again; Recent Fetches shows what was stored.",
+        FetchResultKind.Failed,
+        tap,
+    )
 
     /** UC-001 A11 (P9-16): on the Overview each result names its Data Provider. */
     private fun onOverview(report: FetchReport, tap: Int): FetchResultUi =
@@ -290,12 +324,14 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
         pendingWarnings = pendingWarnings.drop(1)
         val tap = ++taps
         viewModelScope.launch {
-            when (val start = services.fetch.fetch(warning.service, confirmedDespiteWarning = true)) {
+            when (val start = stoppedOr { services.fetch.fetch(warning.service, confirmedDespiteWarning = true) }) {
+                null -> fetchResults = fetchResults + stopped(tap)
                 is FetchStart.Unavailable ->
                     fetchResults = fetchResults + FetchResultUi(Texts.refusal(start.reason), null, FetchResultKind.NotFetched, tap)
                 is FetchStart.Ran -> fetchResults = fetchResults + start.reports.map { onOverview(it, tap) }
             }
-            show(services.status.overview())
+            reload()
+            mutableState.value = mutableState.value?.copy(fetchResults = fetchResults)
         }
     }
 
@@ -321,5 +357,7 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
 
     private companion object {
         const val FETCH_ALL = "Fetch all Data Providers"
+        const val NOT_OPENED =
+            "The Overview could not be shown: the status stored on this device could not be read, and nothing was changed. Tap Try again."
     }
 }

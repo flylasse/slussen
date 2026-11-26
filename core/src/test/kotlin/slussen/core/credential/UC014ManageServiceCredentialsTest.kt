@@ -601,4 +601,18 @@ class UC014ManageServiceCredentialsTest {
         assertEquals(ExampleData.EXCHANGED_ACCESS_CREDENTIAL, storedSecret(slice.feedsKey))
         assertEquals(recorded, slice.journalRecorder.entries.size)
     }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", requirements = ["NFR-023"])
+    @DisplayName("A3 (review 3): a removal made while the Operator Settings cannot be read for its Decision Journal entry answers Removed, never Not Removed; the entry is dropped and counted")
+    fun removalWhileTheJournalCannotRecord() = runTest {
+        slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        slice.vault.beforeRemove = { slice.settings.failsToRead = true }
+
+        val outcome = slice.credentials.remove(slice.feedsKey)
+
+        assertEquals(RemovalOutcome.Removed, outcome)
+        assertNull(slice.vault.read(slice.feedsKey))
+        assertEquals(1L, slice.journal.dropped)
+    }
 }

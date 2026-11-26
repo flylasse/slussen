@@ -548,4 +548,37 @@ class UC010AdjustSettingsViewModelTest {
         assertFalse(AppVersion.of(packageName = "slussen.debugger", versionName = "4.5.6").debugBuild)
         assertFalse(AppVersion.of(packageName = "slussen.app.debug.other", versionName = "4.5.6").debugBuild)
     }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", requirements = ["NFR-023"])
+    @DisplayName("Failure postconditions, NFR-023 (review 6): a Fetch Cooldown not stored while the page cannot be read again either says Not saved at its line and that the page could not be read again; a change whose admission cannot be read says Not saved too, never a crash")
+    fun fetchCooldownNotSavedWithAStorageThatCannotBeRead() {
+        val page = page(slice.feedsKey)
+        page.startEditingFetchCooldown()
+        slice.registry.failsToStore = true
+        slice.offeredStore.failsToRead = true
+
+        page.saveFetchCooldown("15")
+
+        assertNull(page.ui().fetchCooldownEditor)
+        assertEquals(
+            AnswerUi("Not saved: Slussen could not store 15 min. Still 60 min, the default.", AnswerKind.Failed, "Tap Change to try again."),
+            page.ui().fetchCooldownAnswer,
+        )
+        assertEquals(
+            "This page could not be read again from the data stored on this device. Open it again to see it as stored.",
+            page.ui().message,
+        )
+
+        slice.registry.failsToStore = false
+        slice.offeredStore.failsToRead = false
+        slice.coordinatorStore.failsToRead = true
+        page.startEditingFetchCooldown()
+        page.saveFetchCooldown("20")
+        assertEquals(
+            AnswerUi("Not saved: Slussen could not store 20 min. Still 60 min, the default.", AnswerKind.Failed, "Tap Change to try again."),
+            page.ui().fetchCooldownAnswer,
+        )
+        assertEquals(60, storedCooldown())
+    }
 }

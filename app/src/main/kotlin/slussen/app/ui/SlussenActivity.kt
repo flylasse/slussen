@@ -38,6 +38,7 @@ import slussen.app.ui.mappings.AccountMappingsViewModel
 import slussen.app.ui.mappings.cardActionsOf
 import slussen.app.ui.overview.OverviewScreen
 import slussen.app.ui.overview.OverviewViewModel
+import slussen.app.ui.components.NotShown
 import slussen.app.ui.service.ConnectActions
 import slussen.app.ui.service.PageSettingActions
 import slussen.app.ui.service.ServicePageScreen
@@ -138,6 +139,9 @@ fun SlussenScreens(services: UiServices) {
             when (current) {
                 Screen.Overview -> {
                     LaunchedEffect(current) { overview.load() }
+                    val overviewNotOpened = overview.notOpened.collectAsState().value
+                    // NFR-023: an Overview whose stored status cannot be read says so, with Try again.
+                    if (overviewUi == null && overviewNotOpened != null) NotShown(overviewNotOpened, onTryAgain = overview::load)
                     overviewUi?.let { ui ->
                         OverviewScreen(
                             ui = ui,
@@ -229,7 +233,11 @@ fun SlussenScreens(services: UiServices) {
                         ServicePageViewModel(services, current.service)
                     }
                     LaunchedEffect(current) { vm.load() }
-                    vm.state.collectAsState().value?.let { ui ->
+                    val pageUi = vm.state.collectAsState().value
+                    val pageNotOpened = vm.notOpened.collectAsState().value
+                    // NFR-023: a page whose stored data cannot be read says so, with Try again and Back.
+                    if (pageUi == null && pageNotOpened != null) NotShown(pageNotOpened, onTryAgain = vm::load, onBack = ::back)
+                    pageUi?.let { ui ->
                         ServicePageScreen(
                             ui = ui,
                             onBack = ::back,

@@ -67,13 +67,20 @@ import java.time.Instant
 
 /**
  * In-memory fake of [OperatorSettingsStore]; starts with every default. A test holds a change with [beforeStore], to see
- * it while it is being stored, and makes it fail with [failsToStore], as a storage that cannot be written would.
+ * it while it is being stored, makes it fail with [failsToStore], as a storage that cannot be written would, and makes
+ * the read fail with [failsToRead].
  */
 class InMemoryOperatorSettingsStore(var settings: OperatorSettings = OperatorSettings.DEFAULT) : OperatorSettingsStore {
     var beforeStore: suspend () -> Unit = {}
     var failsToStore: Boolean = false
 
-    override suspend fun current(): OperatorSettings = settings
+    /** Makes every read of the Operator Settings fail, as a storage that cannot be read would. */
+    var failsToRead: Boolean = false
+
+    override suspend fun current(): OperatorSettings {
+        if (failsToRead) throw IllegalStateException("The invented storage of this test cannot be read.")
+        return settings
+    }
 
     override suspend fun storeFetchPeriod(days: Int) {
         beforeStore()
@@ -362,7 +369,13 @@ class InMemoryConnectionStore : ConnectionStore, MappingStore {
     override suspend fun bankNamed(name: String): StoredBank =
         bankList.firstOrNull { it.name == name } ?: StoredBank(nextId++, name, country = null).also { bankList += it }
 
-    override suspend fun leftOutBankAccounts(): List<StoredLeftOutBankAccount> = leftOutList.toList()
+    /** Makes the read of the Left-Out Bank Accounts fail, as a storage that cannot be read would. */
+    var failsToReadLeftOut: Boolean = false
+
+    override suspend fun leftOutBankAccounts(): List<StoredLeftOutBankAccount> {
+        if (failsToReadLeftOut) throw IllegalStateException("The invented storage of this test cannot be read.")
+        return leftOutList.toList()
+    }
 
     override suspend fun leaveOut(leftOut: List<NewLeftOutBankAccount>): Boolean {
         storing()

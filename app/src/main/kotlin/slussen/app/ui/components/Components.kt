@@ -107,3 +107,15 @@ fun NavigationLine(title: String, detail: String?, onOpen: () -> Unit) {
         if (detail != null) Text(detail, color = SlussenColors.Text2, fontSize = 12.sp)
     }
 }
+
+/** NFR-023: a screen that could not be shown says why with its next action: Try again, and Back where it has one. */
+@Composable
+fun NotShown(text: String, onTryAgain: () -> Unit, onBack: (() -> Unit)? = null) {
+    Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+        Text(text, color = SlussenColors.Text, fontSize = 13.sp)
+        Row {
+            OutlinedButton(onClick = onTryAgain) { Text("Try again") }
+            if (onBack != null) TextButton(onClick = onBack) { Text("Back") }
+        }
+    }
+}

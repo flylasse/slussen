@@ -325,23 +325,29 @@ object Texts {
             "covers a restore of an older backup"
 
     /**
-     * UC-008 A1 (`overview.html#damaged`, `#damaged-critical`): the notice of a part that could not be read. A Bank Consent
-     * cannot be granted in this build, so none was lost and the notice of the service credentials asks for none again.
+     * UC-008 A1 (`overview.html#damaged`, `#damaged-critical`): the notice of a part that could not be read, which points to
+     * First Upload Matching only while one is open and shown with it ([firstUploadMatchingShown]).
      */
-    fun unreadableNotice(notice: UnreadableNotice): NoticeUi {
+    fun unreadableNotice(notice: UnreadableNotice, firstUploadMatchingShown: Boolean): NoticeUi {
         val kept = "the unreadable original is kept on this device"
-        // UC-008 BR-012: The notice names the part, that its original is kept, what it started from and what comes next; the Decision Journal and the service credentials have no last good copy and always start empty.
+        val below = if (firstUploadMatchingShown) ", and see First Upload Matching below" else ""
         val detail = when (notice.part) {
+            // UC-008 BR-012: Started from its last good copy, the notice names checking the Budgets, Bank Accounts and Account Mappings in Settings, and the First Upload Matching shown with it.
             StoredPart.TransactionsDecisionsAndSettings -> if (notice.startedFromLastGoodCopy) {
                 "Started from its last good copy, made at an earlier start · $kept · check in Settings that your Budgets, Bank " +
-                    "Accounts and Account Mappings are as you left them, and see First Upload Matching below"
+                    "Accounts and Account Mappings are as you left them$below"
             } else {
-                "Started from empty records with every default, as there was no last good copy · $kept · set Slussen up again " +
-                    "in Settings, and see First Upload Matching below"
+                // UC-008 BR-012: Started from empty records, no Bank Account is added, so the notice stands above the card of BR-011 and names setting Slussen up again with it.
+                "Started from empty records with every default, as there was no last good copy · $kept · what was set up before " +
+                    "is not in these records: set Slussen up again with the card below$below"
             }
+            // Not said here yet: granting each Bank Consent again, and that a Bank Consent also brings back the Offered Bank Accounts. This
+            // build cannot grant a Bank Consent, so none was lost; Wave 6 (Bank Consents) restores both clauses.
+            // UC-008 BR-012: The service credentials have no last good copy and start empty; the next action is to enter the credentials of each service again.
             StoredPart.CredentialsConsentsAndOfferedBankAccounts ->
                 "Started empty: this part has no last good copy · $kept · enter the credentials of each service again in " +
                     "Settings; the Offered Bank Accounts come back with the next Fetch"
+            // UC-008 BR-012: The Decision Journal has no last good copy, starts empty, is never said to start from one, and needs no action.
             StoredPart.DecisionJournal ->
                 "Started empty: the Decision Journal has no last good copy · $kept · nothing else is affected, no action is needed"
         }

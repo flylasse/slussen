@@ -919,4 +919,24 @@ class UC008CheckImportStatusViewModelTest {
         assertNull(screen.ui().sheet)
         assertNull(screen.ui().statusesSheet)
     }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-001"], requirements = ["NFR-023"])
+    @DisplayName("Step 1, NFR-023 (review 6): an Overview whose stored status cannot be read says so with the next action instead of a crash, and shows once it can be read")
+    fun overviewThatCannotBeOpened() {
+        household()
+        slice.importStatusStore.failsToRead = true
+
+        val viewModel = OverviewViewModel(fixture.services).also { it.load() }
+
+        assertNull(viewModel.state.value)
+        assertEquals(
+            "The Overview could not be shown: the status stored on this device could not be read, and nothing was changed. Tap Try again.",
+            viewModel.notOpened.value,
+        )
+        slice.importStatusStore.failsToRead = false
+        viewModel.load()
+        assertNull(viewModel.notOpened.value)
+        assertTrue(viewModel.state.value != null)
+    }
 }

@@ -103,6 +103,32 @@ class UC008CheckImportStatusScreenIT {
     }
 
     @Test
+    @UseCase(id = "UC-008", scenario = "A10: No Bank Account Added Yet", businessRules = ["BR-011", "BR-012"])
+    @DisplayName("A1, A10, BR-011, BR-012 (review 1): stored data that could not be read is named above the first-run card, also with no Bank Account added")
+    fun noticeAboveTheFirstRunCard() = compose.use {
+        val fixture = ScreenFixture(
+            startKind = slussen.core.port.StartKind.LastGoodCopy,
+            unreadableParts = listOf(
+                slussen.core.port.UnreadablePart(slussen.core.port.StoredPart.TransactionsDecisionsAndSettings, startedFromLastGoodCopy = false),
+            ),
+        )
+        val viewModel = OverviewViewModel(fixture.services)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.load() }
+        setContent {
+            SlussenTheme {
+                viewModel.state.collectAsState().value?.let {
+                    OverviewScreen(it, onBudget = {}, onOpenSettings = {}, onStartFirstUploadMatching = {}, onRecentFetches = {},
+                        onFetchAll = {}, onConfirmFetch = {}, onCancelFetch = {})
+                }
+            }
+        }
+
+        onNodeWithText("Stored data could not be read: stored transactions, decisions and settings").assertExists()
+        onNodeWithText("set Slussen up again with the card below", substring = true).assertExists()
+        onNodeWithText("Set up Slussen in Settings").assertExists()
+    }
+
+    @Test
     @UseCase(id = "UC-008", scenario = "A10: No Bank Account Added Yet", businessRules = ["BR-011"])
     @DisplayName("A10: with no Bank Account added, the Overview shows only the card that leads to Settings and names the next thing")
     fun firstStartShowsOnlyTheCard() = compose.use {

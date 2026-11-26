@@ -199,6 +199,10 @@ class ServicePageViewModel(
     private val mutableState = MutableStateFlow<ServicePageUi?>(null)
     val state: StateFlow<ServicePageUi?> = mutableState
 
+    /** NFR-023 (review 6): why the screen could not be shown, with the next action, while its stored data cannot be read. */
+    private val mutableNotOpened = MutableStateFlow<String?>(null)
+    val notOpened: StateFlow<String?> = mutableNotOpened
+
     private var page: ServicePage? = null
 
     /** The Budget App's page: the Budgets and their Budget Accounts; a Data Provider's page: its Offered Bank Accounts. */
@@ -274,7 +278,22 @@ class ServicePageViewModel(
         refusedAtCheck = false
         fetchCooldownAnswer = null
         requestLimitAnswer = null
-        viewModelScope.launch { reload() }
+        viewModelScope.launch { reloadOrSay() }
+    }
+
+    /**
+     * Reads the page again; NFR-023 (review 6): a page never shown says that it could not be opened, with the next action;
+     * one already shown keeps what it shows and says that it could not be read again.
+     */
+    private suspend fun reloadOrSay(message: String? = null) {
+        try {
+            reload(message)
+            mutableNotOpened.value = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            if (mutableState.value == null) mutableNotOpened.value = PAGE_NOT_OPENED else showAsItIs(PAGE_NOT_READ_AGAIN)
+        }
     }
 
     /** Reads the page, and what UC-013 shows on it, again. */
@@ -507,9 +526,29 @@ class ServicePageViewModel(
         mutableState.value = current.copy(checking = true, credentialAnswer = null, message = null)
         viewModelScope.launch {
             val input = CredentialInput(values.mapValues { Secret(it.value) })
-            val outcome = services.credentials.enter(service, input)
+            val outcome = orWhenNotStored<CredentialOutcome?>(null) { services.credentials.enter(service, input) }
             checking = false
-            val page = pageWithSections()
+            if (outcome == null) {
+                // NFR-023 (review 6): the stored data could not be used; the vault replaces credentials in one operation, so nothing was stored.
+                credentialAnswer = AnswerUi(
+                    "Not stored: Slussen could not use the data stored on this device · the earlier credentials stay unchanged",
+                    AnswerKind.Failed,
+                    "Try again.",
+                )
+                showAsItIs()
+                mutableState.value = mutableState.value?.copy(checking = false)
+                return@launch
+            }
+            val page = pageOrNull() ?: run {
+                val name = mutableState.value?.name.orEmpty()
+                credentialAnswer = AnswerUi(
+                    Texts.outcome(name, outcome, services.formats),
+                    if (outcome is CredentialOutcome.Accepted) AnswerKind.Done else AnswerKind.Unchanged,
+                )
+                showAsItIs(PAGE_NOT_READ_AGAIN)
+                mutableState.value = mutableState.value?.copy(checking = false, entering = false)
+                return@launch
+            }
             val text = Texts.outcome(page.name, outcome, services.formats)
             refusedAtCheck = outcome == CredentialOutcome.Refused
             credentialAnswer = when (outcome) {
@@ -586,7 +625,7 @@ class ServicePageViewModel(
             return
         }
         mutableState.value = current.copy(requestLimitEditor = editor.copy(value = text, error = null, saving = true), message = null)
-        viewModelScope.launch { showSetting(PageSetting.RequestLimit, services.providerSettings.changeRequestLimit(service, value), value) }
+        viewModelScope.launch { showSetting(PageSetting.RequestLimit, orWhenNotStored(SettingOutcome.NotStored) { services.providerSettings.changeRequestLimit(service, value) }, value) }
     }
 
     /** UC-010 A11: back to the default its part declares. */
@@ -597,7 +636,7 @@ class ServicePageViewModel(
         if (editor?.saving == true) return
         mutableState.value = current.copy(requestLimitEditor = editor?.copy(error = null, saving = true), message = null)
         viewModelScope.launch {
-            showSetting(PageSetting.RequestLimit, services.providerSettings.resetRequestLimit(service), limit.defaultRequests)
+            showSetting(PageSetting.RequestLimit, orWhenNotStored(SettingOutcome.NotStored) { services.providerSettings.resetRequestLimit(service) }, limit.defaultRequests)
         }
     }
 
@@ -658,7 +697,7 @@ class ServicePageViewModel(
             return
         }
         mutableState.value = current.copy(fetchCooldownEditor = editor.copy(value = text, error = null, saving = true), message = null)
-        viewModelScope.launch { showSetting(PageSetting.FetchCooldown, services.providerSettings.changeFetchCooldown(service, value), value) }
+        viewModelScope.launch { showSetting(PageSetting.FetchCooldown, orWhenNotStored(SettingOutcome.NotStored) { services.providerSettings.changeFetchCooldown(service, value) }, value) }
     }
 
     /** UC-010 A10: back to the default its part declares. */
@@ -668,7 +707,7 @@ class ServicePageViewModel(
         val editor = current.fetchCooldownEditor
         if (editor?.saving == true) return
         mutableState.value = current.copy(fetchCooldownEditor = editor?.copy(error = null, saving = true), message = null)
-        viewModelScope.launch { showSetting(PageSetting.FetchCooldown, services.providerSettings.resetFetchCooldown(service), default) }
+        viewModelScope.launch { showSetting(PageSetting.FetchCooldown, orWhenNotStored(SettingOutcome.NotStored) { services.providerSettings.resetFetchCooldown(service) }, default) }
     }
 
     /** UC-010 step 2: the Operator cancels; the value stays, and its line says so. While it is being stored, Cancel waits. */
@@ -723,18 +762,18 @@ class ServicePageViewModel(
         }
         when (outcome) {
             is SettingOutcome.Stored -> {
-                val shown = pageWithSections()
+                val shown = pageOrNull()
                 val applies = if (setting == PageSetting.FetchCooldown) "Applies from the next Fetch." else "Applies from the next request."
                 answer(
                     AnswerUi(
                         "Saved: ${valueText(setting, outcome.value)}" +
                             (if (outcome.value == default) ", the default." else " ($default by default).") + " $applies" +
-                            if (shown.journalOn) " Recorded in the Decision Journal." else "",
+                            if (shown?.journalOn == true) " Recorded in the Decision Journal." else "",
                         AnswerKind.Done,
                     ),
                     retry = null,
                 )
-                show(shown)
+                showPageAgain(shown)
             }
             // A1: refused at the field with the allowed range; the editor stays open (use case continues at step 2).
             is SettingOutcome.OutsideRange -> mutableState.value = withEditor(
@@ -756,9 +795,9 @@ class ServicePageViewModel(
                     ),
                     retry = value.toString(),
                 )
-                show(pageWithSections())
+                showPageAgain(pageOrNull())
             }
-            SettingOutcome.NotAnOperatorSetting -> show(pageWithSections(), message = "Published by the Data Provider · not a setting")
+            SettingOutcome.NotAnOperatorSetting -> showPageAgain(pageOrNull(), message = "Published by the Data Provider · not a setting")
             is SettingOutcome.Unavailable -> mutableState.value = withEditor(Texts.refusal(outcome.reason))
         }
     }
@@ -782,8 +821,28 @@ class ServicePageViewModel(
         fetchResult = null
         mutableState.value = mutableState.value?.copy(fetchResult = null, message = null)
         viewModelScope.launch {
-            val start = services.fetch.fetch(service, confirmedDespiteWarning)
-            val page = pageWithSections()
+            val start = orWhenNotStored<FetchStart?>(null) { services.fetch.fetch(service, confirmedDespiteWarning) }
+            if (start == null) {
+                // NFR-023 (review 6): it may have stopped after storing part of what it read, so the answer says only that it stopped.
+                fetchResult = FetchResultUi(
+                    "The Fetch stopped: Slussen could not use the data stored on this device",
+                    "Fetch again; Recent Fetches shows what was stored.",
+                    FetchResultKind.Failed,
+                    tap,
+                )
+                showPageAgain(pageOrNull())
+                return@launch
+            }
+            val page = pageOrNull() ?: run {
+                val report = (start as? FetchStart.Ran)?.reports?.singleOrNull()
+                fetchResult = when {
+                    start is FetchStart.Unavailable -> FetchResultUi(Texts.refusal(start.reason), null, FetchResultKind.NotFetched, tap)
+                    report != null && report !is FetchReport.WarningToConfirm -> Texts.fetchResult(report, services.formats, tap)
+                    else -> null
+                }
+                showPageAgain(null)
+                return@launch
+            }
             when (start) {
                 is FetchStart.Unavailable -> {
                     fetchResult = FetchResultUi(Texts.refusal(start.reason), null, FetchResultKind.NotFetched, tap)
@@ -846,7 +905,10 @@ class ServicePageViewModel(
 
     private suspend fun readBudgets(keptMessage: String?) {
         val name = page?.name.orEmpty()
-        val message = when (val read = services.connect.readBudgets()) {
+        val read = orWhenNotStored<BudgetsRead?>(null) { services.connect.readBudgets() }
+        val message = when (read) {
+            // NFR-023 (review 6): the stored data could not be used; a read of the Budgets stores nothing.
+            null -> "Budgets not read: Slussen could not use the data stored on this device · Budgets unchanged · try again"
             is BudgetsRead.Listed -> {
                 listed = read.budgets
                 chosen.clear()
@@ -859,7 +921,7 @@ class ServicePageViewModel(
             is BudgetsRead.CouldNotRead -> "$name could not be read: ${Texts.failure(read.kind)} · Budgets unchanged"
             is BudgetsRead.Unavailable -> Texts.refusal(read.reason)
         }
-        reload(message)
+        reloadOrSay(message)
     }
 
     /** Step 3: the Operator ticks or unticks a Budget. */
@@ -872,7 +934,10 @@ class ServicePageViewModel(
     /** Steps 3-4, A2: the ticked Budgets are served; refused while a Budget left out has mapped Bank Accounts. */
     fun serveBudgets() {
         viewModelScope.launch {
-            val message = when (val choice = services.connect.chooseBudgets(listed, chosen.toSet())) {
+            val choice = orWhenNotStored<BudgetChoice?>(null) { services.connect.chooseBudgets(listed, chosen.toSet()) }
+            val message = when (choice) {
+                // NFR-023 (review 6): the Budgets are stored in one operation, so the Budgets in use stay as they were.
+                null -> "Not stored: Slussen could not store the chosen Budgets · the Budgets in use stay as they were · try again"
                 BudgetChoice.Stored -> {
                     choosing = false
                     null
@@ -881,13 +946,14 @@ class ServicePageViewModel(
                     "${choice.budgetName} has mapped Bank Accounts ${choice.bankAccountNames.joinToString(", ")} · remove their Account Mappings first"
                 is BudgetChoice.Unavailable -> Texts.refusal(choice.reason)
             }
-            reload(message)
+            reloadOrSay(message)
         }
     }
 
     fun cancelChoosing() {
         choosing = false
-        viewModelScope.launch { reload() }
+        budgetsSection = budgetsSection?.copy(choosing = null)
+        viewModelScope.launch { reloadOrSay() }
     }
 
     /**
@@ -1007,7 +1073,17 @@ class ServicePageViewModel(
         mutableState.value = mutableState.value?.copy(snack = null)
     }
 
-    /** The page as it is shown, with the state of this ViewModel: lines, snack and credentials, and [message] on top. */
+    /** NFR-023 (review 6): [page] as read again, or, when it could not be read, the page as it is with its editors closed. */
+    private fun showPageAgain(page: ServicePage?, message: String? = null) {
+        if (page != null) {
+            show(page, message = message)
+        } else {
+            showAsItIs(PAGE_NOT_READ_AGAIN)
+            mutableState.value = mutableState.value?.copy(fetchCooldownEditor = null, requestLimitEditor = null)
+        }
+    }
+
+    /** The page as it is shown, with the state of this ViewModel: lines, snack and answers, and [message] on top. */
     private fun showAsItIs(message: String? = mutableState.value?.message) {
         mutableState.value = mutableState.value?.copy(
             budgets = if (page?.isBudgetApp == true) budgetsWithAnswers() else null,
@@ -1015,6 +1091,9 @@ class ServicePageViewModel(
             snack = snack,
             removing = removing,
             credentialAnswer = credentialAnswer,
+            fetchCooldownAnswer = fetchCooldownAnswer,
+            requestLimitAnswer = requestLimitAnswer,
+            fetchResult = fetchResult,
             message = message,
         )
     }
@@ -1090,6 +1169,8 @@ class ServicePageViewModel(
         const val STILL_NOT_IMPORTED = "Still not imported · could not be stored, try again"
         const val STILL_RECEIVES = "Still receives from Slussen · could not be stored, try again"
         const val STILL_KEPT_BY_HAND = "Still kept by hand · could not be stored, try again"
+        const val PAGE_NOT_OPENED = "This page could not be opened: the data stored on this device could not be read, and nothing was " +
+            "changed. Tap Try again, or go back and open it again."
         const val PAGE_NOT_READ_AGAIN = "This page could not be read again from the data stored on this device. Open it again to see it as stored."
     }
 }

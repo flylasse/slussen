@@ -465,4 +465,48 @@ class UC014ManageServiceCredentialsViewModelTest {
         )
         assertTrue(runBlocking { slice.vault.read(slice.feedsKey) } != null)
     }
+
+    // ---- A storage that cannot be read or written on the page (NFR-023, review 6) -----------------------------------
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "Main Success Scenario", businessRules = ["BR-007"], requirements = ["NFR-023"])
+    @DisplayName("BR-007, NFR-023 (review 6): a service's page whose stored data cannot be read says so with the next action instead of a crash, and opens once it can be read")
+    fun pageThatCannotBeOpened() {
+        slice.offeredStore.failsToRead = true
+
+        val page = ServicePageViewModel(fixture.services, slice.feedsKey).also { it.load() }
+
+        assertNull(page.state.value)
+        assertEquals(
+            "This page could not be opened: the data stored on this device could not be read, and nothing was changed. Tap Try again, or go back and open it again.",
+            page.notOpened.value,
+        )
+        slice.offeredStore.failsToRead = false
+        page.load()
+        assertNull(page.notOpened.value)
+        assertEquals("Kestrel Feeds", page.ui().name)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "Main Success Scenario", businessRules = ["BR-003"], requirements = ["NFR-023"])
+    @DisplayName("Steps 3-4, NFR-023 (review 6): credentials that cannot be checked or stored because the stored data cannot be used answer at the form that nothing was stored and the earlier ones stay, instead of a crash")
+    fun credentialsThatCannotBeStored() {
+        val page = page(slice.feedsKey)
+        page.startEntering()
+        slice.coordinatorStore.failsToRead = true
+
+        page.save(mapOf("setupKey" to ExampleData.SETUP_KEY))
+
+        assertEquals(
+            AnswerUi(
+                "Not stored: Slussen could not use the data stored on this device · the earlier credentials stay unchanged",
+                AnswerKind.Failed,
+                "Try again.",
+            ),
+            page.ui().credentialAnswer,
+        )
+        assertFalse(page.ui().checking)
+        assertTrue(page.ui().entering)
+        assertNull(runBlocking { slice.vault.read(slice.feedsKey) })
+    }
 }

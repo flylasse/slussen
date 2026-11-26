@@ -55,10 +55,11 @@ fun OverviewScreen(
 ) {
     val firstRun = ui.firstRun
     if (firstRun != null) {
-        // UC-008 BR-011: While no Bank Account is added, the Overview shows nothing but the card that leads to Settings.
+        // UC-008 BR-011: While no Bank Account is added, the Overview shows nothing but the notices of stored data that could not be read and the card that leads to Settings.
         LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
+            item { ScreenTitle("Slussen", ui.heading) }
+            items(ui.unreadableNotices) { Banner(it.title, it.detail, SlussenColors.Surface2, SlussenColors.Text) }
             item {
-                ScreenTitle("Slussen", ui.heading)
                 SlussenCard(border = SlussenColors.Teal) {
                     Text(firstRun.title, color = SlussenColors.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Text(firstRun.next, color = SlussenColors.Teal, fontSize = 13.sp)
