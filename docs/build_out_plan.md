@@ -19,8 +19,10 @@
 | A-1 | 695249e, 201b7a3 | green at 201b7a3 | `docs/reviews/build_out_reviews/A-1.md`: 10 findings fixed, 3 to §6 (G-01..G-03) | A regular expression in the migration test overflowed the stack at random in one gate run; fixed in 16bf178 |
 | A-2 | fd3e1b9, 7936c10 | green at 7936c10 | `docs/reviews/build_out_reviews/A-2.md`: 12 findings fixed, 2 to §6 (G-07, G-08); the reviewer compared the reshaped Comparison and Transfer rules with the old ones line by line: no behaviour changed | The reasons on screen call the Comparison's own rules; `ComparisonStore.comparisonDataOf` has no instrumented test of its own yet |
 | A-3 | 5e1c654, 2fdbdf5 | green at 2fdbdf5 | `docs/reviews/build_out_reviews/A-3.md`: 7 findings fixed, 3 to §6 (G-11..G-13); the reviewer compared the changed Transfer detection and `conclude` with the old ones line by line: no case differs | A Guessed Transfer now carries why it is guessed; the screens re-run the detection the Comparison runs |
+| A-4 | 5dd1fa2 | green at 5dd1fa2 | not reviewed yet | Built by a mid model; the review is to read `FetchHistoryRules` with care |
 
-- Next: phase A-4.
+- **Paused on 2026-11-26** at the operator's word (the usage limit of the session). Nothing is running and the tree is clean. To resume: review A-4 (range c77fdf5..5dd1fa2, the reviewer's prompt as for A-3, another model than the builder's), have its findings fixed, gate, record; then phase A-5, which closes Wave 1.
+- Next: the review of phase A-4.
 
 ## 1. Scope
 
