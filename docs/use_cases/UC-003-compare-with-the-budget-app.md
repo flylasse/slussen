@@ -121,7 +121,7 @@ A Bank Transaction that Slussen sent and that was later deleted in the Budget Ap
 
 ### BR-005: Merged in the Budget App
 
-A Bank Transaction that the Budget App merged into a Typed Entry after Slussen sent it is Merged In Budget App and is not sent again.
+A Bank Transaction that the Budget App merged into a Typed Entry after Slussen sent it is Merged In Budget App and is not sent again unless the Operator chooses Re-upload (UC-004 BR-003).
 
 ### BR-006: Match for a Typed Entry
 
@@ -141,7 +141,7 @@ A Review Decision Already Present holds only while the chosen Budget App Transac
 
 ### BR-010: Deferred Stays Held
 
-A Bank Transaction with the Review Decision Defer stays Deferred across every later Fetch and Comparison, also when the resembling Import disappears, until the Operator changes the decision.
+A Bank Transaction with the Review Decision Defer stays Deferred across every later Fetch and Comparison, also when the resembling Import disappears, until the Operator changes the decision. Only a rule that stands before the Review Decision in BR-001 gives it another status, such as Too Old; the Review Decision is kept then and applies again when that rule no longer does (UC-004 BR-006).
 
 ### BR-011: Upload Window
 

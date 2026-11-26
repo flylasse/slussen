@@ -77,7 +77,7 @@ plan is being written).
 | Read the Budget App and compare (UC-003), Journal Export (UC-011) | admitted | refused | only as the reads of §6 steps 4, 8 and 9 of the running Upload |
 | Start, answer or revoke a Consent Request or Bank Consent (UC-007) | admitted | refused | refused |
 | Account Mapping change, rename, Start Date (UC-009), Operator Setting change (UC-010), choosing served Budgets and adding Bank Accounts (UC-013), entering, changing or removing service credentials (UC-014) | admitted | refused | refused |
-| Review Decision, Transfer Decision (UC-004, UC-005) | admitted | admitted; the plan is replaced (§5) | refused until the Upload ends |
+| Review Decision, Transfer Decision (UC-004, UC-005), with the Funded By or Transfer Partner the Operator keeps from a Transfer Decision (UC-005 A3, BR-006) | admitted | admitted; the plan is replaced (§5) | refused until the Upload ends |
 | Prepare an Upload Plan (UC-006) | admitted only when §3 allows it | refused (one plan at a time) | refused |
 | Confirm the plan, cancel or leave (UC-006 steps 4-5, A2, BR-019) | not applicable | admitted for that plan only | refused (no second confirmation) |
 | Confirm First Upload Matching (UC-008 A9) | admitted | refused | refused |
@@ -105,6 +105,12 @@ Counterparts). O-4 sets `coordinator_state.comparison_pending` in the same trans
 it is set, no Upload Plan is prepared. The coordinator recomputes the Comparison from the stored data alone (no network
 request) and commits it with O-5 at the next start and whenever it finds the marker set. A plan is therefore always
 prepared from statuses that belong to the stored copy and cursor it captures.
+
+The same marker covers a change that the specification follows with statuses given again, or Transfers detected again,
+from stored data (UC-009 BR-015, UC-010 step 5): the storage operation of the change (ADR-002 §3 O-13) sets
+`comparison_pending` in its own transaction, and the coordinator concludes from the stored copy and commits with O-5
+within the same operation, or at the next start when Slussen stopped in between. No Budget is read for it, and
+`budget.last_read_at` stays as it is.
 
 ### 4. Preparation: the immutable write set and retries
 
@@ -403,3 +409,6 @@ is listed in ADR-005 §7.
 - Phase 9 acceptance (2026-10-24): S-41 (P9-17, O-P2-75; the glossary term Recovery Check renamed First Upload
   Matching, entity `FIRST_UPLOAD_MATCHING`): Status note, Context, §2 admission table, §3, §8 renamed; no protocol
   change.
+- Build-out, phase W2-0 (2026-11-26): S-B-12: §2 (a Funded By or Transfer Partner kept from a Transfer Decision is
+  admitted with that decision, also in Plan Open), §3a (the Comparison-pending marker also covers a change that is
+  followed by statuses given again from stored data; UC-009 BR-015).

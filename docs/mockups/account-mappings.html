@@ -478,23 +478,23 @@
 <p class="lede"></p>
 <div class="flow">
 <div class="state" id="move">
-<div class="step-label"><span class="n">UC-009 A8 1–2</span><p><b>Move an Account Mapping</b>: Budget Accounts of the served Budgets in the Bank Account's currency that receive through no Account Mapping.</p></div>
+<div class="step-label"><span class="n">UC-009 A8 1–2</span><p><b>Move an Account Mapping</b>: Budget Accounts of the served Budgets in the Bank Account's currency that receive through no Account Mapping. Manually Kept Accounts, here Old Savings, are not listed (UC-013 BR-014).</p></div>
 <div class="phone">
 <div class="screen-title"><a class="back" href="#map">‹</a> Settings</div>
 <p class="screen-sub">Bank Accounts and Account Mappings</p>
 <div class="body">
-<div class="sheet blue"><div class="grab"></div><h4>Move Kestrel Checking to…</h4><p class="ctx">Household · USD · Budget Accounts with no Account Mapping</p><div class="pick sel"><span class="radio"></span> <span><span class="nm">Old Savings</span> <span class="meta">0.00</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Cash Envelope</span> <span class="meta">120.00</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Car Loan</span> <span class="meta">−8,400.00</span></span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#move-confirm">Move</a> <a class="cta-btn ghost" href="#map">Cancel</a></span></div>
+<div class="sheet blue"><div class="grab"></div><h4>Move Kestrel Checking to…</h4><p class="ctx">Household · USD · Budget Accounts with no Account Mapping</p><div class="pick sel"><span class="radio"></span> <span><span class="nm">Cash Envelope</span> <span class="meta">120.00</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Car Loan</span> <span class="meta">−8,400.00</span></span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#move-confirm">Move</a> <a class="cta-btn ghost" href="#map">Cancel</a></span></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="map-again">
-<div class="step-label"><span class="n">UC-009 A8 · A11</span><p><b>Map a Bank Account again</b> after its Account Mapping was removed: unmapped Budget Accounts of the served Budgets in its currency; no confirmation, since it has no Account Mapping.</p></div>
+<div class="step-label"><span class="n">UC-009 A8 · A11</span><p><b>Map a Bank Account again</b> after its Account Mapping was removed: unmapped Budget Accounts of the served Budgets in its currency, without the Manually Kept Accounts (UC-013 BR-014); no confirmation, since it has no Account Mapping.</p></div>
 <div class="phone">
 <div class="screen-title"><a class="back" href="#map">‹</a> Settings</div>
 <p class="screen-sub">Bank Accounts and Account Mappings</p>
 <div class="body">
-<div class="sheet blue"><div class="grab"></div><h4>Map Kestrel Old Savings to…</h4><p class="ctx">USD · Budget Accounts with no Account Mapping</p><div class="pick sel"><span class="radio"></span> <span><span class="nm">Old Savings</span> <span class="meta">Household · 0.00</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Cash Envelope</span> <span class="meta">Household · 120.00</span></span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#map">Map</a> <a class="cta-btn ghost" href="#map">Cancel</a></span></div>
+<div class="sheet blue"><div class="grab"></div><h4>Map Kestrel Old Savings to…</h4><p class="ctx">USD · Budget Accounts with no Account Mapping</p><div class="pick sel"><span class="radio"></span> <span><span class="nm">Cash Envelope</span> <span class="meta">Household · 120.00</span></span></div><div class="pick"><span class="radio"></span> <span><span class="nm">Car Loan</span> <span class="meta">Household · −8,400.00</span></span></div><span class="pair" style="margin-top:10px"><a class="cta-btn" href="#map">Map</a> <a class="cta-btn ghost" href="#map">Cancel</a></span></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
@@ -505,7 +505,7 @@
 <div class="screen-title"><a class="back" href="#map">‹</a> Settings</div>
 <p class="screen-sub">Bank Accounts and Account Mappings</p>
 <div class="body">
-<div class="ghost"><div class="group-h"><span>Household · USD</span></div><div style="height:200px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Move Kestrel Checking to Old Savings?</h4><p>12 transactions were sent to Checking in YNAB. They stay there; Slussen won't send them again. Move or delete them in YNAB.</p><p>2 more were rejected by YNAB and are not in Checking. They go to Old Savings at the next Upload.</p><div class="actions"><a class="c" href="#map">Cancel</a> <a class="x" href="#map">Confirm</a></div></div><div style="height:120px"></div>
+<div class="ghost"><div class="group-h"><span>Household · USD</span></div><div style="height:200px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:60px;margin:0"><h4>Move Kestrel Checking to Cash Envelope?</h4><p>12 transactions were sent to Checking in YNAB. They stay there; Slussen won't send them again. Move or delete them in YNAB.</p><p>2 more were rejected by YNAB and are not in Checking. They go to Cash Envelope at the next Upload.</p><div class="actions"><a class="c" href="#map">Cancel</a> <a class="x" href="#map">Confirm</a></div></div><div style="height:120px"></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
