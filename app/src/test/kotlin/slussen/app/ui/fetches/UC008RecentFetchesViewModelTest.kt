@@ -156,10 +156,10 @@ class UC008RecentFetchesViewModelTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A5: Recent Fetch Outcomes", businessRules = ["BR-008"])
-    @DisplayName("A2 (fetch-history.html#fetch-detail-cooldown): a Fetch served from the Fetch Cooldown says which Bank Account it read and, for each other one, which earlier Fetch it came from and what that Fetch recorded; it asks nothing itself")
+    @DisplayName("A2 (fetch-history.html#fetch-detail-cooldown): a Fetch served from the Fetch Cooldown says which Bank Account it read and, for each other one, which earlier Fetch it came from; it asks nothing itself")
     fun openedServedFetch() {
         accounts()
-        fetch(ago(40), FetchOutcome.Fetched, "Kestrel Checking" to FetchResultOutcome.Fetched, "Kestrel Reserve" to FetchResultOutcome.NotDelivered)
+        fetch(ago(40), FetchOutcome.Fetched, "Kestrel Checking" to FetchResultOutcome.Fetched, "Kestrel Reserve" to FetchResultOutcome.Fetched)
         val served = fetch(ago(15), FetchOutcome.ServedFromFetchCooldown, "Pinecrest Rewards Card" to FetchResultOutcome.Fetched)
         val screen = screen()
 
@@ -175,7 +175,7 @@ class UC008RecentFetchesViewModelTest {
         assertEquals(listOf("Fetched", "Served", "Served"), accounts.map { it.result })
         assertEquals("Nothing needed now", accounts[0].note)
         assertEquals("From the Fetch of 13:20", accounts[1].note)
-        assertEquals("From the Fetch of 13:20, which recorded Not Delivered for it · see that Fetch", accounts[2].note)
+        assertEquals("From the Fetch of 13:20", accounts[2].note)
         assertTrue(accounts.all { it.asks == null && it.action == null })
     }
 
@@ -220,6 +220,58 @@ class UC008RecentFetchesViewModelTest {
 
         assertEquals("Still needed now: Kestrel Feeds, credentials refused: enter the credentials again", lines[0].need)
         assertEquals("History: the Fetch of 14:50 came after it and ended Credentials Refused · nothing needed now", lines[1].need)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A5: Recent Fetch Outcomes", businessRules = ["BR-006"])
+    @DisplayName("A6 (review 2a): the latest Fetch that failed as a whole, whose credentials were refused, or that held a Bank Account back without the Request Limit holding it now, has the action that leads to its remedy at its own line; a wait or an older Fetch has none")
+    fun wholeFetchRemedyIsAControlAtItsLine() {
+        accounts()
+        slice.clock.advance(Duration.ofHours(1))
+        val feeds = ServiceKey.dataProvider(slice.feedsId)
+        fetch(ago(30), FetchOutcome.Failed)
+
+        val failed = screen().ui().lines.single()
+
+        assertFalse(failed.opens)
+        assertEquals(listOf(RemedyAction("Fetch again", available = true, service = feeds, note = null)), failed.actions)
+
+        fetch(ago(10), FetchOutcome.CredentialsRefused)
+        val lines = screen().ui().lines
+
+        assertEquals(listOf(RemedyAction("Enter credentials", available = true, service = feeds, note = null)), lines[0].actions)
+        assertEquals(emptyList<RemedyAction>(), lines[1].actions)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A5: Recent Fetch Outcomes", businessRules = ["BR-008"])
+    @DisplayName("A2 (review 1b): a Fetch within the Fetch Cooldown that the Request Limit stopped says which Bank Account it did not read; with the limit not reached now it asks for a Fetch with the action, with the limit reached it only waits")
+    fun heldBackByTheRequestLimit() {
+        accounts()
+        fetch(ago(40), FetchOutcome.Fetched, "Kestrel Checking" to FetchResultOutcome.Fetched, "Kestrel Reserve" to FetchResultOutcome.Fetched)
+        slice.connectionStore.bankAccountList.replaceAll { if (it.name == "Pinecrest Rewards Card") it.copy(identifiedAt = ago(20)) else it }
+        val id = fetch(ago(15), FetchOutcome.ServedFromFetchCooldown)
+
+        val line = screen().ui().lines.first()
+
+        assertEquals("No Bank Account read · served from earlier Fetches: 2 · not read, held back by the Request Limit: Pinecrest Rewards Card", line.summary)
+        assertEquals("Still needed now: Pinecrest Rewards Card not read, held back by the Request Limit; fetch again", line.need)
+        assertEquals(listOf(RemedyAction("Fetch again", available = true, service = ServiceKey.dataProvider(slice.feedsId), note = null)), line.actions)
+        val screen = screen()
+        screen.open(id)
+        val held = screen.ui().detail!!.bankAccounts.single { it.name == "Pinecrest Rewards Card" }
+        assertEquals("Not read", held.result)
+        assertEquals("Held back by the Request Limit when this Fetch ran; the limit is not reached now", held.note)
+        assertEquals(RemedyAction("Fetch again", available = true, service = ServiceKey.dataProvider(slice.feedsId), note = null), held.action)
+
+        slice.providerRequests.requests.clear()
+        repeat(20) { index ->
+            slice.providerRequests.requests += slussen.core.port.StoredProviderRequest(slice.feedsId, null, slussen.core.port.ProviderRequestKind.Other, false, ago(120L - index))
+        }
+        val waiting = screen().ui().lines.first()
+
+        assertEquals("Pinecrest Rewards Card: not read, held back by the Request Limit until 10-16 12:00 · nothing needed from you now", waiting.need)
+        assertTrue(waiting.actions.isEmpty())
     }
 
     @Test

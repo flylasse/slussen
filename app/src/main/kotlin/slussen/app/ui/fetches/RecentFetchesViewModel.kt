@@ -29,6 +29,8 @@ data class FetchLineUi(
     val asksNow: Boolean,
     /** A line with Bank Accounts opens its detail. */
     val opens: Boolean,
+    /** The actions that lead to the remedy of what it still asks (UC-008 A6), at its line. */
+    val actions: List<RemedyAction> = emptyList(),
 )
 
 /** One Bank Account of an opened Fetch (`#fetch-detail`, `#fetch-detail-cooldown`). */
@@ -152,6 +154,7 @@ class RecentFetchesViewModel(private val services: UiServices) : ViewModel() {
                     need = FetchesTexts.need(fetch, formats, now),
                     asksNow = fetch.need is FetchNeed.Needed,
                     opens = fetch.bankAccounts.isNotEmpty(),
+                    actions = actions(fetch),
                 )
             },
             empty = if (fetches.fetches.isEmpty()) FetchesEmptyUi(FetchesTexts.EMPTY_TITLE, FetchesTexts.empty(fetches.kept), FetchesTexts.EMPTY_ACTION) else null,
@@ -159,6 +162,18 @@ class RecentFetchesViewModel(private val services: UiServices) : ViewModel() {
             notListed = if (notListed) FetchesTexts.NO_LONGER_KEPT else null,
         )
     }
+
+    /** UC-008 A6: the actions that lead to the remedy of what a Fetch still asks, at its line. */
+    private fun actions(fetch: RecentFetch): List<RemedyAction> {
+        val provider = ServiceKey.dataProvider(fetch.dataProviderId)
+        return when (val need = fetch.need) {
+            is FetchNeed.Needed -> need.blocked.mapNotNull { remedyAction(it, provider) }.distinct()
+            is FetchNeed.NotReadYet -> if (need.freesUpAt == null) listOf(fetchAgain(provider)) else emptyList()
+            is FetchNeed.NotNeeded -> emptyList()
+        }
+    }
+
+    private fun fetchAgain(provider: ServiceKey) = RemedyAction(slussen.app.ui.Texts.remedy(Remedy.FetchAgain).orEmpty(), available = true, service = provider, note = null)
 
     private fun detail(fetch: RecentFetch): FetchDetailUi {
         val formats = services.formats
@@ -169,6 +184,7 @@ class RecentFetchesViewModel(private val services: UiServices) : ViewModel() {
             need = FetchesTexts.need(fetch, formats, now),
             bankAccounts = fetch.bankAccounts.map { line ->
                 val still = (line.need as? AccountNeed.Still)?.blocked?.takeIf { it.remedy != Remedy.WaitUntilItEnds }
+                val unread = (line.need as? AccountNeed.NotReadYet)?.takeIf { it.freesUpAt == null }
                 FetchBankAccountUi(
                     name = line.name,
                     result = FetchesTexts.result(line),
@@ -176,7 +192,8 @@ class RecentFetchesViewModel(private val services: UiServices) : ViewModel() {
                     asks = still?.let { FetchesTexts.stillNeeded(it, formats, now) },
                     advice = still?.let { slussen.app.ui.Texts.advice(it) },
                     // The action that removes the reason leads to the page that has it (UC-008 A6).
-                    action = still?.let { remedyAction(it, ServiceKey.dataProvider(fetch.dataProviderId)) },
+                    action = still?.let { remedyAction(it, ServiceKey.dataProvider(fetch.dataProviderId)) }
+                        ?: unread?.let { fetchAgain(ServiceKey.dataProvider(fetch.dataProviderId)) },
                 )
             },
         )

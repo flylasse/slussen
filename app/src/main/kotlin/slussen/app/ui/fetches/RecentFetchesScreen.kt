@@ -65,18 +65,20 @@ fun RecentFetchesScreen(
                 Muted(ui.note)
             }
         }
-        items(ui.lines, key = { "fetch-${it.key}" }) { line -> FetchLine(line, onOpen) }
+        items(ui.lines, key = { "fetch-${it.key}" }) { line -> FetchLine(line, onOpen, onRemedy) }
     }
 }
 
 /** One recent Fetch of the list. */
 @Composable
-private fun FetchLine(line: FetchLineUi, onOpen: (Long) -> Unit) {
+private fun FetchLine(line: FetchLineUi, onOpen: (Long) -> Unit, onRemedy: (RemedyAction) -> Unit) {
     SlussenCard(modifier = if (line.opens) Modifier.clickable { onOpen(line.key) } else Modifier) {
         Text(line.title, color = SlussenColors.Text, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         Text(line.outcome, color = SlussenColors.Text3, fontSize = 11.sp)
         line.summary?.let { Muted(it) }
         Text(line.need, color = if (line.asksNow) SlussenColors.Amber else SlussenColors.Text2, fontSize = 12.sp)
+        line.actions.forEach { action -> OutlinedButton(onClick = { onRemedy(action) }, enabled = action.available) { Text(action.title) } }
+        line.actions.mapNotNull { it.note }.distinct().forEach { Text(it, color = SlussenColors.Text3, fontSize = 11.sp) }
         if (line.opens) Text("Bank Accounts ›", color = SlussenColors.Text3, fontSize = 11.sp)
     }
 }

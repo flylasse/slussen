@@ -197,7 +197,8 @@ class ImportStatus(
             sourceName = ::dataProviderName,
             credentialsAcceptedAt = { (snapshot.credentials[ServiceKey.dataProvider(it)] as? CredentialStatus.Accepted)?.acceptedAt },
             accountBlocked = { account -> blockedNow(account, snapshot) },
-            sourceBlocked = { providerId, last -> sourceBlocked(dataProviders.single { it.id == providerId }, last, snapshot) },
+            // A stored Fetch of a Data Provider this build no longer has gives no Blocked Reason, and does not make the list unreadable.
+            sourceBlocked = { providerId, last -> dataProviders.firstOrNull { it.id == providerId }?.let { sourceBlocked(it, last, snapshot) }.orEmpty() },
         )
         // UC-008 BR-008: Slussen shows the most recent Fetches, as many as the Operator Setting keeps, with Source, time, who started them and outcome.
         val kept = snapshot.settings.fetchHistorySize

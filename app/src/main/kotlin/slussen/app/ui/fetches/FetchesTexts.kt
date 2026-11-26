@@ -62,9 +62,11 @@ object FetchesTexts {
         val head = if (fetch.outcome == FetchOutcome.ServedFromFetchCooldown) {
             val read = recorded(fetch).filter { it.second == FetchResultOutcome.Fetched }.map { it.first.name }
             val served = fetch.bankAccounts.count { it.what is FetchedWhat.Served }
+            val held = fetch.bankAccounts.filter { it.what == FetchedWhat.HeldByRequestLimit }.map { it.name }
             listOfNotNull(
                 if (read.isEmpty()) "No Bank Account read" else "Read: ${read.joinToString(", ")}",
                 if (served > 0) "served from earlier Fetches: $served" else null,
+                if (held.isNotEmpty()) "not read, held back by the Request Limit: ${held.joinToString(", ")}" else null,
             ).joinToString(" · ")
         } else {
             fetchedCount(fetch)
@@ -111,6 +113,9 @@ object FetchesTexts {
     /** The line that says whether the Fetch asks something now, and what is current or past about it. */
     fun need(fetch: RecentFetch, formats: Formats, now: Instant): String = when (val need = fetch.need) {
         is FetchNeed.Needed -> "Still needed now: " + need.blocked.joinToString("; ") { asks(it, formats, now) }
+        is FetchNeed.NotReadYet -> need.freesUpAt
+            ?.let { "${need.names.joinToString(", ")}: not read, held back by the Request Limit until ${formats.moment(it, now)} · nothing needed from you now" }
+            ?: "Still needed now: ${need.names.joinToString(", ")} not read, held back by the Request Limit; fetch again"
         is FetchNeed.NotNeeded -> listOfNotNull(note(fetch, need.note, formats, now), "nothing needed now").joinToString(" · ")
             .replaceFirstChar { it.uppercase() }
     }
@@ -131,6 +136,7 @@ object FetchesTexts {
     fun result(line: FetchBankAccount): String = when (val what = line.what) {
         is FetchedWhat.Recorded -> Texts.fetchResult(what.outcome)
         is FetchedWhat.Served -> "Served"
+        FetchedWhat.HeldByRequestLimit -> "Not read"
     }
 
     /** What the detail line of one Bank Account says about where it came from and whether it still asks something. */
@@ -145,6 +151,9 @@ object FetchesTexts {
             AccountNeed.NoLongerFetched -> "No longer fetched · nothing needed now"
             AccountNeed.Ended -> "${if ((line.what as? FetchedWhat.Recorded)?.outcome == FetchResultOutcome.NotConsented) "No Bank Consent is missing now" else "Nothing blocks it now"} · nothing needed now"
             AccountNeed.SeeEarlier -> null
+            is AccountNeed.NotReadYet ->
+                need.freesUpAt?.let { "Held back by the Request Limit until ${formats.moment(it, now)} · nothing needed from you now" }
+                    ?: "Held back by the Request Limit when this Fetch ran; the limit is not reached now"
         }
         return listOfNotNull(served, need).joinToString(" · ").ifEmpty { null }
     }
@@ -152,8 +161,7 @@ object FetchesTexts {
     private fun servedFrom(earlier: EarlierFetch?, formats: Formats, now: Instant): String =
         when {
             earlier == null -> "From an earlier Fetch"
-            earlier.outcome == FetchResultOutcome.Fetched -> "From the Fetch of ${formats.moment(earlier.startedAt, now)}"
-            else -> "From the Fetch of ${formats.moment(earlier.startedAt, now)}, which recorded ${Texts.fetchResult(earlier.outcome)} for it · see that Fetch"
+            else -> "From the Fetch of ${formats.moment(earlier.startedAt, now)}"
         }
 
     /** The line that says what a Blocked Reason still asks of the Operator, with the action (UC-008 BR-006), for a Bank Account's detail. */

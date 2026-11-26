@@ -176,13 +176,13 @@ class UC008RecentFetchesTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A5: Recent Fetch Outcomes", businessRules = ["BR-008"])
-    @DisplayName("A2, step 11 (fetch-history.html#fetch-detail-cooldown): a Fetch served from the Fetch Cooldown names the Bank Account it read and, for each other Bank Account of the Data Provider, the earlier Fetch that served it and what that Fetch recorded; it asks nothing itself, the earlier Fetch carries the need")
+    @DisplayName("A2, step 11 (fetch-history.html#fetch-detail-cooldown): a Fetch served from the Fetch Cooldown names the Bank Account it read and, for each other Bank Account the Fetch selects, the earlier Fetch that served it; it asks nothing itself")
     fun servedFromTheFetchCooldown() = runTest {
         accounts()
         val earlier = fetch(
             ago(40), FetchOutcome.Fetched,
             "Kestrel Checking" to FetchResultOutcome.Fetched,
-            "Kestrel Reserve" to FetchResultOutcome.NotDelivered,
+            "Kestrel Reserve" to FetchResultOutcome.Fetched,
         )
         val servedId = fetch(ago(15), FetchOutcome.ServedFromFetchCooldown, "Pinecrest Rewards Card" to FetchResultOutcome.Fetched)
 
@@ -190,24 +190,95 @@ class UC008RecentFetchesTest {
 
         assertEquals(FetchedWhat.Recorded(FetchResultOutcome.Fetched), served.line("Pinecrest Rewards Card").what)
         assertEquals(FetchedWhat.Served(EarlierFetch(ago(40), FetchResultOutcome.Fetched)), served.line("Kestrel Checking").what)
-        assertEquals(FetchedWhat.Served(EarlierFetch(ago(40), FetchResultOutcome.NotDelivered)), served.line("Kestrel Reserve").what)
+        assertEquals(FetchedWhat.Served(EarlierFetch(ago(40), FetchResultOutcome.Fetched)), served.line("Kestrel Reserve").what)
         assertEquals(AccountNeed.SeeEarlier, served.line("Kestrel Reserve").need)
         assertEquals(FetchNeed.NotNeeded(null), served.need)
-        assertEquals(AccountNeed.Still(blockedOf("Kestrel Reserve").single()), recent(earlier).line("Kestrel Reserve").need)
+        assertEquals(AccountNeed.Delivered, recent(earlier).line("Kestrel Reserve").need)
     }
 
     @Test
     @UseCase(id = "UC-008", scenario = "A5: Recent Fetch Outcomes", businessRules = ["BR-008"])
-    @DisplayName("A2: a Bank Account added after a Fetch was served from the Fetch Cooldown is not listed under it, and one without an earlier Fetch kept says only that it came from an earlier Fetch")
-    fun servedListsOnlyTheBankAccountsThereAtThatTime() = runTest {
+    @DisplayName("A2, step 3 (review 1a): a Fetch served from the Fetch Cooldown lists exactly the Bank Accounts a Fetch selects: not a Retired Account, not one without an Account Mapping or without a reference at the Data Provider, and one whose balance alone comes from the Data Provider")
+    fun servedListsOnlyWhatAFetchSelects() = runTest {
         accounts()
+        val template = slice.connectionStore.bankAccountList.first()
+        slice.connectionStore.bankAccountList += template.copy(
+            id = 9100, name = "Harbor Health Savings", dataProviderId = null, fileFormatId = slice.plugins.fileFormats.single().id,
+            balanceDataProviderId = slice.feedsId, providerReference = null, balanceProviderReference = "bal-9100",
+            generatedIdentifier = "00000000-0000-4000-8000-000000009100", mapping = template.mapping?.copy(id = 9101, bankAccountId = 9100),
+        )
+        slice.connectionStore.bankAccountList += template.copy(
+            id = 9200, name = "Kestrel Unreferenced", providerReference = null,
+            generatedIdentifier = "00000000-0000-4000-8000-000000009200", mapping = template.mapping?.copy(id = 9201, bankAccountId = 9200),
+        )
+        fetch(
+            ago(40), FetchOutcome.Fetched,
+            "Kestrel Checking" to FetchResultOutcome.Fetched, "Kestrel Reserve" to FetchResultOutcome.Fetched,
+            "Pinecrest Rewards Card" to FetchResultOutcome.Fetched,
+        )
+        slice.importStatusStore.fetches.replaceAll { fetch ->
+            fetch.copy(results = fetch.results + StoredFetchResult(9100, FetchResultOutcome.Fetched, 0))
+        }
         val servedId = fetch(ago(15), FetchOutcome.ServedFromFetchCooldown)
-        slice.connectionStore.bankAccountList.replaceAll { if (it.name == "Pinecrest Rewards Card") it.copy(identifiedAt = ago(5)) else it }
+        slice.connectionStore.bankAccountList.replaceAll {
+            when (it.name) {
+                "Kestrel Reserve" -> it.copy(retired = true)
+                "Pinecrest Rewards Card" -> it.copy(mapping = null)
+                else -> it
+            }
+        }
 
         val served = recent(servedId)
 
-        assertEquals(listOf("Kestrel Checking", "Kestrel Reserve"), served.bankAccounts.map { it.name })
-        assertEquals(listOf(FetchedWhat.Served(null), FetchedWhat.Served(null)), served.bankAccounts.map { it.what })
+        assertEquals(setOf("Kestrel Checking", "Harbor Health Savings"), served.bankAccounts.map { it.name }.toSet())
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A5: Recent Fetch Outcomes", businessRules = ["BR-008"])
+    @DisplayName("A2 (review 1b): a Bank Account not read since it was added was not read by a Fetch within the Fetch Cooldown that the Request Limit stopped; it says so, as not read, held back by the Request Limit, and never as served or as nothing needed")
+    fun heldBackByTheRequestLimit() = runTest {
+        accounts()
+        fetch(ago(40), FetchOutcome.Fetched, "Kestrel Checking" to FetchResultOutcome.Fetched, "Kestrel Reserve" to FetchResultOutcome.Fetched)
+        slice.connectionStore.bankAccountList.replaceAll { if (it.name == "Pinecrest Rewards Card") it.copy(identifiedAt = ago(20)) else it }
+        val servedId = fetch(ago(15), FetchOutcome.ServedFromFetchCooldown)
+
+        val served = recent(servedId)
+
+        assertEquals(FetchedWhat.Served(EarlierFetch(ago(40), FetchResultOutcome.Fetched)), served.line("Kestrel Checking").what)
+        assertEquals(FetchedWhat.HeldByRequestLimit, served.line("Pinecrest Rewards Card").what)
+        assertEquals(AccountNeed.NotReadYet(null), served.line("Pinecrest Rewards Card").need)
+        assertEquals(FetchNeed.NotReadYet(listOf("Pinecrest Rewards Card"), null), served.need)
+
+        slice.providerRequests.requests.clear()
+        repeat(20) { index ->
+            slice.providerRequests.requests += slussen.core.port.StoredProviderRequest(slice.feedsId, null, slussen.core.port.ProviderRequestKind.Other, false, ago(120L - index))
+        }
+        val until = ago(120).plus(Duration.ofHours(24))
+        assertEquals(AccountNeed.NotReadYet(until), recent(servedId).line("Pinecrest Rewards Card").need)
+        assertEquals(FetchNeed.NotReadYet(listOf("Pinecrest Rewards Card"), until), recent(servedId).need)
+
+        fetch(ago(5), FetchOutcome.Fetched, "Pinecrest Rewards Card" to FetchResultOutcome.Fetched)
+
+        assertEquals(AccountNeed.ReadSince(ago(5)), recent(servedId).line("Pinecrest Rewards Card").need)
+        assertEquals(FetchNeed.NotNeeded(null), recent(servedId).need)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A5: Recent Fetch Outcomes", businessRules = ["BR-006"])
+    @DisplayName("A5 (review 4a, 5): a stored Fetch of a Data Provider this build no longer has does not make the list unreadable; and a Bank Account not recognised that is still mapped asks what the Budget shows for it")
+    fun unknownDataProviderAndNotRecognised() = runTest {
+        accounts()
+        slice.importStatusStore.fetches += StoredFetch(50, 9999, ago(500), StartedBy.Operator, FetchOutcome.Failed, emptyList())
+        slice.importStatusStore.fetches += StoredFetch(51, 9999, ago(400), StartedBy.Operator, FetchOutcome.CredentialsRefused, emptyList())
+        val fetchId = fetch(ago(30), FetchOutcome.Fetched, "Kestrel Reserve" to FetchResultOutcome.NotRecognised)
+
+        val history = slice.status.recentFetches()
+
+        assertEquals(3, history.fetches.size)
+        assertEquals(FetchNeed.NotNeeded(null), history.fetches.single { it.fetchId == 51L }.need)
+        val blocked = blockedOf("Kestrel Reserve").single()
+        assertEquals(BlockedReason.UnrecognisedBankAccount, blocked.reason)
+        assertEquals(AccountNeed.Still(blocked), recent(fetchId).line("Kestrel Reserve").need)
     }
 
     @Test
@@ -348,7 +419,7 @@ class UC008RecentFetchesTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A5: Recent Fetch Outcomes", businessRules = ["BR-006"])
-    @DisplayName("A19: a Bank Account that is not delivered with a wait that has not ended asks nothing of the Operator, and the Fetch lists the wait among what is current")
+    @DisplayName("A9, UC-008 BR-006: a Bank Account that reached its access limit, a wait that has not ended, asks nothing of the Operator, and the Fetch lists the wait among what is current")
     fun accessLimitIsAWaitNotAnAsk() = runTest {
         accounts()
         val fetchId = fetch(ago(20), FetchOutcome.Fetched, "Kestrel Reserve" to FetchResultOutcome.AccessLimitReached)

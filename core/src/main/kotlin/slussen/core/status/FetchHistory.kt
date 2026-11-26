@@ -1,5 +1,6 @@
 package slussen.core.status
 
+import slussen.core.fetch.selectedBankAccounts
 import slussen.core.port.BackOffCause
 import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
@@ -43,6 +44,12 @@ sealed interface FetchedWhat {
      * kept when [earlier] is null.
      */
     data class Served(val earlier: EarlierFetch?) : FetchedWhat
+
+    /**
+     * UC-001 A2 step 1, BR-006: within the Fetch Cooldown the Bank Account had not been read since it was added or identified
+     * again and was to be read, but the Request Limit was reached, so the Fetch read nothing of it and nothing of it is stored.
+     */
+    data object HeldByRequestLimit : FetchedWhat
 }
 
 /** An earlier Fetch and the Fetch Result it recorded for one Bank Account. */
@@ -70,12 +77,21 @@ sealed interface AccountNeed {
 
     /** A Fetch within the Fetch Cooldown served it; the Fetch it came from carries what is needed. */
     data object SeeEarlier : AccountNeed
+
+    /**
+     * No Fetch has read it since the Request Limit held it back. The Request Limit holds until [freesUpAt], when a wait
+     * asks nothing; when it is null the limit is not reached now, and another Fetch reads it.
+     */
+    data class NotReadYet(val freesUpAt: Instant?) : AccountNeed
 }
 
 /** Whether a whole Fetch still asks something of the Operator now. */
 sealed interface FetchNeed {
     /** [blocked] are the Blocked Reasons that still ask the Operator for an action. */
     data class Needed(val blocked: List<Blocked>) : FetchNeed
+
+    /** The Bank Accounts [names] were held back by the Request Limit and are not read yet; see [AccountNeed.NotReadYet]. */
+    data class NotReadYet(val names: List<String>, val freesUpAt: Instant?) : FetchNeed
 
     /** Nothing is asked; [note] says what is current or past about it, or is null when there is nothing to add. */
     data class NotNeeded(val note: FetchNote?) : FetchNeed
@@ -142,15 +158,31 @@ internal class FetchHistoryRules(
     private fun lines(fetch: StoredFetch): List<FetchBankAccount> {
         val recorded = fetch.results.map { FetchBankAccount(it.bankAccountId, nameOf(it.bankAccountId), FetchedWhat.Recorded(it.outcome), recordedNeed(fetch, it)) }
         if (fetch.outcome != FetchOutcome.ServedFromFetchCooldown) return recorded
-        // Within the Fetch Cooldown (UC-001 A2) the Bank Accounts of the Data Provider that were there when the Fetch ran and that it did not read were served from earlier Fetches.
-        val served = accounts.values
-            .filter { it.dataProviderId == fetch.dataProviderId && !it.identifiedAt.isAfter(fetch.startedAt) && fetch.results.none { result -> result.bankAccountId == it.id } }
+        // Within the Fetch Cooldown (UC-001 A2) the Bank Accounts a Fetch selects (step 3) that it did not read were served from earlier Fetches, or, when not read since they were added or identified again, held back by the Request Limit.
+        val before = earlier(fetch)
+        val served = selectedBankAccounts(accounts.values.filter { !it.identifiedAt.isAfter(fetch.startedAt) }, fetch.dataProviderId)
+            .map { it.first }
+            .filter { account -> fetch.results.none { it.bankAccountId == account.id } }
             .sortedBy { it.id }
             .map { account ->
-                val from = earlier(fetch).firstNotNullOfOrNull { f -> f.results.firstOrNull { it.bankAccountId == account.id }?.let { EarlierFetch(f.startedAt, it.outcome) } }
-                FetchBankAccount(account.id, account.name, FetchedWhat.Served(from), AccountNeed.SeeEarlier)
+                val readSince = before.any { f -> !f.startedAt.isBefore(account.identifiedAt) && f.results.any { it.bankAccountId == account.id && it.outcome == FetchResultOutcome.Fetched } }
+                if (!readSince) {
+                    FetchBankAccount(account.id, account.name, FetchedWhat.HeldByRequestLimit, heldNeed(fetch, account))
+                } else {
+                    val from = before.firstNotNullOfOrNull { f -> f.results.firstOrNull { it.bankAccountId == account.id }?.let { EarlierFetch(f.startedAt, it.outcome) } }
+                    FetchBankAccount(account.id, account.name, FetchedWhat.Served(from), AccountNeed.SeeEarlier)
+                }
             }
         return recorded + served
+    }
+
+    /** A Bank Account the Request Limit held back: read since by a later Fetch, or not read yet, with when the limit frees up. */
+    private fun heldNeed(fetch: StoredFetch, account: StoredBankAccount): AccountNeed {
+        val readLater = later(fetch).lastOrNull { f -> f.results.any { it.bankAccountId == account.id && it.outcome == FetchResultOutcome.Fetched } }
+        if (readLater != null) return AccountNeed.ReadSince(readLater.startedAt)
+        val limit = sourceBlocked(fetch.dataProviderId, fetches.firstOrNull { it.dataProviderId == fetch.dataProviderId })
+            .firstOrNull { it.reason == BlockedReason.RequestLimitReached }
+        return AccountNeed.NotReadYet(limit?.at)
     }
 
     private fun recordedNeed(fetch: StoredFetch, result: StoredFetchResult): AccountNeed {
@@ -219,6 +251,12 @@ internal class FetchHistoryRules(
         val still = lines.mapNotNull { (it.need as? AccountNeed.Still)?.blocked }
         val asks = still.filter { it.remedy != Remedy.WaitUntilItEnds }
         val waits = still.filter { it.remedy == Remedy.WaitUntilItEnds }
+        val unread = lines.filter { it.need is AccountNeed.NotReadYet }
+        if (unread.isNotEmpty()) {
+            val until = unread.map { (it.need as AccountNeed.NotReadYet).freesUpAt }
+            // Asking wins over waiting: the Bank Accounts the limit no longer holds back are read by a Fetch.
+            if (asks.isEmpty()) return FetchNeed.NotReadYet(unread.map { it.name }, if (until.all { it != null }) until.filterNotNull().max() else null)
+        }
         return when {
             asks.isNotEmpty() -> FetchNeed.Needed(asks)
             waits.isNotEmpty() -> FetchNeed.NotNeeded(FetchNote.WaitingOn(waits))

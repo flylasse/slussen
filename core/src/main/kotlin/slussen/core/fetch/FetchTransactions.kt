@@ -197,21 +197,8 @@ class FetchTransactions(
      * transactions come from Transaction Files and whose balance it reports, that has an Account Mapping and is not a
      * Retired Account.
      */
-    private suspend fun selected(stored: StoredDataProvider): List<Selected> = connections.bankAccounts()
-        .filter { it.mapping != null && !it.retired }
-        .mapNotNull { bankAccount ->
-            val ownReference = bankAccount.providerReference
-            val balanceReference = bankAccount.balanceProviderReference
-            when {
-                // Step 4: the transactions and the balance of each Bank Account the Operator added for the Data Provider.
-                bankAccount.dataProviderId == stored.id && ownReference != null ->
-                    Selected(bankAccount, BankAccountToRead(ownReference, ReadKind.TransactionsAndBalance))
-                // UC-001 BR-011: A Bank Account whose transactions come from Transaction Files is read for its balance only, from the Data Provider the Operator chose for it.
-                bankAccount.balanceDataProviderId == stored.id && balanceReference != null ->
-                    Selected(bankAccount, BankAccountToRead(balanceReference, ReadKind.Balance))
-                else -> null
-            }
-        }
+    private suspend fun selected(stored: StoredDataProvider): List<Selected> =
+        selectedBankAccounts(connections.bankAccounts(), stored.id).map { (bankAccount, read) -> Selected(bankAccount, read) }
 
     // UC-001 BR-006: Within the Fetch Cooldown a Bank Account is read until it has a Fetch Result Fetched since it was added or identified again.
     /**
@@ -622,3 +609,24 @@ class FetchTransactions(
         const val THOUSANDTHS = 1000L
     }
 }
+
+/**
+ * UC-001 step 3: the Bank Accounts of [all] that a Fetch of the Data Provider [dataProviderId] selects, each with what to
+ * read of it: those that have an Account Mapping, are not Retired Accounts and have a reference at the Data Provider.
+ * The Fetch and the recent Fetches (UC-008 A5) use this one rule.
+ */
+internal fun selectedBankAccounts(all: List<StoredBankAccount>, dataProviderId: Long): List<Pair<StoredBankAccount, BankAccountToRead>> =
+    all.filter { it.mapping != null && !it.retired }
+        .mapNotNull { bankAccount ->
+            val ownReference = bankAccount.providerReference
+            val balanceReference = bankAccount.balanceProviderReference
+            when {
+                // Step 4: the transactions and the balance of each Bank Account the Operator added for the Data Provider.
+                bankAccount.dataProviderId == dataProviderId && ownReference != null ->
+                    bankAccount to BankAccountToRead(ownReference, ReadKind.TransactionsAndBalance)
+                // UC-001 BR-011: A Bank Account whose transactions come from Transaction Files is read for its balance only, from the Data Provider the Operator chose for it.
+                bankAccount.balanceDataProviderId == dataProviderId && balanceReference != null ->
+                    bankAccount to BankAccountToRead(balanceReference, ReadKind.Balance)
+                else -> null
+            }
+        }
