@@ -4,14 +4,15 @@
 **Target repo / branch:** `flylasse/slussen`, branch `build-out` (from `main` at `b150a1b`, VERSION 0.1.15), one draft PR (#37) for the whole run.
 **Specification (input):** `docs/` as on `main`; all use cases are Approved. The five read-only surveys of 2026-11-26 are in `docs/reviews/build_out_sweep_A..E_*.md`: what is unbuilt, the proposed phases, the questions and the safe guesses of each area.
 **Method:** AIUP as in `docs/transactions_plan.md`, with the skills read from `vendor/aiup-marketplace/`, and with the deviations of §2, which the operator chose on 2026-11-26.
-**Status:** Draft. The run starts when the operator has answered §6.
+**Status:** In progress. The operator answered §6 on 2026-11-26 and started the run.
 
 ## 0. Resume here (state as of 2026-11-26)
 
 - The transactions plan is built up to Phase 7b (PR #36 merged). Its Phase 7c (the screens) is Wave 1 here; its acceptance (Phase 8) and close (Phase 9) fold into this plan's end.
 - Device run by the operator on `main` (2026-11-26, Galaxy, Android 17): `:persistence` 49 of 49; `:app` 22 of 22 after two stale tests were fixed (24235f0).
-- Five surveys done (`docs/reviews/build_out_sweep_*.md`). The questionnaire of §6 is with the operator.
-- Next: the operator answers §6; then Wave 0.
+- Five surveys done (`docs/reviews/build_out_sweep_*.md`).
+- The operator answered the questionnaire on 2026-11-26 (§6): the defaults, with a sample for Q-01 and "no" to Q-04. The run started.
+- Next: Wave 1, phase A-1.
 
 ## 1. Scope
 
@@ -50,7 +51,7 @@ Schema: `slussen.db` gets one version 6 for every remaining table (`review_decis
 
 | Wave | Phases (survey ids) | Use cases | Writes |
 |---|---|---|---|
-| 0 | Specification settle from §6's answers and the safe guesses; phase prompts | all | `docs/` |
+| 0 | The answers recorded (§6). Each later wave starts with its own specification commit, from its survey's safe guesses and the answers (the surveys' B0, C0, D0, E0) | all | `docs/` |
 | 1 | Truthful build state and the YNAB line (A-1); Bank Account screen (A-2); Transfers, read-only (A-3); Recent Fetches detail (A-4); #33 and #26 (A-5) | UC-008, UC-003 A1 | `:core` status, `:app` |
 | 2 | Storage version 6 (B1, C1, D1 together); Review Decisions (B2); Transfer Decisions (B3); mapping changes (B4, B5); the decision screens (B6) | UC-004, UC-005, UC-009, UC-003 BR-008..BR-010 | `:core`, `:persistence`, `:testing`, `:app` |
 | 3 | All scalar settings and the re-status (A-6); description lists (A-7); Decision Journal control (A-8); the export (A-9) | UC-010, UC-011 | `:core`, `:persistence`, `:app` |
@@ -76,32 +77,48 @@ Written by the orchestrator when a phase is dispatched, from the survey of its a
 
 ### Questionnaire, 2026-11-26
 
-The operator's answers are recorded here when given; an empty answer means the default.
+Answered by the operator on 2026-11-26: "defaults, with these clarifications" (Q-01, Q-04, Q-07).
 
 Facts only the operator has:
 
 | ID | Question | Default | Answer |
 |---|---|---|---|
-| Q-01 | **HSA CSV.** No sample or description of the HSA's export exists in the repository. Import Identifiers are permanent, so a guessed layout would make earlier files come in again as duplicates. A sample (header and a few invented lines in the exact layout) or a description? | Without one: the import is built against an invented format, and the HSA conversion rejects every file as "not built yet". | |
-| Q-02 | **Enable Banking return address.** Where the Bank's sign-in sends you back, registered in your Enable Banking application: a custom address (`slussen.app://consent`, and `slussen.app.debug://consent` for debug builds), an https link on a domain of yours, or pasting the address back by hand? | The custom address, with paste-back as the fallback. | |
-| Q-03 | **Country and Banks through Enable Banking.** Which country or countries? | One country, the chooser starting at the phone's. | |
-| Q-04 | **Transfers in YNAB before the Bank books them.** Do you type or schedule transfers in YNAB ahead of time, and is a tracking or loan account mapped? A linked transfer sent onto a hand-typed one could make a second pair. | Treated as yes: a Transfer that resembles a Typed Entry waits as Needs Review until a live test proves what YNAB does. | |
+| Q-01 | **HSA CSV.** No sample or description of the HSA's export exists in the repository. Import Identifiers are permanent, so a guessed layout would make earlier files come in again as duplicates. A sample (header and a few invented lines in the exact layout) or a description? | Without one: the import is built against an invented format, and the HSA conversion rejects every file as "not built yet". | A sample was given: the format below. |
+| Q-02 | **Enable Banking return address.** Where the Bank's sign-in sends you back, registered in your Enable Banking application: a custom address (`slussen.app://consent`, and `slussen.app.debug://consent` for debug builds), an https link on a domain of yours, or pasting the address back by hand? | The custom address, with paste-back as the fallback. | Default. |
+| Q-03 | **Country and Banks through Enable Banking.** Which country or countries? | One country, the chooser starting at the phone's. | Default. |
+| Q-04 | **Transfers in YNAB before the Bank books them.** Do you type or schedule transfers in YNAB ahead of time, and is a tracking or loan account mapped? A linked transfer sent onto a hand-typed one could make a second pair. | Treated as yes: a Transfer that resembles a Typed Entry waits as Needs Review until a live test proves what YNAB does. | No: "I don't pre-type anything; Slussen will be the main source for YNAB." So a Transfer is sent as a linked transfer as the specification says, without waiting; a live test case for it joins the end checklist (§7). |
+
+**Q-01, the format (from the operator's sample; the sample itself holds real account data and is neither in the repository nor given to any agent):** the history export of Fidelity for a health savings account, one file per Bank Account.
+- UTF-8 with a byte order mark, LF line ends. Two empty lines, then the header line, then one line per transaction, newest first, then an empty line and a legal text of several lines that ends with `Date downloaded MM/DD/YYYY hh:mm am`.
+- Header, 13 columns: `Run Date,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Cash Balance ($),Settlement Date`.
+- `Run Date` is `MM/DD/YYYY`. `Amount ($)` is in US dollars with a decimal point and at most the decimals it needs (`-393`, `-316.5`, `298.08`); a negative amount is quoted (`"-25.57"`), an outflow. An empty field is `""`. `Cash Balance ($)` is the balance after the line. There is no transaction identifier and no currency column.
+- `Action` carries what happened and with whom, and ends with ` (Cash)`. Invented lines in the exact layout:
+
+```text
+11/25/2026,DEBIT CARD PURCHASE HARBOR PHARMACY (Cash),"",No Description,Cash,"",0,"","","","-12.34",1987.66,""
+11/23/2026,PARTIC CONTR CURRENT PARTICIPANT CUR YR (Cash),"",No Description,Cash,"",0,"","","",150,2000,""
+10/30/2026,REINVESTMENT EXAMPLE GOVERNMENT CASH RESERVES (EXMPX) (Cash),EXMPX,EXAMPLE GOVERNMENT CASH RESERVES,Cash,1,4.5,"","","","-4.5",1850,""
+10/30/2026,DIVIDEND RECEIVED EXAMPLE GOVERNMENT CASH RESERVES (EXMPX) (Cash),EXMPX,EXAMPLE GOVERNMENT CASH RESERVES,Cash,"",0,"","","",4.5,1850,""
+```
+
+- The last two lines show the one trap: a dividend raises the cash balance, and its reinvestment into the cash fund on the same day does not lower it (the balance column is the same on both lines). Guess, for §6's end list: a line whose amount does not move the cash balance (a `REINVESTMENT` into the cash position) is not a transaction of the account and is left out; the dividend is kept. Buying or selling another fund was not in the sample.
+- Guess, for the derived reference (the file has no identifier): run date, action, symbol, description and amount; identical lines are told apart by their count, never by the cash balance, which changes when an earlier line is added later.
 
 Choices, each with a default:
 
 | ID | Question | Default | Answer |
 |---|---|---|---|
-| Q-05 | **Enable Banking gives no Stable Reference (issue #7).** Every Enable Banking Bank Transaction is then Needs Review and needs your Review Decision, and every Transfer with such a Transfer Leg waits. Keep it, trust the reference of named Banks, or stop treating a missing reference as doubtful? | Keep it now; trust a Bank's references only after you have seen real ones. Changing it after Uploads changes Import Identifiers and risks duplicates. | |
-| Q-06 | **Read YNAB before an Upload Plan.** As written, the plan is prepared from the last read and the confirmation refuses when YNAB changed since, which is nearly always. Read and compare first when you open "Review Upload Plan"? | Yes. | |
-| Q-07 | **One side already uploaded as an ordinary transaction, then the pair is detected.** As written the other side is in no plan and the decision is locked, for ever. | A side already written as ordinary is no Transfer Leg; the other uploads as ordinary. | |
-| Q-08 | **One transaction makes YNAB refuse a whole Budget Account's list.** | The YNAB part resends them one by one in the same Upload, so only the refused one is Rejected. | |
-| Q-09 | **Re-upload: once or standing.** After a Re-upload is deleted again in YNAB, is it sent again without a new decision? | Once: a Re-upload is used up by its send. | |
-| Q-10 | **The other side of an uploaded Lonely Transfer arrives late**, after the transfer pairing days. As written it would be New, a duplicate beside the Transfer Counterpart. | Needs Review when it resembles a Transfer Counterpart that is not settled. | |
-| Q-11 | **A decided Transfer when its ground changes** (Funded By, Transfer Partner, a description, a Bank Account's type, an Account Mapping). | The decision is kept unless the Transfer's own sides are no longer valid; then it is dissolved, journaled and detected again. | |
-| Q-12 | **A confirmed Lonely Transfer, not uploaded yet,** when its grace period passes or its other side arrives. | The decision holds, and an arriving side joins it. | |
-| Q-13 | **Choosing another Budget Account (UC-005 A3) when the matching transaction already belongs to another Transfer.** As written it becomes a Lonely Transfer, which would write the same money twice. | It is taken from a Transfer that is only Proposed, and refused with the reason when that Transfer is decided. | |
-| Q-14 | **Scheduled Fetch and notification.** They need four permissions (network state, wake lock, start after boot, show notifications), so NFR-022 changes. Twice a day at roughly even spacing, starting as soon as the build is installed; the notification permission is asked once on the Overview. | All of it as described. | |
-| Q-15 | **Documentation hosts.** The builders know Enable Banking's and YNAB's API from memory only. Allow this environment to read `enablebanking.com` and `api.ynab.com` (their documentation; no agent holds a credential)? | Yes. | |
+| Q-05 | **Enable Banking gives no Stable Reference (issue #7).** Every Enable Banking Bank Transaction is then Needs Review and needs your Review Decision, and every Transfer with such a Transfer Leg waits. Keep it, trust the reference of named Banks, or stop treating a missing reference as doubtful? | Keep it now; trust a Bank's references only after you have seen real ones. Changing it after Uploads changes Import Identifiers and risks duplicates. | Default. |
+| Q-06 | **Read YNAB before an Upload Plan.** As written, the plan is prepared from the last read and the confirmation refuses when YNAB changed since, which is nearly always. Read and compare first when you open "Review Upload Plan"? | Yes. | Default. |
+| Q-07 | **One side already uploaded as an ordinary transaction, then the pair is detected.** As written the other side is in no plan and the decision is locked, for ever. | A side already written as ordinary is no Transfer Leg; the other uploads as ordinary. | Default: "not a common case; his mess to clean up". |
+| Q-08 | **One transaction makes YNAB refuse a whole Budget Account's list.** | The YNAB part resends them one by one in the same Upload, so only the refused one is Rejected. | Default. |
+| Q-09 | **Re-upload: once or standing.** After a Re-upload is deleted again in YNAB, is it sent again without a new decision? | Once: a Re-upload is used up by its send. | Default. |
+| Q-10 | **The other side of an uploaded Lonely Transfer arrives late**, after the transfer pairing days. As written it would be New, a duplicate beside the Transfer Counterpart. | Needs Review when it resembles a Transfer Counterpart that is not settled. | Default. |
+| Q-11 | **A decided Transfer when its ground changes** (Funded By, Transfer Partner, a description, a Bank Account's type, an Account Mapping). | The decision is kept unless the Transfer's own sides are no longer valid; then it is dissolved, journaled and detected again. | Default. |
+| Q-12 | **A confirmed Lonely Transfer, not uploaded yet,** when its grace period passes or its other side arrives. | The decision holds, and an arriving side joins it. | Default. |
+| Q-13 | **Choosing another Budget Account (UC-005 A3) when the matching transaction already belongs to another Transfer.** As written it becomes a Lonely Transfer, which would write the same money twice. | It is taken from a Transfer that is only Proposed, and refused with the reason when that Transfer is decided. | Default. |
+| Q-14 | **Scheduled Fetch and notification.** They need four permissions (network state, wake lock, start after boot, show notifications), so NFR-022 changes. Twice a day at roughly even spacing, starting as soon as the build is installed; the notification permission is asked once on the Overview. | All of it as described. | Default. |
+| Q-15 | **Documentation hosts.** The builders know Enable Banking's and YNAB's API from memory only. Allow this environment to read `enablebanking.com` and `api.ynab.com` (their documentation; no agent holds a credential)? | Yes. | Default. |
 
 Smaller choices taken without asking, to be confirmed at the end: the Decision Journal export is one JSON file covering the Budget App from the oldest journal entry on; the backup-size warning says that no action is possible (the specification has no retention rule); Start Over is built last, on the device only, and deletes everything; the screens are built in their permanent form with decision controls added in their wave; the evidence of issue #6 is the operator's own checklist (§7), with no switch in the app; attended access sends no public IP address looked up at a third party. The safe guesses of the surveys (about 48) are taken as written there.
 
