@@ -33,14 +33,15 @@ class SlussenDatabaseMigrationTest {
     /** Creates the tables, indices and Room's identity row of [version] exactly as its committed schema file states them. */
     private fun create(database: Class<*>, version: Int, into: SQLiteConnection = connection) {
         val schema = File(RoomSchemas.committed, "${database.name}/$version.json").readText()
-        val token = Regex(""""(tableName|createSql)"\s*:\s*"((?:[^"\\]|\\.)*)"""")
+        // Runs of ordinary characters are taken whole (possessive): one step per character overflowed the stack on long SQL texts.
+        val token = Regex(""""(tableName|createSql)"\s*:\s*"((?:[^"\\]++|\\.)*+)"""")
         var table = ""
         token.findAll(schema.substringBefore("\"setupQueries\"")).forEach { match ->
             val value = match.groupValues[2].replace("\\\"", "\"")
             if (match.groupValues[1] == "tableName") table = value else into.execSQL(value.replace("\${TABLE_NAME}", table))
         }
         val setup = schema.substringAfter("\"setupQueries\"").substringAfter("[").substringBefore("]")
-        Regex(""""((?:[^"\\]|\\.)*)"""").findAll(setup).forEach { into.execSQL(it.groupValues[1].replace("\\\"", "\"")) }
+        Regex(""""((?:[^"\\]++|\\.)*+)"""").findAll(setup).forEach { into.execSQL(it.groupValues[1].replace("\\\"", "\"")) }
     }
 
     private fun tables(): List<String> = query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
