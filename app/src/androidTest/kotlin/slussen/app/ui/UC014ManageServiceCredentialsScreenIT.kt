@@ -2,7 +2,10 @@ package slussen.app.ui
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -94,6 +97,33 @@ class UC014ManageServiceCredentialsScreenIT {
         onNodeWithText("Kestrel Feeds is not contacted until you enter new ones.", substring = true).assertExists()
         onNodeWithText("Cancel").performClick()
         onNodeWithText("Accepted", substring = true).assertExists()
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", requirements = ["NFR-023"])
+    @DisplayName("A3 (connections.html#local-action-states, issue #33): after the confirmation Remove shows Removing…; a removal that cannot be stored says at the credentials that they were not removed and are kept")
+    fun removalShowsRemovingThenNotRemoved() = compose.use {
+        val fixture = ScreenFixture()
+        kotlinx.coroutines.runBlocking { fixture.slice.enterCredentials() }
+        val hold = CompletableDeferred<Unit>()
+        fixture.slice.vault.beforeRemove = { hold.await() }
+        fixture.slice.vault.failsToRemove = true
+        val viewModel = ServicePageViewModel(fixture.services, fixture.slice.feedsKey)
+        onMain { viewModel.load() }
+        setContent {
+            SlussenTheme {
+                ServicePage(viewModel)
+            }
+        }
+
+        onNodeWithText("Remove").performClick()
+        onNode(hasText("Remove") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+        onNodeWithText("Removing…").assertExists()
+
+        hold.complete(Unit)
+        waitUntilExactlyOneExists(hasText("Not removed · credentials kept · try again"))
+        onNodeWithText("Accepted 2026-10-15").assertExists()
+        onNodeWithText("Remove").assertExists()
     }
 
     @Test

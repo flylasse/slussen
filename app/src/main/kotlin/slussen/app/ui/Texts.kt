@@ -37,6 +37,8 @@ import slussen.core.status.BudgetAppRead
 import slussen.core.status.BudgetSummary
 import slussen.core.status.NotYetUploaded
 import slussen.core.status.StatusesAsOf
+import slussen.core.status.UnreadableNotice
+import slussen.app.ui.overview.NoticeUi
 import slussen.pluginapi.value.Amount
 import java.time.Instant
 
@@ -315,6 +317,35 @@ object Texts {
         Remedy.StartFirstUploadMatching -> START_FIRST_UPLOAD_MATCHING
         // A20 of UC-001: the sign-in happens at the Data Provider; the action here is the Fetch after it.
         Remedy.SignInAtDataProvider -> "Fetch again"
+    }
+
+    // UC-008 BR-010: The backup size warning says that Slussen offers no action that makes the backed-up data smaller and that none is needed; Start Over, which would, is not in this build.
+    const val NO_BACKUP_ACTION =
+        "Slussen has no action that makes it smaller, and none is needed: Slussen goes on working, and First Upload Matching " +
+            "covers a restore of an older backup"
+
+    /**
+     * UC-008 A1 (`overview.html#damaged`, `#damaged-critical`): the notice of a part that could not be read. A Bank Consent
+     * cannot be granted in this build, so none was lost and the notice of the service credentials asks for none again.
+     */
+    fun unreadableNotice(notice: UnreadableNotice): NoticeUi {
+        val kept = "the unreadable original is kept on this device"
+        // UC-008 BR-012: The notice names the part, that its original is kept, what it started from and what comes next; the Decision Journal and the service credentials have no last good copy and always start empty.
+        val detail = when (notice.part) {
+            StoredPart.TransactionsDecisionsAndSettings -> if (notice.startedFromLastGoodCopy) {
+                "Started from its last good copy, made at an earlier start · $kept · check in Settings that your Budgets, Bank " +
+                    "Accounts and Account Mappings are as you left them, and see First Upload Matching below"
+            } else {
+                "Started from empty records with every default, as there was no last good copy · $kept · set Slussen up again " +
+                    "in Settings, and see First Upload Matching below"
+            }
+            StoredPart.CredentialsConsentsAndOfferedBankAccounts ->
+                "Started empty: this part has no last good copy · $kept · enter the credentials of each service again in " +
+                    "Settings; the Offered Bank Accounts come back with the next Fetch"
+            StoredPart.DecisionJournal ->
+                "Started empty: the Decision Journal has no last good copy · $kept · nothing else is affected, no action is needed"
+        }
+        return NoticeUi("Stored data could not be read: ${part(notice.part)}", detail)
     }
 
     fun part(part: StoredPart): String = when (part) {

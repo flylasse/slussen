@@ -1,6 +1,7 @@
 package slussen.core.connection
 
 import slussen.core.journal.DecisionJournal
+import slussen.core.operation.unlessStorageFails
 import slussen.core.plugin.RegisteredPlugins
 import slussen.core.port.JournalEventKind
 import slussen.core.port.KeptOutcome
@@ -41,10 +42,16 @@ internal class LeftOutAndKept(
      * Provider's latest delivery when that holds it, otherwise from the next delivery that does.
      */
     suspend fun bringBack(leftOutBankAccountId: Long, remove: suspend (Long) -> StoredLeftOutBankAccount?): BroughtBack {
-        // UC-013 BR-011: A Left-Out Bank Account is offered again only when the Operator brings it back, recorded by its name.
-        val removed = remove(leftOutBankAccountId) ?: return BroughtBack.NotFound
+        // NFR-023: stored data that cannot be read or written keeps it left out and records nothing. The latest delivery is
+        // read before the removal, so that nothing can fail once it is stored.
+        val (removed, delivered) = unlessStorageFails(notStored = null) {
+            val delivered = offered.offered()
+            // UC-013 BR-011: A Left-Out Bank Account is offered again only when the Operator brings it back, recorded by its name.
+            val removed = remove(leftOutBankAccountId) ?: return BroughtBack.NotFound
+            removed to delivered
+        } ?: return BroughtBack.NotStored
         recordBroughtBack(removed.name, removed.dataProviderId)
-        val offeredNow = offered.offered().any { it.dataProviderId == removed.dataProviderId && it.providerReference == removed.providerReference }
+        val offeredNow = delivered.any { it.dataProviderId == removed.dataProviderId && it.providerReference == removed.providerReference }
         return BroughtBack.Offered(removed.name.orEmpty(), offeredNow)
     }
 
@@ -53,20 +60,24 @@ internal class LeftOutAndKept(
      * and records the change.
      */
     suspend fun setManuallyKept(
-        budgets: List<StoredBudget>,
         budgetAccountId: Long,
         manuallyKept: Boolean,
+        budgets: suspend () -> List<StoredBudget>,
         store: suspend (Long, Boolean) -> KeptOutcome,
     ): KeepOutcome {
-        val budget = budgets.firstOrNull { b -> b.budgetAccounts.any { it.id == budgetAccountId } }
-        val account = budget?.budgetAccounts?.single { it.id == budgetAccountId }
-        if (manuallyKept) {
-            // UC-013 BR-014: Only a free Budget Account of a served Budget, not yet a Manually Kept Account, is marked.
-            if (budget == null || account == null || !budget.served || account.manuallyKept) return KeepOutcome.NotFree
-        } else if (account == null || !account.manuallyKept) {
-            return KeepOutcome.NotManuallyKept
-        }
-        return when (val outcome = store(budgetAccountId, manuallyKept)) {
+        // NFR-023: stored data that cannot be read or written keeps the mark as it is and records nothing.
+        val (budget, account, outcome) = unlessStorageFails(notStored = null) {
+            val budget = budgets().firstOrNull { b -> b.budgetAccounts.any { it.id == budgetAccountId } }
+            val account = budget?.budgetAccounts?.single { it.id == budgetAccountId }
+            if (manuallyKept) {
+                // UC-013 BR-014: Only a free Budget Account of a served Budget, not yet a Manually Kept Account, is marked.
+                if (budget == null || account == null || !budget.served || account.manuallyKept) return KeepOutcome.NotFree
+            } else if (budget == null || account == null || !account.manuallyKept) {
+                return KeepOutcome.NotManuallyKept
+            }
+            Triple(budget, account, store(budgetAccountId, manuallyKept))
+        } ?: return KeepOutcome.NotStored
+        return when (outcome) {
             KeptOutcome.Stored -> {
                 journal.record(
                     JournalEventKind.AccountMappingChange,

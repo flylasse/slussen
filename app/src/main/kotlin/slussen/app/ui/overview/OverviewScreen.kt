@@ -75,14 +75,14 @@ fun OverviewScreen(
             // FR-040, NFR-023 (`#read-one-failed`): the line of the Budget App, whose Read again answers on the line itself.
             BudgetAppLine(ui.budgetAppLine, onReadAgain, onRemedy)
         }
-        items(ui.unreadableNotices) { Banner(it, null) }
+        items(ui.unreadableNotices) { Banner(it.title, it.detail, SlussenColors.Surface2, SlussenColors.Text) }
         val firstUploadMatching = ui.firstUploadMatching
         if (firstUploadMatching != null) {
             // UC-008 BR-009: information or a caution, never an error colour.
             item { FirstUploadMatchingBanner(firstUploadMatching, onStartFirstUploadMatching) }
         }
         if (ui.message != null) item { Banner(ui.message, null, SlussenColors.Surface2, SlussenColors.Text) }
-        if (ui.backupWarning != null) item { Banner(ui.backupWarning, null) }
+        ui.backupWarning?.let { warning -> item { Banner(warning.title, warning.detail) } }
         // P9-14: the Fetch action stands above the Budget cards, where it is seen without scrolling.
         item {
             Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {

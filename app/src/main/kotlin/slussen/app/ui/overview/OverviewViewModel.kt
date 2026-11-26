@@ -42,6 +42,9 @@ data class BudgetLine(
     val readAgainNote: String? = null,
 )
 
+/** A notice of the Overview: its [title] and what it means with what comes next, the [detail] (NFR-023). */
+data class NoticeUi(val title: String, val detail: String)
+
 /** UC-008 A10, BR-011 (`overview.html#new-installation`, `#first-run-next`): the one card that leads to Settings. */
 data class FirstRunUi(val title: String, val next: String, val then: String?)
 
@@ -50,10 +53,12 @@ data class OverviewUi(
     val heading: String,
     /** FR-040, UC-003 (`overview.html#read-one-failed`): the line of the Budget App with Read again and its answer. */
     val budgetAppLine: BudgetAppLineUi,
-    val unreadableNotices: List<String>,
+    /** A1, BR-012 (`overview.html#damaged`, `#damaged-critical`): one notice for each part that could not be read. */
+    val unreadableNotices: List<NoticeUi>,
     /** A8, BR-009: First Upload Matching with its explanation, reason lines and action; null while none is open. */
     val firstUploadMatching: FirstUploadMatchingUi?,
-    val backupWarning: String?,
+    /** A7, BR-010 (`overview.html#backup-warning`): the backup size warning, or null. */
+    val backupWarning: NoticeUi?,
     val expiringConsents: List<String>,
     val budgets: List<BudgetLine>,
     val noBankAccountAdded: Boolean,
@@ -186,15 +191,15 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
         mutableState.value = OverviewUi(
             heading = "Overview · ${formats.dateTime(now)} · device time",
             budgetAppLine = budgetAppLine(),
-            unreadableNotices = overview.unreadable.map { notice ->
-                "Stored data could not be read: ${Texts.part(notice.part)}" +
-                    if (notice.startedFromLastGoodCopy) " · started from its last good copy" else " · started empty"
-            },
+            unreadableNotices = overview.unreadable.map(Texts::unreadableNotice),
             // UC-008 BR-009: Every opening shows that Uploads wait for First Upload Matching, as information, never as an error.
             firstUploadMatching = firstUploadMatching?.let { Texts.firstUploadMatching(it, overview.budgetAppName) },
             backupWarning = overview.backupWarning?.let {
-                "Backed-up data nears Android's backup limit: ${formats.megabytes(it.backedUpBytes)} of " +
-                    "${formats.megabytes(it.limitBytes)}, Android's limit · above it Android backs up nothing"
+                NoticeUi(
+                    "Backed-up data nears Android's backup limit",
+                    "${formats.megabytes(it.backedUpBytes)} of ${formats.megabytes(it.limitBytes)}, Android's limit · above it " +
+                        "Android backs up nothing · ${Texts.NO_BACKUP_ACTION}",
+                )
             },
             expiringConsents = overview.expiringBankConsents.map {
                 "Bank Consent of ${it.bankName} through ${it.dataProviderName} expires ${formats.date(it.expiresAt)} · Renew"

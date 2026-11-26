@@ -13,8 +13,12 @@ import java.time.ZoneId
  * The slice on the fakes of `:testing` for the screen tests on a device or emulator, with invented data only, and an
  * invented version of the app unless a test gives the installed one.
  */
-class ScreenFixture(appVersion: AppVersion = AppVersion.of(packageName = "slussen.app", versionName = "9.8.7")) {
-    val slice = TestSlice()
+class ScreenFixture(
+    appVersion: AppVersion = AppVersion.of(packageName = "slussen.app", versionName = "9.8.7"),
+    startKind: slussen.core.port.StartKind = slussen.core.port.StartKind.Normal,
+    unreadableParts: List<slussen.core.port.UnreadablePart> = emptyList(),
+) {
+    val slice = TestSlice(startKind, unreadableParts)
     val services = UiServices(
         credentials = slice.credentials,
         settingsOverview = slice.settingsOverview,

@@ -584,4 +584,21 @@ class UC014ManageServiceCredentialsTest {
         assertNull(slice.vault.read(slice.feedsKey))
         assertTrue(slice.journalRecorder.entries.isEmpty())
     }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", requirements = ["NFR-023"])
+    @DisplayName("A3: a removal that cannot be stored answers Not Removed: the credentials stay stored and accepted, and nothing is recorded")
+    fun removalThatCannotBeStoredKeepsTheCredentials() = runTest {
+        slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        val acceptedAt = slice.clock.instant()
+        val recorded = slice.journalRecorder.entries.size
+        slice.vault.failsToRemove = true
+
+        val outcome = slice.credentials.remove(slice.feedsKey)
+
+        assertEquals(RemovalOutcome.NotRemoved, outcome)
+        assertEquals(CredentialStatus.Accepted(acceptedAt), slice.credentials.status(slice.feedsKey))
+        assertEquals(ExampleData.EXCHANGED_ACCESS_CREDENTIAL, storedSecret(slice.feedsKey))
+        assertEquals(recorded, slice.journalRecorder.entries.size)
+    }
 }

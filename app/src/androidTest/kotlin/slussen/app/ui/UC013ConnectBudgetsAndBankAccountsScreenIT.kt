@@ -2,6 +2,8 @@ package slussen.app.ui
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasScrollAction
@@ -12,6 +14,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.platform.app.InstrumentationRegistry
 import de.mannodermaus.junit5.compose.createComposeExtension
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -114,6 +117,48 @@ class UC013ConnectBudgetsAndBankAccountsScreenIT {
         onNodeWithTag("import-$kids").assertIsOff()
         onNodeWithText("Kids Saver ••2290 not imported · never read").assertExists()
         onNodeWithText("Undo").assertExists()
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-012"])
+    @DisplayName("Steps 6-7 (connections.html#local-action-states, issue #33): the import switch shows Switching off… at its line; when it cannot be stored, the line says that it is still imported and the switch stays on")
+    fun importSwitchThatCannotBeStored() = compose.use {
+        val fixture = ScreenFixture()
+        offer(fixture.slice)
+        val kids = runBlocking { fixture.slice.offeredStore.offered().single { it.providerReference == "acct-2290" }.id }
+        val hold = CompletableDeferred<Unit>()
+        fixture.slice.connectionStore.beforeStore = { hold.await() }
+        fixture.slice.connectionStore.failsToStore = true
+        val viewModel = ServicePageViewModel(fixture.services, fixture.slice.feedsKey)
+        onMain { viewModel.load() }
+        setContent { SlussenTheme { ServicePage(viewModel) } }
+
+        onNodeWithTag("import-$kids").performClick()
+        onNodeWithText("Switching off…").assertExists()
+        onNodeWithTag("import-$kids").assertIsNotEnabled()
+
+        hold.complete(Unit)
+        waitUntilExactlyOneExists(hasText("Still imported · could not be stored, try again"))
+        onNodeWithTag("import-$kids").assertIsOn()
+        onNodeWithTag("import-$kids").assertIsEnabled()
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A9: Mark or Unmark a Budget Account Manually Kept", businessRules = ["BR-014"])
+    @DisplayName("A9 (connections.html#local-action-states, issue #33): Receives from Slussen that cannot be stored says at its line that it still receives from Slussen, and the switch stays on")
+    fun receivesSwitchThatCannotBeStored() = compose.use {
+        val fixture = ScreenFixture()
+        offer(fixture.slice)
+        val health = runBlocking { fixture.slice.connectionStore.budgets().single { it.served }.budgetAccounts.single().id }
+        fixture.slice.connectionStore.failsToStore = true
+        val viewModel = ServicePageViewModel(fixture.services, ServiceKey.budgetApp)
+        onMain { viewModel.load() }
+        setContent { SlussenTheme { ServicePage(viewModel) } }
+
+        onNodeWithTag("receives-$health").performClick()
+
+        waitUntilExactlyOneExists(hasText("Still receives from Slussen · could not be stored, try again"))
+        onNodeWithTag("receives-$health").assertIsOn()
     }
 
     @Test

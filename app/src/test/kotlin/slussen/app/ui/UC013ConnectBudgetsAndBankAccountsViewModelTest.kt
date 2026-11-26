@@ -1,5 +1,6 @@
 package slussen.app.ui
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -8,6 +9,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import slussen.app.ui.components.AnswerKind
+import slussen.app.ui.components.AnswerUi
 import slussen.app.ui.fileformat.BalanceLine
 import slussen.app.ui.fileformat.FileAccountLine
 import slussen.app.ui.fileformat.FileFormatViewModel
@@ -820,19 +823,163 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
 
     @Test
     @UseCase(id = "UC-013")
-    @DisplayName("Precondition: while an Upload Plan awaits confirmation, choosing Budgets and switching an import off show why they are unavailable, and nothing is left out")
+    @DisplayName("Precondition (issue #33): while an Upload Plan awaits confirmation, choosing Budgets shows why it is unavailable; an import switch and Receives from Slussen answer it at their own line, and nothing changes")
     fun unavailableWhileAPlanAwaitsConfirmation() {
         throughBudgets()
         offer()
         feedsPage.load()
         slice.coordinatorStore.mode = CoordinatorMode.PlanOpen
+        val refusal = AnswerUi("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", AnswerKind.Unchanged)
 
         budgetPage.chooseBudgets()
         assertEquals("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", budgetPage.ui().message)
         feedsPage.switchImport(offeredLine("CHK"), on = false)
+        budgetPage.setReceives(budgetAccountId("Reserve Savings"), receives = false)
 
-        assertEquals("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", feedsPage.ui().message)
+        assertEquals(refusal, offeredLine("CHK").answer)
+        assertNull(offeredLine("Aurora Dollar").answer)
+        assertNull(feedsPage.ui().message)
         assertTrue(leftOutReferences().isEmpty())
         assertEquals(true, offeredLine("CHK").importOn)
+        assertEquals(refusal, receivesLine("Reserve Savings").answer)
+        assertEquals(true, receivesLine("Reserve Savings").receives)
+    }
+
+    // ---- Answers at the switch (NFR-023, issue #33; connections.html#local-action-states) -----------------------------
+
+    private fun receivesLine(name: String) = budgetPage.ui().budgets!!.budgetAccounts.flatMap { it.lines }.single { it.name == name }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-012"])
+    @DisplayName("Steps 6-7 (connections.html#local-action-states): the import switch shows Switching off… at its line before anything is stored, takes no second tap meanwhile, and then shows the Bank Account as not imported")
+    fun importSwitchShowsThatItRuns() {
+        throughBudgets()
+        offer()
+        val hold = CompletableDeferred<Unit>()
+        slice.connectionStore.beforeStore = { hold.await() }
+
+        feedsPage.switchImport(offeredLine("Aurora Dollar"), on = false)
+        assertEquals("Switching off…", offeredLine("Aurora Dollar").pending)
+        assertEquals(true, offeredLine("Aurora Dollar").importOn)
+        assertNull(offeredLine("CHK").pending)
+        feedsPage.switchImport(offeredLine("Aurora Dollar"), on = false)
+        hold.complete(Unit)
+
+        assertNull(offeredLine("Aurora Dollar").pending)
+        assertEquals(false, offeredLine("Aurora Dollar").importOn)
+        assertEquals(listOf("acct-5520"), leftOutReferences())
+        assertEquals(1, slice.journalRecorder.entries.count { "Aurora Dollar" in it.details })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-012"])
+    @DisplayName("Steps 6-7 (connections.html#local-action-states): a switch-off that cannot be stored answers at its line that it is still imported and could not be stored, with no Undo, and the app keeps running")
+    fun importSwitchThatCannotBeStored() {
+        throughBudgets()
+        offer()
+        slice.connectionStore.failsToStore = true
+
+        feedsPage.switchImport(offeredLine("Aurora Dollar"), on = false)
+
+        assertEquals(AnswerUi("Still imported · could not be stored, try again", AnswerKind.Failed), offeredLine("Aurora Dollar").answer)
+        assertEquals(true, offeredLine("Aurora Dollar").importOn)
+        assertNull(offeredLine("Aurora Dollar").pending)
+        assertNull(feedsPage.ui().snack)
+        assertNull(feedsPage.ui().message)
+        assertTrue(leftOutReferences().isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A10: Bring Back a Left-Out Bank Account", businessRules = ["BR-011"])
+    @DisplayName("A10 (connections.html#local-action-states): switching a Left-Out Bank Account on shows Switching on… at its line; when it cannot be stored, also through Undo, the line says that it is still not imported")
+    fun switchOnThatCannotBeStored() {
+        throughBudgets()
+        offer()
+        feedsPage.switchImport(offeredLine("Aurora Dollar"), on = false)
+        val hold = CompletableDeferred<Unit>()
+        slice.connectionStore.beforeStore = { hold.await() }
+
+        feedsPage.undo()
+        assertEquals("Switching on…", offeredLine("Aurora Dollar").pending)
+        assertNull(feedsPage.ui().snack)
+        slice.connectionStore.failsToStore = true
+        hold.complete(Unit)
+
+        assertEquals(AnswerUi("Still not imported · could not be stored, try again", AnswerKind.Failed), offeredLine("Aurora Dollar").answer)
+        assertEquals(false, offeredLine("Aurora Dollar").importOn)
+        assertEquals(listOf("acct-5520"), leftOutReferences())
+
+        slice.connectionStore.beforeStore = {}
+        feedsPage.switchImport(offeredLine("Aurora Dollar"), on = true)
+        assertEquals(AnswerUi("Still not imported · could not be stored, try again", AnswerKind.Failed), offeredLine("Aurora Dollar").answer)
+        slice.connectionStore.failsToStore = false
+        feedsPage.switchImport(offeredLine("Aurora Dollar"), on = true)
+        assertNull(offeredLine("Aurora Dollar").answer)
+        assertEquals(true, offeredLine("Aurora Dollar").importOn)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A9: Mark or Unmark a Budget Account Manually Kept", businessRules = ["BR-014"])
+    @DisplayName("A9 (connections.html#local-action-states): Receives from Slussen shows Switching off… at its line before anything is stored; when it cannot be stored the line says that it still receives from Slussen, and switched on that it is still kept by hand")
+    fun receivesSwitchAnswersAtItsLine() {
+        throughBudgets()
+        val hold = CompletableDeferred<Unit>()
+        slice.connectionStore.beforeStore = { hold.await() }
+
+        budgetPage.setReceives(budgetAccountId("Reserve Savings"), receives = false)
+        assertEquals("Switching off…", receivesLine("Reserve Savings").pending)
+        assertEquals(true, receivesLine("Reserve Savings").receives)
+        slice.connectionStore.failsToStore = true
+        hold.complete(Unit)
+
+        assertEquals(AnswerUi("Still receives from Slussen · could not be stored, try again", AnswerKind.Failed), receivesLine("Reserve Savings").answer)
+        assertNull(receivesLine("Reserve Savings").pending)
+        assertEquals(true, receivesLine("Reserve Savings").receives)
+        assertNull(budgetPage.ui().snack)
+
+        slice.connectionStore.beforeStore = {}
+        slice.connectionStore.failsToStore = false
+        budgetPage.setReceives(budgetAccountId("Reserve Savings"), receives = false)
+        assertNull(receivesLine("Reserve Savings").answer)
+        assertEquals(false, receivesLine("Reserve Savings").receives)
+        slice.connectionStore.failsToStore = true
+        budgetPage.setReceives(budgetAccountId("Reserve Savings"), receives = true)
+
+        assertEquals(AnswerUi("Still kept by hand · could not be stored, try again", AnswerKind.Failed), receivesLine("Reserve Savings").answer)
+        assertEquals(false, receivesLine("Reserve Savings").receives)
+        assertTrue(runBlocking { slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Reserve Savings" }.manuallyKept })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A9: Mark or Unmark a Budget Account Manually Kept", businessRules = ["BR-014"])
+    @DisplayName("A9: a switch that is stored while the page cannot be read again afterwards shows its result and says that the page could not be read again, without a crash")
+    fun pageThatCannotBeReadAgainAfterASwitch() {
+        throughBudgets()
+        slice.connectionStore.beforeStore = { slice.offeredStore.failsToRead = true }
+
+        budgetPage.setReceives(budgetAccountId("Reserve Savings"), receives = false)
+
+        assertEquals(SnackUi("Reserve Savings kept by hand · not offered for pairing", SnackAction.Undo), budgetPage.ui().snack)
+        assertNull(receivesLine("Reserve Savings").pending)
+        assertEquals(
+            "This page could not be read again from the data stored on this device. Open it again to see it as stored.",
+            budgetPage.ui().message,
+        )
+        assertTrue(runBlocking { slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Reserve Savings" }.manuallyKept })
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-012"])
+    @DisplayName("Steps 6-7: an answer at a line goes when the page is opened again")
+    fun answerAtALineGoesWhenThePageOpensAgain() {
+        throughBudgets()
+        offer()
+        slice.connectionStore.failsToStore = true
+        feedsPage.switchImport(offeredLine("Aurora Dollar"), on = false)
+        slice.connectionStore.failsToStore = false
+
+        feedsPage.load()
+
+        assertNull(offeredLine("Aurora Dollar").answer)
     }
 }

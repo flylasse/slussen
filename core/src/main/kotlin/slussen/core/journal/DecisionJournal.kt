@@ -1,5 +1,6 @@
 package slussen.core.journal
 
+import kotlinx.coroutines.CancellationException
 import slussen.core.port.DecisionJournalRecorder
 import slussen.core.port.JournalEntry
 import slussen.core.port.JournalEventKind
@@ -21,15 +22,22 @@ class DecisionJournal(
      */
     suspend fun record(kind: JournalEventKind, details: String, importIdentifier: String? = null, bankAccountName: String? = null) {
         require((importIdentifier == null) == (bankAccountName == null)) { "An Import Identifier is unique only within its Bank Account." }
-        if (!settings.current().journalOn) return
-        recorder.record(
-            JournalEntry(
-                recordedAt = clock.instant(),
-                eventKind = kind,
-                details = details,
-                importIdentifier = importIdentifier,
-                bankAccountName = bankAccountName,
-            ),
-        )
+        // ADR-002 §9: any failure, also of reading whether the Decision Journal is on, is dropped and never reaches the caller.
+        try {
+            if (!settings.current().journalOn) return
+            recorder.record(
+                JournalEntry(
+                    recordedAt = clock.instant(),
+                    eventKind = kind,
+                    details = details,
+                    importIdentifier = importIdentifier,
+                    bankAccountName = bankAccountName,
+                ),
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Unit
+        }
     }
 }

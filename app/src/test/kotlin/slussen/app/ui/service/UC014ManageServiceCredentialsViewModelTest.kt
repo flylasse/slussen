@@ -389,4 +389,80 @@ class UC014ManageServiceCredentialsViewModelTest {
         )
         assertEquals("Enter new credentials", ui.enterAction)
     }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", requirements = ["NFR-023"])
+    @DisplayName("A3 (connections.html#local-action-states): after the confirmation, Remove shows Removing… before anything is deleted, and Replace and Remove wait; it ends as removed")
+    fun removalShowsThatItRuns() {
+        runBlocking { slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+        val hold = CompletableDeferred<Unit>()
+        slice.vault.beforeRemove = { hold.await() }
+        val page = page(slice.feedsKey)
+
+        page.requestRemoval()
+        page.confirmRemoval()
+        assertTrue(page.ui().removing)
+        assertNull(page.ui().removalQuestion)
+        assertNull(page.ui().credentialAnswer)
+        page.requestRemoval()
+        assertNull(page.ui().removalQuestion)
+        hold.complete(Unit)
+
+        assertFalse(page.ui().removing)
+        assertEquals(AnswerUi("Removed · recorded in the Decision Journal", AnswerKind.Done), page.ui().credentialAnswer)
+        assertNull(runBlocking { slice.vault.read(slice.feedsKey) })
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", requirements = ["NFR-023"])
+    @DisplayName("A3 (connections.html#local-action-states, issue #33): a removal that cannot be stored answers at the credentials that they were not removed and are kept, and the app keeps running; Remove stays offered")
+    fun removalThatCannotBeStored() {
+        runBlocking { slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+        slice.vault.failsToRemove = true
+        val page = page(slice.feedsKey)
+
+        page.requestRemoval()
+        page.confirmRemoval()
+
+        assertEquals(AnswerUi("Not removed · credentials kept · try again", AnswerKind.Failed), page.ui().credentialAnswer)
+        assertFalse(page.ui().removing)
+        assertTrue(page.ui().canRemove)
+        assertEquals("Accepted 2026-10-15", page.ui().credentials)
+        assertNull(page.ui().message)
+        assertTrue(runBlocking { slice.vault.read(slice.feedsKey) } != null)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", requirements = ["NFR-023"])
+    @DisplayName("A3 (issue #33): when the stored state of Slussen cannot be read at the removal, nothing is deleted and the credentials answer Not removed instead of a crash")
+    fun removalWhenTheStoredStateCannotBeRead() {
+        runBlocking { slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+        val page = page(slice.feedsKey)
+        slice.coordinatorStore.failsToRead = true
+
+        page.requestRemoval()
+        page.confirmRemoval()
+
+        assertEquals(AnswerUi("Not removed · credentials kept · try again", AnswerKind.Failed), page.ui().credentialAnswer)
+        assertFalse(page.ui().removing)
+        assertTrue(runBlocking { slice.vault.read(slice.feedsKey) } != null)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", requirements = ["NFR-023"])
+    @DisplayName("A3 (issue #33): while an Upload Plan awaits confirmation the removal answers why at the credentials, and the credentials stay")
+    fun removalUnavailableWhileAPlanAwaitsConfirmation() {
+        runBlocking { slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+        val page = page(slice.feedsKey)
+        slice.coordinatorStore.mode = CoordinatorMode.PlanOpen
+
+        page.requestRemoval()
+        page.confirmRemoval()
+
+        assertEquals(
+            AnswerUi("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", AnswerKind.Unchanged),
+            page.ui().credentialAnswer,
+        )
+        assertTrue(runBlocking { slice.vault.read(slice.feedsKey) } != null)
+    }
 }

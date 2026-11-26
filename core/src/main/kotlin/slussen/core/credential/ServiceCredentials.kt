@@ -6,6 +6,7 @@ import slussen.core.operation.OperationKind
 import slussen.core.operation.OperationPermit
 import slussen.core.operation.OperationRefusal
 import slussen.core.operation.OperationResult
+import slussen.core.operation.unlessStorageFails
 import slussen.core.plugin.RegisteredPlugins
 import slussen.core.port.CredentialVault
 import slussen.core.port.FetchStore
@@ -87,6 +88,9 @@ sealed interface RemovalOutcome {
     data object Removed : RemovalOutcome
 
     data class Unavailable(val reason: OperationRefusal) : RemovalOutcome
+
+    /** The credentials could not be deleted: they stay stored and accepted, and nothing is recorded (NFR-023). */
+    data object NotRemoved : RemovalOutcome
 }
 
 /**
@@ -204,12 +208,19 @@ class ServiceCredentials(
 
     suspend fun remove(service: ServiceKey): RemovalOutcome {
         val result = coordinator.run(OperationKind.ServiceCredentialChange, StartedBy.Operator) {
-            vault.remove(service)
-            refusals.clear(service)
-            journal.record(JournalEventKind.ConfigurationChange, "Service credentials of ${plugins.nameOf(service)} removed")
+            // NFR-023: credentials that cannot be deleted stay stored and accepted; nothing is recorded.
+            unlessStorageFails(notStored = false) {
+                vault.remove(service)
+                true
+            }.also { removed ->
+                if (removed) {
+                    refusals.clear(service)
+                    journal.record(JournalEventKind.ConfigurationChange, "Service credentials of ${plugins.nameOf(service)} removed")
+                }
+            }
         }
         return when (result) {
-            is OperationResult.Ran -> RemovalOutcome.Removed
+            is OperationResult.Ran -> if (result.value) RemovalOutcome.Removed else RemovalOutcome.NotRemoved
             is OperationResult.Refused -> RemovalOutcome.Unavailable(result.reason)
         }
     }

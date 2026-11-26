@@ -82,9 +82,14 @@ class InMemoryOperatorSettingsStore(var settings: OperatorSettings = OperatorSet
     }
 }
 
-/** In-memory fake of [CoordinatorStore]; a test sets the mode. */
+/** In-memory fake of [CoordinatorStore]; a test sets the mode, and makes its read fail with [failsToRead]. */
 class InMemoryCoordinatorStore(var mode: CoordinatorMode = CoordinatorMode.Normal) : CoordinatorStore {
-    override suspend fun mode(): CoordinatorMode = mode
+    var failsToRead: Boolean = false
+
+    override suspend fun mode(): CoordinatorMode {
+        if (failsToRead) throw IllegalStateException("The invented storage of this test cannot be read.")
+        return mode
+    }
 }
 
 /** In-memory fake of the Decision Journal recorder: keeps every entry it was given. */
@@ -183,12 +188,16 @@ class InMemoryProviderRequestStore : ProviderRequestStore {
     override suspend fun sentSince(since: Instant): List<StoredProviderRequest> = requests.filter { it.sentAt.isAfter(since) }
 }
 
-/** In-memory fake of [OfferedBankAccountStore]. */
+/** In-memory fake of [OfferedBankAccountStore]; a test makes its read fail with [failsToRead]. */
 class InMemoryOfferedBankAccountStore : OfferedBankAccountStore {
     val stored = mutableListOf<StoredOfferedBankAccount>()
     private var nextId = 1L
+    var failsToRead: Boolean = false
 
-    override suspend fun offered(): List<StoredOfferedBankAccount> = stored.toList()
+    override suspend fun offered(): List<StoredOfferedBankAccount> {
+        if (failsToRead) throw IllegalStateException("The invented storage of this test cannot be read.")
+        return stored.toList()
+    }
 
     override suspend fun replaceOffered(dataProviderId: Long, bankId: Long?, delivered: List<NewOfferedBankAccount>) {
         stored.removeAll { it.dataProviderId == dataProviderId && (bankId == null || it.bankId == bankId) }
@@ -213,9 +222,19 @@ class InMemoryOfferedBankAccountStore : OfferedBankAccountStore {
 
 /**
  * In-memory fake of [ConnectionStore] with the refusals of O-15, all or nothing like the real one, with the Left-Out
- * Bank Accounts and Manually Kept Accounts of S-38, and of [MappingStore] (O-13).
+ * Bank Accounts and Manually Kept Accounts of S-38, and of [MappingStore] (O-13). A test holds a switch of a Left-Out
+ * Bank Account or a Manually Kept Account with [beforeStore], to see it while it is being stored, and makes it fail
+ * with [failsToStore], as a storage that cannot be written would.
  */
 class InMemoryConnectionStore : ConnectionStore, MappingStore {
+    var beforeStore: suspend () -> Unit = {}
+    var failsToStore: Boolean = false
+
+    private suspend fun storing() {
+        beforeStore()
+        if (failsToStore) throw IllegalStateException("The invented storage of this test cannot be written.")
+    }
+
     val budgetList = mutableListOf<StoredBudget>()
     val bankList = mutableListOf<StoredBank>()
     val bankAccountList = mutableListOf<StoredBankAccount>()
@@ -346,6 +365,7 @@ class InMemoryConnectionStore : ConnectionStore, MappingStore {
     override suspend fun leftOutBankAccounts(): List<StoredLeftOutBankAccount> = leftOutList.toList()
 
     override suspend fun leaveOut(leftOut: List<NewLeftOutBankAccount>): Boolean {
+        storing()
         val taken = leftOutList.map { it.dataProviderId to it.providerReference } + bankAccountList.flatMap {
             listOf(it.dataProviderId to it.providerReference, it.balanceDataProviderId to it.balanceProviderReference)
         }
@@ -355,10 +375,13 @@ class InMemoryConnectionStore : ConnectionStore, MappingStore {
         return true
     }
 
-    override suspend fun bringBack(leftOutBankAccountId: Long): StoredLeftOutBankAccount? =
-        leftOutList.firstOrNull { it.id == leftOutBankAccountId }?.also { leftOutList.remove(it) }
+    override suspend fun bringBack(leftOutBankAccountId: Long): StoredLeftOutBankAccount? {
+        storing()
+        return leftOutList.firstOrNull { it.id == leftOutBankAccountId }?.also { leftOutList.remove(it) }
+    }
 
     override suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome {
+        storing()
         if (budgetList.none { budget -> budget.budgetAccounts.any { it.id == budgetAccountId } }) return KeptOutcome.NotFound
         val mappedBy = bankAccountList.firstOrNull { it.mapping?.budgetAccountId == budgetAccountId }
         if (manuallyKept && mappedBy != null) return KeptOutcome.StillReceives(mappedBy.name)

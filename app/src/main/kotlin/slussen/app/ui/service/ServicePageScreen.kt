@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import slussen.app.ui.components.AccountLine
 import slussen.app.ui.components.AnswerLine
+import slussen.app.ui.components.AnswerUi
 import slussen.app.ui.components.RunningText
 import slussen.app.ui.components.SettingDialog
 import slussen.app.ui.components.SettingEditorUi
@@ -125,8 +126,13 @@ fun ServicePageScreen(
                 } else {
                     ui.credentialAnswer?.let { AnswerLine(it) }
                     Row {
-                        OutlinedButton(onClick = onStartEntering) { Text(ui.enterAction) }
-                        if (ui.canRemove) TextButton(onClick = onRequestRemoval) { Text("Remove") }
+                        OutlinedButton(onClick = onStartEntering, enabled = !ui.removing) { Text(ui.enterAction) }
+                        // NFR-023 (`#local-action-states`): after the confirmation of the removal (UC-014 A3), Remove shows that it runs.
+                        if (ui.canRemove || ui.removing) {
+                            TextButton(onClick = onRequestRemoval, enabled = !ui.removing) {
+                                RunningText(if (ui.removing) "Removing…" else "Remove", ui.removing)
+                            }
+                        }
                     }
                 }
             }
@@ -296,7 +302,19 @@ private fun OfferedLine(line: OfferedLineUi, connect: ConnectActions) {
         onSwitch = line.importOn?.let { { on: Boolean -> connect.onSwitchImport(line, on) } },
         trailing = line.trailing,
         switchTag = "import-${line.offeredBankAccountId ?: line.leftOutBankAccountId}",
+        switchEnabled = line.pending == null,
     )
+    SwitchState(line.pending, line.answer)
+}
+
+/** NFR-023 (`connections.html#local-action-states`): under a switch, that it is being stored, or its last answer. */
+@Composable
+private fun SwitchState(pending: String?, answer: AnswerUi?) {
+    if (pending != null) {
+        RunningText(pending, running = true)
+    } else if (answer != null) {
+        AnswerLine(answer)
+    }
 }
 
 /** UC-013 steps 2-4, A2, A7, A9 (`connections.html`: the Budget App's page, `#choose-budgets-first`, `#kept-switch`). */
@@ -339,7 +357,9 @@ private fun BudgetsSection(budgets: BudgetsSectionUi, connect: ConnectActions) {
                         onSwitch = line.receives?.let { { on: Boolean -> connect.onReceives(line.budgetAccountId, on) } },
                         trailing = if (line.receives == null) "Account Mapping" else null,
                         switchTag = "receives-${line.budgetAccountId}",
+                        switchEnabled = line.pending == null,
                     )
+                    SwitchState(line.pending, line.answer)
                 }
             }
         }

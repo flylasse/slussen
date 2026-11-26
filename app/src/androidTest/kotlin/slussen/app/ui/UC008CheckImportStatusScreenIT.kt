@@ -69,6 +69,40 @@ class UC008CheckImportStatusScreenIT {
     }
 
     @Test
+    @UseCase(id = "UC-008", scenario = "A1: Stored Data Cannot Be Read", businessRules = ["BR-012"], requirements = ["NFR-005"])
+    @DisplayName("A1, BR-012, A7 (overview.html#damaged, #backup-warning, issue #26): each part that could not be read is named with what it started from and the next action or that none is needed; the backup warning says that no action makes it smaller and none is needed")
+    fun noticesNameTheNextAction() = compose.use {
+        val fixture = ScreenFixture(
+            unreadableParts = listOf(
+                slussen.core.port.UnreadablePart(slussen.core.port.StoredPart.DecisionJournal, startedFromLastGoodCopy = false),
+                slussen.core.port.UnreadablePart(slussen.core.port.StoredPart.CredentialsConsentsAndOfferedBankAccounts, startedFromLastGoodCopy = false),
+            ),
+        )
+        aBankAccountIsAdded(fixture)
+        fixture.slice.backupSize.bytes = (21.3 * 1024 * 1024).toLong()
+        val viewModel = OverviewViewModel(fixture.services)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.load() }
+        setContent {
+            SlussenTheme {
+                viewModel.state.collectAsState().value?.let {
+                    OverviewScreen(it, onBudget = {}, onOpenSettings = {}, onStartFirstUploadMatching = {}, onRecentFetches = {},
+                        onFetchAll = {}, onConfirmFetch = {}, onCancelFetch = {})
+                }
+            }
+        }
+
+        onNodeWithText("Stored data could not be read: Decision Journal").assertExists()
+        onNodeWithText("Started empty: the Decision Journal has no last good copy", substring = true).assertExists()
+        onNodeWithText("nothing else is affected, no action is needed", substring = true).assertExists()
+        onNodeWithText("Stored data could not be read: service credentials, Bank Consents and Offered Bank Accounts").assertExists()
+        onNodeWithText("enter the credentials of each service again in Settings", substring = true).assertExists()
+        onNodeWithText("last good copy, made at an earlier start", substring = true).assertDoesNotExist()
+        onNodeWithText("Uploads wait for First Upload Matching", substring = true).assertDoesNotExist()
+        onNodeWithText("Backed-up data nears Android's backup limit").assertExists()
+        onNodeWithText("Slussen has no action that makes it smaller, and none is needed", substring = true).assertExists()
+    }
+
+    @Test
     @UseCase(id = "UC-008", scenario = "A10: No Bank Account Added Yet", businessRules = ["BR-011"])
     @DisplayName("A10: with no Bank Account added, the Overview shows only the card that leads to Settings and names the next thing")
     fun firstStartShowsOnlyTheCard() = compose.use {

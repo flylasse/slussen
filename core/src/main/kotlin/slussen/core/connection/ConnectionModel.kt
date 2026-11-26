@@ -160,13 +160,19 @@ data class OfferedOfProvider(
 
 /** The outcome of switching off the import of one Offered Bank Account (UC-013 steps 6-7, BR-011, BR-012). */
 sealed interface ImportSwitchedOff {
-    /** Step 7: it is a Left-Out Bank Account at once, recorded in the Decision Journal by [name]. */
-    data class LeftOut(val leftOutBankAccountId: Long, val name: String) : ImportSwitchedOff
+    /**
+     * Step 7: it is a Left-Out Bank Account at once, recorded in the Decision Journal by [name]; [leftOutBankAccountId]
+     * is null when it was stored but could not be read back.
+     */
+    data class LeftOut(val leftOutBankAccountId: Long?, val name: String) : ImportSwitchedOff
 
     /** BR-012: it has no import switch: added, a proposed match, the balance of a File Format's Bank Account, already left out or not stored. */
     data object NoSwitch : ImportSwitchedOff
 
     data class Unavailable(val reason: OperationRefusal) : ImportSwitchedOff
+
+    /** The stored data could not be read or written: nothing is left out or recorded, and it stays imported (NFR-023). */
+    data object NotStored : ImportSwitchedOff
 }
 
 /** One Budget Account under its served Budget on the Budget App's page (UC-013 step 4, BR-014). */
@@ -243,6 +249,9 @@ sealed interface BroughtBack {
     data object NotFound : BroughtBack
 
     data class Unavailable(val reason: OperationRefusal) : BroughtBack
+
+    /** The stored data could not be read or written: it stays a Left-Out Bank Account and nothing is recorded (NFR-023). */
+    data object NotStored : BroughtBack
 }
 
 /** The outcome of switching "Receives from Slussen" off (mark) or on (unmark) for a Budget Account (UC-013 A9, UC-009 A16). */
@@ -261,6 +270,9 @@ sealed interface KeepOutcome {
     data object NotManuallyKept : KeepOutcome
 
     data class Unavailable(val reason: OperationRefusal) : KeepOutcome
+
+    /** The stored data could not be read or written: the Budget Account keeps its mark and nothing is recorded (NFR-023). */
+    data object NotStored : KeepOutcome
 }
 
 /** A Manually Kept Account of a served Budget, shown apart from the Bank Accounts (UC-009 step 1, BR-013). */
