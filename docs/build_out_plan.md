@@ -20,9 +20,12 @@
 | A-2 | fd3e1b9, 7936c10 | green at 7936c10 | `docs/reviews/build_out_reviews/A-2.md`: 12 findings fixed, 2 to §6 (G-07, G-08); the reviewer compared the reshaped Comparison and Transfer rules with the old ones line by line: no behaviour changed | The reasons on screen call the Comparison's own rules; `ComparisonStore.comparisonDataOf` has no instrumented test of its own yet | 460k + 247k |
 | A-3 | 5e1c654, 2fdbdf5 | green at 2fdbdf5 | `docs/reviews/build_out_reviews/A-3.md`: 7 findings fixed, 3 to §6 (G-11..G-13); the reviewer compared the changed Transfer detection and `conclude` with the old ones line by line: no case differs | A Guessed Transfer now carries why it is guessed; the screens re-run the detection the Comparison runs | 383k + 230k |
 | A-4 | 5dd1fa2, f673b50 | green at f673b50 | `docs/reviews/build_out_reviews/A-4.md`: 6 findings fixed, 4 to §6 (G-15..G-18) | Built by a mid model: two findings showed something false (a cooldown Fetch listing a Retired Account; "nothing needed now" for a Bank Account the Request Limit kept from its first read). The Fetch's selection is now one shared rule | 342k + 175k |
+| A-5 | f4f70bf (S-B-01), 6b6d085, bb7172a | green at bb7172a | `docs/reviews/build_out_reviews/A-5.md`: 6 findings fixed, 4 to §6 (G-19..G-22); the reviewer found no path that says "not stored" for something stored, or the reverse | Issues #33 and #26 are built; every storage failure on the service pages and the Overview is answered on the screen | 425k + 269k |
 
 - Paused on 2026-11-26 at the operator's word (the usage limit of the session) after A-4 was built; resumed the same day. The operator watches the limit and says when to pause; the orchestrator's own turns are not in the token column.
-- Next: phase A-5, which closes Wave 1.
+
+- **Wave 1 is done** (A-1..A-5). Ready for the operator's device run and Windows gate, when convenient: commit bb7172a or later on `build-out`. New instrumented tests since `main`: in `UC008CheckImportStatusScreenIT`, `UC005ReviewTransfersScreenIT`, and the UC-013 and UC-014 screen ITs.
+- Next: Wave 2, phase W2-0 (its specification).
 
 ## 1. Scope
 
@@ -153,6 +156,10 @@ Smaller choices taken without asking, to be confirmed at the end: the Decision J
 | G-16 | A-4 | The Bank Accounts shown under a Fetch served from the Fetch Cooldown are chosen from today's data, so re-identifying a Bank Account changes older cooldown Fetches; "held back by the Request Limit" rests on the earlier Fetch still being kept. | Storing the served Bank Accounts with the Fetch (a schema version). |
 | G-17 | A-4 | "A later Fetch" names the newest later Fetch, not the next one; the mockup's footers ("contacted again from …", "YNAB was read after this Fetch at …") are not built; a line the mockup groups by Bank is per Bank Account. | Text and one lookup; the first footer needs the Fetch Cooldown stored with the Fetch. |
 | G-18 | A-4 | The Request Limit note of an old Fetch describes the Request Limit now, not at that time. | Storing it with the Fetch. |
+| G-19 | A-5 | The catches that answer a storage failure also catch stored data that turns out unreadable while Slussen runs, for which ADR-002 §8.4 wants a restart from the last good copy; nothing handles that yet, so it answers "could not be stored, try again". To be handled with the evidence kit of Wave 4. | The §8.4 handler, and letting that one failure through the catches. |
+| G-20 | A-5 | The notice of stored data that could not be read lives in the process that found it; once a Scheduled Fetch can start Slussen in the background (Wave 5), the Operator may never see it. | A stored flag (a schema column) or a notification, with Wave 5. |
+| G-21 | A-5 | BR-012 names Budgets, Bank Accounts and Account Mappings to check after a start from the last good copy; Operator Settings and, from Wave 2, decisions made after the copy are back at their earlier state too. The service credentials notice leaves out "grant each Bank Consent again" until Wave 6. | Text in BR-012 and `Texts`. |
+| G-22 | A-5 | The backup-size warning says that no action "is needed". Above the limit a lost phone loses every Account Mapping, setting and decision since the last backup; First Upload Matching only prevents duplicates. The operator should confirm the wording, or ask for a retention rule (a new requirement). | Text; a retention rule is a new requirement with a schema version. |
 | G-06 | A-1 | Times show as HH:mm today, MM-dd HH:mm earlier in the year, the full date before that, as the mockups do. | Text only. |
 
 ### Specification changes (S-B-nn)
