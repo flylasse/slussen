@@ -18,8 +18,9 @@
 |---|---|---|---|---|
 | A-1 | 695249e, 201b7a3 | green at 201b7a3 | `docs/reviews/build_out_reviews/A-1.md`: 10 findings fixed, 3 to §6 (G-01..G-03) | A regular expression in the migration test overflowed the stack at random in one gate run; fixed in 16bf178 |
 | A-2 | fd3e1b9, 7936c10 | green at 7936c10 | `docs/reviews/build_out_reviews/A-2.md`: 12 findings fixed, 2 to §6 (G-07, G-08); the reviewer compared the reshaped Comparison and Transfer rules with the old ones line by line: no behaviour changed | The reasons on screen call the Comparison's own rules; `ComparisonStore.comparisonDataOf` has no instrumented test of its own yet |
+| A-3 | 5e1c654, 2fdbdf5 | green at 2fdbdf5 | `docs/reviews/build_out_reviews/A-3.md`: 7 findings fixed, 3 to §6 (G-11..G-13); the reviewer compared the changed Transfer detection and `conclude` with the old ones line by line: no case differs | A Guessed Transfer now carries why it is guessed; the screens re-run the detection the Comparison runs |
 
-- Next: phase A-3.
+- Next: phase A-4.
 
 ## 1. Scope
 
@@ -142,6 +143,10 @@ Smaller choices taken without asking, to be confirmed at the end: the Decision J
 | G-08 | A-2 | The reason "its other side did not arrive in time" (O-T-11) is given for New only; a Match For Typed Entry past its grace period shows the Typed Entry. | Text and one condition. |
 | G-09 | A-2 | A Fetch does not store the period it asked for, so "fetched, and nothing in it" names no dates (the mockup `#fetched-empty` does). | A field on `FETCH` (a schema version). |
 | G-10 | A-2 | Week headings are this week, last week, "Earlier" and "Without a readable date"; a sheet is a full-screen view with Close; no retirement date is shown (none is stored); Funded By and Transfer Partner read "set in a later version" until Wave 2. | Layout and text only; a retirement date needs a stored field. |
+| G-11 | A-3 | A stored Guessed Transfer that today's rules give as guessed for another reason (the pairing days or a Funded By changed since) shows today's reason without "as the latest Comparison left it". | One comparison of the stored and the re-detected reason; the stored Transfer keeps no reason. |
+| G-12 | A-3 | "Has no Funded By" is also said when a Funded By is set but no longer applies (UC-005 BR-014). Not reachable until Wave 2 sets one; to be corrected there. | Text, in Wave 2. |
+| G-13 | A-3 | Turning the phone reopens or closes the selected Transfer or sheet, as the Bank Account screen does. | Saved screen state in two ViewModels. |
+| G-14 | A-3 | The Transfers screens are read-only and say that decisions come in a later version; Wave 2 replaces that with the decision controls. | Wave 2. |
 | G-06 | A-1 | Times show as HH:mm today, MM-dd HH:mm earlier in the year, the full date before that, as the mockups do. | Text only. |
 
 ### Specification changes (S-B-nn)
