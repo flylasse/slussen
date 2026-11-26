@@ -12,7 +12,13 @@
 - Device run by the operator on `main` (2026-11-26, Galaxy, Android 17): `:persistence` 49 of 49; `:app` 22 of 22 after two stale tests were fixed (24235f0).
 - Five surveys done (`docs/reviews/build_out_sweep_*.md`).
 - The operator answered the questionnaire on 2026-11-26 (§6): the defaults, with a sample for Q-01 and "no" to Q-04. The run started.
-- Next: Wave 1, phase A-1.
+- Run log (the last commit named in a row passed the orchestrator's gate):
+
+| Phase | Commits | Gate | Review | Notes |
+|---|---|---|---|---|
+| A-1 | 695249e, 201b7a3 | green at 201b7a3 | `docs/reviews/build_out_reviews/A-1.md`: 10 findings fixed, 3 to §6 (G-01..G-03) | A regular expression in the migration test overflowed the stack at random in one gate run; fixed in 16bf178 |
+
+- Next: phase A-2.
 
 ## 1. Scope
 
@@ -121,6 +127,17 @@ Choices, each with a default:
 | Q-15 | **Documentation hosts.** The builders know Enable Banking's and YNAB's API from memory only. Allow this environment to read `enablebanking.com` and `api.ynab.com` (their documentation; no agent holds a credential)? | Yes. | Default. |
 
 Smaller choices taken without asking, to be confirmed at the end: the Decision Journal export is one JSON file covering the Budget App from the oldest journal entry on; the backup-size warning says that no action is possible (the specification has no retention rule); Start Over is built last, on the device only, and deletes everything; the screens are built in their permanent form with decision controls added in their wave; the evidence of issue #6 is the operator's own checklist (§7), with no switch in the app; attended access sends no public IP address looked up at a third party. The safe guesses of the surveys (about 48) are taken as written there.
+
+### Guesses and open points for the end list (G-nn)
+
+| ID | Phase | What was assumed or left | What another answer would cost |
+|---|---|---|---|
+| G-01 | A-1 | A failed read of a Budget is kept in memory only: after the app is killed the Overview no longer says that the Budget was not read; its "statuses as of" stays right. | A column in `slussen.db` (a schema version) and its write in O-4. |
+| G-02 | A-1 | The result on the YNAB line and its remedy clear at the next tap, as the Fetch result line does; after new credentials are entered the refusal still shows until then. | A small change in two ViewModels. |
+| G-03 | A-1 | An outdated balance of a file-imported Bank Account without a balance Data Provider would say "Fetch again for a newer one". Not reachable until Wave 5. | A text and a condition, with Wave 5. |
+| G-04 | A-1 | The read shows "Reading YNAB · no Bank Fetch", not the mockups' "Budgets: n of m": the coordinator reports no progress within a read. | A progress report from the Comparison through the coordinator. |
+| G-05 | A-1 | The remedy of an outdated balance is a line of text, not a button: the Budget tab has no Fetch control yet. | With the Budget tab's Fetch (UC-001's trigger per Budget, Wave 5). |
+| G-06 | A-1 | Times show as HH:mm today, MM-dd HH:mm earlier in the year, the full date before that, as the mockups do. | Text only. |
 
 ### Specification changes (S-B-nn)
 
