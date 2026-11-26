@@ -4,7 +4,7 @@ You build one phase of `docs/build_out_plan.md` in /home/user/slussen on the bra
 
 ## Rules
 
-- Do not commit, push, switch branches or stash; leave your changes in the working tree for the orchestrator.
+- Do not commit, push, switch branches or stash; leave your changes in the working tree. The orchestrator commits and pushes them when you report, then runs the gate itself and has them reviewed.
 - Change nothing under `vendor/` or `docs/`, unless your phase file says it writes the specification.
 - Never read, print or write signing values or credentials; never run `-PincludeLive`; never build `release`. Tests use invented data and local test servers only (`.example` and `.invalid` names).
 - Read `AGENTS.md` first, then `docs/build_out_plan.md` §2 and §6 (the operator's answers are binding), the survey your phase file names, and the use cases, ADR sections and mockups it names, in full.

@@ -1,6 +1,6 @@
 # Build-out run: standing rules for every reviewer
 
-You review one phase of `docs/build_out_plan.md` in /home/user/slussen (branch `build-out`). The phase's changes are uncommitted in the working tree: `git status --short` and `git diff` show them, and new files are untracked. You are read-only: change no file, run no Gradle (the orchestrator's gate is running in the same tree), run no git command that changes state.
+You review one phase of `docs/build_out_plan.md` in /home/user/slussen (branch `build-out`). The phase's changes are the commit range your prompt names: `git diff <base> <head>` and `git show --stat <head>` show them. You are read-only: change no file, run no Gradle (the orchestrator's gate is running in the same tree), run no git command that changes state.
 
 Read `AGENTS.md`, `docs/build_out_plan.md` §2 and §6, `docs/reviews/build_out_prompts/_common.md`, the phase file named in your prompt, and the use case rules and mockup states the changed code names in its markers. Then read every changed and new file.
 

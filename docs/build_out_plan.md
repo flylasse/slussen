@@ -29,10 +29,10 @@ Live defects the surveys found, fixed in the wave named:
 
 The operator's choices of 2026-11-26, each a deviation from AGENTS.md §6 or from the transactions plan's §2, recorded in §5:
 1. **No operator stops after §6.** One questionnaire before the run; then the run goes to its end.
-2. **One branch, one draft PR.** One commit per phase, pushed before the next phase starts. No PR and no approval per phase.
+2. **One branch, one draft PR.** A builder's work is committed and pushed when it reports, so that nothing is lost with the container; the orchestrator's gate and the review follow, and what they change is a further commit of that phase. No PR and no approval per phase. §0 names the last commit the orchestrator's gate passed.
 3. **Specification changes are proposed, not approved, before their code.** Each is written as an S-B-nn row in §6 and in the specification, in its own commit before the code that follows it. The operator approves or rejects them together at the end; a rejection means rework.
 4. **Best guess.** Where the specification is silent or two parts disagree, the builder takes the most conservative reading: never a duplicate in the Budget App, never a write the Operator did not confirm, nothing lost. The guess goes into §6 with what was built and what another answer would cost.
-5. **A phase that stays red is parked.** One fix round by the orchestrator; if its gate is still red, the phase is reverted to the last green commit, recorded in §0, and the run goes on with the phases that do not depend on it.
+5. **A phase that stays red is parked.** One fix round by the orchestrator; if its gate is still red, the phase's commits are reverted, recorded in §0, and the run goes on with the phases that do not depend on it.
 
 Unchanged: one sub-agent per phase with a clean context and a written prompt; tests first; the orchestrator runs every gate itself (`gradlew check` with the three assemble tasks, `lint_specs.py --strict`, `check_project_rules.py`); no private data reaches an agent; tests use invented data and local test servers only, never `-PincludeLive`; no `release` build.
 
