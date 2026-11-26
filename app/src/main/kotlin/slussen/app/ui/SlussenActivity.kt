@@ -156,7 +156,11 @@ fun SlussenScreens(services: UiServices) {
                 is Screen.Budget -> {
                     val vm: BudgetViewModel = viewModel(key = "budget-${current.budgetId}") { BudgetViewModel(services, current.budgetId) }
                     LaunchedEffect(current) { vm.load() }
-                    vm.state.collectAsState().value?.let { ui ->
+                    val budgetUi = vm.state.collectAsState().value
+                    val budgetFailure = vm.failure.collectAsState().value
+                    // NFR-023: a Budget whose stored status cannot be read says so on its tab.
+                    if (budgetUi == null && budgetFailure != null) Muted(budgetFailure)
+                    budgetUi?.let { ui ->
                         BudgetScreen(
                             ui,
                             onRemedy = { action -> action.service?.let { go(Screen.Service(it)) } },

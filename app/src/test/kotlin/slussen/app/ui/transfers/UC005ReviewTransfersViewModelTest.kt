@@ -153,6 +153,16 @@ class UC005ReviewTransfersViewModelTest {
         )
         assertFalse(later.sheet!!.details.any { it.name == "Must arrive by" })
         assertEquals("Checking −120.00 · not arrived; its grace period ended 10-19", later.card("lonely-in").sides.last())
+        // Review 2a: never said to be eligible as a Transfer once its grace period has ended.
+        assertEquals(
+            "one side arrived · not eligible as a Transfer: the next Comparison makes it an ordinary Bank Transaction",
+            later.card("lonely-in").state,
+        )
+        assertEquals(
+            "No: its grace period ended without the other side, so the next Comparison makes this an ordinary Bank Transaction with a " +
+                "Transaction Status of its own; it is never sent as a Transfer.",
+            later.detail("Eligible"),
+        )
     }
 
     @Test
@@ -174,7 +184,7 @@ class UC005ReviewTransfersViewModelTest {
 
     @Test
     @UseCase(id = "UC-005", scenario = "A9: Transfer With a Doubtful Transfer Leg")
-    @DisplayName("BR-013 (transfers.html#doubtful-leg): a Transfer with a Transfer Leg that is Needs Review says that the whole Transfer waits for the Review Decision on that Transfer Leg")
+    @DisplayName("A9 step 1, BR-013 (transfers.html#doubtful-leg, review 1a): a Transfer with a Transfer Leg that is Needs Review says that the whole Transfer waits for the Review Decision on that Transfer Leg, and why that Transfer Leg is doubtful")
     fun doubtfulTransferLeg() {
         val paid = runBlocking {
             scenario.serve()
@@ -188,7 +198,12 @@ class UC005ReviewTransfersViewModelTest {
         }
         val screen = transfers()
 
-        assertEquals("both sides arrived · waits for the Review Decision on its Kestrel Reserve side, which is Needs Review", screen.ui().card("paid").state)
+        // A9 step 1 (review 1a): with the reason it is doubtful, in the Bank Account screen's words.
+        assertEquals(
+            "both sides arrived · waits for the Review Decision on its Kestrel Reserve side, which is Needs Review: No Stable Reference, " +
+                "so Slussen cannot recognise it again for sure",
+            screen.ui().card("paid").state,
+        )
         screen.open(paid)
         assertEquals(
             "No: its Kestrel Reserve side is Needs Review, so the whole Transfer waits for the Review Decision on that Transfer Leg. " +
@@ -196,6 +211,7 @@ class UC005ReviewTransfersViewModelTest {
             screen.ui().detail("Eligible"),
         )
         assertTrue(screen.ui().detail("Inflow side").endsWith("· Needs Review"))
+        assertEquals("No Stable Reference, so Slussen cannot recognise it again for sure", screen.ui().detail("Why it is doubtful"))
     }
 
     @Test
@@ -213,6 +229,11 @@ class UC005ReviewTransfersViewModelTest {
             before.empty,
         )
         assertEquals("Read $budgetApp again to bring them up to date; nothing else is needed.", before.readAgainNote)
+        // Review 2b: the Budget tab's entry says the same, not a count of 0.
+        assertEquals(
+            "Transfers: none detected yet · $budgetApp has not been read for Household",
+            BudgetViewModel(fixture.services, household()).also { it.load() }.state.value!!.transfers,
+        )
 
         runBlocking {
             scenario.answerHousehold(emptyList())
@@ -229,6 +250,7 @@ class UC005ReviewTransfersViewModelTest {
             ui.empty,
         )
         assertNull(ui.readAgainNote)
+        assertEquals("Transfers: 0 · Guessed Transfers: 0", BudgetViewModel(fixture.services, household()).also { it.load() }.state.value!!.transfers)
     }
 
     @Test
@@ -284,5 +306,125 @@ class UC005ReviewTransfersViewModelTest {
         assertEquals(TransfersTexts.NOT_READ, unread.state.value.failure)
         val tab = BudgetViewModel(fixture.services, household()).also { it.load() }.state.value!!
         assertEquals(TransfersTexts.ENTRY_NOT_READ, tab.transfers)
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "Main Success Scenario", requirements = ["NFR-023"])
+    @DisplayName("NFR-023 (review 4b): a Budget tab whose stored status cannot be read when it opens says so on the tab, never a crash; it shows the Budget once it can be read")
+    fun budgetTabThatCannotBeReadSaysSo() {
+        runBlocking { scenario.compareEveryStatus() }
+        slice.importStatusStore.failsToRead = true
+
+        val tab = BudgetViewModel(fixture.services, household()).also { it.load() }
+
+        assertNull(tab.state.value)
+        assertEquals(slussen.app.ui.budget.BudgetViewModel.NOT_READ, tab.failure.value)
+        slice.importStatusStore.failsToRead = false
+        tab.load()
+        assertEquals("Household", tab.state.value!!.title)
+        assertNull(tab.failure.value)
+    }
+
+    /** Household with a second credit card, Travel Card, beside the example Budget Accounts. */
+    private fun householdWithTwoCards() = runBlocking {
+        slice.enterCredentials()
+        val listed = ExampleData.budgetsRead().map { budget ->
+            val more = if (budget.name == "Household") listOf(slussen.core.port.BudgetAccountToStore("ba-travel", "Travel Card", amount(-90))) else emptyList()
+            slussen.core.port.BudgetToServe(
+                budget.reference, budget.name, budget.currency,
+                budget.budgetAccounts.map { slussen.core.port.BudgetAccountToStore(it.reference, it.name, it.balance) } + more,
+            )
+        }
+        slice.connectionStore.serveBudgets(listed, listed.map { it.budgetAppReference }.toSet(), slice.clock.instant().minus(Duration.ofDays(3)))
+    }
+
+    private fun budgetAccount(name: String): Long = runBlocking { slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == name }.id }
+
+    private fun readHousehold() = runBlocking {
+        scenario.answerHousehold(emptyList())
+        slice.comparison.readAgain()
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "Main Success Scenario")
+    @DisplayName("Step 1 (review 5a): a Guessed Transfer with another possible inflow side marks the proposed inflow side and lists the other candidate; one whose card is one of two funded by the paying side names the other card")
+    fun otherCandidatesAndOtherCards() {
+        householdWithTwoCards()
+        val (checking, rewards) = runBlocking {
+            scenario.addBankAccount("Kestrel Checking", "Checking") to scenario.addBankAccount("Pinecrest Rewards Card", "Rewards Card", BankAccountType.CreditCard)
+        }
+        val reserve = runBlocking { scenario.addBankAccount("Kestrel Reserve", "Reserve Savings", BankAccountType.Savings) }
+        val travel = runBlocking { scenario.addBankAccount("Pinecrest Travel Card", "Travel Card", BankAccountType.CreditCard) }
+        slice.connectionStore.link(rewards, fundedBy = budgetAccount("Checking"))
+        slice.connectionStore.link(travel, fundedBy = budgetAccount("Checking"))
+        scenario.store("paid", checking, LocalDate.of(2026, 10, 12), amount(-100), "Payment")
+        scenario.store("card", rewards, LocalDate.of(2026, 10, 12), amount(100), "Payment received")
+        scenario.store("moved", reserve, LocalDate.of(2026, 10, 11), amount(100), "ONLINE TRANSFER FROM CHECKING")
+        scenario.store("autopay", checking, LocalDate.of(2026, 10, 14), amount(-60), "PINECREST AUTOPAY")
+        readHousehold()
+        val screen = transfers()
+
+        assertEquals("Checking → Rewards Card?", screen.ui().card("paid").budgetAccounts)
+        screen.open(scenario.transaction("paid"))
+        assertEquals(
+            "Kestrel Reserve · Budget Account Reserve Savings · 2026-10-11 · +100.00 · ONLINE TRANSFER FROM CHECKING · New",
+            screen.ui().detail("Also possible"),
+        )
+        assertTrue(screen.ui().detail("Proposed inflow side").startsWith("Pinecrest Rewards Card · Budget Account Rewards Card"))
+        assertTrue(screen.ui().detail("Why not certain").startsWith("Another Bank Transaction of the same amount lies within the transfer pairing days (5 days"))
+
+        screen.open(scenario.transaction("autopay"))
+        assertEquals(
+            "Checking is the Funded By of more than one credit card, so the card is only proposed: Rewards Card, the one added first; it could also be Travel Card.",
+            screen.ui().detail("Why not certain"),
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "Main Success Scenario")
+    @DisplayName("Step 1 (review 5a): a Transfer with a Too Old side says that side keeps the whole Transfer out; a Guessed Transfer whose ground changed since the Comparison is shown as it left it; a card's inflow whose only proposed paying side did not arrive in time says it was only proposed; a Guessed Transfer without a stored Transfer is reached from its Bank Transaction")
+    fun keptOutAsStoredAndOnlyProposed() {
+        val (checking, card) = runBlocking {
+            scenario.serve()
+            scenario.addBankAccount("Kestrel Checking", "Checking") to scenario.addBankAccount("Pinecrest Rewards Card", "Rewards Card", BankAccountType.CreditCard)
+        }
+        scenario.store("old-out", checking, LocalDate.of(2026, 10, 5), amount(-60), "Payment")
+        scenario.store("old-in", card, LocalDate.of(2026, 10, 9), amount(60), "Payment received")
+        scenario.store("late-card", card, LocalDate.of(2026, 10, 8), amount(25), "AUTOPAY RECEIVED")
+        readHousehold()
+
+        val late = transfers().ui().noLongerTransfers.single()
+        assertTrue(late.reason.startsWith("10-08 · No other side arrived in Checking, which Slussen only proposed, within the Lonely Transfer grace period"))
+
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
+        val screen = transfers()
+        screen.open(scenario.transaction("old-in"))
+        assertEquals(
+            "The latest Comparison stored it as a Guessed Transfer. On the data stored now the rules no longer give it as one, so it is " +
+                "shown as that Comparison left it until the next Comparison.",
+            screen.ui().detail("Why not certain"),
+        )
+
+        readHousehold()
+        val kept = transfers()
+        assertEquals("both sides arrived · not eligible: its Kestrel Checking side is Too Old", kept.ui().card("old-out").state)
+        kept.open(scenario.transaction("old-out"))
+        assertEquals(
+            "No: its Kestrel Checking side is Too Old, so the whole Transfer is in no Upload Plan, from either side, while it is.",
+            kept.ui().detail("Eligible"),
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A8: First Card Payment Without Funded By")
+    @DisplayName("A8, O-T-10 (review 5a): the sheet of a Guessed Transfer without a stored Transfer on the Bank Account screen leads to it")
+    fun guessedWithoutStoredTransferIsReachedFromItsBankTransaction() {
+        runBlocking { scenario.compareEveryStatus() }
+        val bankAccount = BankAccountViewModel(fixture.services, scenario.bankAccount("Pinecrest Rewards Card")).also { it.load() }
+
+        bankAccount.open(slussen.core.status.TransactionKey(unreadable = false, id = scenario.transaction("guessed-alone")))
+
+        assertEquals(scenario.transaction("guessed-alone"), bankAccount.state.value.ui!!.sheet!!.transferLeg)
+        assertEquals("? → Rewards Card", transfers(selectLeg = scenario.transaction("guessed-alone")).ui().sheet!!.subtitle)
     }
 }

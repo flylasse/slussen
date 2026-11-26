@@ -90,6 +90,15 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
     private val mutableState = MutableStateFlow<BudgetUi?>(null)
     val state: StateFlow<BudgetUi?> = mutableState
 
+    /** NFR-023: the stored status of the Budget could not be read; said on the tab, never a crash; null otherwise. */
+    private val mutableFailure = MutableStateFlow<String?>(null)
+    val failure: StateFlow<String?> = mutableFailure
+
+    companion object {
+        /** NFR-023: the stored status of the Budget could not be read. */
+        const val NOT_READ = "The stored status of this Budget could not be read; nothing was changed. Open the Budget again to see it."
+    }
+
     /** ADR-007 §1: the operation that runs now. */
     private var running: RunningOperation? = services.running.value
 
@@ -148,8 +157,17 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
         }
     }
 
+    /** Opens the tab; a storage that cannot be read is said on the tab, never a crash (NFR-023). */
     fun load() {
-        viewModelScope.launch { show() }
+        viewModelScope.launch {
+            try {
+                show()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                mutableFailure.value = NOT_READ
+            }
+        }
     }
 
     private suspend fun show() {
@@ -161,8 +179,11 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
             budgetAppStatus = Texts.budgetAppReadOf(workspace.summary.statusesAsOf, workspace.budgetAppName, formats, now)
             val serviceByName = services.settingsOverview.entries().entries
                 .mapNotNull { entry -> entry.service?.let { entry.name to it } }.toMap()
+            // NFR-023 (review 4a): every read that suspends comes before the state is built, so that a line that changed meanwhile, such as Read again, is not overwritten.
+            val transfers = transfersEntry()
             fun lines(blocked: List<Blocked>, dataProvider: ServiceKey?) =
                 blocked.map { BlockedLine(Texts.blocked(it, formats), remedyAction(it, serviceByName[it.subject] ?: dataProvider), Texts.advice(it)) }
+            mutableFailure.value = null
             mutableState.value = BudgetUi(
                 title = workspace.summary.name,
                 subtitle = "Budget · ${workspace.summary.currency.code} · from stored data",
@@ -204,7 +225,7 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                 statuses = Texts.statusesAsOf(workspace.summary.statusesAsOf, workspace.budgetAppName, formats, now),
                 notComparedYet = Texts.notComparedYet(workspace.summary.notComparedYet, workspace.budgetAppName),
                 readAgainNote = Texts.readAgainNote(workspace.summary, workspace.budgetAppName),
-                transfers = transfersEntry(),
+                transfers = transfers,
             )
         }
     }

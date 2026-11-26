@@ -2,6 +2,7 @@ package slussen.app.ui.transfers
 
 import slussen.app.ui.Formats
 import slussen.app.ui.Texts
+import slussen.app.ui.bankaccount.BankAccountTexts
 import slussen.app.ui.bankaccount.DetailLine
 import slussen.core.port.TransactionStatus
 import slussen.core.status.BudgetTransfersView
@@ -45,8 +46,15 @@ object TransfersTexts {
     fun counts(view: BudgetTransfersView): String =
         "Transfers in ${view.budgetName}: ${view.transfers.size} · of them Guessed Transfers: ${view.guessedTransfers}"
 
-    /** The entry on the Budget tab, which leads to the list and counts what it counts (UX-27). */
-    fun entry(view: BudgetTransfersView): String = "Transfers: ${view.transfers.size} · Guessed Transfers: ${view.guessedTransfers}"
+    /**
+     * The entry on the Budget tab, which leads to the list and counts what it counts (UX-27); for a Budget with nothing
+     * compared it says so, as the list does, instead of a count of 0.
+     */
+    fun entry(view: BudgetTransfersView): String = when (view.summary.statusesAsOf) {
+        StatusesAsOf.NothingToCompare -> "Transfers: none · no Bank Account of this Budget is compared"
+        is StatusesAsOf.NotReadYet -> "Transfers: none detected yet · ${view.budgetAppName} has not been read for ${view.budgetName}"
+        is StatusesAsOf.LastRead -> "Transfers: ${view.transfers.size} · Guessed Transfers: ${view.guessedTransfers}"
+    }
 
     /**
      * UX-27: how the Transfers relate to the Budget's counts of Bank Transactions: the Transfer Legs of the Guessed
@@ -148,11 +156,14 @@ object TransfersTexts {
 
     private fun eligibility(eligibility: TransferEligibility): String = when (eligibility) {
         is TransferEligibility.Eligible -> "eligible, through the ${eligibility.writtenThrough.bankAccountName} side"
+        // A9 step 1 of UC-005: with the reason the Transfer Leg is doubtful.
         is TransferEligibility.WaitsForReviewDecision ->
-            "waits for the Review Decision on its ${eligibility.leg.bankAccountName} side, which is ${eligibility.leg.status?.text}"
+            "waits for the Review Decision on its ${eligibility.leg.bankAccountName} side, which is ${eligibility.leg.status?.text}: " +
+                BankAccountTexts.doubt(eligibility.why)
         is TransferEligibility.KeptOutBy -> "not eligible: its ${eligibility.leg.bankAccountName} side is ${statusOf(eligibility.leg)}"
         TransferEligibility.Guessed -> "not eligible until it is confirmed or corrected"
         TransferEligibility.NotEligible -> "not eligible"
+        TransferEligibility.GraceEnded -> "not eligible as a Transfer: the next Comparison makes it an ordinary Bank Transaction"
     }
 
     private fun statusOf(leg: LegShown): String = leg.status?.text ?: "not compared yet"
@@ -207,6 +218,7 @@ object TransfersTexts {
                 )
             }
         }
+        (item.eligibility as? TransferEligibility.WaitsForReviewDecision)?.let { add(DetailLine("Why it is doubtful", BankAccountTexts.doubt(it.why))) }
         if (item.guessed) add(DetailLine("Why not certain", item.whyGuessed.joinToString(" ") { why(it, item, view) }))
         add(DetailLine("Eligible", eligibleDetail(item.eligibility, view)))
     }
@@ -265,6 +277,9 @@ object TransfersTexts {
                 "from either side, while it is."
         TransferEligibility.Guessed -> "No: a Guessed Transfer is in no Upload Plan until it is confirmed or corrected, which comes in a later version."
         TransferEligibility.NotEligible -> "No, as the latest Comparison left it in ${view.budgetName}."
+        TransferEligibility.GraceEnded ->
+            "No: its grace period ended without the other side, so the next Comparison makes this an ordinary Bank Transaction with a " +
+                "Transaction Status of its own; it is never sent as a Transfer."
     }
 
     /** UC-003 step 7, A1: when the statuses were given, as the Budget tab says it. */

@@ -323,9 +323,11 @@ class UC005TransfersOfABudgetTest {
         assertEquals(ExpectedOtherSide("Checking", amount(-120), LocalDate.of(2026, 10, 19), graceEnded = false), item.expected)
         assertEquals(arrived, (item.eligibility as TransferEligibility.Eligible).writtenThrough.storedBankTransaction)
 
-        // The grace period ends 10-19; on 10-20 the Comparison that makes it ordinary has not run yet.
+        // The grace period ends 10-19; on 10-20 the Comparison that makes it ordinary has not run yet (review 2a).
         slice.clock.advance(Duration.ofDays(5))
-        assertEquals(true, transfers().withLeg(arrived).expected!!.graceEnded)
+        val ended = transfers().withLeg(arrived)
+        assertEquals(true, ended.expected!!.graceEnded)
+        assertEquals(TransferEligibility.GraceEnded, ended.eligibility)
     }
 
     @Test
@@ -378,8 +380,8 @@ class UC005TransfersOfABudgetTest {
     }
 
     @Test
-    @UseCase(id = "UC-005", scenario = "Main Success Scenario", businessRules = ["BR-013"])
-    @DisplayName("BR-013: a Transfer with a Transfer Leg that is Needs Review is listed as waiting for the Review Decision on that Transfer Leg, from either side")
+    @UseCase(id = "UC-005", scenario = "A9: Transfer With a Doubtful Transfer Leg", businessRules = ["BR-013"])
+    @DisplayName("A9 step 1, BR-013: a Transfer with a Transfer Leg that is Needs Review is listed as waiting for the Review Decision on that Transfer Leg, from either side, with the reason it is doubtful")
     fun doubtfulLegMakesTheTransferWait() = runTest {
         ready()
         val checking = checking()
@@ -393,6 +395,71 @@ class UC005TransfersOfABudgetTest {
 
         val waits = item.eligibility as TransferEligibility.WaitsForReviewDecision
         assertEquals(noReference to TransactionStatus.NeedsReview, waits.leg.storedBankTransaction to waits.leg.status)
+        // A9 step 1 (review 1a): with the reason it is doubtful, the one the Bank Account screen derives.
+        assertEquals(StatusReason.NoStableReference(identical = 0), waits.why)
+        val line = slice.bankAccountTransactions.of(card).weeks.flatMap { it.lines }.single { it.key.id == noReference }
+        assertEquals(line.reason, waits.why)
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A8: First Card Payment Without Funded By", businessRules = ["BR-010"])
+    @DisplayName("A8, BR-010 (review 5a): a card's inflow without a proposed paying side that an earlier rule made Before Start Date has no stored Transfer and no status Guessed Transfer, and is still listed as a Guessed Transfer kept out by that status, by the detection's own rules")
+    fun firstCardPaymentWithoutProposalBeforeTheStartDate() = runTest {
+        ready()
+        checking()
+        reserve()
+        val card = rewardsCard()
+        slice.connectionStore.bankAccountList.replaceAll { if (it.id == card) it.copy(startDate = oct13.plusDays(1)) else it }
+        val old = stored(card, "TX-1", oct13, amount(95), payee = "AUTOPAY RECEIVED")
+
+        compare()
+        val item = transfers().withLeg(old)
+
+        assertEquals(TransactionStatus.BeforeStartDate, item.inflowLeg!!.status)
+        assertFalse(item.stored)
+        assertTrue(item.guessed)
+        assertEquals(listOf(WhyGuessed.NoFundedBy("Kestrel Rewards", payingBankAccounts = 2)), item.whyGuessed)
+        assertEquals(old, (item.eligibility as TransferEligibility.KeptOutBy).leg.storedBankTransaction)
+        assertEquals(0, transfers().guessedTransferLegs)
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "Main Success Scenario", businessRules = ["BR-010"])
+    @DisplayName("BR-010 (review 5a, 6a): a Guessed Transfer one of whose Bank Accounts was retired since the latest Comparison keeps both Transfer Legs until the next one, is not eligible, and only the Transfer Leg the counts count is counted as waiting for a decision")
+    fun retiredSinceTheComparison() = runTest {
+        ready()
+        val checking = checking()
+        val card = rewardsCard()
+        val paid = stored(checking, "TX-1", oct12, amount(-410))
+        stored(card, "TX-2", oct13, amount(410))
+        compare()
+        slice.connectionStore.bankAccountList.replaceAll { if (it.id == checking) it.copy(retired = true) else it }
+
+        val view = transfers()
+        val item = view.withLeg(paid)
+
+        assertTrue(item.bothArrived)
+        assertEquals(TransferEligibility.Guessed, item.eligibility)
+        assertEquals(1, view.guessedTransferLegs)
+        assertEquals(view.guessedTransferLegs, slice.status.workspace(household()).summary.notYetUploaded.waitingForDecision)
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "Main Success Scenario")
+    @DisplayName("Step 1 (review 5a): a Transfer that is not guessed, whose outflow side's Bank Account was retired since the latest Comparison, is listed with both sides and is not eligible until the next Comparison")
+    fun notEligibleWhenTheWritingSideIsRetired() = runTest {
+        ready()
+        val checking = checking()
+        val card = rewardsCard()
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
+        val paid = stored(checking, "TX-1", oct12, amount(-410))
+        stored(card, "TX-2", oct13, amount(410))
+        compare()
+        assertTrue(transfers().withLeg(paid).eligibility is TransferEligibility.Eligible)
+
+        slice.connectionStore.bankAccountList.replaceAll { if (it.id == checking) it.copy(retired = true) else it }
+
+        assertEquals(TransferEligibility.NotEligible, transfers().withLeg(paid).eligibility)
     }
 
     @Test

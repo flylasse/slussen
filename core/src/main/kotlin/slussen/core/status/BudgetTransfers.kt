@@ -10,6 +10,7 @@ import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredBankTransaction
 import slussen.core.port.StoredBudget
+import slussen.core.port.StoredBudgetAppTransaction
 import slussen.core.port.StoredTransfer
 import slussen.core.port.TransactionStatus
 import slussen.core.port.TransferType
@@ -35,6 +36,8 @@ data class LegShown(
     val memo: String?,
     /** Its stored Transaction Status; null while it is not compared yet (S-T-08). */
     val status: TransactionStatus?,
+    /** Its Bank Account was retired since the latest Comparison, which left it here until the next one (UC-009 A4). */
+    val retired: Boolean = false,
 )
 
 /** Why a Guessed Transfer is guessed (UC-005 BR-002, BR-003, A8), from the Transfer detection's own rules. */
@@ -60,8 +63,11 @@ sealed interface TransferEligibility {
     /** Eligible, written through [writtenThrough] and counted as its one Eligible Transaction (UC-006 BR-009). */
     data class Eligible(val writtenThrough: LegShown) : TransferEligibility
 
-    /** BR-013: [leg] is Needs Review or Possible Import By Other Path; the whole Transfer waits for its Review Decision. */
-    data class WaitsForReviewDecision(val leg: LegShown) : TransferEligibility
+    /**
+     * BR-013, A9: [leg] is Needs Review or Possible Import By Other Path, for the reason [why] (the same the Bank Account
+     * screen gives it); the whole Transfer waits for its Review Decision.
+     */
+    data class WaitsForReviewDecision(val leg: LegShown, val why: StatusReason) : TransferEligibility
 
     /**
      * BR-010: an earlier rule of the Comparison gave [leg] its status (Too Old, Before Start Date, Already In Budget App,
@@ -71,6 +77,12 @@ sealed interface TransferEligibility {
 
     /** BR-010: a Guessed Transfer is not eligible until the Operator confirms it or chooses another Budget Account. */
     data object Guessed : TransferEligibility
+
+    /**
+     * BR-005: a Lonely Transfer whose grace period ended since the latest Comparison: the next Comparison, which runs
+     * before an Upload Plan is prepared, makes its Transfer Leg an ordinary Bank Transaction, so it is never sent as a Transfer.
+     */
+    data object GraceEnded : TransferEligibility
 
     /** UC-003 BR-014: not eligible for none of these reasons: its Bank Account is blocked or a Retired Account. */
     data object NotEligible : TransferEligibility
@@ -141,10 +153,10 @@ data class BudgetTransfersView(
     val guessedTransfers: Int get() = transfers.count { it.guessed }
 
     /**
-     * UX-27: the Bank Transactions of these Transfers with the status Guessed Transfer, each of which is counted among the
-     * Bank Transactions waiting for a decision (UC-008 BR-003).
+     * UX-27: the Bank Transactions of these Transfers with the status Guessed Transfer that the Budget counts among those
+     * waiting for a decision (UC-008 BR-003): every one but those of a Bank Account retired since, which no count counts.
      */
-    val guessedTransferLegs: Int get() = transfers.flatMap { it.legs }.count { it.status == TransactionStatus.GuessedTransfer }
+    val guessedTransferLegs: Int get() = transfers.flatMap { it.legs }.count { it.status == TransactionStatus.GuessedTransfer && !it.retired }
 }
 
 /**
@@ -195,8 +207,13 @@ class BudgetTransfers(
                 payee = transaction.payee,
                 memo = transaction.memo,
                 status = transaction.status,
+                retired = bankAccount.retired,
             )
         }
+
+        /** A Budget App Transaction of the stored copy, as a reason names it. */
+        fun entry(transaction: StoredBudgetAppTransaction) =
+            BudgetAppEntry(transaction.transactionDate, transaction.amount, transaction.payee, names[transaction.budgetAccountId].orEmpty())
     }
 
     // UC-008 BR-001: The Transfers are shown only from stored data; nothing contacts a Source, a Bank or the Budget App.
@@ -249,7 +266,12 @@ class BudgetTransfers(
             stored = true,
             guessed = stored.guessed,
             whyGuessed = if (stored.guessed) whyGuessed(stored, legs, ground) else emptyList(),
-            eligibility = eligibilityOf(legs, ground),
+            // UC-005 BR-005: A Lonely Transfer whose other Transfer Leg has not arrived within the grace period becomes an ordinary Bank Transaction, so it is never sent as a Transfer.
+            eligibility = if (single != null && TransferDetection.graceEnded(single, graceDays, ground.windows.today)) {
+                TransferEligibility.GraceEnded
+            } else {
+                eligibilityOf(legs, ground)
+            },
             // A4 of UC-005: a Lonely Transfer shows the Budget Account of its expected other side and the date by which it must arrive.
             expected = single?.let { arrived ->
                 ExpectedOtherSide(
@@ -328,7 +350,15 @@ class BudgetTransfers(
         if (keptOut == null) return eligibleOrNot(writing, ground)
         return when (keptOut.status) {
             // UC-005 BR-013: A Transfer with a Transfer Leg that is Needs Review or Possible Import By Other Path waits for its Review Decision, from either side.
-            TransactionStatus.NeedsReview, TransactionStatus.PossibleImportByOtherPath -> TransferEligibility.WaitsForReviewDecision(ground.leg(keptOut))
+            TransactionStatus.NeedsReview, TransactionStatus.PossibleImportByOtherPath -> {
+                // A9 step 1 of UC-005: with the reason the Transfer Leg is doubtful, derived as the Bank Account screen derives it.
+                val bankAccount = ground.bankAccountOf(keptOut)
+                val why = BankAccountTransactions.doubtOf(
+                    keptOut, keptOut.status!!, ground.data.bankTransactions.filter { it.bankAccountId == bankAccount.id },
+                    ground.data.budgetAppTransactions.filter { it.budgetAccountId == bankAccount.mapping?.budgetAccountId }, ground.windows, ground::entry,
+                )
+                TransferEligibility.WaitsForReviewDecision(ground.leg(keptOut), why)
+            }
             // UC-005 BR-010: The Transfer Legs of a Guessed Transfer are not eligible until the Operator confirms the Transfer or chooses another Budget Account.
             TransactionStatus.GuessedTransfer -> TransferEligibility.Guessed
             // UC-005 BR-010: While a Transfer has a Transfer Leg to which an earlier rule gave its status, the whole Transfer is in no Upload Plan.

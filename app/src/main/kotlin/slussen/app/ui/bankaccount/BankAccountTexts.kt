@@ -126,15 +126,7 @@ object BankAccountTexts {
             is StatusReason.DeletedInBudgetApp -> "Deleted in $budgetApp under its Import Identifier; not sent again"
             is StatusReason.MergedInBudgetApp ->
                 "Merged in $budgetApp" + (reason.into?.let { " into your Typed Entry ${entry(it, formats, today)}" } ?: "") + "; not sent again"
-            is StatusReason.ResemblesOtherImport ->
-                "Resembles an Import by another importer" + (reason.imports.firstOrNull()?.let { " in ${it.budgetAccountName}" } ?: "") +
-                    "; not proof of a duplicate"
-            is StatusReason.ResemblesUnsupportedSlussenImport -> "Resembles a Slussen Import in a form this version does not support"
-            is StatusReason.NoStableReference -> if (reason.identical > 0) {
-                "No Stable Reference: same date, amount and text as ${Texts.count(reason.identical, "other", "others")}, so Slussen cannot tell them apart"
-            } else {
-                "No Stable Reference, so Slussen cannot recognise it again for sure"
-            }
+            is StatusReason.ResemblesOtherImport, is StatusReason.ResemblesUnsupportedSlussenImport, is StatusReason.NoStableReference -> doubt(reason)
             is StatusReason.Unreadable -> "Slussen could not read it (${reason.reason}); never uploaded"
             is StatusReason.BeforeStartDate -> "Before the Start Date ${formats.date(reason.startDate)} of this Bank Account"
             is StatusReason.TooOld ->
@@ -142,9 +134,29 @@ object BankAccountTexts {
             StatusReason.InTheFuture -> "Dated after today; the Comparison looks at it again once its date comes"
             is StatusReason.TransferLeg -> transfer(reason.transfer, line, formats, today)
             is StatusReason.GuessedTransfer -> guessed(reason, line, formats, today)
-            is StatusReason.AsStored -> "As the latest Comparison left it; the next Comparison looks at it again"
+            is StatusReason.AsStored -> AS_STORED
         }
     }
+
+    /**
+     * Why a Bank Transaction is doubtful (UC-003 BR-007, BR-008, BR-012), short, as the list shows it; the Transfers of a
+     * Budget show the same for a doubtful Transfer Leg (UC-005 A9 step 1).
+     */
+    fun doubt(reason: StatusReason): String = when (reason) {
+        is StatusReason.ResemblesOtherImport ->
+            "Resembles an Import by another importer" + (reason.imports.firstOrNull()?.let { " in ${it.budgetAccountName}" } ?: "") +
+                "; not proof of a duplicate"
+        is StatusReason.ResemblesUnsupportedSlussenImport -> "Resembles a Slussen Import in a form this version does not support"
+        is StatusReason.NoStableReference -> if (reason.identical > 0) {
+            "No Stable Reference: same date, amount and text as ${Texts.count(reason.identical, "other", "others")}, so Slussen cannot tell them apart"
+        } else {
+            "No Stable Reference, so Slussen cannot recognise it again for sure"
+        }
+        else -> AS_STORED
+    }
+
+    /** A status the stored data no longer explains, shown as the latest Comparison left it. */
+    private const val AS_STORED = "As the latest Comparison left it; the next Comparison looks at it again"
 
     private fun typeOf(type: TransferType): String = type.text
 

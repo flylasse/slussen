@@ -424,13 +424,8 @@ class BankAccountTransactions(
                 val into = merged?.mergedIntoReference?.let { into -> ground.data.budgetAppTransactions.firstOrNull { it.budgetAppReference == into } }
                 StatusReason.MergedInBudgetApp(merged?.let(ground::entry), into?.let(ground::entry))
             }
-            TransactionStatus.PossibleImportByOtherPath -> StatusReason.ResemblesOtherImport(resemblingBy(EnteredBy.OtherImportPath), windows.matchingDateWindowDays)
-            TransactionStatus.NeedsReview -> when {
-                transaction.stableReference == null -> StatusReason.NoStableReference(identicalTo(transaction, ofBankAccount))
-                resembling.any { it.enteredBy == EnteredBy.SlussenUnsupportedFormat } ->
-                    StatusReason.ResemblesUnsupportedSlussenImport(resemblingBy(EnteredBy.SlussenUnsupportedFormat))
-                else -> StatusReason.AsStored(status)
-            }
+            TransactionStatus.PossibleImportByOtherPath, TransactionStatus.NeedsReview ->
+                doubtOf(transaction, status, ofBankAccount, ground.held, windows, ground::entry)
             TransactionStatus.BeforeStartDate -> bankAccount.startDate?.takeIf { transaction.bookedDate.isBefore(it) }
                 ?.let { StatusReason.BeforeStartDate(it) } ?: StatusReason.AsStored(status)
             TransactionStatus.TooOld -> {
@@ -476,11 +471,6 @@ class BankAccountTransactions(
         } ?: StatusReason.NoMatch
     }
 
-    /** UC-003 BR-002: the other stored Bank Transactions without a Stable Reference with the same date, amount, payee and memo. */
-    private fun identicalTo(transaction: StoredBankTransaction, ofBankAccount: List<StoredBankTransaction>): Int = ofBankAccount.count {
-        it.id != transaction.id && it.stableReference == null && it.bookedDate == transaction.bookedDate &&
-            it.amount == transaction.amount && it.payee == transaction.payee && it.memo == transaction.memo
-    }
 
     /** The stored Transfer [transaction] is a Transfer Leg of, as the latest Comparison stored it, or null. */
     private fun transferOf(transaction: StoredBankTransaction, ground: Ground, bankAccounts: List<StoredBankAccount>): TransferShown? {
@@ -530,6 +520,41 @@ class BankAccountTransactions(
     }
 
     companion object {
+        /**
+         * Why [transaction], whose stored [status] is Needs Review or Possible Import By Other Path, is doubtful (UC-003
+         * BR-007, BR-008, BR-012), against [held], the stored copy of its Budget Account, beside the other Bank Transactions
+         * of its Bank Account [ofBankAccount]; [entry] names a Budget App Transaction. Shared by every screen that shows it
+         * (UC-008 step 5, UC-005 A9), so that the reason is derived once.
+         */
+        fun doubtOf(
+            transaction: StoredBankTransaction,
+            status: TransactionStatus,
+            ofBankAccount: List<StoredBankTransaction>,
+            held: List<StoredBudgetAppTransaction>,
+            windows: ComparisonWindows,
+            entry: (StoredBudgetAppTransaction) -> BudgetAppEntry,
+        ): StatusReason {
+            val resembling = ComparisonRules.resembling(transaction, held, windows)
+            fun resemblingBy(enteredBy: EnteredBy) = resembling.filter { it.enteredBy == enteredBy }.map(entry)
+            return when (status) {
+                TransactionStatus.PossibleImportByOtherPath ->
+                    StatusReason.ResemblesOtherImport(resemblingBy(EnteredBy.OtherImportPath), windows.matchingDateWindowDays)
+                TransactionStatus.NeedsReview -> when {
+                    transaction.stableReference == null -> StatusReason.NoStableReference(identicalTo(transaction, ofBankAccount))
+                    resembling.any { it.enteredBy == EnteredBy.SlussenUnsupportedFormat } ->
+                        StatusReason.ResemblesUnsupportedSlussenImport(resemblingBy(EnteredBy.SlussenUnsupportedFormat))
+                    else -> StatusReason.AsStored(status)
+                }
+                else -> StatusReason.AsStored(status)
+            }
+        }
+
+        /** UC-003 BR-002: the other stored Bank Transactions without a Stable Reference with the same date, amount, payee and memo. */
+        private fun identicalTo(transaction: StoredBankTransaction, ofBankAccount: List<StoredBankTransaction>): Int = ofBankAccount.count {
+            it.id != transaction.id && it.stableReference == null && it.bookedDate == transaction.bookedDate &&
+                it.amount == transaction.amount && it.payee == transaction.payee && it.memo == transaction.memo
+        }
+
         /**
          * The Transaction Statuses a Comparison of this build gives (UC-003 BR-001 as far as it is built): no Review
          * Decision, Transfer Decision or Sent Record exists yet, so Deferred, Decision No Longer Holds, Outcome Unknown,
