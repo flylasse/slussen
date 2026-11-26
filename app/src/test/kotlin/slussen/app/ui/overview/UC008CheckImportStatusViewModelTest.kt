@@ -91,7 +91,7 @@ class UC008CheckImportStatusViewModelTest {
         assertEquals("USD", ui.budgets.first().currency)
         assertTrue(ui.budgets.first().blocked.isEmpty())
         assertFalse(ui.noBankAccountAdded)
-        assertEquals("${ExampleData.BUDGET_APP_NAME} · not read yet", ui.budgetAppRead)
+        assertEquals("${ExampleData.BUDGET_APP_NAME} · not read yet", ui.budgetAppLine.status)
     }
 
     @Test
@@ -121,8 +121,9 @@ class UC008CheckImportStatusViewModelTest {
         "Slussen's records could not be read, so it started from its last good copy, or from empty records when it had " +
             "none. Anything uploaded after that copy was made is not in its records."
 
-    /** O-P2-09, `first-upload-matching.html#open`: the build state while the Comparison (UC-003) is not built. */
-    private val matchingComesLater = "Matching with Example Budget App comes in a later version; until then nothing is uploaded."
+    /** `overview.html#open-this-build`: the build state while First Upload Matching's confirmation (A9) waits for Uploads. */
+    private val matchingComesLater =
+        "First Upload Matching comes with Uploads in a later version. Nothing is uploaded until then, and no action is needed now."
 
     private fun firstUploadMatching(tone: FirstUploadMatchingTone, vararg reasons: String) = FirstUploadMatchingUi(
         title = "Uploads wait for First Upload Matching",
@@ -136,7 +137,7 @@ class UC008CheckImportStatusViewModelTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009", "BR-006"])
-    @DisplayName("A8, BR-006, BR-009 (P9-17, overview.html#first-added): after a new installation the Overview shows Uploads wait for First Upload Matching with the explanation, the reason line and the action, as plain information; while the Comparison is not built the action is unavailable and the build line says why; each Budget shows the Blocked Reason in the same tone")
+    @DisplayName("A8, BR-006, BR-009 (P9-17, overview.html#first-added, #open-this-build): after a new installation the Overview shows Uploads wait for First Upload Matching with the explanation, the reason line and the action, as plain information; while its confirmation is not built the action is unavailable and the build line says that it comes with Uploads and that no action is needed; each Budget shows the Blocked Reason in the same tone")
     fun firstUploadMatchingOfANewInstallationIsShown() {
         household()
         slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, slice.clock.instant())
@@ -190,7 +191,7 @@ class UC008CheckImportStatusViewModelTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A9: Operator Confirms First Upload Matching", businessRules = ["BR-009"])
-    @DisplayName("A9: Start First Upload Matching is unavailable while the Comparison is not built (O-P2-09); asked anyway it says why, and First Upload Matching stays open")
+    @DisplayName("A9: Start First Upload Matching is unavailable while its confirmation is not built; asked anyway it says that it comes with Uploads and that no action is needed, and First Upload Matching stays open")
     fun startingFirstUploadMatchingIsUnavailable() {
         household()
         slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, slice.clock.instant())
@@ -279,7 +280,7 @@ class UC008CheckImportStatusViewModelTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-005"])
-    @DisplayName("Steps 5-7: a Budget shows its Sources with Source Health and Freshness apart, and each Account Balance with its difference")
+    @DisplayName("Steps 5-7 (UX-08, UX-25): a Budget shows its Sources with Source Health and Freshness apart, and each Account Balance with its difference: the Bank balance as of the time the Data Provider reported it, the Budget Account balance read at the time of the Budget App's read")
     fun budgetShowsHealthFreshnessAndBalances() {
         val checking = household()
         val fetchedAt = slice.clock.instant().minus(Duration.ofHours(30))
@@ -296,20 +297,24 @@ class UC008CheckImportStatusViewModelTest {
         assertEquals("Source Health: Failed 2026-10-15 13:00 · Fetch Schedule", source.health)
         assertEquals("Freshness: data as of 2026-10-14 08:00", source.freshness)
         val account = ui.bankAccounts.single()
-        assertEquals("Bank 5,135.28 · Budget App 4,140.05 · Difference +995.23 · Read 13:00 / 14:00", account.balance)
+        assertEquals("Bank balance 5,135.28 as of 13:00 · Budget Account balance 4,140.05 read 14:00 · Difference +995.23", account.balance)
         assertEquals("Checking", account.type)
     }
 
     @Test
     @UseCase(id = "UC-008", scenario = "A2: Account Balance Outdated", businessRules = ["BR-004"])
-    @DisplayName("A2: an outdated Account Balance is marked outdated and shows no difference")
+    @DisplayName("A2 (UX-08, UX-24): an outdated Account Balance is marked outdated and shows no difference, with both times and its remedy: a Fetch of its Data Provider, nothing else")
     fun outdatedBalanceShowsNoDifference() {
         val checking = household()
         slice.importStatusStore.balances += StoredAccountBalance(checking, amount(5135, 280), USD, slice.clock.instant().minus(Duration.ofHours(40)))
 
         val account = BudgetViewModel(fixture.services, budgetId("Household")).also { it.load() }.state.value!!.bankAccounts.single()
 
-        assertEquals("Bank 5,135.28 · Budget App 4,140.05 · Account Balance outdated · difference hidden", account.balance)
+        assertEquals(
+            "Bank balance 5,135.28 as of 10-13 22:00 · Budget Account balance 4,140.05 read 14:00 · Account Balance outdated · difference hidden",
+            account.balance,
+        )
+        assertEquals("Fetch to ask Kestrel Feeds for a newer one; nothing else is needed.", account.balanceRemedy)
     }
 
     @Test
@@ -320,7 +325,8 @@ class UC008CheckImportStatusViewModelTest {
 
         val account = BudgetViewModel(fixture.services, budgetId("Household")).also { it.load() }.state.value!!.bankAccounts.single()
 
-        assertEquals("Account Balance not known · Budget App 4,140.05", account.balance)
+        assertEquals("Account Balance not known · Budget Account balance 4,140.05 read 14:00 · no difference shown", account.balance)
+        assertNull(account.balanceRemedy)
     }
 
     @Test
@@ -360,7 +366,7 @@ class UC008CheckImportStatusViewModelTest {
     }
     @Test
     @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-005"])
-    @DisplayName("Steps 6-7 after a Fetch (P9-15): each Bank Account card shows the Source Health and Freshness of its Fetch Result and its Account Balance next to the Budget Account's, with the difference; the tab says that the Bank Transactions are not compared in this build")
+    @DisplayName("Steps 6-7 after a Fetch (UX-08): each Bank Account card shows the Source Health and Freshness of its Fetch Result and its Account Balance next to the Budget Account's, with the difference; the tab no longer says that the Bank Transactions are not compared, only that nothing is uploaded yet and no action is needed for it")
     fun budgetShowsWhatAFetchStored() {
         household()
         slice.feeds.fetchAnswer = {
@@ -377,14 +383,15 @@ class UC008CheckImportStatusViewModelTest {
         val account = ui.bankAccounts.single()
         assertEquals("Source Health: Fetched 2026-10-15 14:00 · started by you", account.health)
         assertEquals("Freshness: data as of 2026-10-15 14:00", account.freshness)
-        assertEquals("Bank 5,135.28 · Budget App 4,140.05 · Difference +995.23 · Read 14:00 / 14:00", account.balance)
+        assertEquals("Bank balance 5,135.28 as of 14:00 · Budget Account balance 4,140.05 read 14:00 · Difference +995.23", account.balance)
         assertTrue(account.blocked.isEmpty())
         assertEquals("Source Health: Fetched 2026-10-15 14:00 · started by you", ui.sources.single().health)
         assertEquals(
-            "Bank Transactions are fetched and stored, but not compared with the Budget App in this build yet: they have no " +
-                "Transaction Status, so the counts stay at 0. Nothing is uploaded.",
+            "Nothing is uploaded in this version: Uploads, Review Decisions and Transfer Decisions come in a later version. " +
+                "No action is needed for them now.",
             ui.note,
         )
+        assertEquals("Statuses as of 14:00", ui.statuses)
     }
 
     @Test
@@ -399,6 +406,12 @@ class UC008CheckImportStatusViewModelTest {
         assertEquals(explanation, ui.firstUploadMatching!!.explanation)
         assertTrue(ui.canFetch)
         assertTrue(ui.fetchButton.enabled)
+        // A Fetch compares with the Budget App since the transactions plan's Phase 7a; only Uploads are not built.
+        assertEquals(
+            "A Fetch brings in the Bank Transactions and compares them with Example Budget App. Nothing is uploaded in this " +
+                "version; no action is needed for Uploads now.",
+            ui.fetchNote,
+        )
     }
 
     @Test

@@ -1,5 +1,6 @@
 package slussen.core.status
 
+import slussen.core.comparison.BudgetReadFailure
 import slussen.core.credential.CredentialStatusReader
 import slussen.core.fetch.BalanceInOtherCurrency
 import slussen.core.firstupload.FirstUploadMatchingNotice
@@ -108,22 +109,29 @@ sealed interface BalanceComparison {
         val budgetAccountBalanceReadAt: Instant,
     ) : BalanceComparison
 
-    /** A2: older than the outdated-balance limit; the difference is hidden. */
+    /**
+     * A2: older than the outdated-balance limit; the difference is hidden. A newer one comes with a Fetch of
+     * [dataProviderName], the Data Provider that reports the Account Balance (UX-24).
+     */
     data class Outdated(
         val accountBalance: Amount,
         val budgetAccountBalance: Amount?,
         val accountBalanceReadAt: Instant,
+        val budgetAccountBalanceReadAt: Instant? = null,
+        val dataProviderName: String? = null,
     ) : BalanceComparison
 
     /** A3: the Bank Account's currency differs from its Budget's; the difference is hidden. */
     data class CurrencyMismatch(val bankAccountCurrency: CurrencyCode, val budgetCurrency: CurrencyCode) : BalanceComparison
 
-    /** A4: which balance is not known; no difference. */
+    /** A4: which balance is not known; no difference. The one that is known keeps the time it was reported or read (BR-005). */
     data class NotKnown(
         val accountBalanceKnown: Boolean,
         val budgetAccountBalanceKnown: Boolean,
         val accountBalance: Amount?,
         val budgetAccountBalance: Amount?,
+        val accountBalanceReadAt: Instant? = null,
+        val budgetAccountBalanceReadAt: Instant? = null,
     ) : BalanceComparison
 }
 
@@ -144,6 +152,8 @@ data class BankAccountStatus(
     val dataProviderId: Long?,
     /** UC-001 A21: the balance its last Fetch reported in another currency and did not store, or null. */
     val balanceInOtherCurrency: BalanceInOtherCurrency? = null,
+    /** UC-003 A1, S-T-08: its Bank Transactions stored since its Budget's last successful read, without a Transaction Status. */
+    val notComparedYet: Int = 0,
 )
 
 /** One Source of the selected Budget (steps 5-6). */
@@ -166,7 +176,29 @@ data class BudgetSummary(
     val notYetUploaded: NotYetUploaded,
     val blocked: List<Blocked>,
     val lastReadAt: Instant?,
+    /** UC-003 A1 step 2, step 7: when its Transaction Statuses were given, and a read that failed since. */
+    val statusesAsOf: StatusesAsOf = StatusesAsOf.NothingToCompare,
+    /** UC-003 A1, S-T-08: its Bank Transactions not compared yet, counted neither as Eligible nor as waiting. */
+    val notComparedYet: Int = 0,
 )
+
+/** When the Transaction Statuses of one Budget were given (UC-003 step 7, A1 step 2). */
+sealed interface StatusesAsOf {
+    /** No Bank Account of the Budget is compared: there is nothing to read the Budget App for. */
+    data object NothingToCompare : StatusesAsOf
+
+    /** No read of the Budget has succeeded yet; its Bank Transactions are not compared yet. [failedRead] since, or null. */
+    data class NotReadYet(val failedRead: BudgetReadFailure?) : StatusesAsOf
+
+    /** The statuses come from the last successful read at [readAt]; [failedRead] is a read that failed since, or null. */
+    data class LastRead(val readAt: Instant, val failedRead: BudgetReadFailure?) : StatusesAsOf
+}
+
+/**
+ * The line of the Budget App on the Overview (FR-040, UC-003 A1): the latest successful read of any Budget, the
+ * Budgets whose read failed since their last successful one, and when the latest of those failed.
+ */
+data class BudgetAppRead(val lastReadAt: Instant?, val notRead: List<String>, val failedAt: Instant?)
 
 /** A Bank Consent that expires within the consent warning lead time (step 2, BR-002), with its renew action. */
 data class ExpiringBankConsent(val bankName: String, val dataProviderName: String, val expiresAt: Instant)
@@ -190,6 +222,8 @@ data class Overview(
     val budgetAppName: String,
     /** A10, BR-011: while no Bank Account is added, the one card that leads to Settings, with the next thing to do; else null. */
     val firstRun: FirstRunCard? = null,
+    /** FR-040, UC-003 A1: when the Budget App was last read, and which Budgets were not. */
+    val budgetAppRead: BudgetAppRead = BudgetAppRead(null, emptyList(), null),
 )
 
 /** A10, BR-011: the only card shown while no Bank Account is added; it leads to Settings and names [next] (UC-013 BR-008). */

@@ -23,7 +23,7 @@ class UiServices(
     val mappings: AccountMappings,
     val status: ImportStatus,
     val fetch: FetchTransactions,
-    /** Reading the Budget App again and comparing (UC-003); its screens come with the transactions plan's Phase 7c. */
+    /** Reading the Budget App again and comparing (UC-003, FR-040), from the line of the Budget App of the Overview and every Budget tab. */
     val comparison: Comparison,
     val formats: Formats,
     val clock: java.time.Clock,

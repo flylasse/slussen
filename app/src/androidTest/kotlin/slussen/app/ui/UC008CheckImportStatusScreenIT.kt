@@ -35,7 +35,7 @@ class UC008CheckImportStatusScreenIT {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A8: First Upload Matching Open", businessRules = ["BR-009", "BR-006"])
-    @DisplayName("A8, A9 (P9-17): First Upload Matching is shown with its explanation and reason line; Start First Upload Matching is unavailable while the Comparison is not built, and the build line says why")
+    @DisplayName("A8, A9 (P9-17, overview.html#open-this-build): First Upload Matching is shown with its explanation and reason line; Start First Upload Matching is unavailable while its confirmation is not built, and the build line says that it comes with Uploads and that no action is needed")
     fun firstUploadMatchingIsShownAndCannotStartYet() = compose.use {
         val fixture = ScreenFixture()
         aBankAccountIsAdded(fixture)
@@ -55,11 +55,12 @@ class UC008CheckImportStatusScreenIT {
         onAllNodesWithText("Uploads wait for First Upload Matching", substring = true).onFirst().assertExists()
         onNodeWithText("Before Slussen uploads anything", substring = true).assertExists()
         onNodeWithText("This is a new installation.", substring = true).assertExists()
-        onNodeWithText("Matching with ${slussen.testing.ExampleData.BUDGET_APP_NAME} comes in a later version; until then nothing is uploaded.").assertExists()
+        onNodeWithText("First Upload Matching comes with Uploads in a later version. Nothing is uploaded until then, and no action is needed now.").assertExists()
         onNodeWithText("Start First Upload Matching").assertIsNotEnabled()
-        // P9-14: the Fetch stays offered with what it does in this build.
+        // P9-14: the Fetch stays offered with what it does: it compares with the Budget App; only Uploads are not built.
         onNodeWithText("Fetch all Data Providers").assertIsEnabled()
-        onNodeWithText("In this build a Fetch lists the Bank Accounts", substring = true).assertExists()
+        onNodeWithText("A Fetch brings in the Bank Transactions and compares them with", substring = true).assertExists()
+        onNodeWithText("it does not compare them", substring = true).assertDoesNotExist()
     }
 
     @Test
@@ -112,17 +113,72 @@ class UC008CheckImportStatusScreenIT {
                 ),
             ),
             bankAccounts = emptyList(),
-            note = "Bank Transactions are fetched and stored, but not compared with the Budget App in this build yet: they have no " +
-                "Transaction Status, so the counts stay at 0. Nothing is uploaded.",
+            note = "Nothing is uploaded in this version: Uploads, Review Decisions and Transfer Decisions come in a later version. " +
+                "No action is needed for them now.",
         )
         setContent { SlussenTheme { BudgetScreen(ui, onRemedy = { opened = it.service }, onStartFirstUploadMatching = {}) } }
 
         onNodeWithText("Grant Bank Consent").assertIsNotEnabled()
         onNodeWithText("Bank Consents are not in this build yet").assertExists()
-        onNodeWithText("not compared with the Budget App in this build yet", substring = true).assertExists()
+        onNodeWithText("Nothing is uploaded in this version", substring = true).assertExists()
         onNodeWithText("Fetch again").assertIsEnabled()
         onNodeWithText("Enter credentials").performClick()
         assertEquals(ServiceKey.dataProvider(1), opened)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", requirements = ["NFR-023"])
+    @DisplayName("Step 1, NFR-023 (FR-040, UC-003, budget.html#ynab-read-states): the Overview's line of the Budget App offers Read again; tapped, it answers on the line with the time of the read, and the Budget shows its statuses as of it")
+    fun overviewReadsTheBudgetAppAgain() = compose.use {
+        val fixture = ScreenFixture()
+        aBankAccountIsAdded(fixture)
+        val name = slussen.testing.ExampleData.BUDGET_APP_NAME
+        val viewModel = OverviewViewModel(fixture.services)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.load() }
+        setContent {
+            SlussenTheme {
+                viewModel.state.collectAsState().value?.let {
+                    OverviewScreen(it, onBudget = {}, onOpenSettings = {}, onStartFirstUploadMatching = {}, onRecentFetches = {},
+                        onFetchAll = {}, onConfirmFetch = {}, onCancelFetch = {}, onReadAgain = viewModel::readAgain)
+                }
+            }
+        }
+
+        onNodeWithText("$name · not read yet").assertExists()
+        onNodeWithText("Read $name again").assertIsEnabled().performClick()
+        waitUntil(5_000) { onAllNodesWithText("$name read 14:00 · statuses as of 14:00").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("$name · read 14:00").assertExists()
+        onNodeWithText("Statuses as of 14:00").assertExists()
+        onNodeWithText("Read $name again").assertIsEnabled()
+        assertEquals(0, fixture.slice.feeds.fetches)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", requirements = ["NFR-023"])
+    @DisplayName("Step 5, NFR-023 (UC-003 A1, budget.html#budget-app-unreadable, #first-read-failed): a Budget tab whose read failed says so on its line of the Budget App with the time, keeps its statuses from the last successful read, and names the read as the remedy")
+    fun budgetTabShowsAFailedRead() = compose.use {
+        val fixture = ScreenFixture()
+        aBankAccountIsAdded(fixture)
+        val name = slussen.testing.ExampleData.BUDGET_APP_NAME
+        fixture.slice.budgetApp.reader.changesAnswer = {
+            slussen.pluginapi.budgetapp.ReadResult.TransientFailure(slussen.pluginapi.request.FailureKind.ServiceUnavailable)
+        }
+        val care = kotlinx.coroutines.runBlocking { fixture.slice.connectionStore.budgets().single { it.served }.id }
+        val viewModel = slussen.app.ui.budget.BudgetViewModel(fixture.services, care)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.load() }
+        setContent {
+            SlussenTheme {
+                viewModel.state.collectAsState().value?.let {
+                    BudgetScreen(it, onRemedy = {}, onStartFirstUploadMatching = {}, onReadAgain = viewModel::readAgain)
+                }
+            }
+        }
+
+        onNodeWithText("Read $name again").performClick()
+        waitUntil(5_000) { onAllNodesWithText("$name not read 14:00", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("$name · read failed 14:00 · the service is unavailable").assertExists()
+        onNodeWithText("No Transaction Statuses yet: the read of 14:00 failed: the service is unavailable").assertExists()
+        onNodeWithText("Read $name again to bring them up to date; nothing else is needed.").assertExists()
     }
 
     /** UC-008 A10, BR-011: the overview is shown from the first added Bank Account on; here one of the File Format. */

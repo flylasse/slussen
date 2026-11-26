@@ -19,6 +19,7 @@ class Formats(val zone: ZoneId) {
     private val time = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT)
     private val dateTime = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ROOT)
     private val date = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ROOT)
+    private val dayAndTime = DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.ROOT)
     private val money = DecimalFormat("#,##0.00", DecimalFormatSymbols(Locale.ROOT))
 
     /** An amount in thousandths of the currency unit, with two decimals, a minus sign for an outflow. */
@@ -33,6 +34,20 @@ class Formats(val zone: ZoneId) {
     fun dateTime(instant: Instant): String = dateTime.format(instant.atZone(zone))
 
     fun date(instant: Instant): String = date.format(instant.atZone(zone))
+
+    /**
+     * A time as the balance and status lines show it (UX-08, `budget.html#household`): the time alone on the day of
+     * [now], with the day earlier in the same year ("10-13 18:40"), and with the whole date before that.
+     */
+    fun moment(instant: Instant, now: Instant): String {
+        val at = instant.atZone(zone)
+        val today = now.atZone(zone)
+        return when {
+            at.toLocalDate() == today.toLocalDate() -> time.format(at)
+            at.year == today.year -> dayAndTime.format(at)
+            else -> dateTime.format(at)
+        }
+    }
 
     fun megabytes(bytes: Long): String = String.format(Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0))
 

@@ -92,12 +92,14 @@ data class StoredTransactionFile(
 
 /**
  * The Bank Transactions of one Bank Account that are not yet uploaded, as the latest Comparison left them (UC-003
- * BR-014): its Eligible Transactions and those waiting for a decision.
+ * BR-014): its Eligible Transactions and those waiting for a decision, and apart from them those not compared yet,
+ * stored since its Budget's last successful read (UC-003 A1, S-T-08).
  */
 data class StoredTransactionCounts(
     val bankAccountId: Long,
     val eligible: Int,
     val waitingForDecision: Int,
+    val notComparedYet: Int = 0,
 )
 
 /**

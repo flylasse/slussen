@@ -411,7 +411,7 @@ class UC001FetchTransactionsViewModelTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "A11: Fetch of Several Data Providers")
-    @DisplayName("A11 (P9-14): the Overview says in one line what a Fetch does in this build: it lists the Bank Accounts and stores their Bank Transactions and Account Balances, without comparing them yet")
+    @DisplayName("A11 (P9-14, overview.html#open-this-build): the Overview says in one line what a Fetch does: it brings in the Bank Transactions and compares them with the Budget App (step 10); only Uploads are not built, and no action is needed for them")
     fun overviewSaysWhatAFetchDoesInThisBuild() {
         runBlocking { slice.enterCredentials() }
         aBankAccountIsAdded()
@@ -419,8 +419,8 @@ class UC001FetchTransactionsViewModelTest {
         val ui = OverviewViewModel(fixture.services).also { it.load() }.state.value!!
 
         assertEquals(
-            "In this build a Fetch lists the Bank Accounts each Data Provider offers and stores the Bank Transactions and the " +
-                "Account Balance of each Bank Account you added; it does not compare them with the Budget App yet.",
+            "A Fetch brings in the Bank Transactions and compares them with ${ExampleData.BUDGET_APP_NAME}. Nothing is uploaded " +
+                "in this version; no action is needed for Uploads now.",
             ui.fetchNote,
         )
     }

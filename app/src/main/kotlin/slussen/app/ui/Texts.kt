@@ -25,6 +25,20 @@ import slussen.core.status.Remedy
 import slussen.core.status.SourceHealth
 import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.request.RefusalReason
+import slussen.app.ui.budget.RemedyAction
+import slussen.core.comparison.BudgetReadOutcome
+import slussen.core.comparison.ComparisonReport
+import slussen.core.comparison.ComparisonStart
+import slussen.core.operation.OperationKind
+import slussen.core.operation.RunningOperation
+import slussen.core.port.ServiceKey
+import slussen.core.status.BalanceComparison
+import slussen.core.status.BudgetAppRead
+import slussen.core.status.BudgetSummary
+import slussen.core.status.NotYetUploaded
+import slussen.core.status.StatusesAsOf
+import slussen.pluginapi.value.Amount
+import java.time.Instant
 
 /** The texts the screens show for the core's results, in Slussen's glossary terms. */
 object Texts {
@@ -38,15 +52,25 @@ object Texts {
     fun cannotFetchWithoutBankConsents(dataProviderName: String): String =
         "$BANK_CONSENTS_NOT_IN_THIS_BUILD; $dataProviderName cannot fetch until they are"
 
-    /** P9-14: what a Fetch does in this build, while UC-001 step 10 (the Comparison, UC-003) is not built. */
-    const val FETCH_IN_THIS_BUILD =
-        "In this build a Fetch lists the Bank Accounts each Data Provider offers and stores the Bank Transactions and the " +
-            "Account Balance of each Bank Account you added; it does not compare them with the Budget App yet."
+    /**
+     * P9-14 (`overview.html#open-this-build`): what a Fetch does, since UC-001 step 10 compares with the Budget App, and
+     * the one part it does not reach yet, Uploads (UC-006), for which no action is needed.
+     */
+    fun fetchNote(budgetAppName: String): String =
+        "A Fetch brings in the Bank Transactions and compares them with $budgetAppName. Nothing is uploaded in this version; " +
+            "no action is needed for Uploads now."
 
-    /** P9-15: what the Budget tab does not show yet in this build (UC-003 A1, S-T-08: not compared yet). */
-    const val TRANSACTIONS_NOT_IN_THIS_BUILD =
-        "Bank Transactions are fetched and stored, but not compared with the Budget App in this build yet: they have no " +
-            "Transaction Status, so the counts stay at 0. Nothing is uploaded."
+    /**
+     * `budget.html#household-this-build`: the one line of a Budget tab about the parts not built yet, Uploads (UC-006),
+     * Review Decisions (UC-004) and Transfer Decisions (UC-005), for which no action is needed.
+     */
+    const val UPLOADS_NOT_IN_THIS_BUILD =
+        "Nothing is uploaded in this version: Uploads, Review Decisions and Transfer Decisions come in a later version. " +
+            "No action is needed for them now."
+
+    /** `overview.html#open-this-build`: why Start First Upload Matching (UC-008 A9) cannot run yet; no action is needed. */
+    const val FIRST_UPLOAD_MATCHING_COMES_WITH_UPLOADS =
+        "First Upload Matching comes with Uploads in a later version. Nothing is uploaded until then, and no action is needed now."
 
     /** UC-008 BR-006, BR-009: the Blocked Reason of First Upload Matching. */
     const val UPLOADS_WAIT_FOR_FIRST_UPLOAD_MATCHING = "Uploads wait for First Upload Matching"
@@ -62,8 +86,8 @@ object Texts {
         tone = notice.tone,
         action = START_FIRST_UPLOAD_MATCHING,
         actionAvailable = notice.canStart,
-        // O-P2-09 (`first-upload-matching.html#open`): while the Comparison is not built, the line says why nothing starts.
-        buildNote = if (notice.canStart) null else "Matching with $budgetAppName comes in a later version; until then nothing is uploaded.",
+        // `overview.html#open-this-build`: while its confirmation (A9) is not built, the line says why nothing starts and that no action is needed.
+        buildNote = if (notice.canStart) null else FIRST_UPLOAD_MATCHING_COMES_WITH_UPLOADS,
     )
 
     /** UC-008 BR-009: the explanation, the same in every case, with the Budget App's name. */
@@ -377,5 +401,195 @@ object Texts {
         PairOutcome.BankNotChosen -> "Choose a Bank or name a new one · not added"
         is PairOutcome.Unavailable -> refusal(outcome.reason)
         is PairOutcome.Proposed, is PairOutcome.Added -> ""
+    }
+
+    // ---- The line of the Budget App (UC-003 trigger, FR-040, A1, A2; `budget.html`, the states of Read again) -----------------
+
+    /** FR-040: the action on the line of the Budget App, on the Overview and on every Budget tab. */
+    fun readAgain(budgetAppName: String): String = "Read $budgetAppName again"
+
+    /** NFR-023: shown from the tap on, before the first request is sent; no Data Provider or Bank is contacted. */
+    fun reading(budgetAppName: String): String = "Reading $budgetAppName · no Bank Fetch"
+
+    /** NFR-023, ADR-007 §1: pressed while another operation runs, the action waits for it and says so. */
+    fun readWaits(budgetAppName: String, running: RunningOperation): String = "${readAgain(budgetAppName)} · waits for: ${operation(running)}"
+
+    /** ADR-007 §1: the operation that runs now, as the screens name it. */
+    fun operation(running: RunningOperation): String = when (running.kind) {
+        OperationKind.Fetch -> "Fetching ${running.subject ?: "a Data Provider"}"
+        OperationKind.Comparison -> "Reading ${running.subject ?: "the Budget App"}"
+        OperationKind.ServiceCredentialChange -> "a change of service credentials"
+        OperationKind.BudgetAndBankAccountChange -> "a change of Budgets and Bank Accounts"
+        OperationKind.FirstUploadMatchingConfirmation -> "the confirmation of First Upload Matching"
+        OperationKind.OperatorSettingChange -> "a change of an Operator Setting"
+        OperationKind.AccountMappingChange -> "a change of an Account Mapping"
+    }
+
+    /** UC-003 A1: what the Budget App did when the read of a Budget failed; null when the read was not completed. */
+    fun readFailure(kind: FailureKind?): String = if (kind == null) "the read was not completed" else failure(kind)
+
+    /** UC-003 A1 step 2: the remedy of statuses that are not current, a read of the Budget App, nothing else. */
+    fun readAgainNote(budgetAppName: String): String = "Read $budgetAppName again to bring them up to date; nothing else is needed."
+
+    /**
+     * The line of the Budget App on the Overview (FR-040, `overview.html#read-one-failed`): the latest successful read,
+     * and the Budgets not read since, or that the read failed when no Budget was read.
+     */
+    fun budgetAppRead(read: BudgetAppRead, comparedBudgets: Int, budgetAppName: String, formats: Formats, now: Instant): String {
+        val last = read.lastReadAt
+        val failedAt = read.failedAt
+        return when {
+            failedAt == null -> if (last == null) "$budgetAppName · not read yet" else "$budgetAppName · read ${formats.moment(last, now)}"
+            last == null -> "$budgetAppName · read failed ${formats.moment(failedAt, now)}"
+            read.notRead.size >= comparedBudgets ->
+                "$budgetAppName · last read ${formats.moment(last, now)} · read failed ${formats.moment(failedAt, now)}"
+            else -> "$budgetAppName · read ${formats.moment(last, now)} · ${read.notRead.joinToString(", ")} not read"
+        }
+    }
+
+    /** The line of the Budget App on a Budget tab (`budget.html#budget-app-read`, `#budget-app-unreadable`, `#first-read-failed`). */
+    fun budgetAppReadOf(asOf: StatusesAsOf, budgetAppName: String, formats: Formats, now: Instant): String = when (asOf) {
+        StatusesAsOf.NothingToCompare -> "$budgetAppName · nothing to read: no Bank Account of this Budget is compared"
+        is StatusesAsOf.NotReadYet -> asOf.failedRead?.let {
+            "$budgetAppName · read failed ${formats.moment(it.failedAt, now)} · ${readFailure(it.kind)}"
+        } ?: "$budgetAppName · not read yet"
+        is StatusesAsOf.LastRead -> asOf.failedRead?.let {
+            "$budgetAppName · last read ${formats.moment(asOf.readAt, now)} · read failed ${formats.moment(it.failedAt, now)}"
+        } ?: "$budgetAppName · read ${formats.moment(asOf.readAt, now)}"
+    }
+
+    /**
+     * UC-003 step 7, A1 step 2: when a Budget's Transaction Statuses were given; never shown as current when the read since
+     * failed (failure postcondition). Null for a Budget with nothing to compare.
+     */
+    fun statusesAsOf(asOf: StatusesAsOf, budgetAppName: String, formats: Formats, now: Instant): String? = when (asOf) {
+        StatusesAsOf.NothingToCompare -> null
+        is StatusesAsOf.NotReadYet -> asOf.failedRead?.let {
+            "No Transaction Statuses yet: the read of ${formats.moment(it.failedAt, now)} failed: ${readFailure(it.kind)}"
+        } ?: "No Transaction Statuses yet: $budgetAppName has not been read for this Budget"
+        is StatusesAsOf.LastRead -> asOf.failedRead?.let {
+            "Statuses as of ${formats.moment(asOf.readAt, now)}, its last successful read · the read of " +
+                "${formats.moment(it.failedAt, now)} failed: ${readFailure(it.kind)}"
+        } ?: "Statuses as of ${formats.moment(asOf.readAt, now)}"
+    }
+
+    /** UC-003 A1 step 2: whether a Budget's statuses wait for a read of the Budget App, which is then their remedy. */
+    fun waitsForARead(summary: BudgetSummary): Boolean = when (val asOf = summary.statusesAsOf) {
+        StatusesAsOf.NothingToCompare -> false
+        is StatusesAsOf.NotReadYet -> true
+        is StatusesAsOf.LastRead -> asOf.failedRead != null || summary.notComparedYet > 0
+    }
+
+    /** UC-008 BR-003, UC-003 A1 (S-T-08): the counts, with the Bank Transactions not compared yet apart from them. */
+    fun counts(counts: NotYetUploaded, notComparedYet: Int): String =
+        "Eligible ${counts.eligible} · waiting for a decision ${counts.waitingForDecision}" +
+            if (notComparedYet > 0) " · not compared yet $notComparedYet" else ""
+
+    /** UC-003 A1 step 2, S-T-08 (`budget.html#first-read-failed`): what not compared yet means, or null when none is. */
+    fun notComparedYet(count: Int, budgetAppName: String): String? = when (count) {
+        0 -> null
+        1 -> "Not compared yet: 1 Bank Transaction, stored since the last successful read of $budgetAppName; it has no " +
+            "Transaction Status and is counted neither as Eligible nor as waiting for a decision."
+        else -> "Not compared yet: $count Bank Transactions, stored since the last successful read of $budgetAppName; they " +
+            "have no Transaction Status and are counted neither as Eligible nor as waiting for a decision."
+    }
+
+    /**
+     * The result of one tap of Read the Budget App again, at its line (NFR-023, UX-12): every outcome of the read in the
+     * Operator's words, with the remedy of missing or refused credentials (UC-014). [now] is the time of the answer.
+     */
+    fun readResult(start: ComparisonStart, budgetAppName: String, formats: Formats, now: Instant, tap: Int): Pair<FetchResultUi, RemedyAction?> {
+        val enter = RemedyAction("Enter credentials", available = true, service = ServiceKey.budgetApp, note = null)
+        val report = when (start) {
+            is ComparisonStart.Unavailable -> return FetchResultUi(refusal(start.reason), null, FetchResultKind.NotFetched, tap) to null
+            is ComparisonStart.Ran -> start.report
+        }
+        return when (report) {
+            ComparisonReport.NothingToCompare -> FetchResultUi(
+                "Nothing to compare: no Bank Account is mapped to a Budget · map one in Account Mappings", null, FetchResultKind.NotFetched, tap,
+            ) to null
+            ComparisonReport.CredentialsMissing ->
+                FetchResultUi("$budgetAppName not read: credentials missing · enter them", null, FetchResultKind.NotFetched, tap) to enter
+            // A2 of UC-003: "credentials refused" with the action that enters them again (UC-014).
+            ComparisonReport.CredentialsRefused ->
+                FetchResultUi("Credentials refused by $budgetAppName · enter them again · statuses kept", null, FetchResultKind.Failed, tap) to enter
+            is ComparisonReport.Compared -> compared(report, budgetAppName, formats, now, tap) to null
+        }
+    }
+
+    private fun compared(report: ComparisonReport.Compared, budgetAppName: String, formats: Formats, now: Instant, tap: Int): FetchResultUi {
+        val read = report.budgets.filterIsInstance<BudgetReadOutcome.Read>()
+        val notRead = report.budgets.filterIsInstance<BudgetReadOutcome.NotRead>()
+        fun asOf(outcome: BudgetReadOutcome.NotRead) =
+            outcome.lastReadAt?.let { "statuses as of ${formats.moment(it, now)}" } ?: "no statuses yet"
+        val readAt = read.maxOfOrNull { it.readAt }
+        return when {
+            readAt == null -> FetchResultUi(
+                "$budgetAppName not read ${formats.moment(now, now)}: ${readFailure(notRead.first().kind)} · " +
+                    (notRead.mapNotNull { it.lastReadAt }.maxOrNull()?.let { "statuses as of ${formats.moment(it, now)}" } ?: "no statuses yet"),
+                READ_FAILED_DETAIL,
+                FetchResultKind.Failed,
+                tap,
+            )
+            notRead.isEmpty() -> FetchResultUi(
+                "$budgetAppName read ${formats.moment(readAt, now)} · statuses as of ${formats.moment(readAt, now)}",
+                "Transaction Statuses changed: ${report.statusesChanged} · no Bank Fetch",
+                FetchResultKind.Fetched,
+                tap,
+            )
+            // A1 of UC-003: the others are compared as usual; each one not read keeps the statuses of its last successful read.
+            else -> FetchResultUi(
+                "$budgetAppName read ${formats.moment(readAt, now)} · " +
+                    notRead.joinToString(" · ") { "${it.budgetName} not read: ${readFailure(it.kind)}" },
+                notRead.joinToString(" · ") { "${it.budgetName}: ${asOf(it)}" } + " · " + readAgainNote(budgetAppName),
+                FetchResultKind.NotFetched,
+                tap,
+            )
+        }
+    }
+
+    /** NFR-023: a read that could not be completed is an answer at its line, never a crash. */
+    fun readNotCompleted(budgetAppName: String, tap: Int): FetchResultUi =
+        FetchResultUi("$budgetAppName not read: the read could not be completed", READ_FAILED_DETAIL, FetchResultKind.Failed, tap)
+
+    private const val READ_FAILED_DETAIL = "The stored statuses are kept; read again at any time. No Bank Fetch is needed."
+
+    // ---- Balances (UC-008 step 7, BR-004, BR-005, A2-A4; UX-08, UX-24, UX-25) ------------------------------------------
+
+    /**
+     * The Account Balance next to its Budget Account's balance: the Bank balance as of the time the Data Provider reported
+     * it, the Budget Account balance read at the time of the Budget App's read (UX-08).
+     */
+    fun balance(balance: BalanceComparison, formats: Formats, now: Instant): String {
+        fun bank(amount: Amount, at: Instant?) = "Bank balance ${formats.amount(amount)}" + (at?.let { " as of ${formats.moment(it, now)}" } ?: "")
+        fun budgetAccount(amount: Amount, at: Instant?) =
+            "Budget Account balance ${formats.amount(amount)}" + (at?.let { " read ${formats.moment(it, now)}" } ?: "")
+        return when (balance) {
+            is BalanceComparison.Compared -> listOf(
+                bank(balance.accountBalance, balance.accountBalanceReadAt),
+                budgetAccount(balance.budgetAccountBalance, balance.budgetAccountBalanceReadAt),
+                "Difference ${formats.difference(balance.difference)}",
+            ).joinToString(" · ")
+            is BalanceComparison.Outdated -> listOf(
+                bank(balance.accountBalance, balance.accountBalanceReadAt),
+                balance.budgetAccountBalance?.let { budgetAccount(it, balance.budgetAccountBalanceReadAt) } ?: "Budget Account balance not known",
+                "Account Balance outdated · difference hidden",
+            ).joinToString(" · ")
+            is BalanceComparison.CurrencyMismatch ->
+                "Bank Account in ${balance.bankAccountCurrency.code}, Budget in ${balance.budgetCurrency.code} · " +
+                    "currency mismatch · difference hidden"
+            is BalanceComparison.NotKnown -> listOf(
+                balance.accountBalance?.takeIf { balance.accountBalanceKnown }?.let { bank(it, balance.accountBalanceReadAt) }
+                    ?: "Account Balance not known",
+                balance.budgetAccountBalance?.takeIf { balance.budgetAccountBalanceKnown }?.let { budgetAccount(it, balance.budgetAccountBalanceReadAt) }
+                    ?: "Budget Account balance not known",
+                "no difference shown",
+            ).joinToString(" · ")
+        }
+    }
+
+    /** UC-008 A2 (UX-24): the remedy of an outdated Account Balance, a Fetch of its Data Provider and nothing else; else null. */
+    fun balanceRemedy(balance: BalanceComparison): String? = (balance as? BalanceComparison.Outdated)?.let {
+        "Fetch ${it.dataProviderName?.let { name -> "to ask $name" } ?: "again"} for a newer one; nothing else is needed."
     }
 }

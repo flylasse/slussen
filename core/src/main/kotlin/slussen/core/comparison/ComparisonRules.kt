@@ -202,7 +202,7 @@ object EligibleTransactions {
 
     /**
      * The counts of [bankAccount]: its Eligible Transactions and its Bank Transactions and Unreadable Transactions that wait
-     * for a decision. A Bank Transaction not compared yet counts as neither (UC-003 A1, S-T-08). [transferLegs] are the
+     * for a decision. A Bank Transaction not compared yet counts as neither, and is counted on its own (UC-003 A1, S-T-08). [transferLegs] are the
      * stored Bank Transactions that are a Transfer Leg, of every Bank Account.
      */
     fun countsOf(
@@ -219,5 +219,7 @@ object EligibleTransactions {
         } else {
             transactions.count { it.status in WAITING } + unreadable.count { it.status == UnreadableTransactionStatus.NeedsReview }
         },
+        // UC-003 BR-001: a Bank Transaction stored since its Budget's last successful read has no Transaction Status yet and is shown as not compared yet (A1).
+        notComparedYet = if (bankAccount.retired) 0 else transactions.count { it.status == null },
     )
 }

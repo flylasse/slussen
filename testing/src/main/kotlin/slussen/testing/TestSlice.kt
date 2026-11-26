@@ -2,6 +2,7 @@ package slussen.testing
 
 import kotlinx.coroutines.runBlocking
 import slussen.core.comparison.Comparison
+import slussen.core.comparison.ComparisonNotices
 import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
@@ -69,7 +70,10 @@ class TestSlice(
         plugins, vault, coordinator, journal, settings, providerRequests, importStatusStore, refusals, clock,
     )
     val fetchNotices = FetchNotices()
-    val comparison = Comparison(plugins, credentials, connectionStore, copyStore, copyStore, coordinator, settings, journal, clock)
+    val comparisonNotices = ComparisonNotices()
+    val comparison = Comparison(
+        plugins, credentials, connectionStore, copyStore, copyStore, coordinator, settings, journal, clock, comparisonNotices,
+    )
     val fetch = FetchTransactions(
         plugins, credentials, connectionStore, offeredStore, importStatusStore, providerRequests, coordinator, settings, journal,
         clock, fetchNotices, comparison,
@@ -97,6 +101,7 @@ class TestSlice(
         clock = clock,
         firstRunNext = { settingsOverview.next() },
         fetchNotices = fetchNotices,
+        comparisonNotices = comparisonNotices,
     )
 
     val feedsKey: ServiceKey get() = plugins.dataProviders.single { it.plugin === feeds }.key

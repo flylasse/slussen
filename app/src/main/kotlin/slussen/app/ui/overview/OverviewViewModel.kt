@@ -5,8 +5,11 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import slussen.app.ui.ReadAgain
 import slussen.app.ui.Texts
 import slussen.app.ui.UiServices
+import slussen.app.ui.components.BudgetAppLineUi
+import slussen.core.status.StatusesAsOf
 import slussen.app.ui.service.FetchWarningUi
 import slussen.core.fetch.FetchReport
 import slussen.core.fetch.FetchStart
@@ -31,6 +34,10 @@ data class BudgetLine(
     val blocked: List<String>,
     /** BR-006, BR-009 (`overview.html#recovery`): "Uploads wait for First Upload Matching" in its tone, or null. */
     val firstUploadMatching: FirstUploadMatchingChip? = null,
+    /** UC-003 step 7, A1 step 2 (`overview.html#read-one-failed`): when its statuses were given; null with nothing to compare. */
+    val statuses: String? = null,
+    /** UC-003 A1 step 2: the remedy of statuses that are not current, a read of the Budget App; null while they are. */
+    val readAgainNote: String? = null,
 )
 
 /** UC-008 A10, BR-011 (`overview.html#new-installation`, `#first-run-next`): the one card that leads to Settings. */
@@ -39,7 +46,8 @@ data class FirstRunUi(val title: String, val next: String, val then: String?)
 /** What the Overview shows when Slussen opens (UC-008 steps 1-3, A1, A7, A8, A10). */
 data class OverviewUi(
     val heading: String,
-    val budgetAppRead: String,
+    /** FR-040, UC-003 (`overview.html#read-one-failed`): the line of the Budget App with Read again and its answer. */
+    val budgetAppLine: BudgetAppLineUi,
     val unreadableNotices: List<String>,
     /** A8, BR-009: First Upload Matching with its explanation, reason lines and action; null while none is open. */
     val firstUploadMatching: FirstUploadMatchingUi?,
@@ -83,12 +91,37 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
     /** P9-16, ADR-007 §1: the operation that runs now. */
     private var running: RunningOperation? = services.running.value
 
+    /** FR-040: Read the Budget App again, at the line of the Budget App. */
+    private val reading = ReadAgain(services)
+
+    /** The line of the Budget App as the stored status gives it, and the Budget App's name. */
+    private var budgetAppStatus = ""
+    private var budgetAppName = ""
+
     init {
         viewModelScope.launch {
             services.running.collect { now ->
                 running = now
-                mutableState.value = mutableState.value?.let { it.copy(fetchButton = fetchButton(it.canFetch)) }
+                mutableState.value = mutableState.value?.let {
+                    it.copy(fetchButton = fetchButton(it.canFetch), budgetAppLine = budgetAppLine())
+                }
             }
+        }
+    }
+
+    private fun budgetAppLine() = reading.line(budgetAppStatus, running, budgetAppName)
+
+    /**
+     * FR-040, UC-003 trigger: the Operator reads the Budget App again; no Bank is contacted. Its line shows at once that
+     * it reads, or what it waits for, then its answer; the stored status is shown again afterwards (NFR-023, UX-12).
+     */
+    fun readAgain() {
+        val current = mutableState.value ?: return
+        if (current.firstRun != null || !current.budgetAppLine.button.enabled || !reading.begin()) return
+        mutableState.value = current.copy(budgetAppLine = budgetAppLine())
+        viewModelScope.launch {
+            reading.run(budgetAppName)
+            show(services.status.overview())
         }
     }
 
@@ -115,11 +148,19 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
         }
         val formats = services.formats
         val firstUploadMatching = overview.firstUploadMatching
+        val now = services.clock.instant()
+        budgetAppName = overview.budgetAppName
+        // A1 step 2 of UC-003: the line names the Budgets whose read failed since their last successful read.
+        budgetAppStatus = Texts.budgetAppRead(
+            overview.budgetAppRead,
+            overview.budgets.count { it.statusesAsOf != StatusesAsOf.NothingToCompare },
+            overview.budgetAppName,
+            formats,
+            now,
+        )
         mutableState.value = OverviewUi(
-            heading = "Overview · ${formats.dateTime(services.clock.instant())} · device time",
-            budgetAppRead = overview.budgets.mapNotNull { it.lastReadAt }.maxOrNull()
-                ?.let { "${overview.budgetAppName} · read ${formats.time(it)}" }
-                ?: "${overview.budgetAppName} · not read yet",
+            heading = "Overview · ${formats.dateTime(now)} · device time",
+            budgetAppLine = budgetAppLine(),
             unreadableNotices = overview.unreadable.map { notice ->
                 "Stored data could not be read: ${Texts.part(notice.part)}" +
                     if (notice.startedFromLastGoodCopy) " · started from its last good copy" else " · started empty"
@@ -138,8 +179,8 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
                     budgetId = budget.budgetId,
                     name = budget.name,
                     currency = budget.currency.code,
-                    counts = "Eligible ${budget.notYetUploaded.eligible} · waiting for a decision " +
-                        "${budget.notYetUploaded.waitingForDecision}",
+                    // A1 of UC-003 (S-T-08): a Bank Transaction not compared yet is counted neither as Eligible nor as waiting.
+                    counts = Texts.counts(budget.notYetUploaded, budget.notComparedYet),
                     blocked = budget.blocked.filterNot { it.reason == BlockedReason.UploadsWaitForFirstUploadMatching }
                         .map { blocked -> "Blocked: ${blocked.subject}, ${Texts.blockedReason(blocked.reason, blocked.dataProviderName)}" }
                         .distinct(),
@@ -147,6 +188,8 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
                     firstUploadMatching = firstUploadMatching?.takeIf {
                         budget.blocked.any { it.reason == BlockedReason.UploadsWaitForFirstUploadMatching }
                     }?.let { FirstUploadMatchingChip(Texts.UPLOADS_WAIT_FOR_FIRST_UPLOAD_MATCHING, it.tone) },
+                    statuses = Texts.statusesAsOf(budget.statusesAsOf, overview.budgetAppName, formats, now),
+                    readAgainNote = if (Texts.waitsForARead(budget)) Texts.readAgainNote(overview.budgetAppName) else null,
                 )
             },
             noBankAccountAdded = overview.noBankAccountAdded,
@@ -155,7 +198,7 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
             fetchButton = fetchButton(canFetch = true),
             fetchResults = fetchResults,
             fetchWarning = pendingWarnings.firstOrNull(),
-            fetchNote = Texts.FETCH_IN_THIS_BUILD,
+            fetchNote = Texts.fetchNote(overview.budgetAppName),
             // Step 2 (P9-13): the renew action needs Grant Bank Consent (UC-007), which this build does not have.
             expiringConsentNote = if (overview.expiringBankConsents.isEmpty()) {
                 null
@@ -170,7 +213,7 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
         val (next, then) = card.next?.let(Texts::next) ?: ("Next: open Settings" to null)
         mutableState.value = OverviewUi(
             heading = "Overview · ${services.formats.dateTime(services.clock.instant())} · device time",
-            budgetAppRead = "",
+            budgetAppLine = BudgetAppLineUi("", FetchButtonUi(Texts.readAgain(overview.budgetAppName), enabled = false, running = false)),
             unreadableNotices = emptyList(),
             firstUploadMatching = null,
             backupWarning = null,
@@ -233,8 +276,8 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
     }
 
     /**
-     * UC-008 A9: the Operator chooses "Start First Upload Matching". Step 1 needs Compare With the Budget App (UC-003),
-     * which no slice builds yet (O-P2-09), so First Upload Matching stays open and the screen says why.
+     * UC-008 A9: the Operator chooses "Start First Upload Matching". Its confirmation comes with Uploads (A-10), so First
+     * Upload Matching stays open and the screen says so, with no action needed.
      */
     fun startFirstUploadMatching() {
         viewModelScope.launch {

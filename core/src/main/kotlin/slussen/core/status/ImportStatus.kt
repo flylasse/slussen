@@ -1,5 +1,6 @@
 package slussen.core.status
 
+import slussen.core.comparison.ComparisonNotices
 import slussen.core.credential.CredentialStatus
 import slussen.core.credential.CredentialStatusReader
 import slussen.core.fetch.FetchNotices
@@ -61,6 +62,8 @@ class ImportStatus(
     private val firstRunNext: suspend () -> NextThing? = { null },
     /** UC-001 A21: what the last Fetch of each Bank Account found that nothing stored can show. */
     private val fetchNotices: FetchNotices = FetchNotices(),
+    /** UC-003 A1 step 2: the read of each Budget that failed since its last successful read. */
+    private val comparisonNotices: ComparisonNotices = ComparisonNotices(),
 ) {
     private val dataProviders: List<StoredDataProvider> get() = currentDataProviders()
 
@@ -125,6 +128,23 @@ class ImportStatus(
             noBankAccountAdded = noBankAccountAdded,
             budgetAppName = budgetAppName,
             firstRun = if (noBankAccountAdded) FirstRunCard(firstRunNext()) else null,
+            budgetAppRead = budgetAppRead(summaries),
+        )
+    }
+
+    /** FR-040, UC-003 A1 step 2: the latest successful read of any Budget, and the Budgets whose read failed since. */
+    private fun budgetAppRead(summaries: List<BudgetSummary>): BudgetAppRead {
+        val failed = summaries.mapNotNull { summary ->
+            when (val asOf = summary.statusesAsOf) {
+                StatusesAsOf.NothingToCompare -> null
+                is StatusesAsOf.NotReadYet -> asOf.failedRead
+                is StatusesAsOf.LastRead -> asOf.failedRead
+            }?.let { summary.name to it.failedAt }
+        }
+        return BudgetAppRead(
+            lastReadAt = summaries.filter { it.statusesAsOf is StatusesAsOf.LastRead }.mapNotNull { it.lastReadAt }.maxOrNull(),
+            notRead = failed.map { it.first },
+            failedAt = failed.maxOfOrNull { it.second },
         )
     }
 
@@ -172,7 +192,20 @@ class ImportStatus(
             notYetUploaded = notYetUploaded(accounts, snapshot),
             blocked = blocked,
             lastReadAt = budget.lastReadAt,
+            statusesAsOf = statusesAsOf(budget, accounts),
+            notComparedYet = accounts.sumOf { snapshot.counts[it.id]?.notComparedYet ?: 0 },
         )
+    }
+
+    /**
+     * UC-003 A1 step 2: the statuses of a Budget come from its last successful read, shown with its time and with the read
+     * that failed since; a Budget without a Bank Account to compare is not read at all.
+     */
+    private fun statusesAsOf(budget: StoredBudget, accounts: List<StoredBankAccount>): StatusesAsOf {
+        if (accounts.isEmpty()) return StatusesAsOf.NothingToCompare
+        val failed = comparisonNotices.failedRead(budget.id)
+        val readAt = budget.lastReadAt ?: return StatusesAsOf.NotReadYet(failed)
+        return StatusesAsOf.LastRead(readAt, failed?.takeIf { it.failedAt.isAfter(readAt) })
     }
 
     private fun budgetBlocked(budget: StoredBudget, snapshot: Snapshot): List<Blocked> = buildList {
@@ -270,6 +303,7 @@ class ImportStatus(
             dataProviderId = bankAccount.dataProviderId,
             // A21 of UC-001: the balance the last Fetch reported in another currency, named with both currencies.
             balanceInOtherCurrency = fetchNotices.balanceInOtherCurrency(bankAccount.id),
+            notComparedYet = counts?.notComparedYet ?: 0,
         )
     }
 
@@ -309,12 +343,22 @@ class ImportStatus(
         val budgetBalance = budgetAccount.balance
         val budgetReadAt = budgetAccount.balanceReadAt
         if (accountBalance == null || budgetBalance == null || budgetReadAt == null) {
-            return BalanceComparison.NotKnown(accountBalance != null, budgetBalance != null, accountBalance?.amount, budgetBalance)
+            return BalanceComparison.NotKnown(
+                accountBalance != null, budgetBalance != null, accountBalance?.amount, budgetBalance,
+                accountBalanceReadAt = accountBalance?.reportedAt,
+                budgetAccountBalanceReadAt = budgetReadAt.takeIf { budgetBalance != null },
+            )
         }
         val limit = Duration.ofHours(snapshot.settings.outdatedBalanceHours.toLong())
         // UC-008 BR-004: An Account Balance older than the outdated-balance limit hides the difference and is marked outdated.
         if (Duration.between(accountBalance.reportedAt, snapshot.now) > limit) {
-            return BalanceComparison.Outdated(accountBalance.amount, budgetBalance, accountBalance.reportedAt)
+            // UC-008 BR-004: A newer Account Balance comes with a Fetch of the Data Provider that reports it (UX-24).
+            val reportedBy = bankAccount.dataProviderId ?: bankAccount.balanceDataProviderId
+            return BalanceComparison.Outdated(
+                accountBalance.amount, budgetBalance, accountBalance.reportedAt,
+                budgetAccountBalanceReadAt = budgetReadAt,
+                dataProviderName = reportedBy?.let(::dataProviderName),
+            )
         }
         // UC-008 BR-005: The difference is the Account Balance minus the Budget Account's balance, with the time each was read.
         return BalanceComparison.Compared(

@@ -30,6 +30,8 @@ import slussen.core.port.StoredBudgetAppTransaction
 import slussen.core.port.TransactionStatus
 import slussen.core.status.Blocked
 import slussen.core.status.BlockedReason
+import slussen.core.status.BudgetAppRead
+import slussen.core.status.StatusesAsOf
 import slussen.core.status.NotYetUploaded
 import slussen.core.status.Remedy
 import slussen.pluginapi.budgetapp.BudgetAppTransactionRead
@@ -699,6 +701,52 @@ class UC003CompareWithTheBudgetAppTest {
         assertInstanceOf(BudgetReadOutcome.NotRead::class.java, report.budgets.single { it.budgetName == "Household" })
         assertInstanceOf(BudgetReadOutcome.Read::class.java, report.budgets.single { it.budgetName == "Summer House" })
         assertEquals(java.time.Duration.ofSeconds(30), slice.budgetApp.reader.contexts.last().timeout.duration)
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read")
+    @DisplayName("A1 step 2 (FR-040, S-T-08, overview.html#read-one-failed): the import status shows each Budget's statuses as of its last successful read, the read that failed since with its time and kind, and the Bank Transactions not compared yet of each Bank Account; the Budgets read show the time of this read; a later successful read clears the failure")
+    fun statusesShowTheirLastSuccessfulRead() = runTest {
+        ready()
+        val checking = bankAccount("Kestrel Checking", "Checking")
+        stored(checking, "TX-1", oct14, amount(-10))
+        val summer = bankAccount("Aurora Current", "Current", currency = EUR)
+        stored(summer, "TX-9", oct14, amount(-9))
+        suspend fun summary(name: String) = slice.status.workspace(budget(name).id).summary
+
+        assertEquals(StatusesAsOf.NotReadYet(failedRead = null), summary("Household").statusesAsOf)
+        assertEquals(1, summary("Household").notComparedYet)
+        assertEquals(StatusesAsOf.NothingToCompare, summary("Care Fund").statusesAsOf)
+        assertEquals(BudgetAppRead(lastReadAt = null, notRead = emptyList(), failedAt = null), slice.status.overview().budgetAppRead)
+
+        answerHousehold(read("ynab-1", oct14.minusDays(1), amount(-10)))
+        compare()
+        val firstRead = slice.clock.instant()
+        assertEquals(StatusesAsOf.LastRead(firstRead, failedRead = null), summary("Household").statusesAsOf)
+        assertEquals(0, summary("Household").notComparedYet)
+
+        slice.clock.advance(Duration.ofHours(2))
+        stored(checking, "TX-2", oct14, amount(-20), firstSeenAt = slice.clock.instant())
+        slice.budgetApp.reader.changesAnswer = { asked ->
+            if (asked.budgetReference == "budget-household") ReadResult.TransientFailure(FailureKind.Timeout)
+            else ReadResult.Answered(ChangeSet(emptyList(), ChangeCursor("summer-2")))
+        }
+        compare()
+        val failedAt = slice.clock.instant()
+
+        val household = slice.status.workspace(budget("Household").id)
+        assertEquals(StatusesAsOf.LastRead(firstRead, BudgetReadFailure(failedAt, FailureKind.Timeout)), household.summary.statusesAsOf)
+        assertEquals(1, household.summary.notComparedYet)
+        assertEquals(1, household.bankAccounts.single().notComparedYet)
+        assertEquals(StatusesAsOf.LastRead(failedAt, failedRead = null), summary("Summer House").statusesAsOf)
+        assertEquals(BudgetAppRead(lastReadAt = failedAt, notRead = listOf("Household"), failedAt = failedAt), slice.status.overview().budgetAppRead)
+
+        slice.clock.advance(Duration.ofMinutes(5))
+        answerHousehold(next = "k-2")
+        compare()
+        assertEquals(StatusesAsOf.LastRead(slice.clock.instant(), failedRead = null), summary("Household").statusesAsOf)
+        assertEquals(0, summary("Household").notComparedYet)
+        assertEquals(BudgetAppRead(lastReadAt = slice.clock.instant(), notRead = emptyList(), failedAt = null), slice.status.overview().budgetAppRead)
     }
 
     @Test

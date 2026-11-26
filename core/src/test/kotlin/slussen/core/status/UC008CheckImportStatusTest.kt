@@ -428,7 +428,7 @@ class UC008CheckImportStatusTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A2: Account Balance Outdated", businessRules = ["BR-004"])
-    @DisplayName("A2: an Account Balance older than the outdated-balance limit (36 hours by default) hides the difference and is marked outdated")
+    @DisplayName("A2 (UX-08, UX-24): an Account Balance older than the outdated-balance limit (36 hours by default) hides the difference and is marked outdated, with the time the Budget Account's balance was read and the Data Provider whose Fetch brings a newer one")
     fun outdatedBalanceHidesTheDifference() = runTest {
         household()
         val old = now.minus(Duration.ofHours(37))
@@ -436,7 +436,7 @@ class UC008CheckImportStatusTest {
         slice.importStatusStore.balances += StoredAccountBalance(id("Pinecrest Rewards Card"), amount(-547, 900), USD, now.minus(Duration.ofHours(35)))
 
         assertEquals(
-            BalanceComparison.Outdated(amount(5135, 280), amount(4140, 50), old),
+            BalanceComparison.Outdated(amount(5135, 280), amount(4140, 50), old, budgetAccountBalanceReadAt = now, dataProviderName = "Kestrel Feeds"),
             workspaceAccount("Household", "Kestrel Checking").balance,
         )
         assertTrue(workspaceAccount("Household", "Pinecrest Rewards Card").balance is BalanceComparison.Compared)
@@ -459,7 +459,7 @@ class UC008CheckImportStatusTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A4: Balance Not Known")
-    @DisplayName("A4: a balance that is not known is named and no difference is shown")
+    @DisplayName("A4 (UX-08): a balance that is not known is named and no difference is shown; the one that is known keeps the time it was reported or read")
     fun unknownBalanceShowsNoDifference() = runTest {
         household()
         slice.importStatusStore.balances += StoredAccountBalance(id("Aurora Current"), amount(3410, 800), EUR, now)
@@ -471,11 +471,17 @@ class UC008CheckImportStatusTest {
         }
 
         assertEquals(
-            BalanceComparison.NotKnown(accountBalanceKnown = false, budgetAccountBalanceKnown = true, accountBalance = null, budgetAccountBalance = amount(4140, 50)),
+            BalanceComparison.NotKnown(
+                accountBalanceKnown = false, budgetAccountBalanceKnown = true, accountBalance = null, budgetAccountBalance = amount(4140, 50),
+                budgetAccountBalanceReadAt = now,
+            ),
             workspaceAccount("Household", "Kestrel Checking").balance,
         )
         assertEquals(
-            BalanceComparison.NotKnown(accountBalanceKnown = true, budgetAccountBalanceKnown = false, accountBalance = amount(3410, 800), budgetAccountBalance = null),
+            BalanceComparison.NotKnown(
+                accountBalanceKnown = true, budgetAccountBalanceKnown = false, accountBalance = amount(3410, 800), budgetAccountBalance = null,
+                accountBalanceReadAt = now,
+            ),
             workspaceAccount("Summer House", "Aurora Current").balance,
         )
     }

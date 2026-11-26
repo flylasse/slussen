@@ -133,6 +133,8 @@ fun SlussenScreens(services: UiServices) {
                             onFetchAll = overview::fetchAll,
                             onConfirmFetch = overview::confirmFetch,
                             onCancelFetch = overview::cancelFetch,
+                            onReadAgain = overview::readAgain,
+                            onRemedy = { action -> action.service?.let { go(Screen.Service(it)) } },
                         )
                     }
                 }
@@ -144,6 +146,7 @@ fun SlussenScreens(services: UiServices) {
                             ui,
                             onRemedy = { action -> action.service?.let { go(Screen.Service(it)) } },
                             onStartFirstUploadMatching = { overview.startFirstUploadMatching() },
+                            onReadAgain = vm::readAgain,
                         )
                     }
                 }

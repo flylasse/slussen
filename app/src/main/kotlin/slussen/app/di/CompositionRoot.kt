@@ -6,6 +6,7 @@ import slussen.app.ui.Formats
 import slussen.app.ui.UiServices
 import slussen.budgetapp.ynab.YnabBudgetApp
 import slussen.core.comparison.Comparison
+import slussen.core.comparison.ComparisonNotices
 import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
@@ -63,9 +64,10 @@ class CompositionRoot(log: SlussenLog) {
             storage.fetches, CredentialRefusals(), clock,
         )
         val fetchNotices = FetchNotices()
+        val comparisonNotices = ComparisonNotices()
         val comparison = Comparison(
             registered, credentials, storage.connections, storage.comparisons, storage.comparisons, coordinator, storage.settings,
-            journal, clock,
+            journal, clock, comparisonNotices,
         )
         // ADR-007 §3a, §8: a Comparison left between storing its read and its conclusions is concluded from the stored data before any other operation.
         comparison.recomputePending()
@@ -98,6 +100,7 @@ class CompositionRoot(log: SlussenLog) {
                 clock = clock,
                 firstRunNext = { settingsOverview.next() },
                 fetchNotices = fetchNotices,
+                comparisonNotices = comparisonNotices,
             ),
             fetch = FetchTransactions(
                 registered, credentials, storage.connections, storage.offered, storage.fetches, storage.providerRequests,

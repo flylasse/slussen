@@ -50,6 +50,8 @@ class Comparison(
     private val settings: OperatorSettingsStore,
     private val journal: DecisionJournal,
     private val clock: Clock,
+    /** A1 step 2: the read of each Budget that failed since its last successful read, for the screens. */
+    private val notices: ComparisonNotices = ComparisonNotices(),
 ) {
     /** Trigger: the Operator asks Slussen to read the Budget App again; no Bank is contacted (BR-015). */
     suspend fun readAgain(): ComparisonStart =
@@ -95,8 +97,8 @@ class Comparison(
             ReadResult.CredentialsRefused -> return refused(read = emptySet(), pendingBefore)
             // A1: the Budget App does not answer, is unavailable or the read is not sent: no Budget can be read.
             is ReadResult.TransientFailure ->
-                return ComparisonReport.Compared(budgets.map { notRead(it, read.kind) }, statusesChanged = 0)
-            is ReadResult.StoppedByGate -> return ComparisonReport.Compared(budgets.map { notRead(it, null) }, statusesChanged = 0)
+                return noted(ComparisonReport.Compared(budgets.map { notRead(it, read.kind) }, statusesChanged = 0))
+            is ReadResult.StoppedByGate -> return noted(ComparisonReport.Compared(budgets.map { notRead(it, null) }, statusesChanged = 0))
         }
         val outcomes = mutableListOf<BudgetReadOutcome>()
         for (budget in budgets) {
@@ -106,7 +108,22 @@ class Comparison(
         }
         val read = outcomes.filterIsInstance<BudgetReadOutcome.Read>().map { it.budgetId }.toSet()
         val changed = if (read.isEmpty() && !pendingBefore) 0 else concludeWith(read, pendingBefore).size
-        return ComparisonReport.Compared(outcomes, changed)
+        return noted(ComparisonReport.Compared(outcomes, changed))
+    }
+
+    /**
+     * A1 step 2: notes, for the screens, the read of each Budget that failed with its time, and forgets it once a read of
+     * that Budget succeeds.
+     */
+    private fun noted(report: ComparisonReport.Compared): ComparisonReport.Compared {
+        val at = clock.instant()
+        report.budgets.forEach { outcome ->
+            when (outcome) {
+                is BudgetReadOutcome.Read -> notices.noteRead(outcome.budgetId)
+                is BudgetReadOutcome.NotRead -> notices.noteFailed(outcome.budgetId, BudgetReadFailure(at, outcome.kind))
+            }
+        }
+        return report
     }
 
     /**

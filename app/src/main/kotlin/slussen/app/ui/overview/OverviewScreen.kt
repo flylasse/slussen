@@ -19,7 +19,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import slussen.app.ui.budget.RemedyAction
 import slussen.app.ui.components.Banner
+import slussen.app.ui.components.BudgetAppLine
 import slussen.app.ui.components.FetchButton
 import slussen.app.ui.components.FetchResultLine
 import slussen.app.ui.components.FirstUploadMatchingBanner
@@ -48,6 +50,8 @@ fun OverviewScreen(
     onFetchAll: () -> Unit,
     onConfirmFetch: () -> Unit,
     onCancelFetch: () -> Unit,
+    onReadAgain: () -> Unit = {},
+    onRemedy: (RemedyAction) -> Unit = {},
 ) {
     val firstRun = ui.firstRun
     if (firstRun != null) {
@@ -68,7 +72,8 @@ fun OverviewScreen(
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
             ScreenTitle("Slussen", ui.heading)
-            Muted(ui.budgetAppRead)
+            // FR-040, NFR-023 (`#read-one-failed`): the line of the Budget App, whose Read again answers on the line itself.
+            BudgetAppLine(ui.budgetAppLine, onReadAgain, onRemedy)
         }
         items(ui.unreadableNotices) { Banner(it, null) }
         val firstUploadMatching = ui.firstUploadMatching
@@ -96,6 +101,9 @@ fun OverviewScreen(
                     Text(budget.currency, color = SlussenColors.Text2, fontSize = 12.sp)
                 }
                 Muted(budget.counts)
+                // A1 step 2 of UC-003: statuses never shown as current when the read since failed.
+                budget.statuses?.let { Muted(it) }
+                budget.readAgainNote?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
                 budget.firstUploadMatching?.let { chip -> Text(chip.text, color = toneColours(chip.tone).second, fontSize = 12.sp) }
                 if (budget.blocked.isEmpty() && budget.firstUploadMatching == null) {
                     Text("Nothing blocked", color = SlussenColors.Green, fontSize = 12.sp)

@@ -10,6 +10,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import slussen.app.ui.components.BlockedReasonLine
+import slussen.app.ui.components.BudgetAppLine
 import slussen.app.ui.components.FirstUploadMatchingBanner
 import slussen.app.ui.components.Muted
 import slussen.app.ui.components.ScreenTitle
@@ -24,13 +25,19 @@ import slussen.app.ui.theme.SlussenColors
  * (A8, BR-009, `#recovery-blocked`), and what this build does not show yet (P9-15).
  */
 @Composable
-fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit, onStartFirstUploadMatching: () -> Unit) {
+fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit, onStartFirstUploadMatching: () -> Unit, onReadAgain: () -> Unit = {}) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
             ScreenTitle(ui.title, ui.subtitle)
             // UC-008 BR-009: First Upload Matching is shown as information or a caution, never in an error colour (`budget.html#recovery-blocked`).
             ui.firstUploadMatching?.let { FirstUploadMatchingBanner(it, onStartFirstUploadMatching) }
+            // FR-040, NFR-023 (`budget.html`, the states of Read again): the line of the Budget App, whose Read again answers on it.
+            BudgetAppLine(ui.budgetAppLine, onReadAgain, onRemedy)
             Muted(ui.counts)
+            // A1 step 2 of UC-003: statuses never shown as current when the read since failed.
+            ui.statuses?.let { Muted(it) }
+            ui.notComparedYet?.let { Muted(it) }
+            ui.readAgainNote?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
             if (ui.note != null) Muted(ui.note)
             SectionTitle("Sources")
         }
@@ -53,6 +60,8 @@ fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit, onStartFirstUpl
                 Muted(account.freshness)
                 Text(account.balance, color = SlussenColors.Text, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
                 // A21 of UC-001 (`bank-account.html#balance-other-currency`): both currencies, nothing converted.
+                // A2 of UC-008 (UX-24): an outdated Account Balance names its remedy.
+                account.balanceRemedy?.let { Muted(it) }
                 account.balanceNotice?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
                 account.blocked.forEach { BlockedReasonLine(it.text, it.action, onRemedy, it.advice) }
             }

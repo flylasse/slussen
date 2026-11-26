@@ -3,6 +3,7 @@ package slussen.core.comparison
 import slussen.core.operation.OperationRefusal
 import slussen.pluginapi.request.FailureKind
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 
 /** What the read of one Budget came to in a Comparison (UC-003 step 1, A1). */
 sealed interface BudgetReadOutcome {
@@ -49,4 +50,28 @@ sealed interface ComparisonStart {
 
     /** Precondition (UC-006 BR-005): an Upload Plan awaits confirmation or an Upload is written. */
     data class Unavailable(val reason: OperationRefusal) : ComparisonStart
+}
+
+/** A1: the read of one Budget that failed at [failedAt], with what the Budget App did ([kind], null when it was not sent). */
+data class BudgetReadFailure(val failedAt: Instant, val kind: FailureKind?)
+
+/**
+ * UC-003 A1 step 2: the read of each Budget that failed since its last successful read, kept in memory while the app runs.
+ * The entity model keeps only the time of a Budget's last successful read (`BUDGET.last_read_at`), so a failed read is
+ * shown until a later read of that Budget succeeds, or the app restarts; its statuses are shown as of the last successful
+ * read either way.
+ */
+class ComparisonNotices {
+    private val failures = ConcurrentHashMap<Long, BudgetReadFailure>()
+
+    /** The read of [budgetId] that failed since its last successful read, or null. */
+    fun failedRead(budgetId: Long): BudgetReadFailure? = failures[budgetId]
+
+    internal fun noteRead(budgetId: Long) {
+        failures.remove(budgetId)
+    }
+
+    internal fun noteFailed(budgetId: Long, failure: BudgetReadFailure) {
+        failures[budgetId] = failure
+    }
 }
