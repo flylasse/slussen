@@ -267,37 +267,61 @@ class UC008CheckImportStatusViewModelTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A1: Stored Data Cannot Be Read", businessRules = ["BR-009", "BR-012"], requirements = ["NFR-005"])
-    @DisplayName("A1, BR-012 (overview.html#damaged-critical, issue #26): the stored transactions, decisions and settings started from the last good copy name checking Settings and the First Upload Matching shown below as next; started from empty records they name setting Slussen up again")
+    @DisplayName("A1, BR-012 (overview.html#damaged-critical, review 2): the stored transactions, decisions and settings started from the last good copy name checking Settings as next, and point to First Upload Matching only while one is open and shown below")
     fun unreadableDecisionCriticalData() {
-        val fromCopy = noticesOf(
+        val damaged = UiFixture(
+            startKind = StartKind.LastGoodCopy,
+            unreadableParts = listOf(UnreadablePart(StoredPart.TransactionsDecisionsAndSettings, startedFromLastGoodCopy = true)),
+        )
+        household(damaged.slice)
+        damaged.slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.LastGoodCopy, damaged.slice.clock.instant())
+        val open = OverviewViewModel(damaged.services).also { it.load() }.state.value!!
+        val noneOpen = noticesOf(
             UnreadablePart(StoredPart.TransactionsDecisionsAndSettings, startedFromLastGoodCopy = true),
             startKind = StartKind.LastGoodCopy,
         )
-        val fromEmpty = noticesOf(
-            UnreadablePart(StoredPart.TransactionsDecisionsAndSettings, startedFromLastGoodCopy = false),
-            startKind = StartKind.LastGoodCopy,
-        )
 
+        val checkSettings = "Started from its last good copy, made at an earlier start · the unreadable original is kept on this device · " +
+            "check in Settings that your Budgets, Bank Accounts and Account Mappings are as you left them"
         assertEquals(
-            listOf(
-                NoticeUi(
-                    "Stored data could not be read: stored transactions, decisions and settings",
-                    "Started from its last good copy, made at an earlier start · the unreadable original is kept on this device · " +
-                        "check in Settings that your Budgets, Bank Accounts and Account Mappings are as you left them, and see " +
-                        "First Upload Matching below",
-                ),
-            ),
-            fromCopy,
+            listOf(NoticeUi("Stored data could not be read: stored transactions, decisions and settings", "$checkSettings, and see First Upload Matching below")),
+            open.unreadableNotices,
         )
+        assertTrue(open.firstUploadMatching != null)
+        assertEquals(listOf(NoticeUi("Stored data could not be read: stored transactions, decisions and settings", checkSettings)), noneOpen)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A10: No Bank Account Added Yet", businessRules = ["BR-011", "BR-012"], requirements = ["NFR-005"])
+    @DisplayName("A1, A10, BR-011, BR-012 (review 1): while no Bank Account is added, the notices of stored data that could not be read stand above the card; started from empty records, the notice says that what was set up before is not in the records and that the card leads to setting Slussen up again")
+    fun noticesStandAboveTheFirstRunCard() {
+        val damaged = UiFixture(
+            startKind = StartKind.LastGoodCopy,
+            unreadableParts = listOf(
+                UnreadablePart(StoredPart.TransactionsDecisionsAndSettings, startedFromLastGoodCopy = false),
+                UnreadablePart(StoredPart.DecisionJournal, startedFromLastGoodCopy = false),
+            ),
+        )
+        damaged.slice.firstUploadMatchingStore.open(FirstUploadMatchingCause.LastGoodCopy, damaged.slice.clock.instant())
+
+        val ui = OverviewViewModel(damaged.services).also { it.load() }.state.value!!
+
+        assertTrue(ui.firstRun != null)
+        assertNull(ui.firstUploadMatching)
         assertEquals(
             listOf(
                 NoticeUi(
                     "Stored data could not be read: stored transactions, decisions and settings",
                     "Started from empty records with every default, as there was no last good copy · the unreadable original is " +
-                        "kept on this device · set Slussen up again in Settings, and see First Upload Matching below",
+                        "kept on this device · what was set up before is not in these records: set Slussen up again with the card below",
+                ),
+                NoticeUi(
+                    "Stored data could not be read: Decision Journal",
+                    "Started empty: the Decision Journal has no last good copy · the unreadable original is kept on this device · " +
+                        "nothing else is affected, no action is needed",
                 ),
             ),
-            fromEmpty,
+            ui.unreadableNotices,
         )
     }
 
