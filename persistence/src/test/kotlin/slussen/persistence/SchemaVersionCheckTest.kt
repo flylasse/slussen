@@ -60,7 +60,8 @@ class SchemaVersionCheckTest {
         val committed = RoomSchemas.file(RoomSchemas.committed, SlussenDatabase::class, 3).readText()
         val planted = committed.replace("`currency` TEXT NOT NULL, `reported_at`", "`currency` TEXT NOT NULL, `planted` TEXT, `reported_at`")
 
-        assertEquals(null, changeOfFinalVersion(name, 3, committed.replace("\n", "\r\n")))
+        // The file reads CRLF on a Windows checkout (`.gitattributes`): it is made LF first, so that every line ends in exactly one CRLF.
+        assertEquals(null, changeOfFinalVersion(name, 3, committed.replace("\r\n", "\n").replace("\n", "\r\n")))
         assertTrue(planted != committed)
         assertTrue(changeOfFinalVersion(name, 3, planted)!!.contains("$name version 3"))
         assertTrue(changeOfFinalVersion(name, 99, committed)!!.contains("no pin"))
