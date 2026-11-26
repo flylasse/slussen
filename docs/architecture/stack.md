@@ -1,19 +1,19 @@
-# Development View
+# Stack
 
-**Question:** How is the code organized, built, and tested?  
-**Artifacts:** this document  
-**Notation:** Markdown  
-**For the agent:** read before writing code. The Layers table says which layer skill builds and tests each
+**For the agent:** read before writing code. This file is the AI Unified Process record of the technical layers,
+independent of how the team documents its architecture. The Layers table says which layer skill builds and tests each
 technical layer: `/use-case-implement` runs the Skill column bottom-up, `/use-case-test` runs the Test skill column from the
 integration layer up, and `/use-case-coverage` searches for the markers in the last table.
 
-**Last updated:** 2026-11-25
+**Last updated:** 2026-11-26
 
 Derived from the Accepted ADRs: modules and dependencies from ADR-001 §1-§3, storage from ADR-002, test runner and
-gates from ADR-005 §3, markers from ADR-004 §1-§2. On a conflict, the ADR wins and this view is corrected. Written by
+gates from ADR-005 §3, markers from ADR-004 §1-§2. On a conflict, the ADR wins and this file is corrected. Written by
 hand from the template of `aiup-core` `skills/architecture/references/development.md` (Marketplace PR #38, read
-from its branch while the PR was open; O-P2-38). In the snapshot `vendor/aiup-marketplace/aiup-core/` (the merge of
-PR #38) that template is `skills/stack/references/stack.md`.
+from its branch while the PR was open; O-P2-38), under the name `development.md` and the title Development View. The
+merge of PR #38 renamed that template to `skills/stack/references/stack.md` (snapshot
+`vendor/aiup-marketplace/aiup-core/`), and its skills read `docs/architecture/stack.md`: this file follows it since
+S-T-19 (2026-11-26).
 
 ## Layers
 

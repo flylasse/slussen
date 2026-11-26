@@ -46,7 +46,7 @@
 | UC-008 Check Import Status | The Bank Transactions with their Transaction Statuses on the Budget tab and the Bank Account screen (`budget.html`, `bank-account.html`); the counts that now stop being 0 | Upload Plan entry points |
 | UC-011 Export the Decision Journal | BR-001 recording for the events above (the journal exists since construction) | The export itself |
 
-The requirements are those these use cases list; their statuses are derived again at close (`docs/architecture/development.md`, REFERENCE.md rule). Phase 1 adds or changes requirements only where §6's issues need it.
+The requirements are those these use cases list; their statuses are derived again at close (`docs/architecture/stack.md`, REFERENCE.md rule). Phase 1 adds or changes requirements only where §6's issues need it.
 
 ### Issues this initiative takes on
 
@@ -460,6 +460,12 @@ Phase 7a's notes:
 - A2 midway: a Budget already stored in the same Comparison is concluded, so that no read is left pending. A Comparison left pending at a restart is concluded from the stored copy, which can move a status by the date (Too Old).
 - "Not compared yet" (S-T-08) is a Bank Transaction first received after its Budget's last successful read.
 - Review of PR #35 (2026-11-26): S-T-18 as first proposed forgot the cursor, and a read of the period reports no deleted transactions in YNAB, so a deletion or merge since the previous read was missed. S-T-18 is amended: the read of the period is followed by the changes since the kept cursor, and `budget_read_state.period_read_owed` marks it (version 5 not yet merged, so its schema file changed in place). The test of the main case was seen failing first; the A1 test passed before the change, since it guards the new path. A Windows-only fault of `SchemaVersionCheckTest` (CRLF made twice, since Phase 5) was fixed with it.
+
+Before Phase 7b, 2026-11-26: one specification change. **Proposed, waiting for the operator's approval.**
+
+| ID | Found by | Change | Files |
+|---|---|---|---|
+| S-T-19 | The Marketplace snapshot (§5 row 10) | `docs/architecture/development.md` is renamed `docs/architecture/stack.md`, with the title Stack and the opening lines of the snapshot's template (`skills/stack/references/stack.md`), since the `aiup-core` 3.0.0 skills `use-case-test`, `use-case-implement` and `use-case-coverage` read that path. Its Layers, Module layout, Commands and Markers are unchanged; it has no API contract section, since Slussen has no API layer. ADR-004 names the new path and reads the coverage agent from the snapshot. The phase prompts of §4 written before this keep the old name. | `docs/architecture/stack.md`, ADR-004 Context, §4 and its consequences; two code comments |
 
 Phase 6b's notes:
 - The app had no Fetch Cooldown edit, only its value, so Phase 6b built UC-010 steps 2-6, A1 and A10 for it, with the fetch period's states.
