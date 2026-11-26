@@ -213,11 +213,24 @@ object EligibleTransactions {
     private fun writesItsTransfer(transaction: StoredBankTransaction, transferLegs: List<StoredBankTransaction>): Boolean {
         val transferId = transaction.transferId ?: return false
         val otherLegs = transferLegs.filter { it.transferId == transferId && it.id != transaction.id }
+        return keptOutBy(transaction, transferLegs) == null && writesItsSide(transaction, otherLegs)
+    }
+
+    /**
+     * The Transfer Leg of the Transfer of [transaction], itself included, whose Transaction Status keeps the whole
+     * Transfer out of every Upload Plan, or null when none does: a doubtful one first (UC-005 BR-013), then one an earlier
+     * rule of the Comparison gave its status (UC-005 BR-010), then a Guessed Transfer's. [transferLegs] are the stored
+     * Bank Transactions that are a Transfer Leg, of every Bank Account.
+     */
+    fun keptOutBy(transaction: StoredBankTransaction, transferLegs: List<StoredBankTransaction>): StoredBankTransaction? {
+        val transferId = transaction.transferId ?: return null
+        val legs = listOf(transaction) + transferLegs.filter { it.transferId == transferId && it.id != transaction.id }
         // UC-005 BR-013: A Transfer with a Transfer Leg that is Needs Review or Possible Import By Other Path is in no Upload Plan, from either side.
-        if (otherLegs.any { it.status in DOUBTFUL }) return false
+        legs.firstOrNull { it.status in DOUBTFUL }?.let { return it }
         // UC-005 BR-010: While a Transfer has a Transfer Leg to which an earlier rule of the Comparison gave its Transaction Status, the whole Transfer is in no Upload Plan, from either side.
-        if (otherLegs.any { it.status != TransactionStatus.TransferLeg }) return false
-        return writesItsSide(transaction, otherLegs)
+        legs.firstOrNull { it.status != TransactionStatus.TransferLeg && it.status != TransactionStatus.GuessedTransfer }?.let { return it }
+        // UC-005 BR-010: The Transfer Legs of a Guessed Transfer are not eligible until the Operator confirms the Transfer or chooses another Budget Account.
+        return legs.firstOrNull { it.status == TransactionStatus.GuessedTransfer }
     }
 
     // UC-006 BR-009: A Transfer is written through exactly one Transfer Leg, the outflow side when both Transfer Legs are present.

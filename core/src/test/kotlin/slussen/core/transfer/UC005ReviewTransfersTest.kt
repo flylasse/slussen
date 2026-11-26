@@ -633,19 +633,34 @@ class UC005ReviewTransfersTest {
 
         fun line(id: Long) = runBlocking { slice.bankAccountTransactions.of(card) }.weeks.flatMap { it.lines }.single { it.key.id == id }
         val lonely = (line(paid).reason as StatusReason.TransferLeg).transfer
-        assertEquals(TransferShown(TransferType.CardPayment, false, "Checking", otherLeg = null, expectedBy = today, writesIt = true), lonely)
+        assertEquals(TransferShown(TransferType.CardPayment, false, "Checking", otherLeg = null, expectedBy = today, writesIt = true, keptOutBy = null), lonely)
 
         slice.clock.advance(Duration.ofDays(1))
         compare()
 
         assertEquals(TransactionStatus.New, line(paid).status)
-        assertEquals(StatusReason.OtherSideDidNotArriveInTime("Checking", graceDays = 6, lastDay = today), line(paid).reason)
+        assertEquals(StatusReason.OtherSideDidNotArriveInTime("Checking", graceDays = 6, lastDay = today, proposed = false), line(paid).reason)
         assertNull(line(paid).transfer)
         assertEquals(StatusReason.NoMatch, line(refund).reason)
         // BR-006, A8: without a Funded By, and with two Bank Accounts that could pay, the card's inflow has no known other side, so no such reason.
         joint()
         slice.connectionStore.link(card, fundedBy = null)
         assertEquals(StatusReason.NoMatch, line(paid).reason)
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A5: Other Side Not Arrived Within the Grace Period", businessRules = ["BR-002", "BR-005"])
+    @DisplayName("A5 step 1 (O-T-11, review 2c): when the other side was only proposed (A8: a card without a Funded By and one Bank Account that could pay), the reason says that it was proposed, not that it is the other side")
+    fun proposedOtherSideIsSaidToBeProposed() = runTest {
+        ready()
+        checking()
+        val card = rewardsCard()
+        val paid = stored(card, "TX-1", today.minusDays(7), amount(120), payee = "AUTOPAY")
+        compare()
+
+        val line = slice.bankAccountTransactions.of(card).weeks.flatMap { it.lines }.single { it.key.id == paid }
+
+        assertEquals(StatusReason.OtherSideDidNotArriveInTime("Checking", graceDays = 6, lastDay = today.minusDays(1), proposed = true), line.reason)
     }
 
     // ---- A8: the first Card Payment without a Funded By -------------------------------------------------------------

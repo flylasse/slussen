@@ -61,7 +61,7 @@ object BankAccountTexts {
         return when {
             setting.budgetAccountName == null -> "$name: not set · set in a later version"
             setting.applies -> "$name: ${setting.budgetAccountName}"
-            else -> "$name: ${setting.budgetAccountName} · no longer applies, since no Bank Account is mapped to it"
+            else -> "$name: ${setting.budgetAccountName} · no longer applies, since no Bank Account that Slussen fetches in this Budget's currency is mapped to it"
         }
     }
 
@@ -82,11 +82,11 @@ object BankAccountTexts {
     /** `bank-account.html#fetched-empty`: no transaction at all, said so that it is not mistaken for a failure. */
     fun nothingStored(nothing: NothingStored, formats: Formats): String = when (nothing) {
         is NothingStored.FetchedNone ->
-            "No Bank Transactions from ${formats.date(nothing.from)} to ${formats.date(nothing.to)}. At the Fetch of " +
-                "${formats.dateTime(nothing.fetchedAt)} ${nothing.dataProviderName ?: "the Data Provider"} delivered no booked Bank " +
-                "Transaction with an amount other than zero for the fetch period (${nothing.fetchPeriodDays} days, an Operator " +
-                "Setting). A pending purchase appears once it is booked and a later Fetch brings it in. Nothing is wrong and no " +
-                "action is needed; fetch again for fresher data."
+            "No Bank Transactions: the Fetch of ${formats.dateTime(nothing.fetchedAt)} by ${nothing.dataProviderName ?: "the Data Provider"} " +
+                "succeeded and delivered no booked Bank Transaction with an amount other than zero for this Bank Account. A pending " +
+                "purchase appears once it is booked and a later Fetch brings it in. Nothing is wrong and no action is needed; fetch " +
+                "again for fresher data."
+        NothingStored.NoneKept -> "No Bank Transactions are kept for this Bank Account, and none is fetched for it."
         NothingStored.NotFetchedYet ->
             "No Bank Transactions yet: no Fetch of this Bank Account has succeeded. A successful Fetch brings them in."
         is NothingStored.NoneImported -> nothing.importedAt?.let {
@@ -118,8 +118,9 @@ object BankAccountTexts {
                 "Shown, but not eligible while the Bank Account is blocked: ${reason.bankAccountCurrency.code} Bank Account, " +
                     "${reason.budgetCurrency.code} Budget"
             is StatusReason.OtherSideDidNotArriveInTime ->
-                "Its other side, from ${reason.otherBudgetAccountName}, did not arrive within the Lonely Transfer grace period " +
-                    "(${reason.graceDays} days, an Operator Setting, until ${day(reason.lastDay)}): now an ordinary Bank Transaction"
+                (if (reason.proposed) "No other side arrived from ${reason.otherBudgetAccountName}, which Slussen proposed," else "Its other side, from ${reason.otherBudgetAccountName}, did not arrive") +
+                    " within the Lonely Transfer grace period (${reason.graceDays} days, an Operator Setting, until ${day(reason.lastDay)}): " +
+                    "now an ordinary Bank Transaction"
             is StatusReason.TypedEntries -> "A possible pairing with your Typed Entry; nothing paired or written yet"
             is StatusReason.HeldInBudgetApp -> "$budgetApp already holds it under Slussen's own Import Identifier"
             is StatusReason.DeletedInBudgetApp -> "Deleted in $budgetApp under its Import Identifier; not sent again"
@@ -151,12 +152,26 @@ object BankAccountTexts {
     private fun transfer(transfer: TransferShown, line: TransactionLine, formats: Formats, today: LocalDate): String {
         val outflow = (line.amount?.thousandths ?: 0) < 0
         val other = transfer.otherLeg
+        // UC-005 BR-010: while a Transfer Leg keeps its status from an earlier rule, or is doubtful (BR-013), the whole Transfer is in no Upload Plan.
+        val keptOut = transfer.keptOutBy?.takeUnless { it.status == TransactionStatus.GuessedTransfer }?.let { by ->
+            val side = if (by.byThisSide) "this side" else "the other side"
+            when (by.status) {
+                TransactionStatus.NeedsReview, TransactionStatus.PossibleImportByOtherPath ->
+                    "$side is ${by.status.text}, so the whole Transfer waits for its Review Decision"
+                else -> "$side is ${by.status.text}, so the whole Transfer is in no Upload Plan"
+            }
+        }
         return if (other != null) {
             "One ${typeOf(transfer.type)} with ${other.bankAccountName} ${formats.day(other.bookedDate, today)} ${formats.difference(other.amount)}; " +
-                if (transfer.writesIt) "this side would carry it" else "the other side would carry it, so this one is not counted as Eligible"
+                (keptOut ?: if (transfer.writesIt) "this side would carry it" else "the other side would carry it, so this one is not counted as Eligible")
         } else {
-            "Lonely Transfer ${if (outflow) "to" else "from"} ${transfer.otherBudgetAccountName}; its other side is expected by " +
-                formats.day(transfer.expectedBy!!, today)
+            val expectedBy = transfer.expectedBy!!
+            "Lonely Transfer ${if (outflow) "to" else "from"} ${transfer.otherBudgetAccountName}; " + when {
+                keptOut != null -> keptOut
+                // UC-005 BR-005: once the grace period has ended, the next Comparison makes it an ordinary Bank Transaction.
+                expectedBy.isBefore(today) -> "its grace period ended ${formats.day(expectedBy, today)}; the next Comparison looks at it again"
+                else -> "its other side is expected by ${formats.day(expectedBy, today)}"
+            }
         }
     }
 

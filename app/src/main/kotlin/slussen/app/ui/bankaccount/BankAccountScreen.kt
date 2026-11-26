@@ -1,5 +1,6 @@
 package slussen.app.ui.bankaccount
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -49,6 +50,8 @@ fun BankAccountScreen(
         }
         return
     }
+    // System back closes an open sheet first, before it leaves the Bank Account.
+    BackHandler(enabled = ui.sheet != null || ui.statusesSheet != null) { onClose() }
     ui.sheet?.let { sheet ->
         TransactionSheet(ui.title, sheet, onClose)
         return

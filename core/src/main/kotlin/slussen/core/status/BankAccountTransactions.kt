@@ -71,7 +71,15 @@ data class TransferShown(
     val otherLeg: OtherLeg?,
     val expectedBy: LocalDate?,
     val writesIt: Boolean,
+    /**
+     * The Transfer Leg whose status keeps the whole Transfer out of every Upload Plan (UC-003 BR-014, UC-005 BR-010,
+     * BR-013), this side or the other, or null when nothing does.
+     */
+    val keptOutBy: TransferKeptOut?,
 )
+
+/** The Transfer Leg that keeps its Transfer out of every Upload Plan: this side or the other, with its [status]. */
+data class TransferKeptOut(val byThisSide: Boolean, val status: TransactionStatus)
 
 /**
  * Why a transaction has its Transaction Status, in what the Comparison compared it with (UC-003 BR-001), derived from the
@@ -94,7 +102,13 @@ sealed interface StatusReason {
      * UC-005 A5 (O-T-11): an ordinary Bank Transaction that matches a Transfer Description and whose other side,
      * [otherBudgetAccountName], is known, but whose grace period of [graceDays] ended on [lastDay].
      */
-    data class OtherSideDidNotArriveInTime(val otherBudgetAccountName: String, val graceDays: Int, val lastDay: LocalDate) : StatusReason
+    data class OtherSideDidNotArriveInTime(
+        val otherBudgetAccountName: String,
+        val graceDays: Int,
+        val lastDay: LocalDate,
+        /** UC-005 A8: the other side was only proposed, as for a card without a Funded By. */
+        val proposed: Boolean,
+    ) : StatusReason
 
     /** UC-003 BR-006: the Typed Entries of the same amount within the Matching Date Window of [matchingDateWindowDays]. */
     data class TypedEntries(val entries: List<BudgetAppEntry>, val matchingDateWindowDays: Int) : StatusReason
@@ -178,18 +192,17 @@ data class TransactionWeek(val kind: WeekKind, val from: LocalDate?, val to: Loc
 
 /** What a Bank Account shows when it holds no transaction at all (`bank-account.html#fetched-empty`, UC-001 BR-002, BR-003). */
 sealed interface NothingStored {
-    /**
-     * The Fetch of [fetchedAt] by [dataProviderName] succeeded and brought none for the fetch period of
-     * [fetchPeriodDays] days, from [from] to [to].
-     */
-    data class FetchedNone(val fetchedAt: Instant, val dataProviderName: String?, val from: LocalDate, val to: LocalDate, val fetchPeriodDays: Int) :
-        NothingStored
+    /** The Fetch of [fetchedAt] by [dataProviderName] succeeded and brought none; no Fetch stores the period it asked for. */
+    data class FetchedNone(val fetchedAt: Instant, val dataProviderName: String?) : NothingStored
 
     /** No Fetch of this Bank Account has succeeded yet. */
     data object NotFetchedYet : NothingStored
 
     /** A Bank Account fed by Transaction Files: the last import at [importedAt] brought none, or none was imported (null). */
     data class NoneImported(val importedAt: Instant?) : NothingStored
+
+    /** A Retired Account, or one without an Account Mapping, that keeps no transaction; nothing is fetched for it. */
+    data object NoneKept : NothingStored
 }
 
 /**
@@ -305,7 +318,7 @@ class BankAccountTransactions(
             otherSide = otherSideOf(bankAccount, budget, bankAccounts, names),
             covers = if (dated.isEmpty()) null else dated.min()..dated.max(),
             weeks = weeksOf(lines, today),
-            nothingStored = if (lines.isEmpty()) nothingStored(bankAccount, inBudget, current.fetchPeriodDays) else null,
+            nothingStored = if (lines.isEmpty()) nothingStored(bankAccount, inBudget) else null,
             boundaries = StatusBoundaries(
                 uploadWindowDays = ComparisonRules.uploadWindowDays(bankAccount, windows),
                 uploadWindowStartsOn = ComparisonRules.uploadWindowStart(bankAccount, windows),
@@ -429,7 +442,10 @@ class BankAccountTransactions(
                 }
             }
             TransactionStatus.InTheFuture -> if (transaction.bookedDate.isAfter(windows.today)) StatusReason.InTheFuture else StatusReason.AsStored(status)
-            TransactionStatus.TransferLeg -> transfer?.let { StatusReason.TransferLeg(it) } ?: StatusReason.AsStored(status)
+            TransactionStatus.TransferLeg -> transfer
+                // UC-005 BR-005: a Lonely Transfer whose grace period ended since the latest Comparison is not shown as still expected.
+                ?.takeUnless { it.otherLeg == null && TransferDetection.graceEnded(transaction, windows.lonelyTransferGraceDays, windows.today) }
+                ?.let { StatusReason.TransferLeg(it) } ?: StatusReason.AsStored(status)
             // UC-005 BR-002: A Card Payment to a credit card Bank Account without a Funded By is a Guessed Transfer; A8 may propose no Budget Account.
             TransactionStatus.GuessedTransfer -> StatusReason.GuessedTransfer(
                 transfer,
@@ -454,7 +470,9 @@ class BankAccountTransactions(
             null
         }
         return otherSide?.let {
-            StatusReason.OtherSideDidNotArriveInTime(ground.names[it].orEmpty(), graceDays, TransferDetection.lastDayOfGrace(transaction, graceDays))
+            StatusReason.OtherSideDidNotArriveInTime(
+                ground.names[it.budgetAccountId].orEmpty(), graceDays, TransferDetection.lastDayOfGrace(transaction, graceDays), proposed = it.guessed,
+            )
         } ?: StatusReason.NoMatch
     }
 
@@ -478,6 +496,9 @@ class BankAccountTransactions(
             // A4 of UC-005: a Lonely Transfer shows the date by which its other side must arrive.
             expectedBy = if (other == null) TransferDetection.lastDayOfGrace(transaction, ground.windows.lonelyTransferGraceDays) else null,
             writesIt = EligibleTransactions.writesItsSide(transaction, otherLegs),
+            keptOutBy = EligibleTransactions.keptOutBy(transaction, ground.transferLegs)?.let { leg ->
+                leg.status?.let { TransferKeptOut(byThisSide = leg.id == transaction.id, status = it) }
+            },
         )
     }
 
@@ -500,11 +521,12 @@ class BankAccountTransactions(
     }
 
     // UC-001 BR-002: Only booked transactions are taken in, so a successful Fetch can bring none; that is said, never shown as a failure.
-    private fun nothingStored(bankAccount: StoredBankAccount, inBudget: BankAccountInBudget?, fetchPeriodDays: Int): NothingStored {
+    private fun nothingStored(bankAccount: StoredBankAccount, inBudget: BankAccountInBudget?): NothingStored {
+        if (bankAccount.retired || bankAccount.mapping == null) return NothingStored.NoneKept
         if (bankAccount.fileFormatId != null) return NothingStored.NoneImported(inBudget?.status?.freshness)
+        // No Fetch stores the period it asked for (`FETCH`), so no dates are named for it.
         val fetchedAt = inBudget?.status?.freshness ?: return NothingStored.NotFetchedYet
-        val on = LocalDate.ofInstant(fetchedAt, clock.zone)
-        return NothingStored.FetchedNone(fetchedAt, inBudget.sourceName, on.minusDays(fetchPeriodDays.toLong()), on, fetchPeriodDays)
+        return NothingStored.FetchedNone(fetchedAt, inBudget.sourceName)
     }
 
     companion object {

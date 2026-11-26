@@ -44,6 +44,12 @@ data class DetectedTransfer(
     val legs: List<StoredBankTransaction> get() = listOfNotNull(outflowLeg, inflowLeg)
 }
 
+/**
+ * UC-005 A5: the Budget Account of the other side of a Bank Transaction whose grace period ended; [guessed] when it was
+ * only proposed (A8, BR-003).
+ */
+data class LateOtherSide(val budgetAccountId: Long, val guessed: Boolean)
+
 /** What Transfer detection concluded for one Budget (UC-003 step 4). */
 data class TransfersDetected(
     val transfers: List<DetectedTransfer> = emptyList(),
@@ -123,7 +129,8 @@ object TransferDetection {
     fun lastDayOfGrace(arrived: StoredBankTransaction, graceDays: Int): LocalDate = arrived.bookedDate.plusDays(graceDays.toLong())
 
     // UC-005 BR-005: A Lonely Transfer whose other Transfer Leg has not arrived within the grace period becomes an ordinary Bank Transaction.
-    private fun graceEnded(arrived: StoredBankTransaction, graceDays: Int, today: LocalDate): Boolean =
+    /** Whether the grace period of a Lonely Transfer whose arrived Transfer Leg is [arrived] has ended on [today]. */
+    fun graceEnded(arrived: StoredBankTransaction, graceDays: Int, today: LocalDate): Boolean =
         today.isAfter(lastDayOfGrace(arrived, graceDays))
 
     /**
@@ -139,11 +146,12 @@ object TransferDetection {
         descriptions: List<StoredTransferDescription>,
         graceDays: Int,
         today: LocalDate,
-    ): Long? {
+    ): LateOtherSide? {
         val sides = sidesOf(budget, bankAccounts)
         if (sides[bankAccount.mapping?.budgetAccountId]?.id != bankAccount.id) return null
         if (!graceEnded(single, graceDays, today)) return null
-        return oneSided(TransferCandidate(single, bankAccount, earlier = null), sides, descriptions)?.otherSide
+        val known = oneSided(TransferCandidate(single, bankAccount, earlier = null), sides, descriptions) ?: return null
+        return known.otherSide?.let { LateOtherSide(it, known.guessed) }
     }
 
     // UC-005 BR-010: The Transfer Legs of a Transfer have the status Transfer Leg, those of a Guessed Transfer the status Guessed Transfer.

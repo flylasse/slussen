@@ -101,7 +101,11 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
         }
     }
 
+    /** Opens the Bank Account: its list, never a sheet left open the last time it was shown. */
     fun load() {
+        openLine = null
+        statusesOpen = false
+        publish()
         viewModelScope.launch { reload() }
     }
 
@@ -117,6 +121,13 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
         openLine = null
         statusesOpen = true
         publish()
+    }
+
+    /** System back: closes an open sheet and answers true, or answers false when none is open. */
+    fun back(): Boolean {
+        if (openLine == null && !statusesOpen) return false
+        close()
+        return true
     }
 
     fun close() {

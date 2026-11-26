@@ -60,13 +60,13 @@ object Texts {
         "A Fetch brings in the Bank Transactions and compares them with $budgetAppName. Nothing is uploaded in this version; " +
             "no action is needed for Uploads now."
 
+    /** UC-008 step 5: the line of a Bank Account card that opens its own screen (`budget.html` → `bank-account.html`). */
+    const val OPEN_BANK_TRANSACTIONS = "Bank Transactions and their statuses ›"
+
     /**
      * `budget.html#household-this-build`: the one line of a Budget tab about the parts not built yet, Uploads (UC-006),
      * Review Decisions (UC-004) and Transfer Decisions (UC-005), for which no action is needed.
      */
-    /** UC-008 step 5: the line of a Bank Account card that opens its own screen (`budget.html` → `bank-account.html`). */
-    const val OPEN_BANK_TRANSACTIONS = "Bank Transactions and their statuses ›"
-
     const val UPLOADS_NOT_IN_THIS_BUILD =
         "Nothing is uploaded in this version: Uploads, Review Decisions and Transfer Decisions come in a later version. " +
             "No action is needed for them now."

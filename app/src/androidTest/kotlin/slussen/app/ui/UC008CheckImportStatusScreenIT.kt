@@ -200,8 +200,8 @@ class UC008CheckImportStatusScreenIT {
     }
 
     @Test
-    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-007"])
-    @DisplayName("Steps 4-5 (budget.html → bank-account.html#checking-this-build): the Bank Account card of the Budget tab opens its screen, whose list shows each Bank Transaction newest first under week headings with its status and reason, and a tap opens its read-only details, closed again by Close")
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario")
+    @DisplayName("Steps 4-5 (budget.html → bank-account.html#checking-this-build, review 4a): the Bank Account card of the Budget tab opens its screen, whose list shows each Bank Transaction newest first under week headings with its status and reason; a tap opens its read-only details in place of the list, which system back and Close each close again")
     fun bankAccountListAndOneSheet() = compose.use {
         val fixture = ScreenFixture()
         val scenario = slussen.testing.EveryStatusScenario(fixture.slice)
@@ -241,14 +241,18 @@ class UC008CheckImportStatusScreenIT {
         onNodeWithText("Northwind Power").performClick()
         onNodeWithText("Northwind Power · −88.40 USD").assertExists()
         onNodeWithText("1 · Northwind 2026-10-11 −88.40 in Budget Account Checking").assertExists()
-        onNodeWithText("Import Anyway", substring = true).assertDoesNotExist()
+        onNodeWithText("Newest first · 2026-09-29 to 2026-10-16").assertDoesNotExist()
+        androidx.test.espresso.Espresso.pressBack()
+        onNodeWithText("Newest first · 2026-09-29 to 2026-10-16").assertExists()
+        onNode(hasScrollAction()).performScrollToNode(hasText("Northwind Power"))
+        onNodeWithText("Northwind Power").performClick()
         onNodeWithText("Close").performClick()
         onNodeWithText("Newest first · 2026-09-29 to 2026-10-16").assertExists()
     }
 
     @Test
-    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003"])
-    @DisplayName("Step 5 (bank-account.html#fetched-empty): a Bank Account whose Fetch succeeded without Bank Transactions says so with the dates of the fetch period, not as a failure")
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario")
+    @DisplayName("Step 5 (bank-account.html#fetched-empty, review 2b): a Bank Account whose Fetch succeeded without Bank Transactions says so with the Fetch, not as a failure")
     fun bankAccountFetchedButEmpty() = compose.use {
         val fixture = ScreenFixture()
         val scenario = slussen.testing.EveryStatusScenario(fixture.slice)
@@ -268,7 +272,7 @@ class UC008CheckImportStatusScreenIT {
             }
         }
 
-        onNodeWithText("No Bank Transactions from 2026-09-15 to 2026-10-15.", substring = true).assertExists()
+        onNodeWithText("No Bank Transactions: the Fetch of 2026-10-15 13:45 by Kestrel Feeds succeeded", substring = true).assertExists()
         onNodeWithText("Nothing is wrong and no action is needed", substring = true).assertExists()
         onNodeWithText("Source Health: Fetched 2026-10-15 13:45 · started by you").assertExists()
     }

@@ -486,7 +486,7 @@ class UC008CheckImportStatusViewModelTest {
     private val budgetApp = ExampleData.BUDGET_APP_NAME
 
     @Test
-    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-007"])
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003"])
     @DisplayName("Steps 4-5 (budget.html → bank-account.html#checking-this-build): a Bank Account card of the Budget tab opens its own screen, which shows its Bank Transactions newest first under week headings with the dates the list covers, each with its status and its reason in the Operator's words, the statuses as of the last read with the counts, the Start Date and the Transfer Partner read-only")
     fun bankAccountScreenShowsTheList() {
         runBlocking { scenario.compareEveryStatus() }
@@ -536,7 +536,7 @@ class UC008CheckImportStatusViewModelTest {
     }
 
     @Test
-    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-007"])
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario")
     @DisplayName("Step 5 (bank-account.html#reserve-this-build, #home-card-this-build, UC-005 A5, A8, O-T-11): the side the other side carries is not counted as Eligible; a former Lonely Transfer says its other side did not arrive in time; a Guessed Transfer without a proposal says why; the Funded By and Transfer Partner are read-only")
     fun transferLinesSayWhy() {
         runBlocking { scenario.compareEveryStatus() }
@@ -632,7 +632,7 @@ class UC008CheckImportStatusViewModelTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003"])
-    @DisplayName("Step 5 (bank-account.html#fetched-empty): a Bank Account whose Fetch succeeded without Bank Transactions names the Fetch and the dates of the fetch period and says that nothing is wrong; one never fetched says so")
+    @DisplayName("Step 5 (bank-account.html#fetched-empty): a Bank Account whose Fetch succeeded without Bank Transactions names the Fetch, names no dates it did not cover, and says that nothing is wrong; one never fetched says so")
     fun fetchedButEmptyIsSaid() {
         runBlocking {
             scenario.serve()
@@ -650,10 +650,9 @@ class UC008CheckImportStatusViewModelTest {
         val ui = bankAccountScreen("Bonus Saver").ui()
 
         assertEquals(
-            "No Bank Transactions from 2026-09-15 to 2026-10-15. At the Fetch of 2026-10-15 13:45 Kestrel Feeds delivered no booked " +
-                "Bank Transaction with an amount other than zero for the fetch period (30 days, an Operator Setting). A pending " +
-                "purchase appears once it is booked and a later Fetch brings it in. Nothing is wrong and no action is needed; fetch " +
-                "again for fresher data.",
+            "No Bank Transactions: the Fetch of 2026-10-15 13:45 by Kestrel Feeds succeeded and delivered no booked Bank " +
+                "Transaction with an amount other than zero for this Bank Account. A pending purchase appears once it is booked and " +
+                "a later Fetch brings it in. Nothing is wrong and no action is needed; fetch again for fresher data.",
             ui.nothingStored,
         )
         assertTrue(ui.weeks.isEmpty())
@@ -683,7 +682,7 @@ class UC008CheckImportStatusViewModelTest {
     }
 
     @Test
-    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-007"])
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario")
     @DisplayName("Step 5 (bank-account.html#unmapped, #retired): a Bank Account without an Account Mapping and a Retired Account keep their history as last compared, say that they are not compared or offered for Upload, and show no Budget's status")
     fun unmappedAndRetiredShowTheirHistory() {
         runBlocking { scenario.compareEveryStatus() }
@@ -751,5 +750,89 @@ class UC008CheckImportStatusViewModelTest {
                 "and is counted neither as Eligible nor as waiting for a decision.",
             ui.notComparedYet,
         )
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario")
+    @DisplayName("Step 5 (review 2a, 5b): a Transfer Leg says why its Transfer is or is not in an Upload Plan by the rule the counts use: a Too Old side keeps the whole Transfer out, on both sides' lines and sheets; a Lonely Transfer says when its other side is expected")
+    fun transferLegsSayWhyTheyAreOrAreNotEligible() {
+        val ids = runBlocking {
+            scenario.serve()
+            val checking = scenario.addBankAccount("Kestrel Checking", "Checking")
+            val reserve = scenario.addBankAccount("Kestrel Reserve", "Reserve Savings", slussen.core.port.BankAccountType.Savings)
+            val card = scenario.addBankAccount("Pinecrest Rewards Card", "Rewards Card", slussen.core.port.BankAccountType.CreditCard)
+            val checkingAccount = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Checking" }.id
+            slice.connectionStore.link(card, fundedBy = checkingAccount)
+            scenario.store("out", checking, java.time.LocalDate.of(2026, 10, 7), amount(-200), "INTERNET TRANSFER TO RESERVE")
+            scenario.store("in", reserve, java.time.LocalDate.of(2026, 10, 9), amount(200), "INTERNET TRANSFER FROM CHECKING")
+            scenario.store("lonely", card, java.time.LocalDate.of(2026, 10, 13), amount(120), "AUTOPAY")
+            scenario.answerHousehold(emptyList())
+            slice.comparison.readAgain()
+        }
+
+        val reserve = bankAccountScreen("Kestrel Reserve")
+        val checking = bankAccountScreen("Kestrel Checking")
+        val card = bankAccountScreen("Pinecrest Rewards Card").ui()
+
+        assertEquals(
+            "One Bank Transfer with Kestrel Checking 10-07 −200.00; the other side is Too Old, so the whole Transfer is in no Upload Plan",
+            reserve.ui().line("in").reason,
+        )
+        assertFalse(reserve.ui().line("in").eligible)
+        checking.open(checking.ui().line("out").key)
+        assertEquals(
+            slussen.app.ui.bankaccount.DetailLine(
+                "Transfer",
+                "One Bank Transfer with Kestrel Reserve 10-09 +200.00; this side is Too Old, so the whole Transfer is in no Upload Plan",
+            ),
+            checking.ui().sheet!!.details.single { it.name == "Transfer" },
+        )
+        assertEquals("Lonely Transfer from Checking; its other side is expected by 10-19", card.line("lonely").reason)
+        assertTrue(card.line("lonely").eligible)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario")
+    @DisplayName("Step 5 (review 5b): the details of a New line say why, what the status means and whether it is Eligible; those of a line resembling an unsupported Slussen Import name that Import and why it waits")
+    fun generalAndUnsupportedSheetsSayWhy() {
+        runBlocking { scenario.compareEveryStatus() }
+        val screen = bankAccountScreen("Kestrel Checking")
+
+        screen.open(screen.ui().line("new").key)
+        assertEquals(
+            listOf(
+                slussen.app.ui.bankaccount.DetailLine("Why", "No match in $budgetApp at the latest Comparison"),
+                slussen.app.ui.bankaccount.DetailLine("What it means", "The latest Comparison found nothing in $budgetApp that matches it. A later Upload Plan would hold it."),
+                slussen.app.ui.bankaccount.DetailLine("Eligible", "Yes, for a later Upload Plan; nothing is uploaded in this version"),
+            ),
+            screen.ui().sheet!!.details,
+        )
+        screen.open(screen.ui().line("unsupported").key)
+        assertEquals(
+            listOf(
+                slussen.app.ui.bankaccount.DetailLine("Resembles", "Streamline 2026-10-12 −29.00 in Budget Account Checking, with Slussen's marker in a form this version does not support"),
+                slussen.app.ui.bankaccount.DetailLine("Why it waits", "Slussen cannot tell whether that Import is this Bank Transaction, so it never uploads it without your decision."),
+                slussen.app.ui.bankaccount.DetailLine("Later", "Review Decisions come in a later version: Import Anyway or Defer"),
+            ),
+            screen.ui().sheet!!.details,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario")
+    @DisplayName("Step 5 (review 4a): opening a Bank Account again shows its list, never a sheet left open the last time; back closes an open sheet first")
+    fun openingAgainShowsTheList() {
+        runBlocking { scenario.compareEveryStatus() }
+        val screen = bankAccountScreen("Kestrel Checking")
+        screen.open(screen.ui().line("typed").key)
+
+        assertTrue(screen.back())
+        assertNull(screen.ui().sheet)
+        assertFalse(screen.back())
+        screen.openStatuses()
+        screen.load()
+
+        assertNull(screen.ui().sheet)
+        assertNull(screen.ui().statusesSheet)
     }
 }
