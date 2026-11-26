@@ -30,8 +30,11 @@
 - Phase 6b built (a sub-agent; the orchestrator re-ran the gate with `--rerun-tasks`: green). It found one specification gap, proposed as **S-T-17** (§6); the import switch's and credential removal's pending and failed states, not in its prompt, are issue #33.
 - Phase 6b done: the operator merged PR #34 (2026-10-29), approving S-T-17.
 - Phase 7 is split in three (orchestrator, 2026-10-29): **7a** reads YNAB and runs the Comparison in the core (UC-003), **7b** detects Transfers (UC-005), **7c** builds the screens (UC-008, the `-this-build` states). 7a built (a sub-agent, then one fix by the orchestrator); it found one specification gap, proposed as **S-T-18** (§6).
-- Next: the operator approves S-T-18 and merges the Phase 7a PR; then Phase 7b (Transfers).
+- Phase 7a done: the operator approved S-T-18, as amended in the review of PR #35 (§6), and merged PR #35 (2026-11-26).
 - 2026-11-25: the AIUP Marketplace is read from the in-repository snapshot `vendor/aiup-marketplace/` at `93e8d59` (`aiup-core` 3.0.0, the merge of Marketplace PR #38), so cloud sessions and sub-agents reach it. This settles issue #18. The snapshot's construction skills read `docs/architecture/stack.md`, not `development.md` (§5 row 10): an operator decision before Phase 7b.
+- 2026-11-26: **S-T-19** (§6) proposes that decision: `docs/architecture/development.md` is renamed `docs/architecture/stack.md`, as the skills read it.
+- Phase 7b in progress on the branch `7b-transfers`, with the prompt in §4. It builds Transfer detection in the core and its storage; showing the Transfers on the Budget tab moves to Phase 7c with the other screens (orchestrator, 2026-11-26).
+- Next: the operator approves S-T-19 and whatever Phase 7b proposes, and merges the Phase 7b PR; then Phase 7c (the screens).
 
 ## 1. Scope
 
@@ -106,8 +109,8 @@ In addition:
 | 6a | UC-001 steps 7-9 in the core and `:persistence`: the Fetch asks for transactions and balance (ending O-P2-54), stores booked, non-zero Bank Transactions with their Import Identifiers (ADR-008, built here with its test vectors) and occurrence numbers, Unreadable Transactions (A17, BR-016), the Decision Journal (step 9); A19, A20 (with #11), A21, BR-006 (#9); the fetch period default 30 days in the code; the Fetch result and Blocked Reason texts | `:core` `fetch`, `identity`, `journal`; `:persistence`; `:app` texts | `inherit` | `gradlew check` and `:app:assembleDebug` pass; every in-scope BR and flow has a test that names it; ADR-008's vectors pass; `uc-coverage-layered` matrix in the report | `feat: phase 6a - Bank Transactions from a Fetch` |
 | 6b | The fetch period on Settings (UC-010 steps 1-4, 6, A1); UX-D4: the credential and Fetch Cooldown screens checked against NFR-023 and fixed | `:core` `settings`, `:app` | `inherit` | as 6a | `feat: phase 6b - fetch period on Settings, answers in place` |
 | 7a | UC-003 in the core and YNAB: `readChanges` and the stored copy (BR-016, BR-020, O-4), the Comparison in the order of BR-001 for the rules in scope, Eligible Transactions (BR-014), the Decision Journal (step 6), A1-A3, A7, S-T-08 (not compared yet); the Comparison after a Fetch (UC-001 step 10) and on its own (the YNAB read) | `budgetapp-ynab`, `:core` `comparison`, `:persistence` | `inherit` | as Phase 6a; no Comparison writes to YNAB (BR-015) | `feat: phase 7a - the Comparison` |
-| 7c | The screens: the Budget tab and Bank Account screen as the UX gate approved them (`-this-build` states, chronological list, statuses explained, times, counts), the YNAB read on its line, the build-state lines updated | `:app` | `inherit` | as Phase 6a | `feat: phase 7c - Bank Transactions on screen` |
-| 7b | UC-005 detection inside the Comparison (UC-003 step 4): Transfers, Transfer Legs, Guessed Transfers, Lonely Transfers and the grace period, the description lists; the Transfers shown on the Budget tab without decisions | `:core` (a transfer package, ADR-001 §7), `:app` | `inherit` | as Phase 6; a test for each in-scope BR of UC-005, including a Transfer never across Budgets or currencies (BR-004) | `feat: phase 7b - Transfers detected` |
+| 7c | The screens: the Budget tab and Bank Account screen as the UX gate approved them (`-this-build` states, chronological list, statuses explained, times, counts), the Transfers of a Budget without decisions (`transfers.html`, statuses only), the YNAB read on its line, the build-state lines updated | `:app` | `inherit` | as Phase 6a | `feat: phase 7c - Bank Transactions on screen` |
+| 7b | UC-005 detection inside the Comparison (UC-003 step 4): Transfers, Transfer Legs, Guessed Transfers, Lonely Transfers and the grace period, the description lists, stored with the statuses (O-5) | `:core` (a transfer package, ADR-001 §7), `:persistence` | `inherit` | as Phase 6; a test for each in-scope BR of UC-005, including a Transfer never across Budgets or currencies (BR-004) | `feat: phase 7b - Transfers detected` |
 | 8 | **Acceptance: operator, on the phone** | release build 0.1.x → this build over it; a Fetch of SimpleFIN; YNAB read | operator | every Bank Account shows its Bank Transactions with plausible Transaction Statuses; nothing reached YNAB; no stored item lost in the upgrade; the instrumented Migration test passes on the phone | operator's verdict into §6 |
 | 9 | Close: §7, requirement statuses, open work turned into issues, plan to `docs/archive/` | this plan, `docs/requirements.md`, issues | `inherit` | `lint_specs.py --strict` and `check_project_rules.py` exit 0; §7 lists issue numbers, not open work | `docs: phase 9 - close the transactions plan` |
 
@@ -363,6 +366,75 @@ or wrong (do not change docs/; report it instead).
 
 Written for each phase when the phase before it is accepted, so that each prompt carries what the gates decided. Every prompt starts with: read `AGENTS.md`, this plan's §1, §2 and §6, and the use cases and ADRs the phase names; follow `use-case-test` and then `use-case-implement` for code phases; return Clarified / Assumed / Open.
 
+### Phase 7b: Transfers detected (sub-agent)
+
+```text
+Work in /home/user/slussen on the branch 7b-transfers (checked out). Do not commit, push or switch branches;
+leave the changes in the working tree for the orchestrator. Never read, print or write signing values or
+credentials; never run -PincludeLive; tests use invented data and local test servers only. Change nothing under
+vendor/ or docs/.
+
+Read AGENTS.md; docs/transactions_plan.md §1 (the UC-005 row: what is built and what is left), §2, §3 (row 7b) and
+§6 (O-T-01, O-T-02, S-T-08, Phase 7a's notes); UC-005 (all of it); UC-003 steps 3-5, BR-001 (where a Transfer Leg
+stands in the order, and a doubtful Transfer Leg), BR-013, BR-014; UC-010 BR-007 (the description lists); UC-011
+BR-001; the glossary's Transfer terms and Transaction Statuses; the entity model (TRANSFER, BANK_TRANSACTION,
+BANK_ACCOUNT with its Funded By and Transfer Partner, TRANSFER_DESCRIPTION, OPERATOR_SETTINGS); ADR-001 §7 (the
+UC-003 and UC-005 rows); ADR-002 §3 (O-5) and §7; ADR-004 (markers; T-02: a `scenario` is the whole heading, for
+example "A5: Other Side Not Arrived Within the Grace Period"); ADR-007 §3a; docs/architecture/stack.md; and Phase
+7a's code: the `comparison` package of :core, BudgetAppCopyStore.kt (ComparisonData, ComparisonStore),
+RoomComparisonStores.kt, InMemoryBudgetAppCopyStore.kt and UC003CompareWithTheBudgetAppTest.kt.
+Follow aiup-core's use-case-test, then use-case-implement, read from the snapshot
+vendor/aiup-marketplace/aiup-core/skills/<skill>/SKILL.md (the coverage agent is
+vendor/aiup-marketplace/aiup-core/agents/uc-coverage-layered.md): tests first; say which failed first.
+
+Build:
+1. :core `transfer` (ADR-001 §7): Transfer detection as pure rules on stored data, run inside the Comparison's
+   conclusions (UC-003 step 4, O-5), after the rules that stand before a Transfer Leg in UC-003 BR-001:
+   - BR-002: a pair with equal and opposite amounts, in two Bank Accounts mapped into the same Budget and
+     currency, within the transfer pairing days; a Card Payment when one side is a credit card, a Bank Transfer
+     only when a Bank Transfer Description matches; a Lonely Transfer when the other side is known from the
+     Funded By or the Transfer Partner and the right description matches; never a credit card inferred from the
+     paying side;
+   - BR-003: at most one Transfer per Bank Transaction; with more than one candidate a Guessed Transfer, proposed
+     in the order the rule gives;
+   - BR-004 and BR-014: never across Budgets or currencies; the other side is always a Budget Account Slussen
+     fetches, never a Manually Kept Account or one only a Retired Account is mapped to; a Funded By or Transfer
+     Partner that no longer applies is not used;
+   - BR-005, A5: a Lonely Transfer whose other side has not arrived within the grace period becomes an ordinary
+     Bank Transaction;
+   - A8: an inflow to a credit card without a Funded By that matches a Card Payment Description is a Guessed
+     Transfer with the proposal the flow describes;
+   - BR-012: a description matches anywhere in payee or memo, without regard to case and accents, `*` for any
+     characters;
+   - BR-010, BR-013 as far as they give a status: the Transfer Legs of a Transfer are Transfer Leg, those of a
+     Guessed Transfer are Guessed Transfer; a Transfer Leg that is Needs Review or Possible Import By Other Path
+     keeps that status and its Transfer waits (UC-003 BR-001); the Eligible Transactions and the counts of UC-008
+     follow UC-003 BR-014 (the Transfer Leg that writes its Transfer; nothing of a Guessed Transfer or of a
+     Transfer that waits).
+2. Storage (O-5, :persistence and the fake of :testing): the `transfer` rows, with the decision Proposed, and
+   `bank_transaction.transfer_id` are written with the Transaction Statuses in the one transaction of
+   `applyComparison`; a Transfer that no longer holds (a Transfer Leg changed, the grace period passed, an Account
+   Mapping moved) releases its Transfer Legs. The description lists are read from `transfer_description`. Use
+   `slussen.db` version 5 as it is when it suffices; if it does not, stop building storage and report what is
+   missing (version 5 is merged, so a change needs version 6 with a Migration, an operator decision).
+3. Decision Journal: every changed Transaction Status as Phase 7a records it (UC-011 BR-001); what else UC-011
+   BR-001 names for a detected Transfer.
+4. Not in this phase: the Transfer Decisions (steps 2-6, A1-A3, A9, BR-007, BR-008, BR-011), A6, A7, BR-009,
+   editing the description lists, Funded By or Transfer Partner, and every screen (Phase 7c): change :app only
+   where the build needs it.
+5. Instrumented: a persistence IT for the stored Transfers (it runs on the phone in Phase 8).
+
+Gate (run it; it must pass): ANDROID_HOME=/opt/android-sdk; sh ./gradlew --stop;
+sh ./gradlew check :app:assembleDebug :app:assembleDebugAndroidTest :persistence:assembleDebugAndroidTest
+--rerun-tasks --continue; python3 tools/lint_specs.py --strict; python3 tools/check_project_rules.py.
+Every in-scope BR and flow of UC-005 has a test that names it, among them a Transfer never across Budgets or
+currencies (BR-004).
+
+Report (under 50 lines): files changed, tests added with their names, which failed first, the uc-coverage-layered
+matrix for UC-005 in short, gate result, Clarified / Assumed / Open, and any place the specification was unclear
+or wrong (do not change docs/; report it instead).
+```
+
 ## 5. Methodology evaluation log
 
 | # | Phase | AIUP step | What happened | Deviation? |
@@ -444,7 +516,7 @@ Phase 6b, 2026-10-29: one specification gap. **Approved by the operator on 2026-
 |---|---|---|---|
 | S-T-17 | Phase 6b | UC-014 lists NFR-023, which decision UX-D4 applies to the credential screens, so their tests can name it; NFR-023 becomes In Progress, since UC-014 is Implemented. | UC-014 Requirements, requirements |
 
-Phase 7a, 2026-10-29: one specification gap. **Proposed, waiting for the operator's approval.**
+Phase 7a, 2026-10-29: one specification gap. **Approved by the operator on 2026-11-26 (PR #35 merged), as amended in its review (Phase 7a's notes, last item).**
 
 | ID | Found by | Change | Files |
 |---|---|---|---|
