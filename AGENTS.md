@@ -19,7 +19,7 @@ Slussen is a deliberate, precise pilot of Simon Martinelli's **AI Unified Proces
 
 **On any conflict, the Marketplace skill wins over this file**; this file only points at it.
 
-**AIUP Marketplace skills** — `C:\work\marketplace\aiup-core\skills\` (pinned commit recorded in the active plan):
+**AIUP Marketplace skills** — `vendor/aiup-marketplace/aiup-core/skills/`, with the `aiup-core` 3.0.0 construction skills (`use-case-test`, `use-case-implement`, `use-case-coverage`, `agents/uc-coverage-layered.md`) in the same snapshot. The snapshot is a read-only copy of the Marketplace at one commit, recorded in `vendor/aiup-marketplace/README.md`; never edit it here.
 
 | Artifact | Skill (read `SKILL.md` and its `references/`) |
 |---|---|
@@ -30,7 +30,7 @@ Slussen is a deliberate, precise pilot of Simon Martinelli's **AI Unified Proces
 | `docs/use_cases/UC-XXX-*.md` | `use-case-spec/` (normative grammar: `references/format-spec.md`) |
 | Review and lint | `spec-review/` (`scripts/spec_lint.py`, `references/review-checklist.md`) |
 
-**The book** — `C:\work\book-context-martinelli-spec-driven-dev\corpus\chapters\`: `02` (AIUP in a nutshell), `03` (requirements to specs), `04` (executable specifications), `08` (case study, the reference sequence), `10` (pitfalls, drift).
+**The book**, outside the repository — `C:\work\book-context-martinelli-spec-driven-dev\corpus\chapters\`: `02` (AIUP in a nutshell), `03` (requirements to specs), `04` (executable specifications), `08` (case study, the reference sequence), `10` (pitfalls, drift).
 
 Two easy-to-miss rules, both from the skills (check the skill if in doubt):
 

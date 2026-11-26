@@ -7,8 +7,11 @@ Usage:
     python tools/lint_specs.py --trace    # traceability matrix
 
 Any extra argument is passed through to spec_lint.py. The linter is run from
-the local Marketplace clone (pinned commit recorded in the bootstrap plan), so
-its sibling validators (validate_use_case.py, bpmn_paths.py) are found.
+the repository's read-only snapshot of the Marketplace,
+vendor/aiup-marketplace/ (its commit is recorded in its README.md), so its
+sibling validators (validate_use_case.py, bpmn_paths.py) are found there. Set
+SLUSSEN_MARKETPLACE to the root of another Marketplace checkout to run that
+one's linter instead.
 """
 import os
 import subprocess
@@ -18,24 +21,24 @@ LINTER_PATH = os.path.join("aiup-core", "skills", "spec-review", "scripts", "spe
 
 
 def find_linter(repo_root):
-    """The Marketplace clone: $SLUSSEN_MARKETPLACE, C:\\work\\marketplace, or ../marketplace."""
-    roots = [os.environ.get("SLUSSEN_MARKETPLACE"), r"C:\work\marketplace",
-             os.path.join(os.path.dirname(repo_root), "marketplace")]
-    candidates = [os.path.join(r, LINTER_PATH) for r in roots if r]
-    for c in candidates:
-        if os.path.isfile(c):
-            return c
-    print("spec_lint.py not found; looked in: " + ", ".join(candidates), flush=True)
-    sys.exit(2)
+    """$SLUSSEN_MARKETPLACE when it is set, otherwise vendor/aiup-marketplace."""
+    root = os.environ.get("SLUSSEN_MARKETPLACE") or os.path.join(repo_root, "vendor", "aiup-marketplace")
+    linter = os.path.join(root, LINTER_PATH)
+    if not os.path.isfile(linter):
+        print("spec_lint.py not found: " + linter, flush=True)
+        sys.exit(2)
+    return linter
 
 
 def main():
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    MARKETPLACE_LINTER = find_linter(repo_root)
+    marketplace_linter = find_linter(repo_root)
     docs_dir = os.path.join(repo_root, "docs")
-    cmd = [sys.executable, MARKETPLACE_LINTER, "--docs", docs_dir] + sys.argv[1:]
+    cmd = [sys.executable, marketplace_linter, "--docs", docs_dir] + sys.argv[1:]
     print("Running: " + " ".join(cmd), flush=True)
-    sys.exit(subprocess.run(cmd).returncode)
+    # The snapshot is read-only: no __pycache__ is written into it.
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    sys.exit(subprocess.run(cmd, env=env).returncode)
 
 
 if __name__ == "__main__":

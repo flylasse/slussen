@@ -16,3 +16,6 @@ gradlew text eol=lf
 *.webp binary
 *.keystore binary
 *.jks binary
+
+# The AIUP Marketplace snapshot is byte for byte the Marketplace's own files: git never changes their line endings.
+vendor/aiup-marketplace/** -text

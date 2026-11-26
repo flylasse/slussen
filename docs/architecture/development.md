@@ -7,12 +7,13 @@
 technical layer: `/use-case-implement` runs the Skill column bottom-up, `/use-case-test` runs the Test skill column from the
 integration layer up, and `/use-case-coverage` searches for the markers in the last table.
 
-**Last updated:** 2026-10-19
+**Last updated:** 2026-11-25
 
 Derived from the Accepted ADRs: modules and dependencies from ADR-001 §1-§3, storage from ADR-002, test runner and
 gates from ADR-005 §3, markers from ADR-004 §1-§2. On a conflict, the ADR wins and this view is corrected. Written by
-hand from the template of `aiup-core` `skills/architecture/references/development.md` (Marketplace PR #38, branch
-`feat/layer-plugins`, read while the PR is open; O-P2-38).
+hand from the template of `aiup-core` `skills/architecture/references/development.md` (Marketplace PR #38, read
+from its branch while the PR was open; O-P2-38). In the snapshot `vendor/aiup-marketplace/aiup-core/` (the merge of
+PR #38) that template is `skills/stack/references/stack.md`.
 
 ## Layers
 
