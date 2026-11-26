@@ -264,7 +264,7 @@ class UC003CompareWithTheBudgetAppTest {
     }
 
     @Test
-    @UseCase(id = "UC-003", scenario = "A1", businessRules = ["BR-016", "BR-020"])
+    @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read", businessRules = ["BR-016", "BR-020"])
     @DisplayName("BR-016 (S-T-18), A1: when the changes since the cursor cannot be read after the read period was, nothing of the read is stored and the read of the period stays owed")
     fun periodReadOwedSurvivesAFailedChangesRead() = runTest {
         ready()
