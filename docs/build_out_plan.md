@@ -14,15 +14,15 @@
 - The operator answered the questionnaire on 2026-11-26 (§6): the defaults, with a sample for Q-01 and "no" to Q-04. The run started.
 - Run log (the last commit named in a row passed the orchestrator's gate):
 
-| Phase | Commits | Gate | Review | Notes |
-|---|---|---|---|---|
-| A-1 | 695249e, 201b7a3 | green at 201b7a3 | `docs/reviews/build_out_reviews/A-1.md`: 10 findings fixed, 3 to §6 (G-01..G-03) | A regular expression in the migration test overflowed the stack at random in one gate run; fixed in 16bf178 |
-| A-2 | fd3e1b9, 7936c10 | green at 7936c10 | `docs/reviews/build_out_reviews/A-2.md`: 12 findings fixed, 2 to §6 (G-07, G-08); the reviewer compared the reshaped Comparison and Transfer rules with the old ones line by line: no behaviour changed | The reasons on screen call the Comparison's own rules; `ComparisonStore.comparisonDataOf` has no instrumented test of its own yet |
-| A-3 | 5e1c654, 2fdbdf5 | green at 2fdbdf5 | `docs/reviews/build_out_reviews/A-3.md`: 7 findings fixed, 3 to §6 (G-11..G-13); the reviewer compared the changed Transfer detection and `conclude` with the old ones line by line: no case differs | A Guessed Transfer now carries why it is guessed; the screens re-run the detection the Comparison runs |
-| A-4 | 5dd1fa2 | green at 5dd1fa2 | not reviewed yet | Built by a mid model; the review is to read `FetchHistoryRules` with care |
+| Phase | Commits | Gate | Review | Notes | Sub-agent tokens (builder + reviewer) |
+|---|---|---|---|---|---|
+| A-1 | 695249e, 201b7a3 | green at 201b7a3 | `docs/reviews/build_out_reviews/A-1.md`: 10 findings fixed, 3 to §6 (G-01..G-03) | A regular expression in the migration test overflowed the stack at random in one gate run; fixed in 16bf178 | 368k + 264k |
+| A-2 | fd3e1b9, 7936c10 | green at 7936c10 | `docs/reviews/build_out_reviews/A-2.md`: 12 findings fixed, 2 to §6 (G-07, G-08); the reviewer compared the reshaped Comparison and Transfer rules with the old ones line by line: no behaviour changed | The reasons on screen call the Comparison's own rules; `ComparisonStore.comparisonDataOf` has no instrumented test of its own yet | 460k + 247k |
+| A-3 | 5e1c654, 2fdbdf5 | green at 2fdbdf5 | `docs/reviews/build_out_reviews/A-3.md`: 7 findings fixed, 3 to §6 (G-11..G-13); the reviewer compared the changed Transfer detection and `conclude` with the old ones line by line: no case differs | A Guessed Transfer now carries why it is guessed; the screens re-run the detection the Comparison runs | 383k + 230k |
+| A-4 | 5dd1fa2, f673b50 | green at f673b50 | `docs/reviews/build_out_reviews/A-4.md`: 6 findings fixed, 4 to §6 (G-15..G-18) | Built by a mid model: two findings showed something false (a cooldown Fetch listing a Retired Account; "nothing needed now" for a Bank Account the Request Limit kept from its first read). The Fetch's selection is now one shared rule | 342k + 175k |
 
-- **Paused on 2026-11-26** at the operator's word (the usage limit of the session). Nothing is running and the tree is clean. To resume: review A-4 (range c77fdf5..5dd1fa2, the reviewer's prompt as for A-3, another model than the builder's), have its findings fixed, gate, record; then phase A-5, which closes Wave 1.
-- Next: the review of phase A-4.
+- Paused on 2026-11-26 at the operator's word (the usage limit of the session) after A-4 was built; resumed the same day. The operator watches the limit and says when to pause; the orchestrator's own turns are not in the token column.
+- Next: phase A-5, which closes Wave 1.
 
 ## 1. Scope
 
@@ -149,6 +149,10 @@ Smaller choices taken without asking, to be confirmed at the end: the Decision J
 | G-12 | A-3 | "Has no Funded By" is also said when a Funded By is set but no longer applies (UC-005 BR-014). Not reachable until Wave 2 sets one; to be corrected there. | Text, in Wave 2. |
 | G-13 | A-3 | Turning the phone reopens or closes the selected Transfer or sheet, as the Bank Account screen does. | Saved screen state in two ViewModels. |
 | G-14 | A-3 | The Transfers screens are read-only and say that decisions come in a later version; Wave 2 replaces that with the decision controls. | Wave 2. |
+| G-15 | A-4 | Once Bank Consent Data Providers are fetched: a later Fetch that leaves Bank Accounts out for a missing Bank Consent without a Fetch Result would make no Fetch in the list say that the consent is still needed (the Budget does). To be handled in Wave 6. | A rule in `FetchHistoryRules`, with Wave 6. |
+| G-16 | A-4 | The Bank Accounts shown under a Fetch served from the Fetch Cooldown are chosen from today's data, so re-identifying a Bank Account changes older cooldown Fetches; "held back by the Request Limit" rests on the earlier Fetch still being kept. | Storing the served Bank Accounts with the Fetch (a schema version). |
+| G-17 | A-4 | "A later Fetch" names the newest later Fetch, not the next one; the mockup's footers ("contacted again from …", "YNAB was read after this Fetch at …") are not built; a line the mockup groups by Bank is per Bank Account. | Text and one lookup; the first footer needs the Fetch Cooldown stored with the Fetch. |
+| G-18 | A-4 | The Request Limit note of an old Fetch describes the Request Limit now, not at that time. | Storing it with the Fetch. |
 | G-06 | A-1 | Times show as HH:mm today, MM-dd HH:mm earlier in the year, the full date before that, as the mockups do. | Text only. |
 
 ### Specification changes (S-B-nn)
