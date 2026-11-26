@@ -99,20 +99,7 @@ class InMemoryBudgetAppCopyStore(
         conclude: (ComparisonData) -> ComparisonConclusions,
     ): List<StatusChange> {
         if (failsToConclude) throw IllegalStateException("The invented process of this test stops before O-5 is committed.")
-        val budgets = connections.budgetList.filter { it.id in budgetIds }
-        val accountIds = budgets.flatMap { it.budgetAccounts }.map { it.id }.toSet()
-        val bankAccounts = connections.bankAccountList.filter { it.mapping?.budgetAccountId in accountIds }
-        val bankAccountIds = bankAccounts.map { it.id }.toSet()
-        val bankTransactions = transactions.bankTransactions.filter { it.bankAccountId in bankAccountIds }
-        val transferIds = bankTransactions.mapNotNull { it.transferId }.toSet()
-        val data = ComparisonData(
-            budgets = budgets,
-            bankAccounts = bankAccounts,
-            bankTransactions = bankTransactions,
-            budgetAppTransactions = copy.filter { it.budgetAccountId in accountIds },
-            transfers = transfers.filter { it.id in transferIds },
-            transferDescriptions = transferDescriptions.toList(),
-        )
+        val data = dataOf(budgetIds)
         val conclusions = conclude(data)
         val proposedIds = data.transfers.filter { it.decision == TransferDecision.Proposed }.map { it.id }.toSet()
         conclusions.transfers.forEach { detected ->
@@ -150,6 +137,31 @@ class InMemoryBudgetAppCopyStore(
         transfers.removeAll { it.id in released }
         pending = false
         return changes
+    }
+
+    /** Makes every read of [comparisonDataOf] fail, as a storage that cannot be read would (NFR-023). */
+    var failsToRead: Boolean = false
+
+    override suspend fun comparisonDataOf(budgetIds: Set<Long>): ComparisonData {
+        if (failsToRead) throw IllegalStateException("The invented storage of this test cannot be read.")
+        return dataOf(budgetIds)
+    }
+
+    private fun dataOf(budgetIds: Set<Long>): ComparisonData {
+        val budgets = connections.budgetList.filter { it.id in budgetIds }
+        val accountIds = budgets.flatMap { it.budgetAccounts }.map { it.id }.toSet()
+        val bankAccounts = connections.bankAccountList.filter { it.mapping?.budgetAccountId in accountIds }
+        val bankAccountIds = bankAccounts.map { it.id }.toSet()
+        val bankTransactions = transactions.bankTransactions.filter { it.bankAccountId in bankAccountIds }
+        val transferIds = bankTransactions.mapNotNull { it.transferId }.toSet()
+        return ComparisonData(
+            budgets = budgets,
+            bankAccounts = bankAccounts,
+            bankTransactions = bankTransactions,
+            budgetAppTransactions = copy.filter { it.budgetAccountId in accountIds },
+            transfers = transfers.filter { it.id in transferIds },
+            transferDescriptions = transferDescriptions.toList(),
+        )
     }
 
     companion object {

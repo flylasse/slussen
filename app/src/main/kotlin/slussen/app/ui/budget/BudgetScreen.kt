@@ -13,9 +13,11 @@ import slussen.app.ui.components.BlockedReasonLine
 import slussen.app.ui.components.BudgetAppLine
 import slussen.app.ui.components.FirstUploadMatchingBanner
 import slussen.app.ui.components.Muted
+import slussen.app.ui.components.NavigationLine
 import slussen.app.ui.components.ScreenTitle
 import slussen.app.ui.components.SectionTitle
 import slussen.app.ui.components.SlussenCard
+import slussen.app.ui.Texts
 import slussen.app.ui.theme.SlussenColors
 
 /**
@@ -25,7 +27,13 @@ import slussen.app.ui.theme.SlussenColors
  * (A8, BR-009, `#recovery-blocked`), and what this build does not show yet (P9-15).
  */
 @Composable
-fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit, onStartFirstUploadMatching: () -> Unit, onReadAgain: () -> Unit = {}) {
+fun BudgetScreen(
+    ui: BudgetUi,
+    onRemedy: (RemedyAction) -> Unit,
+    onStartFirstUploadMatching: () -> Unit,
+    onReadAgain: () -> Unit = {},
+    onBankAccount: (Long) -> Unit = {},
+) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
             ScreenTitle(ui.title, ui.subtitle)
@@ -64,6 +72,8 @@ fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit, onStartFirstUpl
                 account.balanceRemedy?.let { Muted(it) }
                 account.balanceNotice?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
                 account.blocked.forEach { BlockedReasonLine(it.text, it.action, onRemedy, it.advice) }
+                // Step 5 of UC-008 (`bank-account.html`): the way to the Bank Account's own screen with its Bank Transactions.
+                NavigationLine(Texts.OPEN_BANK_TRANSACTIONS, null) { onBankAccount(account.bankAccountId) }
             }
         }
     }

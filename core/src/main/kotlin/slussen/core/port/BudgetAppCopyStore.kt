@@ -153,4 +153,10 @@ interface ComparisonStore {
      * clears `comparison_pending`. A Transfer the Operator decided on is never changed here. Returns the status changes.
      */
     suspend fun applyComparison(budgetIds: Set<Long>, conclude: (ComparisonData) -> ComparisonConclusions): List<StatusChange>
+
+    /**
+     * The [ComparisonData] of [budgetIds] exactly as O-5 reads it, in one transaction, for the screens that show why a
+     * Bank Transaction has its Transaction Status (UC-008 step 5); nothing is written.
+     */
+    suspend fun comparisonDataOf(budgetIds: Set<Long>): ComparisonData
 }

@@ -1,11 +1,16 @@
 package slussen.app.ui
 
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import de.mannodermaus.junit5.compose.createComposeExtension
@@ -185,6 +190,87 @@ class UC008CheckImportStatusScreenIT {
             "Statuses as of 14:00, its last successful read · the read of 15:00 failed: the service is unavailable",
         ).assertExists()
         onNodeWithText("Read $name again to bring them up to date; nothing else is needed.").assertExists()
+    }
+
+    /** The Bank Account screen of [bankAccountId], wired as `SlussenScreens` wires it. */
+    private fun bankAccountScreen(fixture: ScreenFixture, bankAccountId: Long): slussen.app.ui.bankaccount.BankAccountViewModel {
+        val viewModel = slussen.app.ui.bankaccount.BankAccountViewModel(fixture.services, bankAccountId)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.load() }
+        return viewModel
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-007"])
+    @DisplayName("Steps 4-5 (budget.html → bank-account.html#checking-this-build): the Bank Account card of the Budget tab opens its screen, whose list shows each Bank Transaction newest first under week headings with its status and reason, and a tap opens its read-only details, closed again by Close")
+    fun bankAccountListAndOneSheet() = compose.use {
+        val fixture = ScreenFixture()
+        val scenario = slussen.testing.EveryStatusScenario(fixture.slice)
+        kotlinx.coroutines.runBlocking { scenario.compareEveryStatus() }
+        val household = kotlinx.coroutines.runBlocking { fixture.slice.connectionStore.budgets().single { it.name == "Household" }.id }
+        val budget = slussen.app.ui.budget.BudgetViewModel(fixture.services, household)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { budget.load() }
+        val viewModel = bankAccountScreen(fixture, scenario.bankAccount("Kestrel Checking"))
+        var opened: Long? = null
+        var onBankAccount by androidx.compose.runtime.mutableStateOf(false)
+        setContent {
+            SlussenTheme {
+                if (!onBankAccount) {
+                    budget.state.collectAsState().value?.let {
+                        BudgetScreen(it, onRemedy = {}, onStartFirstUploadMatching = {}, onBankAccount = { id -> opened = id; onBankAccount = true })
+                    }
+                } else {
+                    slussen.app.ui.bankaccount.BankAccountScreen(
+                        viewModel.state.collectAsState().value, onBack = {}, onOpen = viewModel::open, onStatuses = viewModel::openStatuses,
+                        onClose = viewModel::close,
+                    )
+                }
+            }
+        }
+
+        onNode(hasScrollAction()).performScrollToNode(hasText("Bank Transactions and their statuses ›"))
+        onAllNodesWithText("Bank Transactions and their statuses ›").onFirst().performClick()
+        assertEquals(scenario.bankAccount("Kestrel Checking"), opened)
+        onNodeWithText("Household → Budget Account Checking · Kestrel Bank · Kestrel Feeds").assertExists()
+        onNodeWithText("Newest first · 2026-09-29 to 2026-10-16").assertExists()
+        onNode(hasScrollAction()).performScrollToNode(hasText("This week · from Monday 10-12".uppercase()))
+        onNodeWithText("This week · from Monday 10-12".uppercase()).assertExists()
+        onNode(hasScrollAction()).performScrollToNode(hasText("Northwind Power"))
+        onNodeWithText("Northwind Power").assertExists()
+        onNodeWithText("A possible pairing with your Typed Entry; nothing paired or written yet").assertExists()
+        onAllNodesWithText("Match For Typed Entry").onFirst().assertExists()
+        onNodeWithText("Northwind Power").performClick()
+        onNodeWithText("Northwind Power · −88.40 USD").assertExists()
+        onNodeWithText("1 · Northwind 2026-10-11 −88.40 in Budget Account Checking").assertExists()
+        onNodeWithText("Import Anyway", substring = true).assertDoesNotExist()
+        onNodeWithText("Close").performClick()
+        onNodeWithText("Newest first · 2026-09-29 to 2026-10-16").assertExists()
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003"])
+    @DisplayName("Step 5 (bank-account.html#fetched-empty): a Bank Account whose Fetch succeeded without Bank Transactions says so with the dates of the fetch period, not as a failure")
+    fun bankAccountFetchedButEmpty() = compose.use {
+        val fixture = ScreenFixture()
+        val scenario = slussen.testing.EveryStatusScenario(fixture.slice)
+        val saver = kotlinx.coroutines.runBlocking {
+            scenario.serve()
+            scenario.addBankAccount("Bonus Saver", "Reserve Savings", slussen.core.port.BankAccountType.Savings)
+        }
+        fixture.slice.importStatusStore.fetches += slussen.core.port.StoredFetch(
+            77, fixture.slice.feedsId, fixture.slice.clock.instant().minus(java.time.Duration.ofMinutes(15)), slussen.core.port.StartedBy.Operator,
+            slussen.core.port.FetchOutcome.Fetched,
+            listOf(slussen.core.port.StoredFetchResult(saver, slussen.core.port.FetchResultOutcome.Fetched, 0)),
+        )
+        val viewModel = bankAccountScreen(fixture, saver)
+        setContent {
+            SlussenTheme {
+                slussen.app.ui.bankaccount.BankAccountScreen(viewModel.state.collectAsState().value, onBack = {}, onOpen = {}, onStatuses = {}, onClose = {})
+            }
+        }
+
+        onNodeWithText("No Bank Transactions from 2026-09-15 to 2026-10-15.", substring = true).assertExists()
+        onNodeWithText("Nothing is wrong and no action is needed", substring = true).assertExists()
+        onNodeWithText("Source Health: Fetched 2026-10-15 13:45 · started by you").assertExists()
     }
 
     /** UC-008 A10, BR-011: the overview is shown from the first added Bank Account on; here one of the File Format. */

@@ -97,8 +97,7 @@ object TransferDetection {
         val statuses = mutableMapOf<Long, TransactionStatus>()
         val lonely = legs.filterNot { it.id in paired }.mapNotNull { single ->
             val known = oneSided(single, sides, descriptions) ?: return@mapNotNull null
-            // UC-005 BR-005: A Lonely Transfer whose other Transfer Leg has not arrived within the grace period becomes an ordinary Bank Transaction.
-            if (today.isAfter(single.transaction.bookedDate.plusDays(graceDays.toLong()))) return@mapNotNull null
+            if (graceEnded(single.transaction, graceDays, today)) return@mapNotNull null
             if (known.otherSide == null) {
                 statuses[single.id] = statusOf(single, guessed = true)
                 return@mapNotNull null
@@ -119,6 +118,34 @@ object TransferDetection {
         return TransfersDetected(transfers, statuses)
     }
 
+    // UC-005 BR-005: The grace period counts from the booked date of the Transfer Leg that has arrived, the last of its days included.
+    /** The last day on which the other side of a Lonely Transfer whose arrived Transfer Leg is [arrived] can arrive. */
+    fun lastDayOfGrace(arrived: StoredBankTransaction, graceDays: Int): LocalDate = arrived.bookedDate.plusDays(graceDays.toLong())
+
+    // UC-005 BR-005: A Lonely Transfer whose other Transfer Leg has not arrived within the grace period becomes an ordinary Bank Transaction.
+    private fun graceEnded(arrived: StoredBankTransaction, graceDays: Int, today: LocalDate): Boolean =
+        today.isAfter(lastDayOfGrace(arrived, graceDays))
+
+    /**
+     * UC-005 A5 (O-T-11): the Budget Account of the other side of [single], a Bank Transaction of [bankAccount] in no
+     * Transfer, when it would be a Lonely Transfer by BR-002 but its grace period has ended, so that it is an ordinary
+     * Bank Transaction; null otherwise. The same rules as [detect], on the same stored data.
+     */
+    fun otherSideAfterGrace(
+        single: StoredBankTransaction,
+        bankAccount: StoredBankAccount,
+        budget: StoredBudget,
+        bankAccounts: List<StoredBankAccount>,
+        descriptions: List<StoredTransferDescription>,
+        graceDays: Int,
+        today: LocalDate,
+    ): Long? {
+        val sides = sidesOf(budget, bankAccounts)
+        if (sides[bankAccount.mapping?.budgetAccountId]?.id != bankAccount.id) return null
+        if (!graceEnded(single, graceDays, today)) return null
+        return oneSided(TransferCandidate(single, bankAccount, earlier = null), sides, descriptions)?.otherSide
+    }
+
     // UC-005 BR-010: The Transfer Legs of a Transfer have the status Transfer Leg, those of a Guessed Transfer the status Guessed Transfer.
     /** The Transaction Status [leg] follows as a Transfer Leg of a Transfer that is [guessed] or not. */
     private fun statusOf(leg: TransferCandidate, guessed: Boolean): TransactionStatus =
@@ -137,6 +164,15 @@ object TransferDetection {
             // UC-005 BR-004: Movements between Budgets or between currencies are never Transfers, and no currency is converted.
             .filter { it.currency == budget.currency }
             .associateBy { it.mapping!!.budgetAccountId }
+    }
+
+    /**
+     * UC-005 BR-006, BR-014: the Budget Account of the Funded By of [bankAccount], a credit card, or of its Transfer
+     * Partner otherwise, when it applies in [budget] with its [bankAccounts]; null when none is set or it no longer applies.
+     */
+    fun otherSideThatApplies(bankAccount: StoredBankAccount, budget: StoredBudget, bankAccounts: List<StoredBankAccount>): Long? {
+        val sides = sidesOf(budget, bankAccounts)
+        return if (bankAccount.creditCard) fundedBy(bankAccount, sides) else transferPartner(bankAccount, sides)
     }
 
     // UC-005 BR-006: The Funded By of a credit card Bank Account is used on the Card Payment path, and only while it applies.

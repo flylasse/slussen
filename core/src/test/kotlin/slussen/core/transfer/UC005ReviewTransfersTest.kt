@@ -1,5 +1,6 @@
 package slussen.core.transfer
 
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -27,6 +28,8 @@ import slussen.core.port.TransferDecision
 import slussen.core.port.TransferDescriptionKind
 import slussen.core.port.TransferType
 import slussen.core.status.NotYetUploaded
+import slussen.core.status.StatusReason
+import slussen.core.status.TransferShown
 import slussen.pluginapi.budgetapp.BudgetAppTransactionRead
 import slussen.pluginapi.budgetapp.ChangeCursor
 import slussen.pluginapi.budgetapp.ChangeSet
@@ -614,6 +617,35 @@ class UC005ReviewTransfersTest {
         slice.settings.settings = slice.settings.settings.copy(lonelyTransferGraceDays = 7)
         compare()
         assertEquals(TransactionStatus.TransferLeg, status(paid))
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A5: Other Side Not Arrived Within the Grace Period", businessRules = ["BR-005", "BR-006"])
+    @DisplayName("A5 step 1 (O-T-11): on its Bank Account, a Lonely Transfer shows the other side it expects and the last day of the grace period; the day after, the same Bank Transaction is shown as an ordinary one with the reason that its other side did not arrive in time, derived and stored nowhere; an ordinary payment that matches no description has no such reason")
+    fun lateOtherSideIsShownWithItsReason() = runTest {
+        ready()
+        checking()
+        val card = rewardsCard()
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
+        val paid = stored(card, "TX-1", today.minusDays(6), amount(120), payee = "AUTOPAY")
+        val refund = stored(card, "TX-2", today.minusDays(6), amount(15), payee = "Harbor Outfitters refund")
+        compare()
+
+        fun line(id: Long) = runBlocking { slice.bankAccountTransactions.of(card) }.weeks.flatMap { it.lines }.single { it.key.id == id }
+        val lonely = (line(paid).reason as StatusReason.TransferLeg).transfer
+        assertEquals(TransferShown(TransferType.CardPayment, false, "Checking", otherLeg = null, expectedBy = today, writesIt = true), lonely)
+
+        slice.clock.advance(Duration.ofDays(1))
+        compare()
+
+        assertEquals(TransactionStatus.New, line(paid).status)
+        assertEquals(StatusReason.OtherSideDidNotArriveInTime("Checking", graceDays = 6, lastDay = today), line(paid).reason)
+        assertNull(line(paid).transfer)
+        assertEquals(StatusReason.NoMatch, line(refund).reason)
+        // BR-006, A8: without a Funded By, and with two Bank Accounts that could pay, the card's inflow has no known other side, so no such reason.
+        joint()
+        slice.connectionStore.link(card, fundedBy = null)
+        assertEquals(StatusReason.NoMatch, line(paid).reason)
     }
 
     // ---- A8: the first Card Payment without a Funded By -------------------------------------------------------------

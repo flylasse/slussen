@@ -32,6 +32,7 @@ class UiFixture(
         generalSettings = slice.generalSettings,
         mappings = slice.mappings,
         status = slice.status,
+        bankAccountTransactions = slice.bankAccountTransactions,
         fetch = slice.fetch,
         comparison = slice.comparison,
         formats = Formats(zone),

@@ -7,6 +7,7 @@ import java.math.RoundingMode
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -20,6 +21,7 @@ class Formats(val zone: ZoneId) {
     private val dateTime = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ROOT)
     private val date = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ROOT)
     private val dayAndTime = DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.ROOT)
+    private val dayOfYear = DateTimeFormatter.ofPattern("MM-dd", Locale.ROOT)
     private val money = DecimalFormat("#,##0.00", DecimalFormatSymbols(Locale.ROOT))
 
     /** An amount in thousandths of the currency unit, with two decimals, a minus sign for an outflow. */
@@ -48,6 +50,15 @@ class Formats(val zone: ZoneId) {
             else -> dateTime.format(at)
         }
     }
+
+    /** A date as the list of a Bank Account shows it: the day alone in the year of [today] ("10-14"), the whole date otherwise. */
+    fun day(date: LocalDate, today: LocalDate): String = if (date.year == today.year) dayOfYear.format(date) else this.date.format(date)
+
+    /** A whole date ("2026-10-14"). */
+    fun date(date: LocalDate): String = this.date.format(date)
+
+    /** Today in the device's time zone. */
+    fun today(now: Instant): LocalDate = now.atZone(zone).toLocalDate()
 
     fun megabytes(bytes: Long): String = String.format(Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0))
 

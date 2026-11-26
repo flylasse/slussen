@@ -40,6 +40,7 @@ import slussen.core.port.StoredProviderRequest
 import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.StoredTransactionFile
 import slussen.core.port.TransactionFileOutcome
+import slussen.core.port.TransactionStatus
 import slussen.core.port.UnreadablePart
 import slussen.core.settings.NextThing
 import slussen.pluginapi.testfixtures.UseCase
@@ -50,6 +51,7 @@ import slussen.testing.ExampleData.USD
 import slussen.testing.ExampleData.amount
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 
 @DisplayName("UC-008: Check Import Status")
 class UC008CheckImportStatusTest {
@@ -703,5 +705,219 @@ class UC008CheckImportStatusTest {
         assertEquals(listOf(Blocked(BlockedReason.FailedFetch, Remedy.FetchAgain, fetchedAt, "Pinecrest Rewards Card")), card.blocked)
         assertEquals(slice.feedsId, card.dataProviderId)
         assertEquals(SourceHealth.FetchHealth(FetchOutcome.Fetched, fetchedAt, StartedBy.Operator), slice.status.workspace(budgetId("Household")).sources.single().health)
+    }
+
+    // ---- Step 5: one Bank Account's Bank Transactions with their Transaction Statuses (bank-account.html) ----------
+
+    private val scenario = slussen.testing.EveryStatusScenario(slice)
+
+    private fun october(day: Int): LocalDate = LocalDate.of(2026, 10, day)
+
+    private suspend fun view(name: String): BankAccountTransactionsView = slice.bankAccountTransactions.of(scenario.bankAccount(name))
+
+    private fun BankAccountTransactionsView.line(key: String): TransactionLine =
+        weeks.flatMap { it.lines }.single { !it.key.unreadable && it.key.id == scenario.transaction(key) }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-001", "BR-007"])
+    @DisplayName("Step 5 (survey risk 2): after a real Comparison, every Transaction Status this build can give is shown on its Bank Account, and the reason shown for each line agrees with its stored status, with what it was compared with: the Typed Entry, the Import by an Other Import Path, the unsupported Slussen Import, the other side of its Transfer, the boundary of its date")
+    fun everyStatusShowsAReasonThatAgreesWithIt() = runTest {
+        scenario.compareEveryStatus()
+        val stored = slice.importStatusStore.bankTransactions.associate { it.id to it.status }
+
+        val views = listOf("Kestrel Checking", "Pinecrest Rewards Card", "Kestrel Reserve").map { view(it) }
+        val lines = views.flatMap { view -> view.weeks.flatMap { it.lines } }
+
+        // Every stored Bank Transaction of the three Bank Accounts is shown once, with its stored status; nothing disappears.
+        val bank = lines.filterNot { it.key.unreadable }
+        assertEquals(stored.keys, bank.map { it.key.id }.toSet())
+        bank.forEach { assertEquals(stored[it.key.id], it.status, "the status shown for ${it.payee}") }
+        assertEquals(BankAccountTransactions.GIVEN_BY_THIS_BUILD.toSet(), bank.mapNotNull { it.status }.toSet())
+        // The reason agrees with the stored status for every line.
+        lines.forEach { line ->
+            val agrees = when (line.status) {
+                null -> line.reason == StatusReason.NotComparedYet
+                TransactionStatus.New -> line.reason == StatusReason.NoMatch || line.reason is StatusReason.OtherSideDidNotArriveInTime
+                TransactionStatus.MatchForTypedEntry -> line.reason is StatusReason.TypedEntries
+                TransactionStatus.AlreadyInBudgetApp -> line.reason is StatusReason.HeldInBudgetApp
+                TransactionStatus.PossibleImportByOtherPath -> line.reason is StatusReason.ResemblesOtherImport
+                TransactionStatus.NeedsReview -> line.reason is StatusReason.NoStableReference ||
+                    line.reason is StatusReason.ResemblesUnsupportedSlussenImport || line.reason is StatusReason.Unreadable
+                TransactionStatus.DeletedInBudgetApp -> line.reason is StatusReason.DeletedInBudgetApp
+                TransactionStatus.MergedInBudgetApp -> line.reason is StatusReason.MergedInBudgetApp
+                TransactionStatus.BeforeStartDate -> line.reason is StatusReason.BeforeStartDate
+                TransactionStatus.TooOld -> line.reason is StatusReason.TooOld
+                TransactionStatus.InTheFuture -> line.reason == StatusReason.InTheFuture
+                TransactionStatus.TransferLeg -> line.reason is StatusReason.TransferLeg
+                TransactionStatus.GuessedTransfer -> line.reason is StatusReason.GuessedTransfer
+                else -> false
+            }
+            assertTrue(agrees, "${line.payee}: ${line.status} shown with ${line.reason}")
+        }
+        val checking = views[0]
+        val card = views[1]
+        val reserve = views[2]
+        val budgetChecking = "Checking"
+        assertEquals(StatusReason.NoMatch, checking.line("new").reason)
+        assertEquals(
+            StatusReason.TypedEntries(listOf(BudgetAppEntry(october(11), amount(-88, 400), "Northwind", budgetChecking)), matchingDateWindowDays = 10),
+            checking.line("typed").reason,
+        )
+        assertEquals(StatusReason.HeldInBudgetApp(BudgetAppEntry(october(9), amount(-41, 200), "Gas & Go", budgetChecking)), checking.line("already").reason)
+        assertEquals(
+            StatusReason.ResemblesOtherImport(listOf(BudgetAppEntry(october(14), amount(-18, 600), "Riverside Apoth.", budgetChecking)), 10),
+            checking.line("possible").reason,
+        )
+        assertEquals(
+            StatusReason.ResemblesUnsupportedSlussenImport(listOf(BudgetAppEntry(october(12), amount(-29), "Streamline", budgetChecking))),
+            checking.line("unsupported").reason,
+        )
+        assertEquals(StatusReason.NoStableReference(identical = 1), checking.line("no-reference-1").reason)
+        assertEquals(StatusReason.DeletedInBudgetApp(BudgetAppEntry(october(12), amount(-23, 500), "Book Nook", budgetChecking)), checking.line("deleted").reason)
+        assertEquals(
+            StatusReason.MergedInBudgetApp(
+                BudgetAppEntry(october(9), amount(-95), "Bright Smile", budgetChecking),
+                into = BudgetAppEntry(october(8), amount(-95), "Dentist", budgetChecking),
+            ),
+            checking.line("merged").reason,
+        )
+        assertEquals(StatusReason.BeforeStartDate(scenario.startDate), checking.line("before-start").reason)
+        // UC-003 BR-011: the Upload Window of 7 days, an Operator Setting, starts 10-08, today 10-15 included.
+        assertEquals(StatusReason.TooOld(october(8), windowDays = 7, fileUploadWindow = false), checking.line("too-old").reason)
+        assertEquals(StatusReason.InTheFuture, checking.line("future").reason)
+        val unreadable = checking.weeks.single { it.kind == WeekKind.WithoutDate }.lines.single()
+        assertEquals(StatusReason.Unreadable("date missing"), unreadable.reason)
+        assertEquals(TransactionStatus.NeedsReview, unreadable.status)
+        assertFalse(unreadable.eligible)
+        // UC-003 A1 (S-T-08): stored since the last successful read, no status yet, neither Eligible nor waiting.
+        assertEquals(StatusReason.NotComparedYet, checking.line("not-compared").reason)
+        assertFalse(checking.line("not-compared").eligible)
+        // UC-005 BR-002, BR-010, UC-006 BR-009: one Transfer, the outflow side carries it and is the Eligible one.
+        val pair = (checking.line("leg-out").reason as StatusReason.TransferLeg).transfer
+        assertEquals(OtherLeg("Kestrel Reserve", october(11), amount(500), "INTERNET TRANSFER FROM CHECKING"), pair.otherLeg)
+        assertEquals("Reserve Savings", pair.otherBudgetAccountName)
+        assertTrue(pair.writesIt)
+        assertTrue(checking.line("leg-out").eligible)
+        val inflow = (reserve.line("leg-in").reason as StatusReason.TransferLeg).transfer
+        assertFalse(inflow.writesIt)
+        assertFalse(reserve.line("leg-in").eligible)
+        assertEquals("Checking", inflow.otherBudgetAccountName)
+        // UC-005 A8 (S-T-20): a Card Payment into a card without a Funded By is guessed; the lone one proposes no Budget Account.
+        val guessed = (card.line("guessed-card").reason as StatusReason.GuessedTransfer).transfer!!
+        assertEquals(OtherLeg("Kestrel Checking", october(12), amount(-410), "PINECREST AUTOPAY"), guessed.otherLeg)
+        assertTrue(guessed.guessed)
+        assertEquals(StatusReason.GuessedTransfer(transfer = null, cardName = "Pinecrest Rewards Card"), card.line("guessed-alone").reason)
+        // UC-005 A5 (O-T-11): its other side did not arrive within the grace period, which ended 10-14.
+        assertEquals(StatusReason.OtherSideDidNotArriveInTime("Checking", graceDays = 6, lastDay = october(14)), reserve.line("late-side").reason)
+        // UC-003 BR-014: the Eligible lines are those the counts count.
+        assertEquals(
+            setOf("new", "typed", "leg-out").map(scenario::transaction).toSet(),
+            checking.weeks.flatMap { it.lines }.filter { it.eligible && !it.key.unreadable }.map { it.key.id }.toSet(),
+        )
+        assertEquals(checking.status!!.notYetUploaded.eligible, checking.weeks.flatMap { it.lines }.count { it.eligible })
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-001", "BR-003"])
+    @DisplayName("Step 5 (UX-17, UX-D2, survey guess 6): the list is newest first under the headings this week, last week and earlier, weeks starting on the locale's first day, with the Unreadable Transaction without a readable date last; the header names the dates the list actually covers")
+    fun listIsNewestFirstUnderWeekHeadings() = runTest {
+        scenario.compareEveryStatus()
+
+        val checking = view("Kestrel Checking")
+
+        assertEquals(LocalDate.of(2026, 9, 29)..october(16), checking.covers)
+        assertEquals(listOf(WeekKind.ThisWeek, WeekKind.LastWeek, WeekKind.Earlier, WeekKind.WithoutDate), checking.weeks.map { it.kind })
+        val (thisWeek, lastWeek, earlier) = checking.weeks
+        assertEquals(october(12) to null, thisWeek.from to thisWeek.to)
+        assertEquals(october(5) to october(11), lastWeek.from to lastWeek.to)
+        assertEquals(LocalDate.of(2026, 9, 29) to october(4), earlier.from to earlier.to)
+        val dates = checking.weeks.flatMap { it.lines }.mapNotNull { it.bookedDate }
+        assertEquals(dates.sortedDescending(), dates)
+        assertEquals(october(16), thisWeek.lines.first().bookedDate)
+        assertEquals(listOf("Lumen Streaming"), lastWeek.lines.filter { it.status == TransactionStatus.TooOld }.map { it.payee })
+        assertEquals(listOf("Café Brisa"), earlier.lines.map { it.payee })
+        // The boundaries "What the statuses mean" names for this Bank Account.
+        assertEquals(StatusBoundaries(7, october(8), false, 10, 6, scenario.startDate, 30), checking.boundaries)
+        assertNull(checking.nothingStored)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003"])
+    @DisplayName("Step 5 (bank-account.html#fetched-empty, UC-001 BR-002): a Bank Account whose Fetch succeeded but brought no Bank Transaction says so with the Fetch and the dates of the fetch period, not as a failure; one never fetched says that it was not fetched yet")
+    fun fetchedButEmptyIsNotAFailure() = runTest {
+        scenario.serve()
+        val saver = scenario.addBankAccount("Bonus Saver", "Reserve Savings", BankAccountType.Savings)
+        assertEquals(NothingStored.NotFetchedYet, slice.bankAccountTransactions.of(saver).nothingStored)
+        val fetchedAt = now.minus(Duration.ofMinutes(15))
+        slice.importStatusStore.fetches += StoredFetch(
+            nextId++, slice.feedsId, fetchedAt, StartedBy.Operator, FetchOutcome.Fetched,
+            listOf(StoredFetchResult(saver, FetchResultOutcome.Fetched, transactionCount = 0)),
+        )
+        slice.settings.settings = slice.settings.settings.copy(fetchPeriodDays = 14)
+
+        val view = slice.bankAccountTransactions.of(saver)
+
+        assertEquals(NothingStored.FetchedNone(fetchedAt, "Kestrel Feeds", october(1), october(15), 14), view.nothingStored)
+        assertTrue(view.weeks.isEmpty())
+        assertNull(view.covers)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-007"])
+    @DisplayName("Step 5 (UC-005 BR-006, BR-014): the Funded By of a credit card and the Transfer Partner of any other Bank Account are shown read-only, as not set, set, or kept but no longer applying once their Budget Account lost its last Account Mapping")
+    fun fundedByAndTransferPartnerAreShown() = runTest {
+        scenario.compareEveryStatus()
+        val checking = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Checking" }.id
+        val oldSavings = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Health Savings" }.id
+
+        assertEquals(OtherSideSetting(OtherSideKind.FundedBy, null, applies = false), view("Pinecrest Rewards Card").otherSide)
+        assertEquals(OtherSideSetting(OtherSideKind.TransferPartner, "Checking", applies = true), view("Kestrel Reserve").otherSide)
+        assertEquals(OtherSideSetting(OtherSideKind.TransferPartner, null, applies = false), view("Kestrel Checking").otherSide)
+        slice.connectionStore.link(scenario.bankAccount("Pinecrest Rewards Card"), fundedBy = checking)
+        assertEquals(OtherSideSetting(OtherSideKind.FundedBy, "Checking", applies = true), view("Pinecrest Rewards Card").otherSide)
+        slice.connectionStore.link(scenario.bankAccount("Kestrel Reserve"), transferPartner = oldSavings)
+        assertEquals(OtherSideSetting(OtherSideKind.TransferPartner, "Health Savings", applies = false), view("Kestrel Reserve").otherSide)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A3: Currency Mismatch", businessRules = ["BR-006"])
+    @DisplayName("A3 (UC-003 A3, BR-013): a Bank Transaction of a Bank Account with a currency mismatch is shown as New with the reason that no amount is compared while the Bank Account is blocked, and is not Eligible")
+    fun currencyMismatchShowsButIsNotEligible() = runTest {
+        scenario.serve()
+        val dollar = scenario.addBankAccount("Aurora Dollar", "Savings", BankAccountType.Savings)
+        scenario.store("interest", dollar, october(13), amount(3, 100), "Interest")
+        scenario.answerHousehold(emptyList())
+        slice.comparison.readAgain()
+
+        val view = slice.bankAccountTransactions.of(dollar)
+
+        val line = view.weeks.single().lines.single()
+        assertEquals(TransactionStatus.New, line.status)
+        assertEquals(StatusReason.CurrencyMismatch(USD, EUR), line.reason)
+        assertFalse(line.eligible)
+        assertEquals(BankAccountPlacement.Mapped(budgetId("Summer House"), "Summer House", EUR, "Savings"), view.placement)
+        assertEquals(listOf(BlockedReason.CurrencyMismatch), view.status!!.blocked.map { it.reason })
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-007"])
+    @DisplayName("Step 5 (bank-account.html#retired, #unmapped): a Retired Account and a Bank Account without an Account Mapping keep their history with the statuses last given, shown as not compared any more and never Eligible, without the status of a served Budget")
+    fun retiredAndUnmappedKeepTheirHistory() = runTest {
+        scenario.compareEveryStatus()
+        val reserve = scenario.bankAccount("Kestrel Reserve")
+        slice.connectionStore.bankAccountList.replaceAll { if (it.id == reserve) it.copy(retired = true) else it }
+
+        val retired = slice.bankAccountTransactions.of(reserve)
+
+        assertEquals(BankAccountPlacement.Retired("Household"), retired.placement)
+        assertNull(retired.status)
+        val lines = retired.weeks.flatMap { it.lines }
+        assertEquals(setOf(TransactionStatus.TransferLeg, TransactionStatus.New), lines.map { it.status }.toSet())
+        assertTrue(lines.all { it.reason == StatusReason.NotComparedAnyMore && !it.eligible })
+        slice.connectionStore.bankAccountList.replaceAll { if (it.id == reserve) it.copy(retired = false, mapping = null) else it }
+        val unmapped = slice.bankAccountTransactions.of(reserve)
+        assertEquals(BankAccountPlacement.NotMapped, unmapped.placement)
+        assertNull(unmapped.summary)
+        assertTrue(unmapped.weeks.flatMap { it.lines }.all { it.reason == StatusReason.NotComparedAnyMore && !it.eligible })
     }
 }

@@ -244,5 +244,8 @@ data class BudgetWorkspace(
     val budgetAppName: String,
 )
 
+/** One Bank Account of a served Budget (steps 5-8), with its Budget's [summary] and the name of its Source. */
+data class BankAccountInBudget(val summary: BudgetSummary, val status: BankAccountStatus, val sourceName: String?)
+
 /** One of the most recent Fetches (A5, BR-008). */
 data class RecentFetch(val sourceName: String, val startedAt: Instant, val startedBy: StartedBy, val outcome: FetchOutcome)

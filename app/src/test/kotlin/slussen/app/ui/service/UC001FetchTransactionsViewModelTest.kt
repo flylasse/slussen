@@ -570,4 +570,36 @@ class UC001FetchTransactionsViewModelTest {
         )
         assertTrue(card.blocked.isEmpty())
     }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A21: Balance in Another Currency")
+    @DisplayName("A21 step 2 (bank-account.html#balance-other-currency): the Bank Account's own screen names both currencies and that nothing is needed now, keeps the previous Account Balance with its own time, and shows the Bank Transactions of the Fetch with their statuses as usual")
+    fun bankAccountScreenShowsTheBalanceInAnotherCurrency() {
+        runBlocking { slice.enterCredentials() }
+        aFeedsBankAccountIsAdded()
+        answerChecking(BankAccountResult.Read(emptyList(), amount(5071, 100)))
+        page(slice.feedsKey).fetch()
+        slice.clock.advance(Duration.ofHours(1))
+        answerChecking(
+            BankAccountResult.Read(
+                listOf(slussen.pluginapi.provider.ProviderTransaction.Interpretable("TX-1", java.time.LocalDate.of(2026, 10, 14), amount(-64, 180), USD, "Corner Grocer", null, booked = true)),
+                amount(4700),
+            ),
+            currency = ExampleData.EUR,
+        )
+        page(slice.feedsKey).fetch()
+        val checking = runBlocking { slice.connectionStore.bankAccounts().single().id }
+
+        val ui = slussen.app.ui.bankaccount.BankAccountViewModel(fixture.services, checking).also { it.load() }.state.value.ui!!
+
+        assertEquals(
+            "Balance reported in EUR, expected USD · at the Fetch of 2026-10-15 15:00 Kestrel Feeds reported it in EUR; it was " +
+                "not stored and no amount was converted. Nothing is needed now. If it happens again, check at Kestrel Feeds " +
+                "which currency it shows for Kestrel Checking.",
+            ui.balanceNotice,
+        )
+        assertTrue(ui.balance!!.startsWith("Bank balance 5,071.10 as of 14:00"), ui.balance)
+        assertEquals(listOf("Corner Grocer"), ui.weeks.flatMap { it.lines }.map { it.payee })
+        assertTrue(ui.blocked.isEmpty())
+    }
 }

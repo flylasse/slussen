@@ -121,7 +121,7 @@ object ComparisonRules {
         held: List<StoredBudgetAppTransaction>,
         windows: ComparisonWindows,
     ): TransactionStatus {
-        val sameIdentifier = held.filter { it.importIdentifier == transaction.importIdentifier }
+        val sameIdentifier = underItsImportIdentifier(transaction, held)
         // UC-003 BR-003: A Bank Transaction whose Import Identifier its Budget Account holds is Already In Budget App.
         if (sameIdentifier.any { it.state == BudgetAppTransactionState.Present }) return TransactionStatus.AlreadyInBudgetApp
         // UC-003 BR-004: A Bank Transaction sent and later deleted in the Budget App is Deleted In Budget App.
@@ -131,18 +131,13 @@ object ComparisonRules {
         // UC-003 BR-018: A Bank Transaction dated before the Start Date of its Bank Account is Before Start Date.
         bankAccount.startDate?.let { startDate -> if (transaction.bookedDate.isBefore(startDate)) return TransactionStatus.BeforeStartDate }
         // UC-003 BR-011: Outside the Upload Window, or the file upload window for a file-imported Bank Account, a Bank Transaction is Too Old or In The Future.
-        val windowDays = if (bankAccount.fileFormatId != null) windows.fileUploadWindowDays else windows.uploadWindowDays
         if (transaction.bookedDate.isAfter(windows.today)) return TransactionStatus.InTheFuture
-        if (transaction.bookedDate.isBefore(windows.today.minusDays(windowDays.toLong()))) return TransactionStatus.TooOld
+        if (transaction.bookedDate.isBefore(uploadWindowStart(bankAccount, windows))) return TransactionStatus.TooOld
         // UC-003 BR-012: A Bank Transaction without a Stable Reference is Needs Review.
         if (transaction.stableReference == null) return TransactionStatus.NeedsReview
         // UC-003 BR-013: No amount is ever converted: a Bank Account in another currency than its Budget's is compared by nothing that compares amounts.
         if (bankAccount.currency != budget.currency) return TransactionStatus.New
-        val resembling = held.filter { candidate ->
-            candidate.state == BudgetAppTransactionState.Present &&
-                candidate.amount == transaction.amount &&
-                abs(ChronoUnit.DAYS.between(candidate.transactionDate, transaction.bookedDate)) <= windows.matchingDateWindowDays
-        }
+        val resembling = resembling(transaction, held, windows)
         // UC-003 BR-008: A Bank Transaction resembling an Import of Slussen in a form it does not support is Needs Review.
         if (resembling.any { it.enteredBy == EnteredBy.SlussenUnsupportedFormat }) return TransactionStatus.NeedsReview
         // UC-003 BR-007: A Bank Transaction resembling an Import by an Other Import Path is Possible Import By Other Path.
@@ -151,6 +146,32 @@ object ComparisonRules {
         if (resembling.any { it.enteredBy == EnteredBy.TypedEntry }) return TransactionStatus.MatchForTypedEntry
         return TransactionStatus.New
     }
+
+    // UC-003 BR-003: A Bank Transaction is found in the Budget App by its Import Identifier, in its Budget Account.
+    /** The transactions of [held], the stored copy of a Budget Account, that carry the Import Identifier of [transaction]. */
+    fun underItsImportIdentifier(transaction: StoredBankTransaction, held: List<StoredBudgetAppTransaction>): List<StoredBudgetAppTransaction> =
+        held.filter { it.importIdentifier == transaction.importIdentifier }
+
+    // UC-003 BR-006: A resembling transaction is present in its Budget Account, with the same amount, dated within the Matching Date Window before or after it.
+    /** The present transactions of [held] that resemble [transaction] (BR-006, BR-007, BR-008). */
+    fun resembling(
+        transaction: StoredBankTransaction,
+        held: List<StoredBudgetAppTransaction>,
+        windows: ComparisonWindows,
+    ): List<StoredBudgetAppTransaction> = held.filter { candidate ->
+        candidate.state == BudgetAppTransactionState.Present &&
+            candidate.amount == transaction.amount &&
+            abs(ChronoUnit.DAYS.between(candidate.transactionDate, transaction.bookedDate)) <= windows.matchingDateWindowDays
+    }
+
+    // UC-003 BR-011: The Upload Window is the last 7 days by default, or the file upload window for a Bank Account fed by Transaction Files, Operator Settings both, today included.
+    /** The days of the Upload Window that applies to [bankAccount]. */
+    fun uploadWindowDays(bankAccount: StoredBankAccount, windows: ComparisonWindows): Int =
+        if (bankAccount.fileFormatId != null) windows.fileUploadWindowDays else windows.uploadWindowDays
+
+    /** The first day of the Upload Window that applies to [bankAccount]; a Bank Transaction dated before it is Too Old. */
+    fun uploadWindowStart(bankAccount: StoredBankAccount, windows: ComparisonWindows): LocalDate =
+        windows.today.minusDays(uploadWindowDays(bankAccount, windows).toLong())
 }
 
 /** UC-003 BR-014 and the counts of UC-008 BR-003: Eligible Transactions and those waiting for a decision. Pure. */
@@ -196,9 +217,13 @@ object EligibleTransactions {
         if (otherLegs.any { it.status in DOUBTFUL }) return false
         // UC-005 BR-010: While a Transfer has a Transfer Leg to which an earlier rule of the Comparison gave its Transaction Status, the whole Transfer is in no Upload Plan, from either side.
         if (otherLegs.any { it.status != TransactionStatus.TransferLeg }) return false
-        // UC-006 BR-009: A Transfer is written through exactly one Transfer Leg, the outflow side when both Transfer Legs are present.
-        return otherLegs.isEmpty() || transaction.amount.thousandths < 0
+        return writesItsSide(transaction, otherLegs)
     }
+
+    // UC-006 BR-009: A Transfer is written through exactly one Transfer Leg, the outflow side when both Transfer Legs are present.
+    /** Whether [transaction] is the Transfer Leg its Transfer is written through, beside its [otherLegs]. */
+    fun writesItsSide(transaction: StoredBankTransaction, otherLegs: List<StoredBankTransaction>): Boolean =
+        otherLegs.isEmpty() || transaction.amount.thousandths < 0
 
     /**
      * The counts of [bankAccount]: its Eligible Transactions and its Bank Transactions and Unreadable Transactions that wait

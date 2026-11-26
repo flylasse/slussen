@@ -470,4 +470,286 @@ class UC008CheckImportStatusViewModelTest {
 
         assertEquals("Bank Consents are not in this build yet, so it cannot be renewed here.", overview().expiringConsentNote)
     }
+
+    // ---- Step 5: one Bank Account's screen (bank-account.html) --------------------------------------------------------
+
+    private val scenario = slussen.testing.EveryStatusScenario(slice)
+
+    private fun bankAccountScreen(name: String) =
+        slussen.app.ui.bankaccount.BankAccountViewModel(fixture.services, scenario.bankAccount(name)).also { it.load() }
+
+    private fun slussen.app.ui.bankaccount.BankAccountViewModel.ui() = state.value.ui!!
+
+    private fun slussen.app.ui.bankaccount.BankAccountUi.line(key: String) =
+        weeks.flatMap { it.lines }.single { !it.key.unreadable && it.key.id == scenario.transaction(key) }
+
+    private val budgetApp = ExampleData.BUDGET_APP_NAME
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-007"])
+    @DisplayName("Steps 4-5 (budget.html → bank-account.html#checking-this-build): a Bank Account card of the Budget tab opens its own screen, which shows its Bank Transactions newest first under week headings with the dates the list covers, each with its status and its reason in the Operator's words, the statuses as of the last read with the counts, the Start Date and the Transfer Partner read-only")
+    fun bankAccountScreenShowsTheList() {
+        runBlocking { scenario.compareEveryStatus() }
+        val card = BudgetViewModel(fixture.services, budgetId("Household")).also { it.load() }.state.value!!.bankAccounts.first()
+        assertEquals(scenario.bankAccount("Kestrel Checking"), card.bankAccountId)
+
+        val ui = bankAccountScreen("Kestrel Checking").ui()
+
+        assertEquals("Kestrel Checking", ui.title)
+        assertEquals("Checking · USD", ui.kind)
+        assertEquals("Household → Budget Account Checking · Kestrel Bank · Kestrel Feeds", ui.placement)
+        assertEquals("Newest first · 2026-09-29 to 2026-10-16", ui.covers)
+        assertEquals(
+            listOf("This week · from Monday 10-12", "Last week · 10-05 to 10-11", "Earlier · 09-29 to 10-04", "Without a readable date"),
+            ui.weeks.map { it.heading },
+        )
+        assertEquals("Statuses as of 14:00 · Eligible 3 · waiting for a decision 6 · not compared yet 1", ui.statuses)
+        assertEquals("Read $budgetApp again to bring them up to date; nothing else is needed.", ui.readAgainNote)
+        assertEquals("Start Date 2026-10-01", ui.startDate)
+        assertEquals("Transfer Partner: not set · set in a later version", ui.otherSide)
+        val typed = ui.line("typed")
+        assertEquals(
+            listOf("10-12", "Northwind Power", "A possible pairing with your Typed Entry; nothing paired or written yet", "−88.40", "Match For Typed Entry"),
+            listOf(typed.date, typed.payee, typed.reason, typed.amount, typed.status),
+        )
+        assertEquals("No match in $budgetApp at the latest Comparison", ui.line("new").reason)
+        assertTrue(ui.line("new").eligible)
+        assertEquals("Resembles an Import by another importer in Checking; not proof of a duplicate", ui.line("possible").reason)
+        assertEquals("No Stable Reference: same date, amount and text as 1 other, so Slussen cannot tell them apart", ui.line("no-reference-1").reason)
+        assertEquals("Resembles a Slussen Import in a form this version does not support", ui.line("unsupported").reason)
+        assertEquals("$budgetApp already holds it under Slussen's own Import Identifier", ui.line("already").reason)
+        assertEquals("Deleted in $budgetApp under its Import Identifier; not sent again", ui.line("deleted").reason)
+        assertEquals("Merged in $budgetApp into your Typed Entry Dentist 10-08 −95.00; not sent again", ui.line("merged").reason)
+        assertEquals("Before the Upload Window, which starts 10-08", ui.line("too-old").reason)
+        assertEquals("Before the Start Date 2026-10-01 of this Bank Account", ui.line("before-start").reason)
+        assertEquals("Dated after today; the Comparison looks at it again once its date comes", ui.line("future").reason)
+        assertEquals("One Bank Transfer with Kestrel Reserve 10-11 +500.00; this side would carry it", ui.line("leg-out").reason)
+        assertEquals("Card Payment Slussen cannot pair for certain; proposed with Pinecrest Rewards Card 10-13 +410.00", ui.line("guessed-pay").reason)
+        val notCompared = ui.line("not-compared")
+        assertEquals("Not compared yet", notCompared.status)
+        assertEquals("Stored since the last successful read of $budgetApp; compared at the next read", notCompared.reason)
+        val unreadable = ui.weeks.last().lines.single()
+        assertEquals(listOf("—", "Unreadable Transaction · Kiosk Nord", "Slussen could not read it (date missing); never uploaded", "−7.25", "Needs Review"),
+            listOf(unreadable.date, unreadable.payee, unreadable.reason, unreadable.amount, unreadable.status))
+        assertNull(ui.nothingStored)
+        assertNull(ui.placementNote)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-007"])
+    @DisplayName("Step 5 (bank-account.html#reserve-this-build, #home-card-this-build, UC-005 A5, A8, O-T-11): the side the other side carries is not counted as Eligible; a former Lonely Transfer says its other side did not arrive in time; a Guessed Transfer without a proposal says why; the Funded By and Transfer Partner are read-only")
+    fun transferLinesSayWhy() {
+        runBlocking { scenario.compareEveryStatus() }
+
+        val reserve = bankAccountScreen("Kestrel Reserve").ui()
+        val card = bankAccountScreen("Pinecrest Rewards Card").ui()
+
+        assertEquals("One Bank Transfer with Kestrel Checking 10-11 −500.00; the other side would carry it, so this one is not counted as Eligible", reserve.line("leg-in").reason)
+        assertFalse(reserve.line("leg-in").eligible)
+        assertEquals(
+            "Its other side, from Checking, did not arrive within the Lonely Transfer grace period (6 days, an Operator Setting, " +
+                "until 10-14): now an ordinary Bank Transaction",
+            reserve.line("late-side").reason,
+        )
+        assertEquals("New", reserve.line("late-side").status)
+        assertEquals("Transfer Partner: Checking", reserve.otherSide)
+        assertEquals("Card Payment; its paying side is not known, since Pinecrest Rewards Card has no Funded By", card.line("guessed-alone").reason)
+        assertEquals("Card Payment Slussen cannot pair for certain; proposed with Kestrel Checking 10-12 −410.00", card.line("guessed-card").reason)
+        assertEquals("Funded By: not set · set in a later version", card.otherSide)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario")
+    @DisplayName("Step 5 (bank-account.html#tx-match-this-build, #tx-possible-import-this-build, #tx-unreadable-this-build): a tap opens the read-only details of a line: the Typed Entry it may pair with, the Import it resembles, what of an Unreadable Transaction could be read; no decision is offered, and Close returns to the list")
+    fun linesOpenReadOnlyDetails() {
+        runBlocking { scenario.compareEveryStatus() }
+        val screen = bankAccountScreen("Kestrel Checking")
+
+        screen.open(screen.ui().line("typed").key)
+        val match = screen.ui().sheet!!
+        assertEquals("Northwind Power · −88.40 USD", match.title)
+        assertEquals("2026-10-12 · Kestrel Checking · Match For Typed Entry", match.subtitle)
+        assertEquals(
+            listOf(
+                slussen.app.ui.bankaccount.DetailLine("What it means", "$budgetApp holds a Typed Entry of the same amount within the Matching Date Window (10 days, a rule of $budgetApp)"),
+                slussen.app.ui.bankaccount.DetailLine("Typed Entries with the same amount", "1 · Northwind 2026-10-11 −88.40 in Budget Account Checking"),
+                slussen.app.ui.bankaccount.DetailLine("Paired?", "Not yet. $budgetApp pairs them when this Bank Transaction is uploaded, which comes in a later version."),
+                slussen.app.ui.bankaccount.DetailLine("Written to $budgetApp", "Nothing: this version writes nothing"),
+            ),
+            match.details,
+        )
+        assertEquals("It stays visible with its reason. Nothing is uploaded, and no decision is needed now.", match.closing)
+
+        screen.open(screen.ui().line("possible").key)
+        assertEquals(
+            slussen.app.ui.bankaccount.DetailLine("Resembles", "Riverside Apoth. 2026-10-14 −18.60 in Budget Account Checking, imported by another importer"),
+            screen.ui().sheet!!.details.first(),
+        )
+
+        screen.open(screen.ui().weeks.last().lines.single().key)
+        val unreadable = screen.ui().sheet!!
+        assertEquals("Unreadable Transaction · Kiosk Nord · −7.25 USD", unreadable.title)
+        assertEquals("Kestrel Checking · Needs Review", unreadable.subtitle)
+        assertEquals(
+            listOf("Amount −7.25 · description Kiosk Nord", "date missing", "2026-10-15 13:00", "Never"),
+            unreadable.details.take(4).map { it.text },
+        )
+
+        screen.close()
+        assertNull(screen.ui().sheet)
+        assertNull(screen.ui().statusesSheet)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario")
+    @DisplayName("Step 5 (bank-account.html#statuses-this-build, UX-14, UX-15, UX-16): What the statuses mean lists every Transaction Status this build gives, each with what it means for this Bank Account, the boundary of its date rule, and that no action or decision is needed now")
+    fun statusesAreExplained() {
+        runBlocking { scenario.compareEveryStatus() }
+        val screen = bankAccountScreen("Kestrel Checking")
+
+        screen.openStatuses()
+
+        val sheet = screen.ui().statusesSheet!!
+        assertEquals("Kestrel Checking · Statuses as of 14:00", sheet.subtitle)
+        assertEquals(
+            listOf(
+                "New", "Match For Typed Entry", "Already In Budget App", "Possible Import By Other Path", "Needs Review", "Transfer Leg",
+                "Guessed Transfer", "Deleted In Budget App", "Merged In Budget App", "Too Old", "Before Start Date", "In The Future",
+            ),
+            sheet.statuses.map { it.status },
+        )
+        val tooOld = sheet.statuses.single { it.status == "Too Old" }
+        assertEquals(
+            "Dated before the Upload Window, which starts 10-08 (the last 7 days, an Operator Setting). Fetched because the fetch " +
+                "period (30 days) reaches further back; not offered for Upload.",
+            tooOld.meaning,
+        )
+        assertEquals("no action is needed.", tooOld.now)
+        assertEquals("no decision is needed; Review Decisions come in a later version.", sheet.statuses.single { it.status == "Needs Review" }.now)
+        assertEquals("Dated before the Start Date of its Bank Account, 2026-10-01. Never offered for Upload.", sheet.statuses.single { it.status == "Before Start Date" }.meaning)
+        assertEquals("Nothing is written to $budgetApp in this version.", sheet.closing)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-003"])
+    @DisplayName("Step 5 (bank-account.html#fetched-empty): a Bank Account whose Fetch succeeded without Bank Transactions names the Fetch and the dates of the fetch period and says that nothing is wrong; one never fetched says so")
+    fun fetchedButEmptyIsSaid() {
+        runBlocking {
+            scenario.serve()
+            scenario.addBankAccount("Bonus Saver", "Reserve Savings", slussen.core.port.BankAccountType.Savings)
+        }
+        assertEquals(
+            "No Bank Transactions yet: no Fetch of this Bank Account has succeeded. A successful Fetch brings them in.",
+            bankAccountScreen("Bonus Saver").ui().nothingStored,
+        )
+        slice.importStatusStore.fetches += StoredFetch(
+            77, slice.feedsId, slice.clock.instant().minus(Duration.ofMinutes(15)), StartedBy.Operator, FetchOutcome.Fetched,
+            listOf(StoredFetchResult(scenario.bankAccount("Bonus Saver"), FetchResultOutcome.Fetched, 0)),
+        )
+
+        val ui = bankAccountScreen("Bonus Saver").ui()
+
+        assertEquals(
+            "No Bank Transactions from 2026-09-15 to 2026-10-15. At the Fetch of 2026-10-15 13:45 Kestrel Feeds delivered no booked " +
+                "Bank Transaction with an amount other than zero for the fetch period (30 days, an Operator Setting). A pending " +
+                "purchase appears once it is booked and a later Fetch brings it in. Nothing is wrong and no action is needed; fetch " +
+                "again for fresher data.",
+            ui.nothingStored,
+        )
+        assertTrue(ui.weeks.isEmpty())
+        assertNull(ui.covers)
+        assertEquals("Source Health: Fetched 2026-10-15 13:45 · started by you", ui.health)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A3: Currency Mismatch", businessRules = ["BR-006"])
+    @DisplayName("A3 (bank-account.html#currency-mismatch): a Bank Account with a currency mismatch shows the Blocked Reason with its remedy, hides the difference, and shows its Bank Transactions as not eligible while it is blocked")
+    fun currencyMismatchIsShown() {
+        runBlocking {
+            scenario.serve()
+            val dollar = scenario.addBankAccount("Aurora Dollar", "Savings", slussen.core.port.BankAccountType.Savings)
+            scenario.store("interest", dollar, java.time.LocalDate.of(2026, 10, 13), amount(3, 100), "Interest")
+            slice.comparison.readAgain()
+        }
+
+        val ui = bankAccountScreen("Aurora Dollar").ui()
+
+        assertEquals("Summer House → Budget Account Savings · Kestrel Bank · Kestrel Feeds", ui.placement)
+        assertEquals(listOf("Blocked: Aurora Dollar, currency mismatch"), ui.blocked.map { it.text })
+        assertEquals(RemedyAction("Move the Account Mapping", available = false, service = null, note = "comes with Manage Account Mappings"), ui.blocked.single().action)
+        assertEquals("Bank Account in USD, Budget in EUR · currency mismatch · difference hidden", ui.balance)
+        assertEquals("Shown, but not eligible while the Bank Account is blocked: USD Bank Account, EUR Budget", ui.line("interest").reason)
+        assertFalse(ui.line("interest").eligible)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-007"])
+    @DisplayName("Step 5 (bank-account.html#unmapped, #retired): a Bank Account without an Account Mapping and a Retired Account keep their history as last compared, say that they are not compared or offered for Upload, and show no Budget's status")
+    fun unmappedAndRetiredShowTheirHistory() {
+        runBlocking { scenario.compareEveryStatus() }
+        val reserve = scenario.bankAccount("Kestrel Reserve")
+        slice.connectionStore.bankAccountList.replaceAll { if (it.id == reserve) it.copy(retired = true) else it }
+
+        val retired = bankAccountScreen("Kestrel Reserve").ui()
+
+        assertEquals("Household · Retired Account", retired.placement)
+        assertEquals("Retired Account · history kept · not compared or offered for Upload.", retired.placementNote)
+        assertNull(retired.statuses)
+        assertNull(retired.balance)
+        assertEquals("Kept as it was; this Bank Account is not compared or offered for Upload", retired.line("late-side").reason)
+        assertEquals("New", retired.line("late-side").status)
+        slice.connectionStore.bankAccountList.replaceAll { if (it.id == reserve) it.copy(retired = false, mapping = null) else it }
+        val unmapped = bankAccountScreen("Kestrel Reserve").ui()
+        assertEquals("Not mapped", unmapped.placement)
+        assertEquals(
+            "Not mapped · history kept · not compared or offered for Upload. Map it to a Budget Account in Account Mappings in Settings.",
+            unmapped.placementNote,
+        )
+        assertFalse(unmapped.weeks.flatMap { it.lines }.any { it.eligible })
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", requirements = ["NFR-023"])
+    @DisplayName("NFR-023 (review 4a, 4b): when a read of the Budget App started elsewhere ends, the open Bank Account shows the new statuses at once; a stored state that cannot be read is said on the screen, which keeps what it showed, never a crash")
+    fun bankAccountScreenFollowsOperationsAndNeverCrashes() {
+        runBlocking { scenario.compareEveryStatus() }
+        val screen = bankAccountScreen("Kestrel Checking")
+        assertEquals("Not compared yet", screen.ui().line("not-compared").status)
+
+        runBlocking { slice.comparison.readAgain() }
+
+        assertEquals("New", screen.ui().line("not-compared").status)
+        assertEquals("Statuses as of 14:10 · Eligible 4 · waiting for a decision 6", screen.ui().statuses)
+        assertNull(screen.ui().readAgainNote)
+
+        slice.copyStore.failsToRead = true
+        runBlocking { slice.comparison.readAgain() }
+        assertEquals(slussen.app.ui.bankaccount.BankAccountTexts.NOT_READ, screen.state.value.failure)
+        assertEquals("Kestrel Checking", screen.ui().title)
+
+        val unread = slussen.app.ui.bankaccount.BankAccountViewModel(fixture.services, scenario.bankAccount("Kestrel Checking")).also { it.load() }
+        assertNull(unread.state.value.ui)
+        assertEquals(slussen.app.ui.bankaccount.BankAccountTexts.NOT_READ, unread.state.value.failure)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-006"])
+    @DisplayName("UC-003 A1, A2 (review 2a): a Bank Account with Bank Transactions not compared yet names the next action: a read of the Budget App, or entering its credentials first while they are refused")
+    fun notComparedYetNamesTheRealNextAction() {
+        runBlocking { scenario.compareEveryStatus() }
+        slice.budgetApp.reader.readBudgetsAnswer = slussen.pluginapi.budgetapp.ReadResult.CredentialsRefused
+        runBlocking { slice.comparison.readAgain() }
+
+        val ui = bankAccountScreen("Kestrel Checking").ui()
+
+        assertEquals(
+            "$budgetApp refused Slussen's credentials: enter them again in Settings, then read $budgetApp again; nothing else is needed.",
+            ui.readAgainNote,
+        )
+        assertEquals(
+            "Not compared yet: 1 Bank Transaction, stored since the last successful read of $budgetApp; it has no Transaction Status " +
+                "and is counted neither as Eligible nor as waiting for a decision.",
+            ui.notComparedYet,
+        )
+    }
 }

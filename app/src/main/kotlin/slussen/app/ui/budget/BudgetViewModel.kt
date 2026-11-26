@@ -43,6 +43,8 @@ data class SourceCard(
 
 /** One Bank Account of the Budget (UC-008 steps 5-8, A2-A4). */
 data class BankAccountCard(
+    /** The Bank Account the card opens (`budget.html` → `bank-account.html`). */
+    val bankAccountId: Long,
     val name: String,
     val type: String,
     val health: String,
@@ -154,7 +156,7 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
             val serviceByName = services.settingsOverview.entries().entries
                 .mapNotNull { entry -> entry.service?.let { entry.name to it } }.toMap()
             fun lines(blocked: List<Blocked>, dataProvider: ServiceKey?) =
-                blocked.map { BlockedLine(Texts.blocked(it, formats), action(it, serviceByName[it.subject] ?: dataProvider), Texts.advice(it)) }
+                blocked.map { BlockedLine(Texts.blocked(it, formats), remedyAction(it, serviceByName[it.subject] ?: dataProvider), Texts.advice(it)) }
             mutableState.value = BudgetUi(
                 title = workspace.summary.name,
                 subtitle = "Budget · ${workspace.summary.currency.code} · from stored data",
@@ -176,6 +178,7 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                 },
                 bankAccounts = workspace.bankAccounts.map { account ->
                     BankAccountCard(
+                        bankAccountId = account.bankAccountId,
                         name = account.name,
                         type = formats.type(account.type),
                         health = Texts.health(account.health, formats),
@@ -203,25 +206,25 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
 
     private fun freshness(at: Instant?, formats: Formats) =
         at?.let { "Freshness: data as of ${formats.dateTime(it)}" } ?: "Freshness: no data yet"
+}
 
-    /**
-     * UC-008 A6: the remedy of a Blocked Reason starts its use case; of those, this build has Manage Service Credentials
-     * and Fetch Transactions, both on the service's page in Settings ([service]: the service the Blocked Reason names,
-     * or the Data Provider of the Bank Account it names). A remedy this build does not have says so plainly (P9-13).
-     */
-    private fun action(blocked: Blocked, service: ServiceKey?): RemedyAction? {
-        val title = Texts.remedy(blocked.remedy) ?: return null
-        return when (blocked.remedy) {
-            Remedy.EnterCredentials -> RemedyAction(title, available = true, service = service, note = null)
-            // UC-008 BR-006: A failed Fetch, a Bank Account not delivered and the Bank's sign-in (after signing in) are removed by fetching again.
-            Remedy.FetchAgain, Remedy.SignInAtDataProvider -> RemedyAction(title, available = service != null, service = service, note = null)
-            Remedy.GrantBankConsent -> RemedyAction(title, available = false, service = null, note = Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD)
-            Remedy.IdentifyBankAccount, Remedy.MoveAccountMapping ->
-                RemedyAction(title, available = false, service = null, note = "comes with Manage Account Mappings")
-            // A9 of UC-008: the confirmation of First Upload Matching comes with Uploads; no action is needed now.
-            Remedy.StartFirstUploadMatching ->
-                RemedyAction(title, available = false, service = null, note = "comes with Uploads in a later version; no action is needed now")
-            Remedy.WaitUntilItEnds -> null
-        }
+/**
+ * UC-008 A6: the remedy of a Blocked Reason starts its use case; of those, this build has Manage Service Credentials
+ * and Fetch Transactions, both on the service's page in Settings ([service]: the service the Blocked Reason names,
+ * or the Data Provider of the Bank Account it names). A remedy this build does not have says so plainly (P9-13).
+ */
+fun remedyAction(blocked: Blocked, service: ServiceKey?): RemedyAction? {
+    val title = Texts.remedy(blocked.remedy) ?: return null
+    return when (blocked.remedy) {
+        Remedy.EnterCredentials -> RemedyAction(title, available = true, service = service, note = null)
+        // UC-008 BR-006: A failed Fetch, a Bank Account not delivered and the Bank's sign-in (after signing in) are removed by fetching again.
+        Remedy.FetchAgain, Remedy.SignInAtDataProvider -> RemedyAction(title, available = service != null, service = service, note = null)
+        Remedy.GrantBankConsent -> RemedyAction(title, available = false, service = null, note = Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD)
+        Remedy.IdentifyBankAccount, Remedy.MoveAccountMapping ->
+            RemedyAction(title, available = false, service = null, note = "comes with Manage Account Mappings")
+        // A9 of UC-008: the confirmation of First Upload Matching comes with Uploads; no action is needed now.
+        Remedy.StartFirstUploadMatching ->
+            RemedyAction(title, available = false, service = null, note = "comes with Uploads in a later version; no action is needed now")
+        Remedy.WaitUntilItEnds -> null
     }
 }

@@ -21,6 +21,7 @@ import slussen.core.port.RandomSource
 import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.settings.GeneralSettings
+import slussen.core.status.BankAccountTransactions
 import slussen.core.status.ImportStatus
 import slussen.fileformat.hsacsv.HsaCsvFilePreprocessor
 import slussen.persistence.SlussenStorage
@@ -32,6 +33,8 @@ import slussen.provider.enablebanking.EnableBankingDataProvider
 import slussen.provider.simplefin.SimpleFinDataProvider
 import java.security.SecureRandom
 import java.time.Clock
+import java.time.temporal.WeekFields
+import java.util.Locale
 
 /**
  * The only composition root, written by hand (ADR-001 §5): it lists the plug-ins of this build explicitly. Each
@@ -74,6 +77,24 @@ class CompositionRoot(log: SlussenLog) {
         val settingsOverview = SettingsOverview(
             registered, credentials, storage.connections, storage.offered, storage.importStatus, storage.settings, clock,
         )
+        val status = ImportStatus(
+            budgetAppName = registered.budgetApp.profile.name,
+            currentDataProviders = { registered.dataProviders.map { it.stored } },
+            fileFormats = registered.fileFormats,
+            connections = storage.connections,
+            stored = storage.importStatus,
+            providerRequests = storage.providerRequests,
+            credentials = credentials,
+            firstUploadMatching = FirstUploadMatching(storage.firstUploadMatching),
+            startState = storage.startState,
+            backupSize = storage.backupSize,
+            settings = storage.settings,
+            journal = journal,
+            clock = clock,
+            firstRunNext = { settingsOverview.next() },
+            fetchNotices = fetchNotices,
+            comparisonNotices = comparisonNotices,
+        )
         return UiServices(
             credentials = credentials,
             settingsOverview = settingsOverview,
@@ -84,23 +105,11 @@ class CompositionRoot(log: SlussenLog) {
             providerSettings = DataProviderSettings(registered, storage.registry, coordinator, journal),
             generalSettings = GeneralSettings(storage.settings, coordinator, journal),
             mappings = AccountMappings(registered, storage.connections, storage.mappings, storage.offered, coordinator, journal),
-            status = ImportStatus(
-                budgetAppName = registered.budgetApp.profile.name,
-                currentDataProviders = { registered.dataProviders.map { it.stored } },
-                fileFormats = registered.fileFormats,
-                connections = storage.connections,
-                stored = storage.importStatus,
-                providerRequests = storage.providerRequests,
-                credentials = credentials,
-                firstUploadMatching = FirstUploadMatching(storage.firstUploadMatching),
-                startState = storage.startState,
-                backupSize = storage.backupSize,
-                settings = storage.settings,
-                journal = journal,
-                clock = clock,
-                firstRunNext = { settingsOverview.next() },
-                fetchNotices = fetchNotices,
-                comparisonNotices = comparisonNotices,
+            status = status,
+            // Step 5 of UC-008: the weeks of a Bank Account's list start on the device locale's first day (survey §5 guess 6).
+            bankAccountTransactions = BankAccountTransactions(
+                status, storage.connections, storage.fetches, storage.comparisons, storage.settings,
+                registered.budgetApp.profile.matchingDateWindowDays, clock, WeekFields.of(Locale.getDefault()).firstDayOfWeek,
             ),
             fetch = FetchTransactions(
                 registered, credentials, storage.connections, storage.offered, storage.fetches, storage.providerRequests,

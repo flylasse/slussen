@@ -23,9 +23,11 @@ import slussen.core.port.UnreadablePart
 import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.settings.GeneralSettings
+import slussen.core.status.BankAccountTransactions
 import slussen.core.status.ImportStatus
 import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.value.Secret
+import java.time.DayOfWeek
 import java.util.Random
 
 /**
@@ -102,6 +104,12 @@ class TestSlice(
         firstRunNext = { settingsOverview.next() },
         fetchNotices = fetchNotices,
         comparisonNotices = comparisonNotices,
+    )
+
+    /** UC-008 step 5: the transactions of one Bank Account with their statuses and reasons, weeks from Monday. */
+    val bankAccountTransactions = BankAccountTransactions(
+        status, connectionStore, importStatusStore, copyStore, settings, plugins.budgetApp.profile.matchingDateWindowDays, clock,
+        DayOfWeek.MONDAY,
     )
 
     val feedsKey: ServiceKey get() = plugins.dataProviders.single { it.plugin === feeds }.key

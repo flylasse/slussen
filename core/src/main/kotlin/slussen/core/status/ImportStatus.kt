@@ -44,7 +44,7 @@ import java.time.Instant
  * Source or the Budget App (BR-001, Konsist K-08).
  */
 class ImportStatus(
-    private val budgetAppName: String,
+    val budgetAppName: String,
     /** The Data Provider rows of this build as they are now, with the Operator Settings changed since the start. */
     private val currentDataProviders: () -> List<StoredDataProvider>,
     private val fileFormats: List<StoredFileFormat>,
@@ -160,6 +160,20 @@ class ImportStatus(
             firstUploadMatching = snapshot.firstUploadMatching,
             budgetAppName = budgetAppName,
         )
+    }
+
+    /**
+     * Steps 5-8 for the one Bank Account [bankAccountId] (`bank-account.html`): its Budget's summary, its status and the
+     * name of its Source, or null when it is not mapped into a served Budget or is a Retired Account.
+     */
+    suspend fun bankAccountInBudget(bankAccountId: Long): BankAccountInBudget? {
+        val snapshot = snapshot()
+        val bankAccount = snapshot.bankAccounts.firstOrNull { it.id == bankAccountId } ?: return null
+        val budget = snapshot.budgets.firstOrNull { budget -> budget.budgetAccounts.any { it.id == bankAccount.mapping?.budgetAccountId } }
+            ?: return null
+        val sourceName = bankAccount.dataProviderId?.let(::dataProviderName)
+            ?: fileFormats.firstOrNull { it.id == bankAccount.fileFormatId }?.name
+        return BankAccountInBudget(summary(budget, snapshot), bankAccountStatus(bankAccount, budget, snapshot), sourceName)
     }
 
     // UC-008 BR-008: Slussen shows the most recent Fetches, as many as the Operator Setting keeps, with Source, time, who started them and outcome.

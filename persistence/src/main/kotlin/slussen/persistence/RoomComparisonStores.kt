@@ -139,18 +139,7 @@ class RoomComparisonStore(
         budgetIds: Set<Long>,
         conclude: (ComparisonData) -> ComparisonConclusions,
     ): List<StatusChange> = db.withTransaction {
-        val budgets = connections.budgets().filter { it.id in budgetIds }
-        val accountIds = budgets.flatMap { it.budgetAccounts }.map { it.id }.toSet()
-        val bankAccounts = connections.bankAccounts().filter { it.mapping?.budgetAccountId in accountIds }
-        val fetches = db.fetches()
-        val data = ComparisonData(
-            budgets = budgets,
-            bankAccounts = bankAccounts,
-            bankTransactions = bankAccounts.flatMap { account -> fetches.bankTransactionsOf(account.id).map { it.stored() } },
-            budgetAppTransactions = budgets.flatMap { budget -> dao.copyOf(budget.id).map { it.stored() } },
-            transfers = bankAccounts.flatMap { account -> dao.transfersOf(account.id) }.distinctBy { it.id }.map { it.stored() },
-            transferDescriptions = dao.transferDescriptions().map { it.stored() },
-        )
+        val data = dataOf(budgetIds)
         val conclusions = conclude(data)
         val changes = data.bankTransactions.mapNotNull { stored ->
             val status = conclusions.statuses[stored.id] ?: return@mapNotNull null
@@ -160,6 +149,24 @@ class RoomComparisonStore(
         storeTransfers(conclusions.transfers, data.transfers)
         dao.storeComparisonPending(false)
         changes
+    }
+
+    override suspend fun comparisonDataOf(budgetIds: Set<Long>): ComparisonData = db.withTransaction { dataOf(budgetIds) }
+
+    /** What O-5 concludes from for [budgetIds], read inside the caller's transaction. */
+    private suspend fun dataOf(budgetIds: Set<Long>): ComparisonData {
+        val budgets = connections.budgets().filter { it.id in budgetIds }
+        val accountIds = budgets.flatMap { it.budgetAccounts }.map { it.id }.toSet()
+        val bankAccounts = connections.bankAccounts().filter { it.mapping?.budgetAccountId in accountIds }
+        val fetches = db.fetches()
+        return ComparisonData(
+            budgets = budgets,
+            bankAccounts = bankAccounts,
+            bankTransactions = bankAccounts.flatMap { account -> fetches.bankTransactionsOf(account.id).map { it.stored() } },
+            budgetAppTransactions = budgets.flatMap { budget -> dao.copyOf(budget.id).map { it.stored() } },
+            transfers = bankAccounts.flatMap { account -> dao.transfersOf(account.id) }.distinctBy { it.id }.map { it.stored() },
+            transferDescriptions = dao.transferDescriptions().map { it.stored() },
+        )
     }
 
     /**

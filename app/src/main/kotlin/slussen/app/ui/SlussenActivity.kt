@@ -24,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import slussen.app.SlussenApplication
+import slussen.app.ui.bankaccount.BankAccountScreen
+import slussen.app.ui.bankaccount.BankAccountViewModel
 import slussen.app.ui.budget.BudgetScreen
 import slussen.app.ui.budget.BudgetViewModel
 import slussen.app.ui.components.Muted
@@ -70,6 +72,9 @@ sealed interface Screen {
 
     data class Budget(val budgetId: Long, val name: String) : Screen
 
+    /** UC-008 step 5: one Bank Account of the Budget [budgetId], reached from its card on the Budget tab. */
+    data class BankAccount(val bankAccountId: Long, val budgetId: Long) : Screen
+
     data object RecentFetches : Screen
 
     data object Settings : Screen
@@ -109,7 +114,8 @@ fun SlussenScreens(services: UiServices) {
                 NavigationBarItem(selected = current == Screen.Overview, onClick = { tab(Screen.Overview) }, icon = { Text("◎") }, label = { Text("Overview") })
                 overviewUi?.budgets.orEmpty().forEach { budget ->
                     NavigationBarItem(
-                        selected = (current as? Screen.Budget)?.budgetId == budget.budgetId,
+                        selected = (current as? Screen.Budget)?.budgetId == budget.budgetId ||
+                            (current as? Screen.BankAccount)?.budgetId == budget.budgetId,
                         onClick = { tab(Screen.Budget(budget.budgetId, budget.name)) },
                         icon = { Text(budget.currency) },
                         label = { Text(budget.name) },
@@ -147,8 +153,23 @@ fun SlussenScreens(services: UiServices) {
                             onRemedy = { action -> action.service?.let { go(Screen.Service(it)) } },
                             onStartFirstUploadMatching = { overview.startFirstUploadMatching() },
                             onReadAgain = vm::readAgain,
+                            onBankAccount = { id -> go(Screen.BankAccount(id, current.budgetId)) },
                         )
                     }
+                }
+                is Screen.BankAccount -> {
+                    val vm: BankAccountViewModel = viewModel(key = "bank-account-${current.bankAccountId}") {
+                        BankAccountViewModel(services, current.bankAccountId)
+                    }
+                    LaunchedEffect(current) { vm.load() }
+                    BankAccountScreen(
+                        state = vm.state.collectAsState().value,
+                        onBack = ::back,
+                        onOpen = vm::open,
+                        onStatuses = vm::openStatuses,
+                        onClose = vm::close,
+                        onRemedy = { action -> action.service?.let { go(Screen.Service(it)) } },
+                    )
                 }
                 Screen.RecentFetches -> {
                     val vm: RecentFetchesViewModel = viewModel(key = "fetches") { RecentFetchesViewModel(services) }
