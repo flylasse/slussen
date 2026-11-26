@@ -177,6 +177,8 @@ class UC005ReviewTransfersPersistenceIT {
     fun detectedTransferIsStoredWithItsTransferLegs() = runBlocking {
         val storage = SlussenStorage.open(DeviceFiles.context, clock)
         val household = household(storage)
+        // UC-005 A8 (S-T-20): without a Funded By the Card Payment would be a Guessed Transfer.
+        execute(storage, "UPDATE bank_account SET funded_by_budget_account_id = ? WHERE id = ?", household.budgetAccounts.getValue("Checking"), household.card)
         deliver(storage, household, household.checking, delivered("TX-1", oct12, -250400), delivered("TX-2", oct13, -18000))
         deliver(storage, household, household.card, delivered("TX-3", oct13, 250400))
 

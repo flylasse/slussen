@@ -565,6 +565,7 @@ Phase 7b's notes:
 - The released Transfer Legs of a Retired Account, or of a Budget not compared this time, keep their stored status until their own Comparison.
 - UC-011 BR-001 names nothing for a detected Transfer beyond the changed Transaction Status, so only those are journaled.
 - Phase 2b's note is settled: BR-002 says how the card of a paying-side Lonely Transfer is known (the card whose Funded By is the outflow's Budget Account).
+- After the operator's answers (2026-11-26), the orchestrator changed the code to S-T-20 and S-T-21: a Card Payment pair into a card without a Funded By that applies is a Guessed Transfer, and a Bank Transaction whose arrived other side an earlier rule concluded is ordinary. Two new tests were seen failing first; six tests that pair a payment with a card, and one instrumented test, now give the card its Funded By, since they test other rules.
 
 Phase 6b's notes:
 - The app had no Fetch Cooldown edit, only its value, so Phase 6b built UC-010 steps 2-6, A1 and A10 for it, with the fetch period's states.

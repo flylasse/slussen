@@ -82,6 +82,7 @@ object ComparisonRules {
             // UC-003 BR-014: The Bank Transactions of a Retired Account are not compared.
             val bankAccounts = data.bankAccounts.filter { !it.retired && it.mapping?.budgetAccountId in accountIds }
             val candidates = mutableListOf<TransferCandidate>()
+            val concluded = mutableListOf<TransferCandidate>()
             bankAccounts.forEach { bankAccount ->
                 val budgetAccountId = bankAccount.mapping!!.budgetAccountId
                 val held = data.budgetAppTransactions.filter { it.budgetAccountId == budgetAccountId }
@@ -96,12 +97,14 @@ object ComparisonRules {
                         // UC-003 BR-001: A Bank Transaction is a Transfer Leg only when no rule before it applies; Needs Review and Possible Import By Other Path apply also to a Transfer Leg.
                         if (status in AFTER_TRANSFER_LEG || status in DOUBTFUL) {
                             candidates += TransferCandidate(transaction, bankAccount, doubt = status.takeIf { it in DOUBTFUL })
+                        } else {
+                            concluded += TransferCandidate(transaction, bankAccount, doubt = null)
                         }
                     }
             }
             // UC-005 BR-001: Slussen always detects Transfers; no setting switches detection off.
             val detected = TransferDetection.detect(
-                budget, bankAccounts, candidates, data.transferDescriptions,
+                budget, bankAccounts, candidates, concluded, data.transferDescriptions,
                 windows.transferPairingDays, windows.lonelyTransferGraceDays, windows.today,
             )
             // UC-003 BR-001: A Bank Transaction that is a Transfer Leg follows its Transfer, before a match for a Typed Entry.

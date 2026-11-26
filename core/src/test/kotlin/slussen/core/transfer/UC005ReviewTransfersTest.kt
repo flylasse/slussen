@@ -196,11 +196,13 @@ class UC005ReviewTransfersTest {
 
     @Test
     @UseCase(id = "UC-005", scenario = "Main Success Scenario", businessRules = ["BR-001", "BR-002", "BR-010"])
-    @DisplayName("BR-001, BR-002, BR-010: an outflow and an equal inflow in two Bank Accounts of one Budget, one of them a credit card, are one Card Payment with two Transfer Legs, stored as Proposed and not guessed, without any description and with no setting to switch detection on; only the outflow side is eligible")
+    @DisplayName("BR-001, BR-002, BR-010: an outflow and an equal inflow in two Bank Accounts of one Budget, one of them a credit card with its Funded By, are one Card Payment with two Transfer Legs, stored as Proposed and not guessed, without any description and with no setting to switch detection on; only the outflow side is eligible")
     fun cardPaymentPairIsOneTransfer() = runTest {
         ready()
         val checking = checking()
         val card = rewardsCard()
+        // UC-005 A8 (S-T-20): without a Funded By the Card Payment would be a Guessed Transfer.
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
         val paid = stored(checking, "TX-1", oct12, amount(-250, 400))
         val received = stored(card, "TX-2", oct13, amount(250, 400))
         val groceries = stored(checking, "TX-3", oct13, amount(-18))
@@ -265,6 +267,8 @@ class UC005ReviewTransfersTest {
         ready()
         val checking = checking()
         val card = rewardsCard()
+        // UC-005 A8 (S-T-20): without a Funded By the Card Payment would be a Guessed Transfer.
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
         val fiveOut = stored(checking, "TX-1", today.minusDays(5), amount(-100))
         val fiveIn = stored(card, "TX-2", today, amount(100))
         val sixOut = stored(checking, "TX-3", today.minusDays(6), amount(-200))
@@ -659,6 +663,58 @@ class UC005ReviewTransfersTest {
         assertEquals(NotYetUploaded(0, 1), counts("Household"))
     }
 
+    @Test
+    @UseCase(id = "UC-005", scenario = "A8: First Card Payment Without Funded By", businessRules = ["BR-002", "BR-010"])
+    @DisplayName("A8 (S-T-20): a Card Payment to a credit card without a Funded By is a Guessed Transfer also when both sides have arrived: it has both Transfer Legs, proposes the Budget Account of the outflow, waits for a decision and is not eligible; once the card has that Funded By it is not guessed")
+    fun pairedCardPaymentToACardWithoutFundedByIsGuessed() = runTest {
+        ready()
+        val checking = checking()
+        joint()
+        val card = rewardsCard()
+        val paid = stored(checking, "TX-1", oct12, amount(-250, 400))
+        val received = stored(card, "TX-2", oct13, amount(250, 400))
+
+        compare()
+
+        assertEquals(TransactionStatus.GuessedTransfer, status(paid))
+        assertEquals(TransactionStatus.GuessedTransfer, status(received))
+        val transfer = slice.copyStore.transfers.single()
+        assertEquals(setOf(paid, received), legsOf(transfer))
+        assertTrue(transfer.guessed)
+        assertEquals(TransferType.CardPayment, transfer.type)
+        assertEquals(budgetAccount("Checking") to budgetAccount("Rewards Card"), transfer.outflowBudgetAccountId to transfer.inflowBudgetAccountId)
+        assertEquals(NotYetUploaded(0, 2), counts("Household"))
+
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
+        compare()
+
+        assertEquals(TransactionStatus.TransferLeg, status(paid))
+        assertEquals(TransactionStatus.TransferLeg, status(received))
+        assertFalse(slice.copyStore.transfers.single().guessed)
+        assertEquals(NotYetUploaded(1, 0), counts("Household"))
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A4: Lonely Transfer", businessRules = ["BR-002"])
+    @DisplayName("BR-002 (S-T-21): when the other side of a Bank Transaction has arrived and an earlier rule of the Comparison gave it its status (Too Old), the Bank Transaction is an ordinary Bank Transaction, not a Lonely Transfer, also with a matching description and a Funded By; without that other side it is a Lonely Transfer")
+    fun otherSideConcludedByAnEarlierRuleLeavesAnOrdinaryBankTransaction() = runTest {
+        ready()
+        val checking = checking()
+        val card = rewardsCard()
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
+        val tooOld = stored(checking, "TX-1", today.minusDays(8), amount(-120))
+        val received = stored(card, "TX-2", today.minusDays(4), amount(120), payee = "AUTOPAY")
+        val alone = stored(card, "TX-3", today.minusDays(4), amount(121), payee = "AUTOPAY")
+
+        compare()
+
+        assertEquals(TransactionStatus.TooOld, status(tooOld))
+        assertEquals(TransactionStatus.New, status(received))
+        assertNull(transaction(received).transferId)
+        assertEquals(TransactionStatus.TransferLeg, status(alone))
+        assertEquals(setOf(alone), legsOf(slice.copyStore.transfers.single()))
+    }
+
     // ---- Matching a Transfer Description (BR-012) -------------------------------------------------------------------
 
     @Test
@@ -728,6 +784,8 @@ class UC005ReviewTransfersTest {
         ready()
         val checking = checking()
         val card = rewardsCard()
+        // UC-005 A8 (S-T-20): without a Funded By the Card Payment would be a Guessed Transfer.
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
         val noReference = stored(checking, null, oct12, amount(-250))
         val received = stored(card, "TX-2", oct13, amount(250))
         val paid = stored(checking, "TX-3", oct12, amount(-99))
@@ -759,6 +817,8 @@ class UC005ReviewTransfersTest {
         ready()
         val checking = checking()
         val card = rewardsCard()
+        // UC-005 A8 (S-T-20): without a Funded By the Card Payment would be a Guessed Transfer.
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
         val tooOld = stored(checking, "TX-1", today.minusDays(8), amount(-70))
         val inWindow = stored(card, "TX-2", today.minusDays(4), amount(70))
         val alreadyThere = stored(checking, "TX-3", oct12, amount(-71))
@@ -797,6 +857,9 @@ class UC005ReviewTransfersTest {
         val checking = checking()
         val card = rewardsCard()
         val travel = travelCard()
+        // UC-005 A8 (S-T-20): without a Funded By the Card Payment would be a Guessed Transfer.
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
+        slice.connectionStore.link(travel, fundedBy = budgetAccount("Checking"))
         val paid = stored(checking, "TX-1", oct12, amount(-250))
         val received = stored(card, "TX-2", oct13, amount(250))
         val paidTravel = stored(checking, "TX-3", oct12, amount(-60))
@@ -844,6 +907,8 @@ class UC005ReviewTransfersTest {
         ready()
         val checking = checking()
         val card = rewardsCard()
+        // UC-005 A8 (S-T-20): without a Funded By the Card Payment would be a Guessed Transfer.
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
         stored(checking, "TX-1", oct12, amount(-250), payee = "PLANTED-PAYEE AUTOPAY")
         stored(card, "TX-2", oct13, amount(250), payee = "PLANTED-PAYEE PAYMENT - THANK YOU")
         val before = slice.journalRecorder.entries.size
