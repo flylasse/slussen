@@ -107,10 +107,14 @@ request) and commits it with O-5 at the next start and whenever it finds the mar
 prepared from statuses that belong to the stored copy and cursor it captures.
 
 The same marker covers a change that the specification follows with statuses given again, or Transfers detected again,
-from stored data (UC-009 BR-015, UC-010 step 5): the storage operation of the change (ADR-002 §3 O-13) sets
+from stored data (UC-009 BR-015, UC-010 step 5), and a Transfer Decision that releases a Transfer Leg or dissolves
+another Transfer (UC-005 A3 step 4, BR-016): the storage operation of the change (ADR-002 §3 O-13) sets
 `comparison_pending` in its own transaction, and the coordinator concludes from the stored copy and commits with O-5
 within the same operation, or at the next start when Slussen stopped in between. No Budget is read for it, and
-`budget.last_read_at` stays as it is.
+`budget.last_read_at` stays as it is. A plan that replaces an open one after such a Transfer Decision (§5) is prepared
+only after these conclusions, since preparation waits for the marker (§3). The join of UC-005 BR-005, the removal of a
+Transfer the joining Bank Transaction leaves and the new detection of that Transfer's other Transfer Leg are part of
+one O-5, so no marker is needed between them.
 
 ### 4. Preparation: the immutable write set and retries
 
@@ -412,3 +416,6 @@ is listed in ADR-005 §7.
 - Build-out, phase W2-0 (2026-11-26): S-B-12: §2 (a Funded By or Transfer Partner kept from a Transfer Decision is
   admitted with that decision, also in Plan Open), §3a (the Comparison-pending marker also covers a change that is
   followed by statuses given again from stored data; UC-009 BR-015).
+- Build-out, the review of phase W2-0 (2026-11-26): §3a (the marker also covers a Transfer Decision that releases a
+  Transfer Leg or dissolves another Transfer, UC-005 BR-016; a replacing plan is prepared after the conclusions; the
+  join of UC-005 BR-005 is concluded within one O-5).

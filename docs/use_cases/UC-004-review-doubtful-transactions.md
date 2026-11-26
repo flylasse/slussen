@@ -82,7 +82,7 @@
 
 ### A7: Transaction Already Uploaded
 
-**Trigger:** The selected Bank Transaction has been uploaded, or is a Transfer Leg of a Transfer whose Transfer Decision is locked (BR-004) (step 1)  
+**Trigger:** The Review Decision of the selected Bank Transaction is locked, because the Bank Transaction has been uploaded and is Already In Budget App or is a Transfer Leg that is Arrived As Transfer Counterpart (BR-004) (step 1)  
 **Flow:**
 
 1. Slussen shows the Review Decision as locked and offers no choice.
@@ -140,7 +140,7 @@
 
 ### BR-001: Choices per Transaction Status
 
-Possible Import By Other Path offers Already Present, Import Anyway and Defer. Decision No Longer Holds offers Already Present, Import Anyway, Defer and Re-upload. Needs Review and Transfer Counterpart Changed offer Import Anyway and Defer. Deleted In Budget App and Merged In Budget App offer Re-upload. Outcome Unknown, when it waits for a decision, offers Import Anyway and Defer (BR-008). An Unreadable Transaction offers Defer only (BR-007). Deferred offers changing or clearing the decision. A Bank Transaction that already has a Review Decision offers the choices of the Transaction Status it has without that decision (BR-006) and clearing the decision; when that status offers no choice, it offers clearing only. Decision No Longer Holds keeps the choices stated for it above.
+Possible Import By Other Path offers Already Present, Import Anyway and Defer. Decision No Longer Holds offers Already Present, Import Anyway, Defer and Re-upload. Needs Review and Transfer Counterpart Changed offer Import Anyway and Defer. Deleted In Budget App and Merged In Budget App offer Re-upload. Outcome Unknown, when it waits for a decision, offers Import Anyway and Defer (BR-008). An Unreadable Transaction offers Defer only (BR-007). Deferred offers clearing the decision, and changing it as far as the next sentence gives a choice. A Bank Transaction that already has a Review Decision offers the choices of the Transaction Status it has without that decision (BR-006) and clearing the decision; when that status offers no choice, it offers clearing only. Decision No Longer Holds keeps the choices stated for it above.
 
 ### BR-002: Already Present Names the Transaction
 
@@ -148,11 +148,11 @@ An Already Present decision always names one specific Budget App Transaction. Wh
 
 ### BR-003: Re-upload Is Deliberate
 
-Re-upload is chosen per Bank Transaction and is off by default. A re-uploaded transaction is sent as a new transaction under a new Import Identifier derived from its own one and the number of earlier re-uploads (UC-003 BR-002), and only while it lies inside the Upload Window (UC-003 BR-011); once uploaded, it counts as Already In Budget App.
+Re-upload is chosen per Bank Transaction and is off by default. A re-uploaded transaction is sent as a new transaction under a new Import Identifier derived from its own one and the number of earlier re-uploads (UC-003 BR-002), and only while it lies inside the Upload Window (UC-003 BR-011); once uploaded, it counts as Already In Budget App. A Re-upload decision covers only the send it caused: once that send has the outcome Written or Already Present, the decision is used up and counts as no Review Decision any more. When the Budget App later deletes or merges that transaction too, the Bank Transaction is Deleted In Budget App or Merged In Budget App again, Re-upload is off again, and only a new choice of the Operator sends it once more (UC-003 BR-001).
 
 ### BR-004: Decisions Change Until Upload
 
-A Review Decision can be changed or cleared any number of times until its Bank Transaction is uploaded. From then on it is locked: it cannot be changed or cleared while the Bank Transaction is Already In Budget App because Slussen sent it, that is, while its Sent Record has the outcome Written or Already Present and the Budget App has neither deleted nor merged what was sent (UC-003 BR-003). A Bank Transaction Slussen sent that is Deleted In Budget App or Merged In Budget App can be decided again with Re-upload (A5), and one that is Outcome Unknown and waits for a decision can be decided (A10). The Review Decision on a Transfer Leg is locked as well once the Transfer Decision of its Transfer is locked (UC-005 BR-008).
+A Review Decision can be changed or cleared any number of times until its Bank Transaction is uploaded. From then on it is locked: it cannot be changed or cleared while the Bank Transaction is Already In Budget App because Slussen sent it, that is, while its Sent Record has the outcome Written or Already Present and the Budget App has neither deleted nor merged what was sent (UC-003 BR-003). A Bank Transaction Slussen sent that is Deleted In Budget App or Merged In Budget App can be decided again with Re-upload (A5), and one that is Outcome Unknown and waits for a decision can be decided (A10). A locked Transfer Decision (UC-005 BR-008) does not lock the Review Decisions of the Transfer Legs by itself: the Review Decision on a Transfer Leg is locked only while that Transfer Leg is itself Already In Budget App because Slussen sent it, or is Arrived As Transfer Counterpart (UC-005 BR-010). A Transfer Leg of a split Transfer that Slussen has not sent is never locked, also when the other Transfer Leg was uploaded.
 
 ### BR-005: Every Decision Is Journaled
 
@@ -172,4 +172,4 @@ When the Budget App does not refuse a reused Import Identifier, Slussen never se
 
 ### BR-009: A Decision on a Transfer Leg Decides Its Transfer
 
-On a Transfer Leg that is Needs Review, Possible Import By Other Path or Decision No Longer Holds, the Review Decision decides its whole Transfer (UC-005 BR-013): Import Anyway, or Re-upload where it is offered, lets the Transfer Leg rejoin its Transfer, so that the Transfer goes into the next Upload Plan as one linked transfer; Defer holds the whole Transfer back; Already Present counts the whole Transfer as already in the Budget App, so that neither Transfer Leg is proposed for an Upload Plan. Split (UC-005 A1) is the only way to separate the two Transfer Legs.
+On a Transfer Leg that is Needs Review, Possible Import By Other Path or Decision No Longer Holds, the Review Decision decides its whole Transfer (UC-005 BR-013): Import Anyway, or Re-upload where it is offered, lets the Transfer Leg rejoin its Transfer, so that the Transfer goes into the next Upload Plan as one linked transfer; Defer holds the whole Transfer back; Already Present counts the whole Transfer as already in the Budget App, so that neither Transfer Leg is proposed for an Upload Plan. Split (UC-005 A1) is the only way to separate the two Transfer Legs. After Split, each Transfer Leg is decided as an ordinary Bank Transaction (BR-006). A Transfer Leg that Slussen sent and that is Deleted In Budget App or Merged In Budget App offers Re-upload like any other Bank Transaction (A5) and is then sent as a new transaction of its own Budget Account (BR-003), not as a linked transfer; one that is Outcome Unknown and waits for a decision is decided as BR-008 says.
