@@ -131,6 +131,8 @@ class UC014ManageServiceCredentialsScreenIT {
     fun refusedPageOffersTheEntryAction() = compose.use {
         val fixture = ScreenFixture()
         kotlinx.coroutines.runBlocking { fixture.slice.enterCredentials() }
+        // The refusal counts only when the Fetch started after the credentials were accepted (UC-014 BR-005).
+        fixture.slice.clock.advance(java.time.Duration.ofMinutes(5))
         fixture.slice.importStatusStore.fetches += StoredFetch(
             1, fixture.slice.feedsId, fixture.slice.clock.instant(), StartedBy.Operator, FetchOutcome.CredentialsRefused, emptyList(),
         )
