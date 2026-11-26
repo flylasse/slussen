@@ -1,5 +1,6 @@
 package slussen.core.fetch
 
+import slussen.core.comparison.ComparisonReport
 import slussen.core.operation.OperationRefusal
 import slussen.core.port.ServiceKey
 import slussen.pluginapi.request.FailureKind
@@ -158,8 +159,11 @@ class FetchNotices {
 
 /** The outcome of starting a Fetch (UC-001 step 1, A11, precondition). */
 sealed interface FetchStart {
-    /** One report per Data Provider fetched, in the order of the build (A11). */
-    data class Ran(val reports: List<FetchReport>) : FetchStart
+    /**
+     * One report per Data Provider fetched, in the order of the build (A11), and the Comparison that followed (step
+     * 10), or null when the Fetch ended before it (A1, A3, A6, A7).
+     */
+    data class Ran(val reports: List<FetchReport>, val comparison: ComparisonReport? = null) : FetchStart
 
     /** Precondition (UC-006 BR-005): an Upload Plan awaits confirmation or an Upload is written. */
     data class Unavailable(val reason: OperationRefusal) : FetchStart

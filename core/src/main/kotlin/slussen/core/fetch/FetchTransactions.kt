@@ -1,5 +1,6 @@
 package slussen.core.fetch
 
+import slussen.core.comparison.Comparison
 import slussen.core.credential.CredentialStatus
 import slussen.core.credential.ServiceCredentials
 import slussen.core.identity.BankAccountFingerprint
@@ -66,8 +67,8 @@ import java.time.LocalDate
  * added (step 6, A10, A18, BR-011), the booked, non-zero Bank Transactions and the Unreadable Transactions of each
  * (steps 7-8, A17, BR-002, BR-003, BR-016), its Account Balance in its own currency (step 8, A21, BR-011), the Decision
  * Journal (step 9), the Back-offs a Data Provider asks for (A5, A15), and the Fetch record with its outcome and the Fetch
- * Result of each Bank Account it selected (step 11, A2, A6-A8, A19, A20). Step 10 (the Comparison) and the Scheduled
- * Fetch (A12) come with later slices.
+ * Result of each Bank Account it selected (step 11, A2, A6-A8, A19, A20), then the Comparison with the Budget App (step
+ * 10, UC-003) in the same operation. The Scheduled Fetch (A12) comes with a later slice.
  */
 class FetchTransactions(
     private val plugins: RegisteredPlugins,
@@ -82,6 +83,8 @@ class FetchTransactions(
     private val clock: Clock,
     /** UC-001 A21: the balances reported in another currency, which the import status shows (UC-008). */
     private val notices: FetchNotices = FetchNotices(),
+    /** Step 10: the Comparison with the Budget App (UC-003) that follows the Fetch within the same operation. */
+    private val comparison: Comparison? = null,
 ) {
     /** A Fetch Cooldown that holds: from the last successful Fetch at [lastFetchAt] to [endsAt]. */
     private data class Cooldown(val lastFetchAt: Instant, val endsAt: Instant)
@@ -103,12 +106,19 @@ class FetchTransactions(
         }
     }
 
-    private suspend fun admitted(block: suspend (OperationPermit) -> List<FetchReport>): FetchStart =
+    private suspend fun admitted(block: suspend (OperationPermit) -> List<FetchReport>): FetchStart {
         // UC-006 BR-005: While an Upload Plan awaits confirmation or an Upload is written, no Fetch the Operator starts runs.
-        when (val result = coordinator.run(OperationKind.Fetch, StartedBy.Operator, block)) {
-            is OperationResult.Ran -> FetchStart.Ran(result.value)
+        val result = coordinator.run(OperationKind.Fetch, StartedBy.Operator) { permit ->
+            val reports = block(permit)
+            // Step 10, A2, A11: a Fetch that stored what it read, or was served from the Fetch Cooldown, compares with the Budget App (UC-003) in the same operation; A1, A3, A6 and A7 end before it.
+            val compared = if (reports.any { it is FetchReport.Fetched || it is FetchReport.ServedFromFetchCooldown }) comparison?.compare(permit) else null
+            FetchStart.Ran(reports, compared)
+        }
+        return when (result) {
+            is OperationResult.Ran -> result.value
             is OperationResult.Refused -> FetchStart.Unavailable(result.reason)
         }
+    }
 
     /** UC-014 BR-007: a Data Provider is in use when its credentials are entered or it has a Bank Account. */
     private suspend fun inUse(provider: RegisteredDataProvider, bankAccounts: List<StoredBankAccount>): Boolean =

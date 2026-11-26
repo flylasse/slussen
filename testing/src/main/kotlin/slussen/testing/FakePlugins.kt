@@ -68,11 +68,23 @@ class ScriptedCredentials(
     }
 }
 
-/** A scripted Budget App reader: answers [readBudgetsAnswer] and counts the requests it sent. */
+/** One read of changes a [ScriptedBudgetAppReader] was asked for (ADR-001 §4.2.3). */
+data class ChangesRead(val budgetReference: String, val since: ChangeCursor?, val from: LocalDate)
+
+/**
+ * A scripted Budget App reader: answers [readBudgetsAnswer] and [changesAnswer] and counts the requests it sent. Without
+ * a scripted answer, every Budget has no changed transaction and the cursor `cursor-<n>` of the [n]th read.
+ */
 class ScriptedBudgetAppReader(var readBudgetsAnswer: ReadResult<List<BudgetRead>>) : BudgetAppReader {
     var budgetReads = 0
         private set
     val contexts = mutableListOf<RequestContext>()
+
+    /** Every read of changes the gate let out, in order. */
+    val changeReads = mutableListOf<ChangesRead>()
+
+    /** What the Budget App answers to a read of changes once the gate admitted it. */
+    var changesAnswer: (ChangesRead) -> ReadResult<ChangeSet> = { ReadResult.Answered(ChangeSet(emptyList(), ChangeCursor("cursor-${changeReads.size}"))) }
 
     override suspend fun readBudgets(context: RequestContext): ReadResult<List<BudgetRead>> {
         contexts += context
@@ -93,7 +105,14 @@ class ScriptedBudgetAppReader(var readBudgetsAnswer: ReadResult<List<BudgetRead>
         since: ChangeCursor?,
         from: LocalDate,
         context: RequestContext,
-    ): ReadResult<ChangeSet> = error("No slice of Phase 7 compares with the Budget App (UC-003).")
+    ): ReadResult<ChangeSet> {
+        contexts += context
+        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null))
+        if (admission is Admission.Refused) return ReadResult.StoppedByGate(admission.reason)
+        val read = ChangesRead(budgetReference, since, from)
+        changeReads += read
+        return changesAnswer(read)
+    }
 }
 
 /** A Budget App writer that records every call; Phase 7 writes nothing to the Budget App (UC-013 failure postcondition). */

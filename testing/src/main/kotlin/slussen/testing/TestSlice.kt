@@ -1,6 +1,7 @@
 package slussen.testing
 
 import kotlinx.coroutines.runBlocking
+import slussen.core.comparison.Comparison
 import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
@@ -51,7 +52,8 @@ class TestSlice(
     val providerRequests = InMemoryProviderRequestStore()
     val connectionStore = InMemoryConnectionStore()
     val offeredStore = InMemoryOfferedBankAccountStore()
-    val importStatusStore = InMemoryImportStatusStore(identify)
+    val importStatusStore = InMemoryImportStatusStore(identify, connectionStore)
+    val copyStore = InMemoryBudgetAppCopyStore(connectionStore, importStatusStore)
     val firstUploadMatchingStore = InMemoryFirstUploadMatchingStore()
     val startState = FixedStartState(startKind, unreadableParts)
     val backupSize = FixedBackupSizeMonitor()
@@ -67,13 +69,14 @@ class TestSlice(
         plugins, vault, coordinator, journal, settings, providerRequests, importStatusStore, refusals, clock,
     )
     val fetchNotices = FetchNotices()
+    val comparison = Comparison(plugins, credentials, connectionStore, copyStore, copyStore, coordinator, settings, journal, clock)
     val fetch = FetchTransactions(
         plugins, credentials, connectionStore, offeredStore, importStatusStore, providerRequests, coordinator, settings, journal,
-        clock, fetchNotices,
+        clock, fetchNotices, comparison,
     )
     val settingsOverview = SettingsOverview(plugins, credentials, connectionStore, offeredStore, importStatusStore, settings, clock)
     val connect = BudgetsAndBankAccounts(
-        plugins, credentials, connectionStore, offeredStore, coordinator, journal, random, clock,
+        plugins, credentials, connectionStore, offeredStore, copyStore, coordinator, journal, random, clock,
     )
     val providerSettings = DataProviderSettings(plugins, registry, coordinator, journal)
     val generalSettings = GeneralSettings(settings, coordinator, journal)

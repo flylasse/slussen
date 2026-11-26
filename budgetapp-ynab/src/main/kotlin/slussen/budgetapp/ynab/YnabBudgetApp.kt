@@ -12,8 +12,8 @@ import slussen.pluginapi.diagnostic.SlussenLog
 
 /**
  * The YNAB Budget App (ADR-001 §1, §4.2): everything that depends on YNAB's behaviour (C-009), reached through YNAB's
- * public interface (C-008). This slice builds its profile, its credentials (UC-014) and the reading of Budgets
- * (UC-013); the reading of changes and the writer come with the slices that build UC-003 and UC-006.
+ * public interface (C-008). It builds its profile, its credentials (UC-014), the reading of Budgets (UC-013) and of the
+ * changes of a Budget (UC-003); the reading of one transaction and the writer come with the slice that builds UC-006.
  */
 class YnabBudgetApp internal constructor(
     private val log: SlussenLog,

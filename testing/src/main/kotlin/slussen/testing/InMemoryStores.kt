@@ -1,5 +1,6 @@
 package slussen.testing
 
+import slussen.core.comparison.EligibleTransactions
 import slussen.core.fetch.BankTransactionIntake
 import slussen.core.identity.ImportIdentifierInput
 import slussen.core.identity.ImportIdentifierProtocol
@@ -401,6 +402,8 @@ class FixedBackupSizeMonitor(
  */
 class InMemoryImportStatusStore(
     private val identify: (ImportIdentifierInput) -> String = ImportIdentifierProtocol::importIdentifier,
+    /** The Bank Accounts and Budgets the counts of the stored Bank Transactions are judged by (UC-003 BR-014). */
+    private val connections: ConnectionStore? = null,
 ) : ImportStatusStore, FetchStore {
     val bankTransactions = mutableListOf<StoredBankTransaction>()
     val unreadableTransactions = mutableListOf<StoredUnreadableTransaction>()
@@ -422,7 +425,22 @@ class InMemoryImportStatusStore(
 
     override suspend fun latestTransactionFiles(): List<StoredTransactionFile> = files.toList()
 
-    override suspend fun transactionCounts(): List<StoredTransactionCounts> = counts.toList()
+    /**
+     * The [counts] a test set, and for every other Bank Account with stored Bank Transactions or Unreadable Transactions
+     * the counts the core's rules give them (UC-003 BR-014, UC-008 BR-003).
+     */
+    override suspend fun transactionCounts(): List<StoredTransactionCounts> {
+        val store = connections ?: return counts.toList()
+        val budgets = store.budgets()
+        val computed = store.bankAccounts()
+            .filter { account -> counts.none { it.bankAccountId == account.id } }
+            .filter { account -> bankTransactions.any { it.bankAccountId == account.id } || unreadableTransactions.any { it.bankAccountId == account.id } }
+            .map { account ->
+                val budget = budgets.firstOrNull { budget -> budget.budgetAccounts.any { it.id == account.mapping?.budgetAccountId } }
+                EligibleTransactions.countsOf(account, budget, bankTransactionsOf(account.id), unreadableTransactionsOf(account.id))
+            }
+        return counts.toList() + computed
+    }
 
     private var nextFetchId = 1000L
 

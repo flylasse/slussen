@@ -107,6 +107,16 @@ object ImportIdentifierProtocol {
         return text.toString()
     }
 
+    // UC-003 BR-008: An Import whose Import Identifier begins with Slussen's marker is Slussen's own, whatever its form.
+    /** Ownership (ADR-008 §1, S-14): whether [importIdentifier] begins with Slussen's marker; nothing else is checked. */
+    fun isSlussens(importIdentifier: String): Boolean = importIdentifier.startsWith(MARKER)
+
+    /**
+     * Supported format (ADR-008 §1, B-10): whether an owned [importIdentifier] has the form of a protocol version this
+     * build produces, `^SLS[1-9]-[a-z2-7]{26}$` for version 1. Any other owned one is Slussen Unsupported Format.
+     */
+    fun hasSupportedFormat(importIdentifier: String): Boolean = SUPPORTED_FORMAT.matches(importIdentifier)
+
     /**
      * A payee or memo as identity compares it (ADR-008 §2): in Unicode Normalization Form C, an absent one as empty;
      * nothing else changed, not case, not spaces.
@@ -134,4 +144,7 @@ object ImportIdentifierProtocol {
     }
 
     private const val BITS_PER_CHARACTER = 5
+
+    /** The form of every version this build produces: version 1 only (ADR-008 §1, §6). */
+    private val SUPPORTED_FORMAT = Regex("^$MARKER$VERSION-[$BASE32]{$CHARACTERS}$")
 }

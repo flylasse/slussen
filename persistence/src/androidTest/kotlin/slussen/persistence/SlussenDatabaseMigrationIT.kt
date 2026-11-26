@@ -94,7 +94,7 @@ class SlussenDatabaseMigrationIT {
         helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
             assertEquals(before, db.everything(version1Tables))
             assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
-            assertTrue(db.tables().containsAll(listOf("left_out_bank_account", "account_balance", "fetch_result") + NEW_IN_VERSION_4))
+            assertTrue(db.tables().containsAll(listOf("left_out_bank_account", "account_balance", "fetch_result") + NEW_IN_VERSION_4 + NEW_IN_VERSION_5))
             assertEquals(DEFAULT_DESCRIPTIONS, db.select("SELECT kind, text FROM transfer_description ORDER BY id"))
         }
     }
@@ -113,7 +113,7 @@ class SlussenDatabaseMigrationIT {
         helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
             assertEquals(before, db.everything(version2Tables))
             assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
-            assertEquals((listOf("account_balance", "fetch_result") + NEW_IN_VERSION_4).sorted(), db.tables() - version2Tables.toSet())
+            assertEquals((listOf("account_balance", "fetch_result") + NEW_IN_VERSION_4 + NEW_IN_VERSION_5).sorted(), db.tables() - version2Tables.toSet())
             assertEquals(DEFAULT_DESCRIPTIONS, db.select("SELECT kind, text FROM transfer_description ORDER BY id"))
         }
     }
@@ -139,9 +139,44 @@ class SlussenDatabaseMigrationIT {
         helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
             assertEquals(before, db.everything(version3Tables))
             assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
-            assertEquals(NEW_IN_VERSION_4.sorted(), db.tables() - version3Tables.toSet())
+            assertEquals((NEW_IN_VERSION_4 + NEW_IN_VERSION_5).sorted(), db.tables() - version3Tables.toSet())
             assertEquals(DEFAULT_DESCRIPTIONS, db.select("SELECT kind, text FROM transfer_description ORDER BY id"))
             (NEW_IN_VERSION_4 - "transfer_description").forEach { assertEquals(listOf(listOf("0")), db.select("SELECT COUNT(*) FROM `$it`"), it) }
+        }
+    }
+
+    /** Invented rows in every table of version 4: those of version 3 and a stored copy, a Transfer and Bank Transactions (Phase 5). */
+    private fun SupportSQLiteDatabase.inventedVersion4Data() {
+        inventedVersion3Data()
+        execSQL(
+            "INSERT INTO budget_app_transaction VALUES (1, 1, 'ynab-tx-0001', 20375, -42500, 'Corner Grocer', 'PLANTED-MEMO', " +
+                "'YNAB:-42500:2026-10-14:1', 'Other Import Path', NULL, NULL, 1, 0, 'Present')",
+        )
+        execSQL("INSERT INTO transfer VALUES (1, 1, 2, 150000, 'Bank Transfer', 0, 'Proposed', NULL)")
+        execSQL(
+            "INSERT INTO bank_transaction VALUES (1, 1, 'TX-0001', 'Supplied', 1, 'SLS1-aaaaaaaaaaaaaaaaaaaaaaaaaa', 20375, -42500, 'USD', " +
+                "'Corner Grocer', NULL, 1760533200000, 'New', 1)",
+        )
+        execSQL("INSERT INTO unreadable_transaction VALUES (1, 1, NULL, NULL, NULL, 'Harbor Fuel', NULL, 'date missing', 1760533200000, 'Needs Review')")
+        execSQL("INSERT INTO transfer_description (kind, text) VALUES ('Bank Transfer', 'INVENTED TRANSFER')")
+    }
+
+    @Test
+    @DisplayName("NFR-017: E-06, slussen.db at version 4 with rows in every table migrates to the current version, Room validates it, every row and value is kept, and budget_read_state starts empty (UC-003 BR-016; ADR-002 §7)")
+    fun version4MigratesKeepingEveryValue() {
+        val name = "migration-version-4.db"
+        val (version4Tables, before) = helper.createDatabase(name, 4).use { db ->
+            db.inventedVersion4Data()
+            val tables = db.tables()
+            assertTrue(tables.all { db.select("SELECT COUNT(*) FROM `$it`").single().single() != "0" }, "every table holds a row")
+            tables to db.everything(tables)
+        }
+
+        helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
+            assertEquals(before, db.everything(version4Tables))
+            assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
+            assertEquals(NEW_IN_VERSION_5, db.tables() - version4Tables.toSet())
+            assertEquals(listOf(listOf("0")), db.select("SELECT COUNT(*) FROM budget_read_state"))
         }
     }
 
@@ -157,7 +192,7 @@ class SlussenDatabaseMigrationIT {
             assertEquals(listOf("acct-2290"), connections.leftOutBankAccounts().map { it.providerReference })
             val fetches = RoomFetchStore(main.fetches())
             assertEquals(listOf(StoredFetchResult(1, FetchResultOutcome.Fetched, 3)), fetches.fetchesOf(1).single().results)
-            assertEquals(listOf(Amount(5135280)), RoomImportStatusStore(main.fetches()).accountBalances().map { it.amount })
+            assertEquals(listOf(Amount(5135280)), RoomImportStatusStore(main.fetches(), RoomConnectionStore(main.connections())).accountBalances().map { it.amount })
             val db = main.openHelper.writableDatabase
             assertEquals(DEFAULT_DESCRIPTIONS, db.select("SELECT kind, text FROM transfer_description ORDER BY id"))
             db.execSQL(
@@ -193,7 +228,7 @@ class SlussenDatabaseMigrationIT {
             assertEquals(listOf("Kestrel Checking"), connections.bankAccounts().map { it.name })
             assertEquals(listOf("acct-2290"), connections.leftOutBankAccounts().map { it.providerReference })
             val fetches = RoomFetchStore(main.fetches())
-            val status = RoomImportStatusStore(main.fetches())
+            val status = RoomImportStatusStore(main.fetches(), RoomConnectionStore(main.connections()))
             assertEquals(listOf(FetchOutcome.Fetched), fetches.fetchesOf(1).map { it.outcome })
             assertTrue(status.accountBalances().isEmpty())
             fetches.storeBankAccountDelivery(
@@ -208,7 +243,10 @@ class SlussenDatabaseMigrationIT {
 
     private companion object {
         /** The schema version of `slussen.db` this build creates and migrates to (ADR-002 §7). */
-        const val CURRENT_VERSION = 4
+        const val CURRENT_VERSION = 5
+
+        /** The table version 5 adds (ADR-002 §2; transactions plan Phase 7a). */
+        val NEW_IN_VERSION_5 = listOf("budget_read_state")
 
         /** The tables version 4 adds (ADR-002 §1, §2). */
         val NEW_IN_VERSION_4 = listOf("bank_transaction", "budget_app_transaction", "transfer", "transfer_description", "unreadable_transaction")

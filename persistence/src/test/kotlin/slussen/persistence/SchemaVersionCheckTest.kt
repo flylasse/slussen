@@ -60,7 +60,8 @@ class SchemaVersionCheckTest {
         val committed = RoomSchemas.file(RoomSchemas.committed, SlussenDatabase::class, 3).readText()
         val planted = committed.replace("`currency` TEXT NOT NULL, `reported_at`", "`currency` TEXT NOT NULL, `planted` TEXT, `reported_at`")
 
-        assertEquals(null, changeOfFinalVersion(name, 3, committed.replace("\n", "\r\n")))
+        // The file reads CRLF on a Windows checkout (`.gitattributes`): it is made LF first, so that every line ends in exactly one CRLF.
+        assertEquals(null, changeOfFinalVersion(name, 3, committed.replace("\r\n", "\n").replace("\n", "\r\n")))
         assertTrue(planted != committed)
         assertTrue(changeOfFinalVersion(name, 3, planted)!!.contains("$name version 3"))
         assertTrue(changeOfFinalVersion(name, 99, committed)!!.contains("no pin"))
@@ -84,13 +85,14 @@ class SchemaVersionCheckTest {
         /**
          * The SHA-256 of the committed schema file of every version older than the current one, line endings read as LF
          * (`.gitattributes` checks text out with CRLF on Windows), taken from the file as committed: version 1 at the
-         * baseline `96712aa`, versions 2 and 3 as committed with their Migrations (ADR-002 §7, S-39).
+         * baseline `96712aa`, versions 2, 3 and 4 as committed with their Migrations (ADR-002 §7, S-39).
          */
         val FINAL_VERSIONS: Map<String, Map<Int, String>> = mapOf(
             "slussen.persistence.main.SlussenDatabase" to mapOf(
                 1 to "ba23f243badea28c2ee0f5c3c5d4639a16deeea0d4b9cfb70936e5ff9439b53d",
                 2 to "4d4103016f183cca23a08edb31f2cb9db38009f3ed05bed19768c00fe78e4f3c",
                 3 to "6d66b0b9ec8bc333eda57a05f393213a7e9dc62e37b748ca16fd06057a150e4d",
+                4 to "fc49c92ba11a33a377f521f0ca8670b8d4738bd5cd3c95bf024e9fab5852f247",
             ),
         )
     }

@@ -26,8 +26,11 @@ enum class OperationKind {
     /** Changing a Bank Account or its Account Mapping (UC-009). */
     AccountMappingChange,
 
-    /** A Fetch the Operator starts, of one Data Provider or of several (UC-001). */
+    /** A Fetch the Operator starts, of one Data Provider or of several (UC-001), with its Comparison (step 10). */
     Fetch,
+
+    /** Reading the Budget App again and comparing (UC-003), or concluding a Comparison left pending (ADR-007 §3a). */
+    Comparison,
 }
 
 /** Why the coordinator refused an operation (ADR-007 §2): a typed reason the screen shows. */
