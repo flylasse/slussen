@@ -7,16 +7,24 @@ import slussen.core.port.BudgetAppTransactionState
 import slussen.core.port.BudgetAppTransactionToStore
 import slussen.core.port.BudgetReadToStore
 import slussen.core.port.ChangeSetApplied
+import slussen.core.port.ComparisonConclusions
 import slussen.core.port.ComparisonData
 import slussen.core.port.ComparisonStore
 import slussen.core.port.EnteredBy
 import slussen.core.port.StatusChange
 import slussen.core.port.StoredBudgetAccount
 import slussen.core.port.StoredBudgetAppTransaction
-import slussen.core.port.TransactionStatus
+import slussen.core.port.StoredTransfer
+import slussen.core.port.StoredTransferDescription
+import slussen.core.port.TransferDecision
+import slussen.core.port.TransferDescriptionKind
+import slussen.core.port.TransferToStore
+import slussen.core.port.TransferType
 import slussen.persistence.main.BudgetAppTransactionEntity
 import slussen.persistence.main.BudgetReadStateEntity
 import slussen.persistence.main.SlussenDatabase
+import slussen.persistence.main.TransferDescriptionEntity
+import slussen.persistence.main.TransferEntity
 import slussen.persistence.main.stored
 import slussen.pluginapi.budgetapp.ChangeCursor
 import slussen.pluginapi.value.Amount
@@ -58,10 +66,37 @@ private fun BudgetAppTransactionToStore.entity(id: Long) = BudgetAppTransactionE
     state = state.text,
 )
 
+/** `transfer` read back as the core's [StoredTransfer]; an unknown `Values:` text is unreadable data. */
+internal fun TransferEntity.stored() = StoredTransfer(
+    id = id,
+    outflowBudgetAccountId = outflowBudgetAccountId,
+    inflowBudgetAccountId = inflowBudgetAccountId,
+    amount = Amount(amount),
+    type = valueOfText<TransferType>(transferType, MAIN_PART) { it.text },
+    guessed = guessed,
+    decision = valueOfText<TransferDecision>(decision, MAIN_PART) { it.text },
+    decidedAt = decidedAt,
+)
+
+/** `transfer_description` read back as the core's [StoredTransferDescription]. */
+internal fun TransferDescriptionEntity.stored() =
+    StoredTransferDescription(valueOfText<TransferDescriptionKind>(kind, MAIN_PART) { it.text }, text)
+
+/** A Transfer a Comparison detected for the first time, with the decision Proposed. */
+private fun TransferToStore.entity() = TransferEntity(
+    outflowBudgetAccountId = outflowBudgetAccountId,
+    inflowBudgetAccountId = inflowBudgetAccountId,
+    amount = amount.thousandths,
+    transferType = type.text,
+    guessed = guessed,
+    decision = TransferDecision.Proposed.text,
+    decidedAt = null,
+)
+
 /**
  * O-4 [BudgetAppCopyStore] and O-5 [ComparisonStore] in `slussen.db` (ADR-002 §3), each one transaction on the one
- * database: the stored copy of the Budget App with its cursor, the Transaction Statuses concluded from that copy, and
- * the Comparison-pending marker between the two (ADR-007 §3a).
+ * database: the stored copy of the Budget App with its cursor, the Transaction Statuses and the Transfers concluded from
+ * that copy, and the Comparison-pending marker between the two (ADR-007 §3a).
  */
 class RoomComparisonStore(
     private val db: SlussenDatabase,
@@ -102,7 +137,7 @@ class RoomComparisonStore(
 
     override suspend fun applyComparison(
         budgetIds: Set<Long>,
-        conclude: (ComparisonData) -> Map<Long, TransactionStatus>,
+        conclude: (ComparisonData) -> ComparisonConclusions,
     ): List<StatusChange> = db.withTransaction {
         val budgets = connections.budgets().filter { it.id in budgetIds }
         val accountIds = budgets.flatMap { it.budgetAccounts }.map { it.id }.toSet()
@@ -113,14 +148,46 @@ class RoomComparisonStore(
             bankAccounts = bankAccounts,
             bankTransactions = bankAccounts.flatMap { account -> fetches.bankTransactionsOf(account.id).map { it.stored() } },
             budgetAppTransactions = budgets.flatMap { budget -> dao.copyOf(budget.id).map { it.stored() } },
+            transfers = bankAccounts.flatMap { account -> dao.transfersOf(account.id) }.distinctBy { it.id }.map { it.stored() },
+            transferDescriptions = dao.transferDescriptions().map { it.stored() },
         )
-        val statuses = conclude(data)
+        val conclusions = conclude(data)
         val changes = data.bankTransactions.mapNotNull { stored ->
-            val status = statuses[stored.id] ?: return@mapNotNull null
+            val status = conclusions.statuses[stored.id] ?: return@mapNotNull null
             if (status == stored.status) null else StatusChange(stored.id, stored.bankAccountId, stored.importIdentifier, stored.status, status)
         }
         changes.forEach { dao.storeStatus(it.storedBankTransaction, it.to.text) }
+        storeTransfers(conclusions.transfers, data.transfers)
         dao.storeComparisonPending(false)
         changes
+    }
+
+    /**
+     * The Transfers of O-5, inside its transaction: each of [detected] stored with the decision Proposed, or written over
+     * the stored Proposed Transfer it continues, with `bank_transaction.transfer_id` of its Transfer Legs; every one of
+     * [stored] with the decision Proposed that none continues no longer holds, so its Transfer Legs are released and it is
+     * removed. A Transfer the Operator decided on is never changed here.
+     */
+    private suspend fun storeTransfers(detected: List<TransferToStore>, stored: List<StoredTransfer>) {
+        val proposed = TransferDecision.Proposed.text
+        val proposedIds = stored.filter { it.decision == TransferDecision.Proposed }.map { it.id }.toSet()
+        val continued = mutableSetOf<Long>()
+        detected.forEach { transfer ->
+            require(transfer.legs.isNotEmpty()) { "A Transfer has one or two Transfer Legs." }
+            require(transfer.continues == null || transfer.continues in proposedIds) { "A Comparison continues only a Transfer with the decision Proposed." }
+            val id = transfer.continues?.also {
+                dao.updateProposedTransfer(
+                    it, transfer.outflowBudgetAccountId, transfer.inflowBudgetAccountId, transfer.amount.thousandths, transfer.type.text,
+                    transfer.guessed, proposed,
+                )
+            } ?: dao.insertTransfer(transfer.entity())
+            continued += id
+            dao.releaseOtherLegs(id, transfer.legs)
+            dao.storeTransferOf(transfer.legs, id)
+        }
+        stored.filter { it.decision == TransferDecision.Proposed && it.id !in continued }.forEach {
+            dao.releaseLegs(it.id)
+            dao.deleteProposedTransfer(it.id, proposed)
+        }
     }
 }

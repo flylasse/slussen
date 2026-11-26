@@ -122,6 +122,10 @@ data class ComparisonData(
     val bankTransactions: List<StoredBankTransaction>,
     /** The stored copy of the Budget App Transactions of those Budgets' Budget Accounts. */
     val budgetAppTransactions: List<StoredBudgetAppTransaction>,
+    /** The stored Transfers that one of those Bank Transactions is a Transfer Leg of (`bank_transaction.transfer_id`). */
+    val transfers: List<StoredTransfer>,
+    /** The Card Payment Descriptions and Bank Transfer Descriptions (`transfer_description`, UC-005 BR-012). */
+    val transferDescriptions: List<StoredTransferDescription>,
 )
 
 /**
@@ -142,9 +146,11 @@ interface ComparisonStore {
     suspend fun comparisonPending(): Boolean
 
     /**
-     * O-5, all or nothing: reads the [ComparisonData] of [budgetIds] from storage, computes the Transaction Statuses with
-     * [conclude] (the core's rules, applied inside the transaction to what is stored), writes every status that changed,
-     * and clears `comparison_pending`. Returns the changes.
+     * O-5, all or nothing: reads the [ComparisonData] of [budgetIds] from storage, computes the Transaction Statuses and
+     * the Transfers with [conclude] (the core's rules, applied inside the transaction to what is stored), writes every
+     * status that changed, stores each Transfer that holds with the decision Proposed and its Transfer Legs'
+     * `transfer_id`, releases the Transfer Legs of every stored Proposed Transfer that no longer holds and removes it, and
+     * clears `comparison_pending`. A Transfer the Operator decided on is never changed here. Returns the status changes.
      */
-    suspend fun applyComparison(budgetIds: Set<Long>, conclude: (ComparisonData) -> Map<Long, TransactionStatus>): List<StatusChange>
+    suspend fun applyComparison(budgetIds: Set<Long>, conclude: (ComparisonData) -> ComparisonConclusions): List<StatusChange>
 }
