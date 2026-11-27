@@ -21,11 +21,14 @@
 | A-3 | 5e1c654, 2fdbdf5 | green at 2fdbdf5 | `docs/reviews/build_out_reviews/A-3.md`: 7 findings fixed, 3 to §6 (G-11..G-13); the reviewer compared the changed Transfer detection and `conclude` with the old ones line by line: no case differs | A Guessed Transfer now carries why it is guessed; the screens re-run the detection the Comparison runs | 383k + 230k |
 | A-4 | 5dd1fa2, f673b50 | green at f673b50 | `docs/reviews/build_out_reviews/A-4.md`: 6 findings fixed, 4 to §6 (G-15..G-18) | Built by a mid model: two findings showed something false (a cooldown Fetch listing a Retired Account; "nothing needed now" for a Bank Account the Request Limit kept from its first read). The Fetch's selection is now one shared rule | 342k + 175k |
 | A-5 | f4f70bf (S-B-01), 6b6d085, bb7172a | green at bb7172a | `docs/reviews/build_out_reviews/A-5.md`: 6 findings fixed, 4 to §6 (G-19..G-22); the reviewer found no path that says "not stored" for something stored, or the reverse | Issues #33 and #26 are built; every storage failure on the service pages and the Overview is answered on the screen | 425k + 269k |
+| W2-0 | 5e1793e, f75d028 (S-B-02..S-B-16) | specification checks and architecture tests green | `docs/reviews/build_out_reviews/W2-0.md`: 9 corrections written, among them a transaction that would have been stuck for ever and two ways to a duplicate | The specification of Wave 2; no code | 465k + 148k |
+| W2-1 | d4b9e5b | green at d4b9e5b | in review | `slussen.db` version 6: seven tables, `transfer` rebuilt with an optional outflow side, `state_version` raised by every operation a plan depends on. The Migration's device tests are written, not run | 511k + (review running) |
 
 - Paused on 2026-11-26 at the operator's word (the usage limit of the session) after A-4 was built; resumed the same day. The operator watches the limit and says when to pause; the orchestrator's own turns are not in the token column.
 
 - **Wave 1 is done** (A-1..A-5). Ready for the operator's device run and Windows gate, when convenient: commit bb7172a or later on `build-out`. New instrumented tests since `main`: in `UC008CheckImportStatusScreenIT`, `UC005ReviewTransfersScreenIT`, and the UC-013 and UC-014 screen ITs.
-- Next: Wave 2, phase W2-0 (its specification).
+- Wave 2: its specification (W2-0) is written and corrected after its review; storage version 6 (W2-1) is built and green, its review is running. The prompts of B2 to B6 are in `docs/reviews/build_out_prompts/`.
+- Next: the review of W2-1 and its fixes; then phase B2 (Review Decisions).
 
 ## 1. Scope
 
