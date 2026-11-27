@@ -173,6 +173,9 @@ object ReviewDecisionTexts {
         Undecidable.NotComparedYet -> "It has no Transaction Status yet. Read $budgetAppName again to compare it; then it can be decided."
         Undecidable.BankAccountNotCompared ->
             "Its Bank Account is not mapped into a Budget Slussen serves, or is a Retired Account, so it is not compared. Map or restore it in Account Mappings."
+        Undecidable.PeriodReadOwed ->
+            "Its Budget owes a read of $budgetAppName: Slussen's copy of $budgetAppName does not cover the whole read period. Read " +
+                "$budgetAppName again on the Budget's tab or the Overview; then it can be decided."
     }
 
     /** One resembling Import, as the list of step 4 shows it (BR-002): payee, amount, date, Budget Account. */

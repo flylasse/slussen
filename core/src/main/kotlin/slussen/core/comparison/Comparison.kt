@@ -262,6 +262,7 @@ class Comparison(
      */
     private suspend fun conclude(budgetIds: Set<Long>): List<StatusChange> {
         val windows = ComparisonWindows.of(settings.current(), plugins.budgetApp.profile.matchingDateWindowDays, today())
+        // The other writes of statuses from stored data, the Review Decisions and Transfer Decisions, are refused on such a Budget (UC-004 A12, UC-005 A11; `ReviewDecisions`, `TransferDecisions`, checked again in O-13's transaction), so this holds for every path.
         // UC-003 BR-016: Until the read of its read period, no conclusion from stored data changes the Transaction Statuses of a Budget that owes it; they stay as the latest Comparison that read it left them.
         val owing = connections.budgets().filter { copies.periodReadOwed(it.id) }
         val owingAccounts = owing.flatMap { it.budgetAccounts }.map { it.id }.toSet()

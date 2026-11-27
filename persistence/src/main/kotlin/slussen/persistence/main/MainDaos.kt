@@ -44,15 +44,16 @@ abstract class OperatorSettingsDao : StateVersionDao {
     @Query("UPDATE coordinator_state SET comparison_pending = 1 WHERE id = 1")
     protected abstract suspend fun markComparisonPending()
 
-    @Query("UPDATE budget_read_state SET period_read_owed = 1 WHERE budget_id IN (SELECT id FROM budget WHERE served = 1)")
-    protected abstract suspend fun owePeriodReadOfServedBudgets()
+    @Query("UPDATE budget_read_state SET period_read_owed = 1")
+    protected abstract suspend fun owePeriodReadOfEveryBudgetWithACursor()
 
     /**
      * O-13 `SettingsStore.*` (UC-010 steps 4-5, ADR-002 §3): one Operator Setting in one transaction, all or nothing: the
      * one record with [change]'s value and every other value as stored, `state_version` raised (ADR-007 §6 step 2), and
      * what follows it: `comparison_pending` for the statuses given again from stored data (ADR-007 §3a), or
-     * `period_read_owed` on the existing `budget_read_state` row of every served Budget, so that a Budget without a
-     * `change_cursor` gets no row (UC-003 BR-016). Throws, and stores nothing, when there is no record.
+     * `period_read_owed` on the existing `budget_read_state` row of every Budget, served or not, so that one served again
+     * reads the longer period too and a Budget without a `change_cursor` gets no row (UC-003 BR-016, S-B-21). Throws,
+     * and stores nothing, when there is no record.
      */
     @Transaction
     open suspend fun store(change: SettingChange) {
@@ -62,7 +63,7 @@ abstract class OperatorSettingsDao : StateVersionDao {
         when (change.followUp) {
             SettingFollowUp.None -> Unit
             SettingFollowUp.StatusesAgain -> markComparisonPending()
-            SettingFollowUp.PeriodReadOwed -> owePeriodReadOfServedBudgets()
+            SettingFollowUp.PeriodReadOwed -> owePeriodReadOfEveryBudgetWithACursor()
         }
     }
 }

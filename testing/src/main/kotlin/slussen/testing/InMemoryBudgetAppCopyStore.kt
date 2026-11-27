@@ -200,6 +200,8 @@ class InMemoryBudgetAppCopyStore(
         val data = dataOf(budgetIds)
         val ruling = rule(data)
         val write = ruling.write ?: return TransferDecided(ruling.answer, transferId = null, changes = emptyList())
+        // As the Room store refuses it: no Transfer Decision while its Budget owes a read of its read period (UC-003 BR-016).
+        check(data.periodReadOwed.isEmpty()) { "No Transfer Decision is stored while its Budget owes a read of its read period." }
         // As the Room store refuses them, before anything is written.
         require(write.legs.size in 1..2 && write.legs.distinct().size == write.legs.size) { "A Transfer has one or two Transfer Legs." }
         require(write.transfer.decision != TransferDecision.Proposed && write.transfer.decidedAt != null) { "O-13 stores a Transfer Decision with its time." }
@@ -250,6 +252,8 @@ class InMemoryBudgetAppCopyStore(
         val data = dataOf(budgetIds)
         val ruling = rule(data)
         val write = ruling.write ?: return ReviewDecided(ruling.answer, emptyList())
+        // As the Room store refuses it: no Review Decision while its Budget owes a read of its read period (UC-003 BR-016).
+        check(data.periodReadOwed.isEmpty()) { "No Review Decision is stored while its Budget owes a read of its read period." }
         val decision = write.decision
         require(decision == null || decision.storedBankTransaction == write.storedBankTransaction) { "A Review Decision is stored for its own Bank Transaction." }
         // As `slussen.db` refuses them: a decision about no stored Bank Transaction, a chosen transaction in no stored Budget Account, clearing none.
@@ -307,6 +311,7 @@ class InMemoryBudgetAppCopyStore(
             transferDescriptions = transferDescriptions.toList(),
             reviewDecisions = reviewDecisions.filter { decision -> bankTransactions.any { it.id == decision.storedBankTransaction } },
             sentRecords = sentRecords.filter { record -> bankTransactions.any { it.id == record.storedBankTransaction } },
+            periodReadOwed = budgets.map { it.id }.filter { it in periodOwed }.toSet(),
         )
     }
 

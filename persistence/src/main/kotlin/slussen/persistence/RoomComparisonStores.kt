@@ -258,6 +258,7 @@ class RoomComparisonStore(
             reviewDecisions = mapped.flatMap { account -> db.reviewDecisions().ofBankAccount(account.id) }.map { it.stored() },
             sentRecords = mapped.flatMap { account -> dao.sentRecordsOf(account.id) }.map { it.stored() } +
                 legsElsewhere.flatMap { leg -> dao.sentRecordsOfTransaction(leg.id) }.map { it.stored() },
+            periodReadOwed = budgets.filter { dao.periodReadOwed(it.id) == true }.map { it.id }.toSet(),
         )
     }
 
@@ -307,6 +308,8 @@ class RoomReviewStore(
         val data = comparisons.dataOf(budgetIds)
         val ruling = rule(data)
         val write = ruling.write ?: return@withTransaction ReviewDecided(ruling.answer, emptyList())
+        // UC-003 BR-016: no Review Decision is stored on a Budget that owes a read of its read period (UC-004 A12).
+        check(data.periodReadOwed.isEmpty()) { "No Review Decision is stored while its Budget owes a read of its read period." }
         val decision = write.decision
         require(decision == null || decision.storedBankTransaction == write.storedBankTransaction) { "A Review Decision is stored for its own Bank Transaction." }
         // ADR-007 §6 step 2: storing or removing the Review Decision raises `state_version` in this transaction (`ReviewDecisionDao`).
@@ -343,6 +346,8 @@ class RoomTransferStore(
         val data = comparisons.dataOf(budgetIds)
         val ruling = rule(data)
         val write = ruling.write ?: return@withTransaction TransferDecided(ruling.answer, transferId = null, changes = emptyList())
+        // UC-003 BR-016: no Transfer Decision is stored on a Budget that owes a read of its read period (UC-005 A11).
+        check(data.periodReadOwed.isEmpty()) { "No Transfer Decision is stored while its Budget owes a read of its read period." }
         val transfer = write.transfer
         require(write.legs.size in 1..2 && write.legs.distinct().size == write.legs.size) { "A Transfer has one or two Transfer Legs." }
         require(transfer.decision != TransferDecision.Proposed && transfer.decidedAt != null) { "O-13 stores a Transfer Decision with its time." }

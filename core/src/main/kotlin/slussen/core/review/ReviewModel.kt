@@ -74,6 +74,12 @@ enum class Undecidable {
 
     /** Its Bank Account has no Account Mapping into a served Budget or is a Retired Account: it is not compared (UC-003 step 2). */
     BankAccountNotCompared,
+
+    /**
+     * UC-004 A12, UC-003 BR-016: its Budget owes a read of its read period, so Slussen's copy of the Budget App lacks
+     * transactions of it; no Review Decision is taken until the Budget App is read.
+     */
+    PeriodReadOwed,
 }
 
 /**

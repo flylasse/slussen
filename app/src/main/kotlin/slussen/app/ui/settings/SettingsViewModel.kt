@@ -3,6 +3,7 @@ package slussen.app.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import slussen.app.ui.AppVersion
@@ -138,6 +139,26 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
 
     private var detailedLoggingAnswer: AnswerUi? = null
     private var detailedLoggingPending: String? = null
+
+    init {
+        viewModelScope.launch {
+            // NFR-023: when an operation ends, whichever screen started it, the stored values are shown again; an open dialog and the answers stay.
+            services.ended.drop(1).collect { if (mutableState.value != null) showAgain() }
+        }
+    }
+
+    /** Reads the Operator Settings again and shows them, keeping every dialog and answer; one that cannot be read says so. */
+    private suspend fun showAgain() {
+        val notReadAgain = try {
+            shown = services.generalSettings.shown()
+            null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            SETTINGS_NOT_READ_AGAIN
+        }
+        publish(notReadAgain = notReadAgain)
+    }
 
     fun load() {
         answers.clear()
@@ -379,6 +400,15 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                     publish(numberEditor = null, notReadAgain = notReadAgain)
                 }
                 // A1 (`#out-of-range`): refused in the dialog, at the field, with the range and the value that stays.
+                // Steps 2-4: the value stored already; nothing was stored or recorded, and the line says so.
+                is SettingOutcome.Unchanged -> {
+                    retries.remove(setting)
+                    answers[setting] = AnswerUi(
+                        "Not changed: still ${SettingTexts.value(setting, before.value)}" + if (before.value == before.defaultValue) ", the default." else ".",
+                        AnswerKind.Unchanged,
+                    )
+                    publish(numberEditor = null)
+                }
                 is SettingOutcome.OutsideRange -> refusedAtTheField(setting, SettingTexts.outsideRange(before, value, outcome.range))
                 // Precondition (UC-006 BR-005): unavailable, said in the dialog; nothing is stored.
                 is SettingOutcome.Unavailable -> refusedAtTheField(setting, Texts.refusal(outcome.reason))
@@ -517,6 +547,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                         AnswerKind.Done,
                     )
                 }
+                is SwitchOutcome.Unchanged -> AnswerUi("Not changed: still ${if (outcome.on) "on" else "off, the default"}.", AnswerKind.Unchanged)
                 SwitchOutcome.NotStored -> AnswerUi(
                     "Not saved: Slussen could not store it. Still ${if (wasOn) "on" else "off, the default"}.",
                     AnswerKind.Failed,

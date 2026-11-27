@@ -37,10 +37,7 @@ import slussen.core.port.NewProviderRequest
 import slussen.core.port.OfferedBankAccountStore
 import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
-import slussen.core.port.NumberSetting
 import slussen.core.port.SettingChange
-import slussen.core.port.SettingFollowUp
-import slussen.core.port.SettingValue
 import slussen.persistence.main.entity
 import slussen.persistence.main.settings
 import slussen.core.port.OtherSideKind
@@ -115,9 +112,6 @@ class RoomOperatorSettingsStore(private val dao: OperatorSettingsDao) : Operator
     override suspend fun store(change: SettingChange) {
         dao.store(change)
     }
-
-    /** The fetch period stored with nothing following it, as Settings stores a value no longer than the read period (O-13). */
-    suspend fun storeFetchPeriod(days: Int) = store(SettingChange(SettingValue.Number(NumberSetting.FetchPeriod, days), SettingFollowUp.None))
 
     /** The default content of ADR-002 §8 step 3: one record with every default, when there is none. */
     suspend fun ensureDefault() {

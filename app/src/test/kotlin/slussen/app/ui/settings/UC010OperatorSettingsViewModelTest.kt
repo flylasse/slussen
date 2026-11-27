@@ -493,4 +493,52 @@ class UC010OperatorSettingsViewModelTest {
     }
 
     private data class ClearedAnswer(val text: String, val kind: AnswerKind, val detail: String?)
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", requirements = ["NFR-023"])
+    @DisplayName("Steps 2-4: saving the value already stored stores and records nothing; the line says it is unchanged")
+    fun anUnchangedValueIsAnsweredUnchanged() {
+        val viewModel = settings()
+        viewModel.startEditing(NumberSetting.UploadWindow)
+
+        viewModel.save("7")
+
+        assertNull(viewModel.ui().numberEditor)
+        assertEquals(AnswerUi("Not changed: still 7 days, the default.", AnswerKind.Unchanged), viewModel.line(NumberSetting.UploadWindow).answer)
+        assertTrue(slice.journalRecorder.entries.isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", requirements = ["NFR-023"])
+    @DisplayName("Step 5, UC-003 BR-016: when a Budget owes a read, the answer names it as waiting for that read and never says every status was given again")
+    fun statusesGivenNameTheBudgetThatWaits() {
+        budgetsReadBefore()
+        val household = runBlocking { slice.connectionStore.budgets().single { it.name == "Household" }.id }
+        runBlocking { slice.copyStore.owePeriodRead(household) }
+        val viewModel = settings()
+        viewModel.startEditing(NumberSetting.UploadWindow)
+
+        viewModel.save("10")
+
+        assertEquals(
+            "Saved: 10 days (7 by default). Transaction Statuses given again from stored data, without contacting $app or any " +
+                "Source, except those of Household, which wait for the read of $app it owes. Recorded in the Decision Journal.",
+            viewModel.line(NumberSetting.UploadWindow).answer?.text,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", requirements = ["NFR-023"])
+    @DisplayName("NFR-023: when an operation ends elsewhere, Settings shows the stored values again and keeps the dialog the Operator is typing in")
+    fun settingsShowsTheStoredValuesAgainWhenAnOperationEnds() {
+        val viewModel = settings()
+        viewModel.startEditing(NumberSetting.DefaultWait)
+        viewModel.edit("1")
+
+        runBlocking { fixture.services.generalSettings.change(NumberSetting.RequestTimeout, 45) }
+
+        assertEquals("45 s", viewModel.line(NumberSetting.RequestTimeout).value)
+        assertEquals(NumberSetting.DefaultWait, viewModel.ui().numberEditor?.setting)
+        assertEquals("1", viewModel.editor().value)
+    }
 }

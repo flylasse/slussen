@@ -39,6 +39,12 @@ enum class TransferUndecidable {
      * today, for example because its grace period ended (UC-005 A5, BR-005): the next Comparison says what it is.
      */
     NoLongerProposed,
+
+    /**
+     * UC-005 A11, UC-003 BR-016: its Budget owes a read of its read period, so Slussen's copy of the Budget App lacks
+     * transactions of it; no Transfer Decision is taken until the Budget App is read.
+     */
+    PeriodReadOwed,
 }
 
 /** One Transfer Leg as the sheet of a Transfer shows it. */

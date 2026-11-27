@@ -131,6 +131,10 @@ class TransferDecisions(
             budgetAccountNames = budget.budgetAccounts.associate { it.id to it.name }
             val now = clock.instant()
             transfers.decide(setOf(budget.id)) { data ->
+                // UC-003 BR-016: Until that read of the Budget no Transfer Decision is taken on its Transfers (UC-005 A11); a Transfer lies in one Budget, so one check covers both its Transfer Legs.
+                if (budget.id in data.periodReadOwed) {
+                    return@decide TransferRuling(null, RuledTransferOutcome(TransferOutcome.NotDecidable(TransferUndecidable.PeriodReadOwed)))
+                }
                 val (write, ruled) = TransferDecisionRules.decide(storedBankTransaction, choice, data, windows, now)
                 TransferRuling(write, ruled)
             }

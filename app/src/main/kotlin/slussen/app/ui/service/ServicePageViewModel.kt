@@ -768,6 +768,7 @@ class ServicePageViewModel(
                         "Applies to Upload Plans prepared from now on." + if (shown.journalOn) " Recorded in the Decision Journal." else "",
                     AnswerKind.Done,
                 )
+                is SwitchOutcome.Unchanged -> AnswerUi("Not changed: s${still.drop(1)}", AnswerKind.Unchanged)
                 SwitchOutcome.NotStored -> AnswerUi("Not saved: Slussen could not store it. $still", AnswerKind.Failed, "Tap the switch to try again.")
                 is SwitchOutcome.Unavailable -> AnswerUi("Not changed: ${Texts.refusal(outcome.reason)} $still", AnswerKind.Failed)
             }
@@ -855,6 +856,10 @@ class ServicePageViewModel(
                     ),
                     retry = value.toString(),
                 )
+                showPageAgain(pageOrNull())
+            }
+            is SettingOutcome.Unchanged -> {
+                answer(notChanged(setting, before, default), retry = null)
                 showPageAgain(pageOrNull())
             }
             SettingOutcome.NotAnOperatorSetting -> showPageAgain(pageOrNull(), message = "Published by the Data Provider · not a setting")

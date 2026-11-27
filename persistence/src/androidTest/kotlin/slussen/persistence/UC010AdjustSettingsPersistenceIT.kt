@@ -63,7 +63,7 @@ class UC010AdjustSettingsPersistenceIT {
 
     @Test
     @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-006"])
-    @DisplayName("Steps 4-5: a longer file upload window is stored with state_version raised and period_read_owed set on the existing row of every served Budget with a cursor, none for a Budget not read or not served, no Comparison marker, and kept after a restart")
+    @DisplayName("Steps 4-5: a longer file upload window is stored with state_version raised and period_read_owed set on the existing row of every Budget with a cursor, served or not, none for a Budget not read, no Comparison marker, and kept after a restart")
     fun aLongerReadPeriodOwesTheReadInTheSameTransaction() = runBlocking {
         val storage = SlussenStorage.open(DeviceFiles.context, clock)
         val ids = budgets(storage)
@@ -80,7 +80,8 @@ class UC010AdjustSettingsPersistenceIT {
         assertTrue(restarted.comparisons.periodReadOwed(ids.getValue("Care Fund")))
         assertFalse(restarted.comparisons.periodReadOwed(ids.getValue("Summer House")))
         assertNull(restarted.comparisons.changeCursorOf(ids.getValue("Summer House")))
-        assertFalse(restarted.comparisons.periodReadOwed(ids.getValue("Old Fund")))
+        // S-B-21 as amended after the review of A-6: a Budget read before and no longer served owes the read too.
+        assertTrue(restarted.comparisons.periodReadOwed(ids.getValue("Old Fund")))
         assertFalse(restarted.comparisons.comparisonPending())
         restarted.close()
     }

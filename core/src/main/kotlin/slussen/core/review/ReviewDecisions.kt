@@ -188,6 +188,8 @@ class ReviewDecisions(
                 bankAccountNames = connections.bankAccounts().associate { it.id to it.name }
                 budgetAccountNames = budget.budgetAccounts.associate { it.id to it.name }
                 reviews.decide(setOf(budget.id)) { data ->
+                    // UC-003 BR-016: Until that read of the Budget no Review Decision is taken on its Bank Transactions (UC-004 A12): refused with its reason, nothing stored.
+                    if (budget.id in data.periodReadOwed) return@decide ReviewRuling(null, RuledOutcome(ReviewOutcome.NotDecidable(Undecidable.PeriodReadOwed)))
                     val (write, ruled) = rule(data, windows)
                     ReviewRuling(write, ruled)
                 }

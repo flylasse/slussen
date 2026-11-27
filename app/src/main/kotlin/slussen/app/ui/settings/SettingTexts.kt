@@ -239,7 +239,7 @@ internal object SettingTexts {
             NumberSetting.FetchSchedule -> fetchSchedule(value, shown.defaultValue)
             else -> when (effect) {
                 SettingEffect.None -> (applies(setting, value)?.let { "$it " }.orEmpty()) + "No Transaction Status changes."
-                SettingEffect.StatusesGiven -> "Every Transaction Status given again from stored data, without contacting $budgetAppName or any Source."
+                is SettingEffect.StatusesGiven -> statusesGiven(effect.waitingForRead, budgetAppName)
                 SettingEffect.StatusesPending ->
                     "The Transaction Statuses could not be given again yet; no Upload Plan is prepared until they are, at the next " +
                         "start or the next read of $budgetAppName."
@@ -247,6 +247,18 @@ internal object SettingTexts {
             }
         }
         return "$head $body" + if (journalOn) " Recorded in the Decision Journal." else ""
+    }
+
+    /** UC-010 step 5 (`#saved`): the statuses given again, naming every Budget left out because it owes a read (UC-003 BR-016). */
+    private fun statusesGiven(waiting: List<String>?, budgetAppName: String): String {
+        val given = "given again from stored data, without contacting $budgetAppName or any Source"
+        return when {
+            waiting == null -> "Transaction Statuses $given, except those of each Budget that owes a read of $budgetAppName, which wait for that read."
+            waiting.isEmpty() -> "Every Transaction Status $given."
+            waiting.size == 1 -> "Transaction Statuses $given, except those of ${waiting.single()}, which wait for the read of $budgetAppName it owes."
+            else -> "Transaction Statuses $given, except those of ${waiting.dropLast(1).joinToString(", ")} and ${waiting.last()}, which wait " +
+                "for the read of $budgetAppName each owes."
+        }
     }
 
     /** UC-010 step 5, UC-003 BR-016 (`#saved-read-owed`): which Budgets wait for a read of the Budget App, and what it gives. */

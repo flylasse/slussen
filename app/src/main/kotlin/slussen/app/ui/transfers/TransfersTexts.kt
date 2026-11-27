@@ -465,6 +465,9 @@ object TransfersTexts {
             TransferUndecidable.NotComparedYet -> "it is not compared yet; read the Budget App again first."
             TransferUndecidable.BankAccountNotCompared -> "its Bank Account is not mapped into a Budget Slussen serves, so it is not compared."
             TransferUndecidable.NoLongerProposed -> "the stored data today no longer give this Transfer as Slussen proposed it; the next Comparison says what it is."
+            TransferUndecidable.PeriodReadOwed ->
+                "its Budget owes a read of the Budget App: Slussen's copy does not cover the whole read period. Read the Budget App " +
+                    "again on the Budget's tab or the Overview; then it can be decided."
         }
         TransferOutcome.NotFound -> "Not stored: this Bank Transaction is no longer stored on this device."
         is TransferOutcome.Unavailable -> refusal(outcome.reason)

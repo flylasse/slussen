@@ -423,4 +423,23 @@ class UC005TransferDecisionsViewModelTest {
         assertEquals(2, screen.ui().sheet!!.details.count { it.name.endsWith("side") && it.name != "Expected other side" && it.name != "Its other side" })
         assertTrue(screen.decision().lines.none { it.name == "Its other side" })
     }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A11: Budget Owes a Read of Its Read Period", requirements = ["NFR-023"])
+    @DisplayName("A11 (UC-003 BR-016): while the Budget owes a read of its read period, a Transfer Decision is refused at its control with the reason and the read of the Budget App as the next action; nothing is stored")
+    fun aDecisionIsRefusedWhileTheBudgetOwesARead() {
+        runBlocking { scenario.compareEveryStatus() }
+        runBlocking { slice.copyStore.owePeriodRead(household()) }
+        val screen = transfers(open = "leg-out")
+        val before = status("leg-out")
+
+        screen.decide(TransferAction.Hold)
+
+        assertEquals(
+            "Not stored: its Budget owes a read of the Budget App: Slussen's copy does not cover the whole read period. Read the " +
+                "Budget App again on the Budget's tab or the Overview; then it can be decided.",
+            screen.decision().answer,
+        )
+        assertEquals(before, status("leg-out"))
+    }
 }

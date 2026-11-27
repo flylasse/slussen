@@ -190,7 +190,7 @@ class UC010OperatorSettingsTest {
 
         val outcome = settings.change(NumberSetting.UploadWindow, 10)
 
-        assertEquals(SettingOutcome.Stored(10, SettingEffect.StatusesGiven), outcome)
+        assertEquals(SettingOutcome.Stored(10, SettingEffect.StatusesGiven()), outcome)
         assertEquals(TransactionStatus.New, fixture.status(recent))
         assertEquals(TransactionStatus.New, fixture.status(old))
         assertEquals(TransactionStatus.New, fixture.status(careOld))
@@ -209,7 +209,7 @@ class UC010OperatorSettingsTest {
     fun aShorterUploadWindowGivesTheStatusesAgain() = runTest {
         val (recent, _, _) = fixture.readOnce()
 
-        assertEquals(SettingOutcome.Stored(1, SettingEffect.StatusesGiven), settings.change(NumberSetting.UploadWindow, 1))
+        assertEquals(SettingOutcome.Stored(1, SettingEffect.StatusesGiven()), settings.change(NumberSetting.UploadWindow, 1))
 
         assertEquals(TransactionStatus.TooOld, fixture.status(recent))
     }
@@ -289,7 +289,7 @@ class UC010OperatorSettingsTest {
     fun fewerPairingDaysDissolveAProposedTransfer() = runTest {
         val (paid, received) = cardPayment()
 
-        assertEquals(SettingOutcome.Stored(0, SettingEffect.StatusesGiven), settings.change(NumberSetting.TransferPairingDays, 0))
+        assertEquals(SettingOutcome.Stored(0, SettingEffect.StatusesGiven()), settings.change(NumberSetting.TransferPairingDays, 0))
 
         assertTrue(slice.copyStore.transfers.isEmpty())
         assertEquals(TransactionStatus.New, fixture.status(paid))
@@ -372,5 +372,33 @@ class UC010OperatorSettingsTest {
         assertEquals("Upload as Cleared switched off", slice.journalRecorder.entries.last().details)
         assertEquals(TransactionStatus.New, fixture.status(recent))
         assertFalse(slice.copyStore.pending)
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-002"])
+    @DisplayName("Step 2-4: a value equal to the one stored stores nothing, raises no state_version, records nothing and is answered as unchanged; the same for a switch")
+    fun anUnchangedValueStoresNothing() = runTest {
+        fixture.readOnce()
+        val version = slice.stateVersion.value
+        val journaled = slice.journalRecorder.entries.size
+
+        assertEquals(SettingOutcome.Unchanged(7), settings.change(NumberSetting.UploadWindow, 7))
+        assertEquals(SwitchOutcome.Unchanged(true), settings.switch(SwitchSetting.UploadAsCleared, true))
+
+        assertEquals(version, slice.stateVersion.value)
+        assertEquals(journaled, slice.journalRecorder.entries.size)
+        assertFalse(slice.copyStore.pending)
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario")
+    @DisplayName("Step 5, UC-003 BR-016: the statuses given again name the Budget that was left out because it owes a read of its read period")
+    fun statusesGivenNameTheBudgetThatWaitsForItsRead() = runTest {
+        fixture.readOnce()
+        fixture.householdGainsABudgetAccount()
+
+        val outcome = settings.change(NumberSetting.UploadWindow, 10)
+
+        assertEquals(SettingOutcome.Stored(10, SettingEffect.StatusesGiven(listOf("Household"))), outcome)
     }
 }

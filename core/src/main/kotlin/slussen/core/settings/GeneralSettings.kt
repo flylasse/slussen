@@ -83,8 +83,12 @@ sealed interface SettingEffect {
     /** No Transaction Status depends on the setting, and the read period of the Budget App is not longer: none changes. */
     data object None : SettingEffect
 
-    /** Step 5: every stored Bank Transaction of a Budget read before has its Transaction Status again under the new value. */
-    data object StatusesGiven : SettingEffect
+    /**
+     * Step 5: every stored Bank Transaction of a Budget read before has its Transaction Status again under the new value,
+     * except those of the Budgets of [waitingForRead] (by name), which owe a read of their read period and keep their
+     * statuses until it (UC-003 BR-016). Empty when none was left out; null when which ones could not be read back.
+     */
+    data class StatusesGiven(val waitingForRead: List<String>? = emptyList()) : SettingEffect
 
     /**
      * Step 5: the value is stored, but the statuses could not be given again now; no Upload Plan is prepared until they
@@ -108,6 +112,9 @@ sealed interface SwitchOutcome {
 
     /** Failure postconditions: the value could not be stored; the previous one is kept and nothing is recorded. */
     data object NotStored : SwitchOutcome
+
+    /** It is [on] already: nothing is stored, raised or recorded, and it is answered as unchanged. */
+    data class Unchanged(val on: Boolean) : SwitchOutcome
 
     /** Precondition (UC-006 BR-005): an Upload Plan awaits confirmation or an Upload is written. */
     data class Unavailable(val reason: OperationRefusal) : SwitchOutcome
@@ -140,7 +147,7 @@ object SettingRules {
         val after = value.appliedTo(before)
         return when {
             ComparisonRules.readPeriodDays(after) > ComparisonRules.readPeriodDays(before) -> SettingFollowUp.PeriodReadOwed
-            value is SettingValue.Number && statusesDependOn(value.setting) && after != before -> SettingFollowUp.StatusesAgain
+            value is SettingValue.Number && statusesDependOn(value.setting) -> SettingFollowUp.StatusesAgain
             else -> SettingFollowUp.None
         }
     }
@@ -186,11 +193,16 @@ class GeneralSettings(
         val result = comparison.statusesAgainAfter(OperationKind.OperatorSettingChange) {
             // UC-010 BR-002: Each Operator Setting lies within its allowed range, a whole number; A1 refuses another value and keeps the previous one.
             if (value !in range) return@statusesAgainAfter SettingOutcome.OutsideRange(range) to SettingFollowUp.None
-            val stored = storeAndRecord(SettingValue.Number(setting, value)) { before ->
-                "${SettingTexts.journalName(setting)} changed from ${SettingTexts.bare(setting, setting.valueIn(before))} to " +
-                    SettingTexts.withUnit(setting, value)
-            } ?: return@statusesAgainAfter SettingOutcome.NotStored to SettingFollowUp.None
-            SettingOutcome.Stored(value) to stored
+            when (
+                val stored = storeAndRecord(SettingValue.Number(setting, value)) { before ->
+                    "${SettingTexts.journalName(setting)} changed from ${SettingTexts.bare(setting, setting.valueIn(before))} to " +
+                        SettingTexts.withUnit(setting, value)
+                }
+            ) {
+                is Storing.Stored -> SettingOutcome.Stored(value) to stored.followUp
+                Storing.Unchanged -> SettingOutcome.Unchanged(value) to SettingFollowUp.None
+                Storing.NotStored -> SettingOutcome.NotStored to SettingFollowUp.None
+            }
         }
         return when (result) {
             is OperationResult.Refused -> SettingOutcome.Unavailable(result.reason)
@@ -205,9 +217,11 @@ class GeneralSettings(
     /** Steps 2, 4, 6, A5, A9: [setting] is switched [on] or off. No Transaction Status depends on it (step 5). */
     suspend fun switch(setting: SwitchSetting, on: Boolean): SwitchOutcome {
         val result = comparison.statusesAgainAfter(OperationKind.OperatorSettingChange) {
-            storeAndRecord(SettingValue.Switch(setting, on)) { "${SettingTexts.journalName(setting)} switched ${if (on) "on" else "off"}" }
-                ?.let { SwitchOutcome.Stored(on) }
-                ?: SwitchOutcome.NotStored
+            when (storeAndRecord(SettingValue.Switch(setting, on)) { "${SettingTexts.journalName(setting)} switched ${if (on) "on" else "off"}" }) {
+                is Storing.Stored -> SwitchOutcome.Stored(on)
+                Storing.Unchanged -> SwitchOutcome.Unchanged(on)
+                Storing.NotStored -> SwitchOutcome.NotStored
+            }
         }
         return when (result) {
             is OperationResult.Ran -> result.value.change
@@ -215,23 +229,36 @@ class GeneralSettings(
         }
     }
 
+    /** What [storeAndRecord] did. */
+    private sealed interface Storing {
+        data class Stored(val followUp: SettingFollowUp) : Storing
+
+        /** The value is the one stored: nothing is stored, raised or recorded. */
+        data object Unchanged : Storing
+
+        data object NotStored : Storing
+    }
+
     /**
      * Steps 4 and 6 within the operation: stores [value] with what follows it (O-13) and records the change with the
-     * value before and after. Null when it could not be stored, and then nothing is stored or recorded.
+     * value before and after. A value equal to the stored one is not a change: nothing is stored or recorded; nor when it
+     * could not be stored.
      */
-    private suspend fun storeAndRecord(value: SettingValue, details: (OperatorSettings) -> String): SettingFollowUp? {
-        val before = readSafely { store.current() } ?: return null
+    private suspend fun storeAndRecord(value: SettingValue, details: (OperatorSettings) -> String): Storing {
+        val before = readSafely { store.current() } ?: return Storing.NotStored
+        if (value.appliedTo(before) == before) return Storing.Unchanged
         val followUp = SettingRules.followUpOf(value, before)
-        if (!storedSafely { store.store(SettingChange(value, followUp)) }) return null
+        if (!storedSafely { store.store(SettingChange(value, followUp)) }) return Storing.NotStored
         applied(value.appliedTo(before))
         // UC-011 BR-001: Every change of an Operator Setting is recorded, with the value before and after.
         journal.record(JournalEventKind.ConfigurationChange, details(before))
-        return followUp
+        return Storing.Stored(followUp)
     }
 
     private suspend fun effectOf(followUp: SettingFollowUp, statusesGiven: Boolean): SettingEffect = when (followUp) {
         SettingFollowUp.None -> SettingEffect.None
-        SettingFollowUp.StatusesAgain -> if (statusesGiven) SettingEffect.StatusesGiven else SettingEffect.StatusesPending
+        SettingFollowUp.StatusesAgain ->
+            if (statusesGiven) SettingEffect.StatusesGiven(readSafely { budgetsOwingARead() }) else SettingEffect.StatusesPending
         SettingFollowUp.PeriodReadOwed -> when (val owing = readSafely { budgetsOwingARead() }) {
             null -> SettingEffect.PeriodReadOwed(null)
             else -> if (owing.isEmpty()) SettingEffect.None else SettingEffect.PeriodReadOwed(owing)

@@ -20,6 +20,9 @@ sealed interface SettingOutcome {
      */
     data class Stored(val value: Int, val effect: SettingEffect = SettingEffect.None) : SettingOutcome
 
+    /** The value is the one stored already: nothing is stored, raised or recorded, and it is answered as unchanged. */
+    data class Unchanged(val value: Int) : SettingOutcome
+
     /** A1: outside the allowed range; the previous value is kept and the range shown. */
     data class OutsideRange(val range: IntRange) : SettingOutcome
 

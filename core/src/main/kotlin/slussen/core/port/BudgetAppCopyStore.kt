@@ -141,6 +141,11 @@ data class ComparisonData(
     val reviewDecisions: List<StoredReviewDecision>,
     /** The Sent Records of those Bank Transactions (`sent_record`, UC-006); none is stored before the Uploads are built. */
     val sentRecords: List<StoredSentRecord> = emptyList(),
+    /**
+     * The [budgets] that owe a read of their read period (`budget_read_state.period_read_owed`, UC-003 BR-016), read in
+     * the same transaction, so that a decision is refused on what is stored now (UC-004 A12, UC-005 A11).
+     */
+    val periodReadOwed: Set<Long> = emptySet(),
 )
 
 /**

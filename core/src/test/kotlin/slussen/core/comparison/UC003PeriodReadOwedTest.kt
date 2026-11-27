@@ -183,12 +183,20 @@ class UC003PeriodReadOwedTest {
             payee = "PLANTED-PAYEE", memo = null, importIdentifier = fixture.importIdentifierOf("TX-RECENT"), enteredBy = EnteredBy.Slussen,
             transferLinkReference = null, mergedIntoReference = null, cleared = true, approved = true, state = BudgetAppTransactionState.Present,
         )
+        // ... and Care Fund's copy, read before, holds Care Saver's Bank Transaction: concluded, it is Already In Budget App.
+        val health = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Health Savings" }.id
+        slice.copyStore.copy += StoredBudgetAppTransaction(
+            id = 100, budgetAccountId = health, budgetAppReference = "ynab-care-old", transactionDate = fixture.oct06, amount = amount(-40),
+            payee = "PLANTED-PAYEE", memo = null, importIdentifier = fixture.importIdentifierOf("TX-CARE-OLD"), enteredBy = EnteredBy.Slussen,
+            transferLinkReference = null, mergedIntoReference = null, cleared = true, approved = true, state = BudgetAppTransactionState.Present,
+        )
+        assertEquals(TransactionStatus.New, fixture.status(careOld))
         slice.copyStore.pending = true
 
         assertTrue(slice.comparison.recomputePending())
 
         assertEquals(TransactionStatus.New, fixture.status(recent))
-        assertEquals(TransactionStatus.New, fixture.status(careOld))
+        assertEquals(TransactionStatus.AlreadyInBudgetApp, fixture.status(careOld))
         assertFalse(slice.copyStore.pending)
         assertTrue(owed("Household"))
     }
@@ -222,7 +230,7 @@ class UC003PeriodReadOwedTest {
 
         val outcome = slice.generalSettings.change(NumberSetting.UploadWindow, 10)
 
-        assertEquals(SettingOutcome.Stored(10, SettingEffect.StatusesGiven), outcome)
+        assertEquals(SettingOutcome.Stored(10, SettingEffect.StatusesGiven(listOf("Household"))), outcome)
         assertEquals(TransactionStatus.TooOld, fixture.status(old))
         assertEquals(TransactionStatus.New, fixture.status(careOld))
         assertFalse(slice.copyStore.pending)
@@ -279,5 +287,94 @@ class UC003PeriodReadOwedTest {
         fixture.compare()
 
         assertFalse(owed("Household"))
+    }
+
+    /** Household holds a Bank Transaction without a Stable Reference (Needs Review), compared; then Household owes the read. */
+    private suspend fun doubtfulInAnOwedBudget(): Pair<Long, Long> {
+        val (_, old, _) = fixture.readOnce()
+        val checking = slice.connectionStore.bankAccountList.single { it.name == "Kestrel Checking" }.id
+        val doubtful = fixture.stored(checking, "TX-DOUBT", fixture.oct13, amount(-7))
+        slice.importStatusStore.bankTransactions.replaceAll { if (it.id == doubtful) it.copy(stableReference = null) else it }
+        fixture.compare()
+        assertEquals(TransactionStatus.NeedsReview, fixture.status(doubtful))
+        assertTrue(slice.generalSettings.change(NumberSetting.FetchPeriod, 7) is SettingOutcome.Stored)
+        assertTrue(slice.generalSettings.change(NumberSetting.FileUploadWindow, 7) is SettingOutcome.Stored)
+        assertTrue(slice.generalSettings.change(NumberSetting.UploadWindow, 10) is SettingOutcome.Stored)
+        assertTrue(owed("Household"))
+        return doubtful to old
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-016"])
+    @DisplayName("BR-016, UC-004: a Review Decision on a Bank Transaction of a Budget that owes the read is refused with its reason; nothing is stored: no decision, no status, no state_version, no marker")
+    fun aReviewDecisionIsRefusedWhileTheBudgetOwesARead() = runTest {
+        val (doubtful, old) = doubtfulInAnOwedBudget()
+        val version = slice.stateVersion.value
+        val statuses = fixture.statuses()
+
+        val outcome = slice.review.decide(doubtful, slussen.core.port.ReviewChoice.ImportAnyway)
+
+        assertEquals(slussen.core.review.ReviewOutcome.NotDecidable(slussen.core.review.Undecidable.PeriodReadOwed), outcome)
+        assertTrue(slice.copyStore.reviewDecisions.isEmpty())
+        assertEquals(statuses, fixture.statuses())
+        assertEquals(TransactionStatus.TooOld, fixture.status(old))
+        assertEquals(version, slice.stateVersion.value)
+        assertFalse(slice.copyStore.pending)
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-016"])
+    @DisplayName("BR-016, UC-005: a Transfer Decision on a Transfer of a Budget that owes the read is refused with its reason; nothing is stored: the Transfer, its statuses and state_version stay")
+    fun aTransferDecisionIsRefusedWhileTheBudgetOwesARead() = runTest {
+        fixture.ready()
+        val checking = fixture.bankAccount("Kestrel Checking", "Checking")
+        val card = fixture.bankAccount("Kestrel Rewards", "Rewards Card", slussen.core.port.BankAccountType.CreditCard)
+        slice.connectionStore.link(card, fundedBy = fixture.budgetAccountIdOf("Checking"))
+        val paid = fixture.stored(checking, "TX-PAID", LocalDate.of(2026, 10, 12), amount(-250))
+        fixture.stored(card, "TX-RECEIVED", fixture.oct13, amount(250))
+        fixture.compare()
+        assertEquals(TransactionStatus.TransferLeg, fixture.status(paid))
+        slice.generalSettings.change(NumberSetting.FileUploadWindow, 90)
+        assertTrue(owed("Household"))
+        val transfers = slice.copyStore.transfers.toList()
+        val statuses = fixture.statuses()
+        val version = slice.stateVersion.value
+
+        val outcome = slice.transferDecisions.decide(paid, slussen.core.transfer.TransferChoice.Hold)
+
+        assertEquals(slussen.core.transfer.TransferOutcome.NotDecidable(slussen.core.transfer.TransferUndecidable.PeriodReadOwed), outcome)
+        assertEquals(transfers, slice.copyStore.transfers.toList())
+        assertEquals(statuses, fixture.statuses())
+        assertEquals(version, slice.stateVersion.value)
+        assertFalse(slice.copyStore.pending)
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-016"])
+    @DisplayName("BR-016: a Budget read before and no longer served owes the read too, so that when it is served again its next read covers the longer period")
+    fun aBudgetNoLongerServedOwesTheReadToo() = runTest {
+        fixture.readOnce()
+        val summer = fixture.budgetId("Summer House")
+        val current = fixture.bankAccount("Summer Current", "Current")
+        fixture.compare()
+        assertTrue(slice.copyStore.changeCursorOf(summer) != null)
+        slice.connectionStore.bankAccountList.removeAll { it.id == current }
+        val listed = slussen.testing.ExampleData.budgetsRead().map { budget ->
+            slussen.core.port.BudgetToServe(budget.reference, budget.name, budget.currency, budget.budgetAccounts.map { slussen.core.port.BudgetAccountToStore(it.reference, it.name, it.balance) })
+        }
+        slice.connectionStore.serveBudgets(listed, setOf("budget-household", "budget-care"), fixture.now)
+        assertFalse(slice.connectionStore.budgets().single { it.id == summer }.served)
+
+        slice.generalSettings.change(NumberSetting.FileUploadWindow, 90)
+
+        assertTrue(slice.copyStore.periodReadOwed(summer))
+        slice.connectionStore.serveBudgets(listed, listed.map { it.budgetAppReference }.toSet(), fixture.now)
+        fixture.bankAccount("Summer Current again", "Current")
+        val readsBefore = slice.budgetApp.reader.changeReads.size
+        fixture.compare()
+        val reads = slice.budgetApp.reader.changeReads.drop(readsBefore).filter { it.budgetReference == "budget-summer" }
+        assertEquals(null, reads.first().since)
+        assertEquals(today.minusDays(90 + matchingDays), reads.first().from)
+        assertFalse(slice.copyStore.periodReadOwed(summer))
     }
 }

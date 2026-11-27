@@ -525,4 +525,24 @@ class UC004ReviewDoubtfulTransactionsViewModelTest {
         assertTrue(slice.copyStore.reviewDecisions.isEmpty())
         assertTrue(screen.state.value.ui!!.sheet!!.review!!.choices.isEmpty())
     }
+
+    @Test
+    @UseCase(id = "UC-004", scenario = "A12: Budget Owes a Read of Its Read Period")
+    @DisplayName("A12 (UC-003 BR-016): while the Budget owes a read of its read period, a Review Decision is refused at its control with the reason and the read of the Budget App as the next action; nothing is stored")
+    fun aDecisionIsRefusedWhileTheBudgetOwesARead() {
+        compared()
+        val household = runBlocking { slice.connectionStore.budgets().single { it.name == "Household" }.id }
+        runBlocking { slice.copyStore.owePeriodRead(household) }
+        val screen = checking(open = "no-reference-1")
+
+        screen.choose(ReviewChoice.ImportAnyway)
+
+        assertEquals(
+            "Not stored: its Budget owes a read of Example Budget App: Slussen's copy of Example Budget App does not cover the whole " +
+                "read period. Read Example Budget App again on the Budget's tab or the Overview; then it can be decided.",
+            screen.review().answer,
+        )
+        assertEquals(TransactionStatus.NeedsReview, stored("no-reference-1"))
+        assertEquals(0, decisionsJournaled())
+    }
 }
