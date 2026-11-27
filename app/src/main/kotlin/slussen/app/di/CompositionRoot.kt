@@ -14,6 +14,7 @@ import slussen.core.fetch.FetchNotices
 import slussen.core.fetch.FetchTransactions
 import slussen.core.firstupload.FirstUploadMatching
 import slussen.core.journal.DecisionJournal
+import slussen.core.journal.JournalControl
 import slussen.core.mapping.AccountMappings
 import slussen.core.operation.OperationCoordinator
 import slussen.core.plugin.PluginRegistration
@@ -115,6 +116,8 @@ class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLogg
                 applied = { detailedLogging.set(it.detailedLogging) },
             ),
             descriptionLists = DescriptionLists(storage.settings, comparison, storage.connections, storage.comparisons, journal),
+            // The Decision Journal's own control (UC-010 A2-A4), on journal.db through its own thread (ADR-002 §9).
+            journalControl = JournalControl(storage.settings, journal, storage.journalControl, coordinator),
             mappings = AccountMappings(registered, storage.connections, storage.mappings, storage.offered, coordinator, journal, comparison, clock),
             status = status,
             // Step 5 of UC-008: the weeks of a Bank Account's list start on the device locale's first day (survey §5 guess 6).

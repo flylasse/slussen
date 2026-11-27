@@ -2,21 +2,16 @@ package slussen.persistence
 
 import android.content.Context
 import androidx.room.withTransaction
-import kotlinx.coroutines.CoroutineExceptionHandler
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.launch
 import slussen.core.port.BackOffCause
 import slussen.core.port.BackupSizeMonitor
 import slussen.core.port.BankAccountType
 import slussen.core.port.BudgetAppTransactionState
 import slussen.core.port.EnteredBy
 import slussen.core.port.CoordinatorMode
+import slussen.core.port.DecisionJournalControl
 import slussen.core.port.DecisionJournalRecorder
 import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
-import slussen.core.port.JournalEntry
 import slussen.core.port.ProviderRequestKind
 import slussen.core.port.FirstUploadMatchingCause
 import slussen.core.port.ReviewChoice
@@ -37,8 +32,6 @@ import slussen.core.port.StartState
 import slussen.core.port.UnreadablePart
 import slussen.persistence.credential.KeystoreCredentialVault
 import slussen.persistence.device.DeviceDatabase
-import slussen.persistence.journal.DecisionJournalDao
-import slussen.persistence.journal.DecisionJournalEntryEntity
 import slussen.persistence.journal.JournalDatabase
 import slussen.persistence.journal.JournalEventType
 import slussen.persistence.main.CoordinatorStateEntity
@@ -52,8 +45,6 @@ import slussen.persistence.start.StartOutcome
 import slussen.persistence.start.StartSequence
 import java.io.File
 import java.time.Clock
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicLong
 
 /** The result of the start sequence, reported to the core (ADR-001 §3, ADR-002 §6). */
 class SequenceStartState(outcome: StartOutcome) : StartState {
@@ -77,35 +68,6 @@ class FileBackupSizeMonitor(private val main: File) : BackupSizeMonitor {
 }
 
 /**
- * Writes Decision Journal entries on its own single-threaded dispatcher, never inside a transaction of `slussen.db`;
- * any failure is caught, counted and dropped and never reaches the caller (ADR-002 §9, NFR-006).
- */
-class RoomDecisionJournalRecorder(private val dao: DecisionJournalDao) : DecisionJournalRecorder {
-    private val dropped = AtomicLong()
-    private val scope = CoroutineScope(
-        SupervisorJob() + Executors.newSingleThreadExecutor().asCoroutineDispatcher() +
-            CoroutineExceptionHandler { _, _ -> dropped.incrementAndGet() },
-    )
-
-    /** How many entries could not be written. */
-    val droppedEntries: Long get() = dropped.get()
-
-    override fun record(entry: JournalEntry) {
-        scope.launch {
-            dao.insert(
-                DecisionJournalEntryEntity(
-                    recordedAt = entry.recordedAt,
-                    eventType = JournalEventType.entries.single { it.text == entry.eventKind.text },
-                    importIdentifier = entry.importIdentifier,
-                    bankAccountName = entry.bankAccountName,
-                    details = entry.details,
-                ),
-            )
-        }
-    }
-}
-
-/**
  * The storage of one app process (ADR-002): the start sequence, the three databases and the implementations of the
  * core's ports. `slussen.app.di` opens it once, before any operation is admitted.
  */
@@ -125,7 +87,10 @@ class SlussenStorage private constructor(
     val firstUploadMatching = RoomFirstUploadMatchingStore(main.firstUploadMatching())
     val coordinator = RoomCoordinatorStore(main.coordinator())
     val credentialVault = KeystoreCredentialVault(device.serviceCredentials())
-    val journalRecorder = RoomDecisionJournalRecorder(journal.entries())
+    /** `journal.db`: the recorder and the Decision Journal's own control, on one thread of their own (ADR-002 §9). */
+    private val journalDatabase = RoomDecisionJournal(journal)
+    val journalRecorder: DecisionJournalRecorder = journalDatabase
+    val journalControl: DecisionJournalControl = journalDatabase
     val fetches = RoomFetchStore(main.fetches())
     val importStatus = RoomImportStatusStore(main.fetches(), connections)
     val comparisons = RoomComparisonStore(main, connections)

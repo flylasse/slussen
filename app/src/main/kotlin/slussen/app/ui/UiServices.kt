@@ -4,6 +4,7 @@ import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.ServiceCredentials
 import slussen.core.comparison.Comparison
 import slussen.core.fetch.FetchTransactions
+import slussen.core.journal.JournalControl
 import kotlinx.coroutines.flow.StateFlow
 import slussen.core.mapping.AccountMappings
 import slussen.core.operation.RunningOperation
@@ -27,6 +28,8 @@ class UiServices(
     val generalSettings: GeneralSettings,
     /** The Card Payment Descriptions and Bank Transfer Descriptions (UC-010 A7, A8), on their own screen from Settings. */
     val descriptionLists: DescriptionLists,
+    /** The Decision Journal's own control on Settings (UC-010 A2-A4, BR-003): its switch, size limit, warning threshold and clearing. */
+    val journalControl: JournalControl,
     val mappings: AccountMappings,
     val status: ImportStatus,
     /** One Bank Account's Bank Transactions with their Transaction Statuses and reasons (UC-008 step 5), from stored data only. */

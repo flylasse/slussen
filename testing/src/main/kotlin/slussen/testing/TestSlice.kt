@@ -12,6 +12,7 @@ import slussen.core.identity.ImportIdentifierProtocol
 import slussen.core.fetch.FetchTransactions
 import slussen.core.firstupload.FirstUploadMatching
 import slussen.core.journal.DecisionJournal
+import slussen.core.journal.JournalControl
 import slussen.core.mapping.AccountMappings
 import slussen.core.operation.OperationCoordinator
 import slussen.core.plugin.PluginRegistration
@@ -73,6 +74,9 @@ class TestSlice(
     }
     val coordinator = OperationCoordinator(coordinatorStore)
     val journal = DecisionJournal(journalRecorder, settings, clock)
+
+    /** UC-010 A2-A4: the Decision Journal's own control, on the same fake journal database as the recorder. */
+    val journalControl = JournalControl(settings, journal, journalRecorder, coordinator)
     val refusals = CredentialRefusals()
     val credentials = ServiceCredentials(
         plugins, vault, coordinator, journal, settings, providerRequests, importStatusStore, refusals, clock,

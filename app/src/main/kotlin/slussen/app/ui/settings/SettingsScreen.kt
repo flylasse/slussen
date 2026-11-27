@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import slussen.app.ui.components.AnswerLine
+import slussen.app.ui.components.Banner
 import slussen.app.ui.components.Muted
 import slussen.app.ui.components.SettingDialog
 import slussen.app.ui.components.RunningText
@@ -37,6 +38,13 @@ data class SettingsActions(
     val onTapDetailedLogging: () -> Unit = {},
     val onConfirmDetailedLogging: () -> Unit = {},
     val onCancelDetailedLogging: () -> Unit = {},
+    /** UC-010 A2-A4: a tap on a line of the Decision Journal, its dialog and its question. */
+    val onTapJournal: (JournalControlKind) -> Unit = {},
+    val onJournalValue: (String) -> Unit = {},
+    val onSaveJournal: (String) -> Unit = {},
+    val onCancelJournal: () -> Unit = {},
+    val onConfirmJournal: () -> Unit = {},
+    val onCancelJournalConfirm: () -> Unit = {},
 )
 
 /**
@@ -45,7 +53,9 @@ data class SettingsActions(
  * available or with why not yet (UC-014 step 1, BR-007, UC-010 BR-010, UC-013 step 1, BR-008, BR-015); Recent Fetches;
  * the Operator Settings that apply to everything in the sections of the mockup, each changed in its dialog or at its
  * switch and answering at its own line (UC-010 steps 1-6, A1, A5, A6, NFR-023; `#out-of-range`, `#saved`,
- * `#saved-read-owed`, `#detailed-logging`, `#fetch-schedule`, `#fetch-period-edit` to `#fetch-period-failed`); and the
+ * `#saved-read-owed`, `#detailed-logging`, `#fetch-schedule`, `#fetch-period-edit` to `#fetch-period-failed`); the
+ * Decision Journal's switch, size limit, warning threshold and clearing with its questions and its warning (UC-010 A2-A4;
+ * `#journal-limit`, `#clear-journal`, `#journal-near`); and the
  * version of the app in "This app" (UC-010 step 1, BR-011).
  */
 @Composable
@@ -60,6 +70,8 @@ fun SettingsScreen(
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
             ScreenTitle("Settings", "Operator Settings · stored on this device and in its backups")
+            // A4 of UC-010 (`#journal-near`): the Decision Journal nearly full, with its size and its limit, at the top.
+            ui.journalNearLimit?.let { Banner(it.title, it.text) }
             SectionTitle("Services and Account Mappings")
         }
         items(ui.entries) { entry ->
@@ -97,6 +109,15 @@ fun SettingsScreen(
                         }
                         is SettingItemUi.Shown -> SettingLine(item.line.name, item.line.hint, item.line.value)
                         // A7, A8 of UC-010 (`#list`): each description list opens the Transfer Descriptions.
+                        // A2-A4 of UC-010 (`#list-2`): each control of the Decision Journal, its state while its change is on its way and its answer.
+                        is SettingItemUi.Journal -> {
+                            val line = item.line
+                            SettingLine(
+                                line.name, line.hint, line.pending ?: line.value,
+                                Modifier.clickable(enabled = line.pending == null) { actions.onTapJournal(line.control) }.testTag(line.tag),
+                            )
+                            line.answer?.let { AnswerLine(it) }
+                        }
                         is SettingItemUi.Lists -> SettingLine(
                             item.line.name, item.line.hint, "›",
                             Modifier.clickable(onClick = onTransferDescriptions).testTag(item.line.tag),
@@ -127,6 +148,30 @@ fun SettingsScreen(
             onSave = { actions.onSave(open.editor.value) },
             onReset = null,
             onCancel = actions.onCancel,
+        )
+    }
+    val journalEditor = ui.journalEditor
+    if (journalEditor != null) {
+        SettingDialog(
+            editor = journalEditor.editor,
+            onValueChange = actions.onJournalValue,
+            onSave = { actions.onSaveJournal(journalEditor.editor.value) },
+            onReset = null,
+            onCancel = actions.onCancelJournal,
+        )
+    }
+    val question = ui.journalConfirm
+    if (question != null) {
+        AlertDialog(
+            onDismissRequest = { if (!question.saving) actions.onCancelJournalConfirm() },
+            title = { Text(question.title) },
+            text = { Text(question.text) },
+            confirmButton = {
+                TextButton(onClick = actions.onConfirmJournal, enabled = !question.saving, modifier = Modifier.testTag("confirm-journal")) {
+                    RunningText(question.confirm, question.saving)
+                }
+            },
+            dismissButton = { TextButton(onClick = actions.onCancelJournalConfirm, enabled = !question.saving) { Text("Cancel") } },
         )
     }
     val statement = ui.detailedLoggingStatement

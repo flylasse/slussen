@@ -19,6 +19,7 @@ import slussen.core.port.CoordinatorMode
 import slussen.core.port.CoordinatorStore
 import slussen.core.port.DataProviderRegistration
 import slussen.core.port.DataProviderSettingsStore
+import slussen.core.port.DecisionJournalControl
 import slussen.core.port.DecisionJournalRecorder
 import slussen.core.port.FetchStore
 import slussen.core.port.FileFormatRegistration
@@ -161,14 +162,82 @@ class InMemoryCoordinatorStore(var mode: CoordinatorMode = CoordinatorMode.Norma
     }
 }
 
-/** In-memory fake of the Decision Journal recorder: keeps every entry it was given. */
-class InMemoryDecisionJournal : DecisionJournalRecorder {
+/**
+ * In-memory fake of the Decision Journal's database: the recorder and the control (ADR-002 §9). It keeps every entry it
+ * was given that no trimming or clearing removed, oldest first. Its size is [baseBytes] plus [bytesPerEntry] for each
+ * entry kept, so that a test chooses how many entries fill a size limit. A test makes the journal's database fail with
+ * [failsToRecord], [failsToTrim], [failsToReadSize] and [failsToClear]; these throw, as a database that fails would, so
+ * that what the core does with a failure is tested, not the fake's catching. [holdsTrimming] keeps the trimming after
+ * each write waiting until [runHeldTrimming], as the journal's own dispatcher may still be busy when a caller goes on.
+ */
+class InMemoryDecisionJournal : DecisionJournalRecorder, DecisionJournalControl {
     private val recorded = mutableListOf<JournalEntry>()
+    private val heldTrimming = mutableListOf<Long>()
 
+    /** The entries kept, oldest first. */
     val entries: List<JournalEntry> get() = recorded.toList()
 
-    override fun record(entry: JournalEntry) {
+    /** The limit each entry was handed over with, in order: null when it was to remove nothing. */
+    val limitsHandedOver = mutableListOf<Long?>()
+
+    var baseBytes: Long = 0
+    var bytesPerEntry: Long = 100
+    var failsToRecord: Boolean = false
+    var failsToTrim: Boolean = false
+    var failsToReadSize: Boolean = false
+    var failsToClear: Boolean = false
+    var holdsTrimming: Boolean = false
+    var beforeClear: suspend () -> Unit = {}
+    var beforeKeepWithin: suspend () -> Unit = {}
+
+    /** How many entries trimming and clearing removed so far. */
+    var removed: Int = 0
+        private set
+
+    private fun size(): Long = baseBytes + recorded.size * bytesPerEntry
+
+    override fun record(entry: JournalEntry, keepWithinBytes: Long?) {
+        if (failsToRecord) throw IllegalStateException("The invented journal database of this test cannot be written.")
         recorded += entry
+        limitsHandedOver += keepWithinBytes
+        if (keepWithinBytes == null) return
+        if (holdsTrimming) heldTrimming += keepWithinBytes else trim(keepWithinBytes)
+    }
+
+    /** Runs the trimming held by [holdsTrimming], in the order the entries were handed over. */
+    fun runHeldTrimming() {
+        val held = heldTrimming.toList()
+        heldTrimming.clear()
+        held.forEach(::trim)
+    }
+
+    private fun trim(limitBytes: Long): Int {
+        if (failsToTrim) throw IllegalStateException("The invented journal database of this test cannot be trimmed.")
+        var count = 0
+        while (size() > limitBytes && recorded.isNotEmpty()) {
+            recorded.removeAt(0)
+            count++
+        }
+        removed += count
+        return count
+    }
+
+    override suspend fun sizeBytes(): Long {
+        if (failsToReadSize) throw IllegalStateException("The invented journal database of this test cannot be read.")
+        return size()
+    }
+
+    override suspend fun keepWithin(limitBytes: Long): Int {
+        beforeKeepWithin()
+        return trim(limitBytes)
+    }
+
+    override suspend fun clear(firstEntry: JournalEntry?) {
+        beforeClear()
+        if (failsToClear) throw IllegalStateException("The invented journal database of this test cannot be cleared.")
+        removed += recorded.size
+        recorded.clear()
+        if (firstEntry != null) recorded += firstEntry
     }
 }
 

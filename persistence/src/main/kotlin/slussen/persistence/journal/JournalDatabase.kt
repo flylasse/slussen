@@ -21,14 +21,37 @@ abstract class JournalDatabase : RoomDatabase() {
     abstract fun entries(): DecisionJournalDao
 }
 
-/** Writes Decision Journal entries; nothing in the core reads them except the export (Konsist K-07). */
+/**
+ * Writes Decision Journal entries and removes them by age or all at once (ADR-002 §9); nothing in the core reads them
+ * except the export (Konsist K-07). Every method blocks: it is called only on the journal's own single thread
+ * ([slussen.persistence.RoomDecisionJournal]), so that writes, trimming and clearing run one after the other in the order
+ * they were handed over.
+ */
 @Dao
 abstract class DecisionJournalDao {
     @Insert
-    abstract suspend fun insert(entry: DecisionJournalEntryEntity)
+    abstract fun insert(entry: DecisionJournalEntryEntity): Long
 
     @Query("SELECT COUNT(*) FROM decision_journal_entry")
-    abstract suspend fun count(): Int
+    abstract fun count(): Int
+
+    /** The `id` of the oldest and newest entry, or null when there is none. Ids only grow (`AUTOINCREMENT`), also after a clearing. */
+    @Query("SELECT MIN(id) FROM decision_journal_entry")
+    abstract fun oldestId(): Long?
+
+    @Query("SELECT MAX(id) FROM decision_journal_entry")
+    abstract fun newestId(): Long?
+
+    /** Removes the [count] oldest entries (lowest `id`). */
+    @Query("DELETE FROM decision_journal_entry WHERE id IN (SELECT id FROM decision_journal_entry ORDER BY id LIMIT :count)")
+    abstract fun deleteOldest(count: Int): Int
+
+    /**
+     * Removes every entry. `sqlite_sequence` keeps the highest `id` given, so an entry recorded after a clearing never
+     * takes the `id` of one recorded before it, and a read bounded by an `id` stays bounded (UC-011 BR-007).
+     */
+    @Query("DELETE FROM decision_journal_entry")
+    abstract fun deleteAll(): Int
 }
 
 /** `DECISION_JOURNAL_ENTRY` (entity model). */

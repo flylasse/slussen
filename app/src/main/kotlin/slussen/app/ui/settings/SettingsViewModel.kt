@@ -24,6 +24,10 @@ import slussen.core.port.TransferDescriptionKind
 import slussen.core.settings.NumberSettingShown
 import slussen.core.settings.SettingOutcome
 import slussen.core.settings.SwitchOutcome
+import slussen.core.journal.ClearOutcome
+import slussen.core.journal.JournalShown
+import slussen.core.journal.SizeLimitOutcome
+import slussen.core.journal.Trimming
 import slussen.core.settings.AccountMappingsEntry
 import slussen.core.settings.EntryKind
 import slussen.core.settings.EntryStatus
@@ -44,7 +48,7 @@ data class EntryLine(val page: EntryPage, val name: String, val kind: String, va
 /** The Account Mappings entry: available, or not yet with the reason (UC-013 BR-015). */
 data class MappingsEntryLine(val available: Boolean, val status: String, val isNext: Boolean)
 
-/** A value shown on Settings that is not changed here: Transfer detection, and the Decision Journal's own settings. */
+/** A value shown on Settings that is not changed here: Transfer detection. */
 data class ShownSettingUi(val name: String, val hint: String, val value: String)
 
 /**
@@ -76,7 +80,45 @@ sealed interface SettingItemUi {
 
     /** A description list, which opens the Transfer Descriptions (UC-010 A7, A8). */
     data class Lists(val line: ListsLineUi) : SettingItemUi
+
+    /** One control of the Decision Journal (UC-010 A2-A4). */
+    data class Journal(val line: JournalLineUi) : SettingItemUi
 }
+
+/** The controls of the Decision Journal on Settings (`settings.html#list-2`). */
+enum class JournalControlKind { Switch, SizeLimit, WarningThreshold, Clear }
+
+/**
+ * One control of the Decision Journal (UC-010 A2-A4, postconditions; `settings.html#list-2`): its name, what it is, its
+ * value, what it is doing while its change is on its way ([pending]), and the answer of its last change at its line.
+ */
+data class JournalLineUi(
+    val control: JournalControlKind,
+    val name: String,
+    val hint: String,
+    val value: String,
+    val pending: String?,
+    val answer: AnswerUi?,
+    val tag: String,
+)
+
+/** Steps 2-4, A1: the dialog that changes the Decision Journal's size limit or warning threshold. */
+data class JournalEditorUi(val control: JournalControlKind, val editor: SettingEditorUi)
+
+/**
+ * A2 (`#journal-limit`) and A3 (`#clear-journal`): the question the Operator answers before the size limit is lowered
+ * below the current size or the Decision Journal is cleared; [confirm] says what runs while [saving].
+ */
+data class JournalConfirmUi(
+    val control: JournalControlKind,
+    val title: String,
+    val text: String,
+    val confirm: String,
+    val saving: Boolean = false,
+)
+
+/** A4 (`#journal-near`): the warning at the top of Settings that the Decision Journal is nearly full. */
+data class JournalWarningUi(val title: String, val text: String)
 
 /** A description list on Settings (`settings.html#list`): its name, its number of entries, and the tag the screen tests use. */
 data class ListsLineUi(val name: String, val hint: String, val tag: String)
@@ -107,7 +149,17 @@ data class SettingsUi(
     val detailedLoggingStatement: StatementUi? = null,
     /** NFR-023: the settings could not be read again after a change; what is shown is what was read before. */
     val notReadAgain: String? = null,
+    /** Steps 2-4, A1: the dialog of the Decision Journal's size limit or warning threshold, or null. */
+    val journalEditor: JournalEditorUi? = null,
+    /** A2, A3: the question before a lower size limit or a clearing, or null. */
+    val journalConfirm: JournalConfirmUi? = null,
+    /** A4: the Decision Journal is nearly full, or null. */
+    val journalNearLimit: JournalWarningUi? = null,
 ) {
+    /** The line of the Decision Journal's [control]. */
+    fun journal(control: JournalControlKind): JournalLineUi? =
+        sections.flatMap { it.items }.filterIsInstance<SettingItemUi.Journal>().map { it.line }.firstOrNull { it.control == control }
+
     /** The line of [setting]. */
     fun line(setting: NumberSetting): SettingLineUi? =
         sections.flatMap { it.items }.filterIsInstance<SettingItemUi.Number>().map { it.line }.firstOrNull { it.setting == setting }
@@ -151,6 +203,18 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
     private var detailedLoggingAnswer: AnswerUi? = null
     private var detailedLoggingPending: String? = null
 
+    /** The Decision Journal as last read or stored (step 1, A4). */
+    private var journalShown: JournalShown? = null
+
+    /** NFR-023: the answer of the last change of each control of the Decision Journal, at its line. */
+    private val journalAnswers = mutableMapOf<JournalControlKind, AnswerUi>()
+
+    /** The control of the Decision Journal whose change is on its way, with what its line says meanwhile. */
+    private var journalPending: Pair<JournalControlKind, String>? = null
+
+    /** A size limit or warning threshold that could not be stored, offered again at the next tap (failure postconditions). */
+    private val journalRetries = mutableMapOf<JournalControlKind, String>()
+
     init {
         viewModelScope.launch {
             // NFR-023: when an operation ends, whichever screen started it, the stored values are shown again; an open dialog and the answers stay.
@@ -163,6 +227,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
         val notReadAgain = try {
             shown = services.generalSettings.shown()
             lists = services.descriptionLists.shown()
+            journalShown = services.journalControl.shown()
             null
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -175,12 +240,14 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
     fun load() {
         answers.clear()
         detailedLoggingAnswer = null
+        journalAnswers.clear()
         viewModelScope.launch {
             try {
                 val top = services.settingsOverview.entries()
                 val budgetAppName = top.entries.first { it.kind == EntryKind.BudgetApp }.name
                 val general = services.generalSettings.shown().also { shown = it }
                 lists = services.descriptionLists.shown()
+                journalShown = services.journalControl.shown()
                 mutableState.value = SettingsUi(
                     entries = top.entries.map { entry -> line(entry, top.next) },
                     accountMappings = mappingsLine(top.accountMappings, budgetAppName),
@@ -188,6 +255,9 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                     sections = sections(general),
                     numberEditor = mutableState.value?.numberEditor,
                     detailedLoggingStatement = mutableState.value?.detailedLoggingStatement,
+                    journalEditor = mutableState.value?.journalEditor,
+                    journalConfirm = mutableState.value?.journalConfirm,
+                    journalNearLimit = journalShown?.let(JournalTexts::nearLimit),
                 )
                 mutableNotOpened.value = null
             } catch (cancelled: CancellationException) {
@@ -265,7 +335,6 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
             )
         }
         val values = general.values
-        val defaults = OperatorSettings.DEFAULT
         return listOf(
             SettingSectionUi(
                 "Fetching",
@@ -291,28 +360,23 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
             ),
             SettingSectionUi(
                 "Decision Journal and logs",
-                listOf(
-                    SettingItemUi.Shown(ShownSettingUi("Decision Journal", "On by default", if (values.journalOn) "On" else "Off")),
-                    SettingItemUi.Shown(
-                        ShownSettingUi("Size limit", "MB · default ${defaults.journalSizeLimitMb} · 10 to 500", "${values.journalSizeLimitMb} MB"),
-                    ),
-                    SettingItemUi.Shown(
-                        ShownSettingUi(
-                            "Warning threshold", "Share of the size limit · default ${defaults.journalWarningPercent}% · 50% to 95%",
-                            "${values.journalWarningPercent}%",
-                        ),
-                    ),
-                    SettingItemUi.Switch(
-                        SwitchLineUi(
-                            "Detailed Logging", "Off by default", values.detailedLogging, detailedLoggingPending, detailedLoggingAnswer,
-                            "detailed-logging",
-                        ),
+                journalLines(values) + SettingItemUi.Switch(
+                    SwitchLineUi(
+                        "Detailed Logging", "Off by default", values.detailedLogging, detailedLoggingPending, detailedLoggingAnswer,
+                        "detailed-logging",
                     ),
                 ),
-                note = "The Decision Journal's switch, size limit and warning threshold are not changed on this screen yet; the " +
-                    "values shown apply. No action is needed now.",
             ),
         )
+    }
+
+    /**
+     * Step 1, A4 (`#list-2`): the switch, the size limit with the current size, the warning threshold and Clear, from the
+     * Decision Journal as last read, or from the stored settings when it has not been read yet.
+     */
+    private fun journalLines(values: OperatorSettings): List<SettingItemUi> {
+        val journal = journalShown ?: JournalShown(values.journalOn, values.journalSizeLimitMb, values.journalWarningPercent, sizeBytes = null)
+        return JournalTexts.lines(journal, journalAnswers, journalPending).map { SettingItemUi.Journal(it) }
     }
 
     /** UC-010 step 1 (`settings.html#list`): the two description lists with their number of entries, each opening the Transfer Descriptions. */
@@ -328,6 +392,8 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
         numberEditor: NumberEditorUi? = mutableState.value?.numberEditor,
         statement: StatementUi? = mutableState.value?.detailedLoggingStatement,
         notReadAgain: String? = null,
+        journalEditor: JournalEditorUi? = mutableState.value?.journalEditor,
+        journalConfirm: JournalConfirmUi? = mutableState.value?.journalConfirm,
     ) {
         val current = mutableState.value ?: return
         val general = shown ?: return
@@ -336,8 +402,14 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
             numberEditor = numberEditor,
             detailedLoggingStatement = statement,
             notReadAgain = notReadAgain,
+            journalEditor = journalEditor,
+            journalConfirm = journalConfirm,
+            journalNearLimit = journalShown?.let(JournalTexts::nearLimit),
         )
     }
+
+    /** A change of the Decision Journal is on its way, or one of its dialogs or questions is open. */
+    private fun journalBusy(current: SettingsUi): Boolean = journalPending != null || current.journalEditor != null || current.journalConfirm != null
 
     /** Step 2 (`#fetch-period-edit`): the fetch period's dialog. */
     fun startEditingFetchPeriod() = startEditing(NumberSetting.FetchPeriod)
@@ -352,7 +424,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
     fun startEditing(setting: NumberSetting) {
         val current = mutableState.value ?: return
         val general = shown ?: return
-        if (current.numberEditor != null || current.detailedLoggingStatement != null) return
+        if (current.numberEditor != null || current.detailedLoggingStatement != null || journalBusy(current)) return
         val number = general.number(setting)
         val value = retries[setting] ?: number.value.toString()
         mutableState.value = current.copy(
@@ -501,6 +573,12 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
         onTapDetailedLogging = ::tapDetailedLogging,
         onConfirmDetailedLogging = ::confirmDetailedLogging,
         onCancelDetailedLogging = ::cancelDetailedLogging,
+        onTapJournal = ::tapJournal,
+        onJournalValue = ::editJournal,
+        onSaveJournal = ::saveJournal,
+        onCancelJournal = ::cancelJournal,
+        onConfirmJournal = ::confirmJournal,
+        onCancelJournalConfirm = ::cancelJournalConfirm,
     )
 
     // ---- A5: Detailed Logging ---------------------------------------------------------------------------------------
@@ -509,7 +587,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
     fun tapDetailedLogging() {
         val current = mutableState.value ?: return
         val on = shown?.values?.detailedLogging ?: return
-        if (detailedLoggingPending != null || current.numberEditor != null || current.detailedLoggingStatement != null) return
+        if (detailedLoggingPending != null || current.numberEditor != null || current.detailedLoggingStatement != null || journalBusy(current)) return
         if (on) {
             switchDetailedLogging(false)
         } else {
@@ -581,6 +659,243 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                 )
             }
             publish(statement = null, notReadAgain = notReadAgain)
+        }
+    }
+
+    // ---- The Decision Journal's control (UC-010 A2-A4, BR-003, the postconditions) --------------------------------
+
+    /**
+     * A tap on a line of the Decision Journal: the switch changes at once (no statement is asked for, UC-010), the size
+     * limit and the warning threshold open their dialog, Clear asks first (A3 step 1). Nothing opens while another change
+     * or dialog of Settings is on its way or open.
+     */
+    fun tapJournal(control: JournalControlKind) {
+        val current = mutableState.value ?: return
+        val journal = journalShown ?: return
+        if (journalBusy(current) || current.numberEditor != null || current.detailedLoggingStatement != null || detailedLoggingPending != null) return
+        when (control) {
+            JournalControlKind.Switch -> switchJournal(!journal.on)
+            JournalControlKind.SizeLimit, JournalControlKind.WarningThreshold -> {
+                val value = journalRetries[control] ?: if (control == JournalControlKind.SizeLimit) "${journal.sizeLimitMb}" else "${journal.warningPercent}"
+                publish(
+                    journalEditor = JournalEditorUi(
+                        control,
+                        SettingEditorUi(
+                            title = JournalTexts.editorTitle(control),
+                            fieldName = JournalTexts.fieldName(control),
+                            value = value,
+                            explanation = JournalTexts.explanation(control, journal),
+                        ),
+                    ),
+                )
+            }
+            // A3 step 1 of UC-010: Slussen asks the Operator to confirm before the Decision Journal is cleared.
+            JournalControlKind.Clear -> publish(journalConfirm = JournalTexts.clearQuestion(journal.on))
+        }
+    }
+
+    /** The Operator types a new size limit or warning threshold; a refusal at the field goes until Save is tapped again. */
+    fun editJournal(text: String) {
+        val open = mutableState.value?.journalEditor ?: return
+        if (open.editor.saving) return
+        publish(journalEditor = open.copy(editor = open.editor.copy(value = text, error = null)))
+    }
+
+    /** Steps 3-4, 6, A1, A2: Save shows Saving… before anything is stored; a lower size limit above the size asks first. */
+    fun saveJournal(text: String) {
+        val open = mutableState.value?.journalEditor ?: return
+        val journal = journalShown ?: return
+        if (open.editor.saving) return
+        val control = open.control
+        val value = text.trim().toIntOrNull()
+        if (value == null) {
+            publish(journalEditor = open.copy(editor = open.editor.copy(value = text, error = JournalTexts.notANumber(control, journal))))
+            return
+        }
+        publish(journalEditor = open.copy(editor = open.editor.copy(value = text, error = null, saving = true)))
+        viewModelScope.launch {
+            if (control == JournalControlKind.SizeLimit) {
+                val outcome = sizeLimit(value, confirmed = false)
+                if (outcome is SizeLimitOutcome.ConfirmFirst) {
+                    // A2 step 1 of UC-010: Slussen asks the Operator to confirm, stating that the oldest entries will be removed.
+                    publish(journalEditor = null, journalConfirm = JournalTexts.lowerQuestion(outcome.megabytes, outcome.sizeBytes))
+                } else {
+                    answerSizeLimit(value, outcome, journal)
+                }
+            } else {
+                answerWarningThreshold(value, warningThreshold(value), journal)
+            }
+        }
+    }
+
+    /** Step 2: Cancel in a dialog of the Decision Journal stores nothing; the line says the value is unchanged. */
+    fun cancelJournal() {
+        val open = mutableState.value?.journalEditor ?: return
+        val journal = journalShown ?: return
+        if (open.editor.saving) return
+        journalAnswers[open.control] = JournalTexts.unchanged(open.control, journal)
+        publish(journalEditor = null)
+    }
+
+    /** A2 step 2, A3 step 2: the Operator confirms; Lowering… or Clearing… shows in the question until the answer is at the line. */
+    fun confirmJournal() {
+        val question = mutableState.value?.journalConfirm ?: return
+        val journal = journalShown ?: return
+        if (question.saving) return
+        val running = if (question.control == JournalControlKind.Clear) "Clearing…" else "Lowering…"
+        publish(journalConfirm = question.copy(confirm = running, saving = true))
+        viewModelScope.launch {
+            if (question.control == JournalControlKind.Clear) {
+                val outcome = try {
+                    services.journalControl.clear()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    ClearOutcome.NotCleared
+                }
+                val notReadAgain = readJournalAgain(stored = null)
+                journalAnswers[JournalControlKind.Clear] = JournalTexts.cleared(outcome)
+                if (outcome is ClearOutcome.Cleared) journalShown = journalShown?.copy(sizeBytes = outcome.sizeBytes ?: journalShown?.sizeBytes)
+                publish(journalConfirm = null, notReadAgain = notReadAgain)
+            } else {
+                val megabytes = pendingLowerLimit ?: return@launch
+                answerSizeLimit(megabytes, sizeLimit(megabytes, confirmed = true), journal)
+            }
+        }
+    }
+
+    /** A2 step 2, A3: Cancel at the question stores and removes nothing; the line says so. */
+    fun cancelJournalConfirm() {
+        val question = mutableState.value?.journalConfirm ?: return
+        val journal = journalShown ?: return
+        if (question.saving) return
+        journalAnswers[question.control] =
+            if (question.control == JournalControlKind.Clear) JournalTexts.clearCancelled else JournalTexts.unchanged(question.control, journal)
+        pendingLowerLimit = null
+        publish(journalConfirm = null)
+    }
+
+    /** The size limit a question of A2 asks about, until it is answered. */
+    private var pendingLowerLimit: Int? = null
+
+    private suspend fun sizeLimit(megabytes: Int, confirmed: Boolean): SizeLimitOutcome {
+        val outcome = try {
+            services.journalControl.changeSizeLimit(megabytes, confirmed)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            SizeLimitOutcome.NotStored
+        }
+        pendingLowerLimit = (outcome as? SizeLimitOutcome.ConfirmFirst)?.megabytes
+        return outcome
+    }
+
+    private suspend fun warningThreshold(percent: Int): SettingOutcome =
+        try {
+            services.journalControl.changeWarningThreshold(percent)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            SettingOutcome.NotStored
+        }
+
+    /** The answer of a size limit at its line, or a refusal at the field of its dialog while the dialog is open (A1). */
+    private suspend fun answerSizeLimit(megabytes: Int, outcome: SizeLimitOutcome, before: JournalShown) {
+        val control = JournalControlKind.SizeLimit
+        when (outcome) {
+            is SizeLimitOutcome.OutsideRange -> return refusedAtTheJournalField(JournalTexts.outsideRange(control, megabytes, outcome.range, before))
+            is SizeLimitOutcome.Unavailable -> if (mutableState.value?.journalEditor != null) {
+                return refusedAtTheJournalField(Texts.refusal(outcome.reason))
+            }
+            else -> Unit
+        }
+        val notReadAgain = readJournalAgain(stored = if (outcome is SizeLimitOutcome.Stored) SettingValue.JournalSizeLimit(megabytes) else null)
+        if (outcome is SizeLimitOutcome.Stored) {
+            val trimming = outcome.trimming
+            if (trimming is Trimming.Done && trimming.sizeBytes != null) journalShown = journalShown?.copy(sizeBytes = trimming.sizeBytes)
+        }
+        journalRetries.remove(control)
+        journalAnswers[control] = when (outcome) {
+            is SizeLimitOutcome.Stored -> JournalTexts.limitStored(outcome, journalOnNow = journalShown?.on ?: before.on)
+            is SizeLimitOutcome.Unchanged -> JournalTexts.unchanged(control, before)
+            is SizeLimitOutcome.Unavailable -> JournalTexts.limitUnavailable(outcome, before)
+            SizeLimitOutcome.NotStored -> {
+                journalRetries[control] = megabytes.toString()
+                JournalTexts.limitNotStored(megabytes, before)
+            }
+            // Answered above: at the field, or as the question of A2.
+            is SizeLimitOutcome.OutsideRange, is SizeLimitOutcome.ConfirmFirst -> return
+        }
+        pendingLowerLimit = null
+        publish(journalEditor = null, journalConfirm = null, notReadAgain = notReadAgain)
+    }
+
+    /** The answer of a warning threshold at its line, or a refusal at the field of its dialog (A1). */
+    private suspend fun answerWarningThreshold(percent: Int, outcome: SettingOutcome, before: JournalShown) {
+        val control = JournalControlKind.WarningThreshold
+        when (outcome) {
+            is SettingOutcome.OutsideRange -> return refusedAtTheJournalField(JournalTexts.outsideRange(control, percent, outcome.range, before))
+            is SettingOutcome.Unavailable -> return refusedAtTheJournalField(Texts.refusal(outcome.reason))
+            else -> Unit
+        }
+        val notReadAgain = readJournalAgain(stored = if (outcome is SettingOutcome.Stored) SettingValue.JournalWarningThreshold(percent) else null)
+        journalRetries.remove(control)
+        journalAnswers[control] = when (outcome) {
+            is SettingOutcome.Stored -> JournalTexts.warningStored(outcome, journalShown ?: before, journalOnNow = journalShown?.on ?: before.on)
+            is SettingOutcome.Unchanged -> JournalTexts.unchanged(control, before)
+            else -> {
+                journalRetries[control] = percent.toString()
+                JournalTexts.warningNotStored(percent, before)
+            }
+        }
+        publish(journalEditor = null, notReadAgain = notReadAgain)
+    }
+
+    /** The dialog of the Decision Journal, if one is still open, says [error] at its field and can be used again. */
+    private fun refusedAtTheJournalField(error: String) {
+        val open = mutableState.value?.journalEditor ?: return
+        publish(journalEditor = open.copy(editor = open.editor.copy(error = error, saving = false)))
+    }
+
+    /** Postconditions: the switch shows Switching on… or Switching off… at its line until its answer is there. */
+    private fun switchJournal(on: Boolean) {
+        val wasOn = journalShown?.on ?: !on
+        journalPending = JournalControlKind.Switch to JournalTexts.switchPending(on)
+        publish()
+        viewModelScope.launch {
+            val outcome = try {
+                services.journalControl.switch(on)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                SwitchOutcome.NotStored
+            }
+            journalPending = null
+            val notReadAgain = readJournalAgain(stored = if (outcome is SwitchOutcome.Stored) SettingValue.JournalOn(on) else null)
+            journalAnswers[JournalControlKind.Switch] = JournalTexts.switched(outcome, wasOn)
+            publish(notReadAgain = notReadAgain)
+        }
+    }
+
+    /**
+     * Reads the Operator Settings and the Decision Journal again after one of its changes; when they cannot be read, the
+     * value [stored] (if any) is shown as stored, and the line under the settings says that they could not be read again.
+     */
+    private suspend fun readJournalAgain(stored: SettingValue?): String? {
+        val notReadAgain = readAgain(stored)
+        return try {
+            journalShown = services.journalControl.shown()
+            notReadAgain
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            // [readAgain] has put the value stored into the settings shown when they could not be read again.
+            val before = journalShown
+            val values = shown?.values
+            if (before != null && stored != null && values != null) {
+                journalShown = before.copy(on = values.journalOn, sizeLimitMb = values.journalSizeLimitMb, warningPercent = values.journalWarningPercent)
+            }
+            SETTINGS_NOT_READ_AGAIN
         }
     }
 

@@ -114,6 +114,21 @@ sealed interface SettingValue {
     data class Switch(val setting: SwitchSetting, val on: Boolean) : SettingValue {
         override fun appliedTo(settings: OperatorSettings): OperatorSettings = setting.appliedTo(settings, on)
     }
+
+    /** The Decision Journal switched on or off (`OPERATOR_SETTINGS.journal_on`; UC-010 postconditions). */
+    data class JournalOn(val on: Boolean) : SettingValue {
+        override fun appliedTo(settings: OperatorSettings): OperatorSettings = settings.copy(journalOn = on)
+    }
+
+    /** The Decision Journal's size limit in MB (`OPERATOR_SETTINGS.journal_size_limit_mb`; UC-010 A2, BR-003). */
+    data class JournalSizeLimit(val megabytes: Int) : SettingValue {
+        override fun appliedTo(settings: OperatorSettings): OperatorSettings = settings.copy(journalSizeLimitMb = megabytes)
+    }
+
+    /** The Decision Journal's warning threshold in percent of its size limit (`OPERATOR_SETTINGS.journal_warning_percent`; UC-010 A4). */
+    data class JournalWarningThreshold(val percent: Int) : SettingValue {
+        override fun appliedTo(settings: OperatorSettings): OperatorSettings = settings.copy(journalWarningPercent = percent)
+    }
 }
 
 /**

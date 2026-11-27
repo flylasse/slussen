@@ -46,6 +46,12 @@ object AllowedRanges {
     // UC-010 BR-002: The Fetch Cooldown of each Data Provider lies between 0 and 1440 minutes; 0 switches it off.
     val FETCH_COOLDOWN_MINUTES: IntRange = 0..1440
 
+    // UC-010 BR-002: The Decision Journal size limit lies between 10 and 500 MB.
+    val JOURNAL_SIZE_LIMIT_MB: IntRange = 10..500
+
+    // UC-010 BR-002: The Decision Journal's warning threshold lies between 50% and 95% of its size limit.
+    val JOURNAL_WARNING_PERCENT: IntRange = 50..95
+
     /** The allowed range of [setting]. */
     fun of(setting: NumberSetting): IntRange = when (setting) {
         // UC-010 BR-002: The Upload Window lies between 1 and 60 days.

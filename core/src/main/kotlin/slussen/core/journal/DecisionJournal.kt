@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import slussen.core.port.DecisionJournalRecorder
 import slussen.core.port.JournalEntry
 import slussen.core.port.JournalEventKind
+import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.StatusChange
 import java.time.Clock
@@ -34,18 +35,43 @@ class DecisionJournal(
         require((importIdentifier == null) == (bankAccountName == null)) { "An Import Identifier is unique only within its Bank Account." }
         // ADR-002 §9: any failure, also of reading whether the Decision Journal is on, is dropped and never reaches the caller.
         try {
-            if (!settings.current().journalOn) return
-            recorder.record(
-                JournalEntry(
-                    recordedAt = clock.instant(),
-                    eventKind = kind,
-                    details = details,
-                    importIdentifier = importIdentifier,
-                    bankAccountName = bankAccountName,
-                ),
-            )
+            val current = settings.current()
+            if (!current.journalOn) return
+            // UC-010 BR-003: After an entry is recorded, the oldest entries are removed while the Decision Journal is above its size limit.
+            hand(entry(kind, details, importIdentifier, bankAccountName), JournalRules.limitBytes(current.journalSizeLimitMb))
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (failure: Exception) {
+            droppedEntries.incrementAndGet()
+        }
+    }
+
+    /**
+     * An entry of the Decision Journal's own control (UC-010 postconditions, BR-003), handed to the recorder at once, with
+     * [current] the settings it was read with and nothing read again. While the Decision Journal is off it is dropped,
+     * unless [alsoWhileOff]: the entry of switching it off, handed over before `journal_on` is stored and never refused
+     * for it. It removes no entry after it: switching, raising the size limit and changing the warning threshold remove
+     * none, and a lower size limit is followed by its own trimming. Like every recording it never reaches the caller.
+     */
+    internal fun recordOfTheJournalItself(details: String, current: OperatorSettings, alsoWhileOff: Boolean = false) {
+        if (!current.journalOn && !alsoWhileOff) return
+        hand(entry(JournalEventKind.ConfigurationChange, details), keepWithinBytes = null)
+    }
+
+    /** One entry recorded now, for a caller that hands it to the journal's database itself (the clearing of UC-010 A3). */
+    internal fun entry(kind: JournalEventKind, details: String, importIdentifier: String? = null, bankAccountName: String? = null): JournalEntry =
+        JournalEntry(
+            recordedAt = clock.instant(),
+            eventKind = kind,
+            details = details,
+            importIdentifier = importIdentifier,
+            bankAccountName = bankAccountName,
+        )
+
+    /** ADR-002 §9: hands [entry] over; a recorder that throws anyway is caught, counted and dropped here. */
+    private fun hand(entry: JournalEntry, keepWithinBytes: Long?) {
+        try {
+            recorder.record(entry, keepWithinBytes)
         } catch (failure: Exception) {
             droppedEntries.incrementAndGet()
         }
