@@ -450,7 +450,7 @@ class AccountMappingsViewModel(private val services: UiServices) : ViewModel() {
             }
             when (val outcome = services.mappings.changeTypeAndBank(sheet.bankAccountId, type, bank, clearingConfirmed)) {
                 TypeAndBankOutcome.Stored -> stored(after = "")
-                // UC-009 BR-015: The change and the new statuses are stored so that, when Slussen stops between the two, no Upload Plan is prepared before the statuses are given again.
+                // Stored with the Transfers still to detect: the core keeps the Comparison marker that blocks every Upload Plan until they are.
                 TypeAndBankOutcome.StoredNotDetectedYet ->
                     stored(after = " · the Transfers are detected again when Slussen next starts or compares; no Upload Plan is prepared before")
                 // NFR-023: a storage that cannot be read or written is answered at the control; the sheet stays for another try.

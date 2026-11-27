@@ -20,6 +20,17 @@ import slussen.core.port.BudgetToServe
 import slussen.core.port.ComparisonConclusions
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.NewBankAccount
+import slussen.core.port.DataProviderRegistration
+import slussen.core.port.IdentificationStored
+import slussen.core.port.MappingStored
+import slussen.core.port.NewIdentification
+import slussen.core.port.NewLeftOutBankAccount
+import slussen.core.port.SentRecordOutcome
+import slussen.core.port.SentThrough
+import slussen.core.port.UploadPlanState
+import slussen.persistence.main.SentRecordEntity
+import slussen.persistence.main.UploadPlanEntity
+import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.core.port.OtherSideKind
 import slussen.core.port.OtherSideStored
 import slussen.core.port.TransactionStatus
@@ -37,7 +48,8 @@ import java.time.LocalDate
 
 /**
  * The storage operations of UC-009 (O-13 `MappingStore`) on the platform's SQLite (ADR-002 §3): A14, and the changes of
- * one Bank Account of build-out phase B4 (A4, A5, A9, A12, A13), each one transaction that raises `state_version` and,
+ * one Bank Account of build-out phase B4 (A4, A5, A9, A12, A13), the identification and moves of phase B5 (steps 4-6,
+ * A8, A11, with planted Sent Records for the locks of BR-003 and BR-007), each one transaction that raises `state_version` and,
  * where UC-009 BR-015 follows it with statuses given again, sets `comparison_pending`; and what O-5 concludes on the
  * stored data after a Bank Account is retired and restored (UC-005 BR-015). Invented data only (C-005).
  */
@@ -121,7 +133,11 @@ class UC009ManageAccountMappingsPersistenceIT {
                 BudgetAccountToStore("ba-old", "Old Savings", Amount(15_000)),
             ),
         ),
-        BudgetToServe("budget-summer", "Summer House", eur, listOf(BudgetAccountToStore("ba-current", "Current", Amount(3_402_300)))),
+        BudgetToServe(
+            "budget-summer", "Summer House", eur,
+            listOf(BudgetAccountToStore("ba-current", "Current", Amount(3_402_300)), BudgetAccountToStore("ba-savings", "Savings", Amount(8_000_000))),
+        ),
+        BudgetToServe("budget-care", "Care Fund", usd, listOf(BudgetAccountToStore("ba-health", "Health Savings", Amount(6_324_200)))),
     )
 
     /** What a test of phase B4 needs of the stored data: the Budget Accounts by name and the Bank Accounts mapped to four of them. */
@@ -356,8 +372,8 @@ class UC009ManageAccountMappingsPersistenceIT {
         val kept = main.budgetAppCopy().transfers().single()
         assertEquals(transferId, kept.id)
         assertEquals(TransferDecision.Confirmed.text, kept.decision)
-        assertEquals(listOf(1L, 2L), main.budgetAppCopy().legsOf(transferId).map { it.id })
-        assertEquals(TransactionStatus.TransferLeg.text, main.budgetAppCopy().legsOf(transferId).first().status)
+        assertEquals(setOf(1L, 2L), main.budgetAppCopy().legsOf(transferId).map { it.id }.toSet())
+        assertEquals(setOf(TransactionStatus.TransferLeg.text), main.budgetAppCopy().legsOf(transferId).map { it.status }.toSet())
         assertEquals(0, eligible().getValue(mapped.checking))
         assertEquals(0, eligible().getValue(mapped.card))
 
@@ -366,8 +382,187 @@ class UC009ManageAccountMappingsPersistenceIT {
 
         assertTrue(checkNotNull(conclusions).dropped.isEmpty())
         assertEquals(TransferDecision.Confirmed.text, main.budgetAppCopy().transfers().single().decision)
-        assertEquals(listOf(1L, 2L), main.budgetAppCopy().legsOf(transferId).map { it.id })
+        assertEquals(setOf(1L, 2L), main.budgetAppCopy().legsOf(transferId).map { it.id }.toSet())
         assertEquals(1, eligible().getValue(mapped.checking))
         assertEquals(0, eligible().getValue(mapped.card))
+    }
+
+    // ---- Build-out phase B5: identification and moves -----------------------------------------------------------------
+
+    /** A Bank Transaction of [bankAccountId] as a Fetch stored it, with the status [status] a Comparison gave it. */
+    private fun transactionOf(id: Long, bankAccountId: Long, status: String?) = main.openHelper.writableDatabase.execSQL(
+        "INSERT INTO bank_transaction (id, bank_account_id, stable_reference, reference_kind, occurrence_number, import_identifier, booked_date, " +
+            "amount, currency, first_seen_at, status) VALUES ($id, $bankAccountId, 'TX-$id', 'Supplied', 1, 'SLS1-planted-$id', " +
+            "${oct12.toEpochDay()}, -18000, 'USD', ${now.minusSeconds(3600).toEpochMilli()}, ${status?.let { "'$it'" } ?: "NULL"})",
+    )
+
+    /** A Sent Record of [bankTransaction] to [budgetAccountId] with [outcome], planted as the Uploads of Wave 4 will write one. */
+    private suspend fun sent(bankTransaction: Long, budgetAccountId: Long, budgetId: Long, outcome: SentRecordOutcome): Long {
+        val uploads = main.uploads()
+        val plan = uploads.insertPlan(
+            UploadPlanEntity(
+                budgetId = budgetId, bankAccountId = null, preparedAt = now, expiresAt = now.plusSeconds(600), newCount = 1, matchCount = 0,
+                counterpartCount = 0, totalInflow = 0, totalOutflow = 18000, state = UploadPlanState.Confirmed.text,
+            ),
+        )
+        return uploads.insertSentRecord(
+            SentRecordEntity(
+                bankTransaction = bankTransaction, uploadPlanId = plan, budgetAccountId = budgetAccountId, importIdentifier = "SLS1-planted-$bankTransaction",
+                occurrence = 0, bookedDate = oct12, amount = -18000, sentAsTransfer = false, sentAt = now, outcome = outcome.text,
+                budgetAppReference = if (outcome == SentRecordOutcome.Written) "ynab-tx-$bankTransaction" else null,
+            ),
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A8: Move an Account Mapping or Map a Bank Account Again", businessRules = ["BR-003", "BR-015"])
+    @DisplayName("A8, A11, BR-003 (O-13, with planted Sent Records): a move and a removal are refused, storing nothing, while a written send through the Account Mapping is not confirmed with its numbers; confirmed, the move is stored with first_sent_at emptied, state_version and comparison_pending, and the Sent Record keeps its Budget Account; a Rejected send alone locks nothing")
+    fun aMoveIsLockedByAWrittenSendUntilItIsConfirmed() = runBlocking {
+        val mapped = mapped()
+        val mappings = RoomMappingStore(main.connections())
+        val accounts = mapped.budgetAccounts
+        val checkingAccount = accounts.getValue("Checking")
+        transactionOf(1, mapped.checking, TransactionStatus.New.text)
+        val record = sent(1, checkingAccount, mapped.householdId, SentRecordOutcome.Written)
+        main.openHelper.writableDatabase.execSQL("UPDATE account_mapping SET first_sent_at = ${now.toEpochMilli()} WHERE bank_account_id = ${mapped.checking}")
+        concluded()
+        val before = stored(mapped.checking)
+        val start = stateVersion()
+
+        assertEquals(SentThrough(sent = 1, rejected = 0), mappings.sentThrough(mapped.checking))
+        assertEquals(MappingStored.ToConfirm(SentThrough(1, 0)), mappings.move(mapped.checking, accounts.getValue("Travel Card"), confirmed = null))
+        assertEquals(MappingStored.ToConfirm(SentThrough(1, 0)), mappings.move(mapped.checking, accounts.getValue("Travel Card"), confirmed = SentThrough(2, 0)))
+        assertEquals(MappingStored.ToConfirm(SentThrough(1, 0)), mappings.remove(mapped.checking, confirmed = null))
+        assertEquals(before, stored(mapped.checking))
+        assertEquals(start, stateVersion())
+        assertFalse(pending())
+
+        assertEquals(MappingStored.Stored, mappings.move(mapped.checking, accounts.getValue("Travel Card"), confirmed = SentThrough(1, 0)))
+
+        assertEquals(before.mapping!!.copy(budgetAccountId = accounts.getValue("Travel Card"), firstSentAt = null), stored(mapped.checking).mapping)
+        assertEquals(checkingAccount, main.uploads().sentRecord(record)!!.budgetAccountId)
+        assertEquals(TransactionStatus.New.text, main.fetches().bankTransactionsOf(mapped.checking).single().status)
+        assertTrue(stateVersion() > start)
+        assertTrue(pending())
+        concluded()
+
+        // Now nothing was written through the Account Mapping to Travel Card: the next move asks nothing.
+        assertEquals(SentThrough.NONE, mappings.sentThrough(mapped.checking))
+        main.uploads().updateSentRecord(main.uploads().sentRecord(record)!!.copy(outcome = SentRecordOutcome.Rejected.text, budgetAppReference = null))
+        assertEquals(SentThrough(sent = 0, rejected = 1), mappings.sentThrough(mapped.checking))
+        assertEquals(MappingStored.Stored, mappings.remove(mapped.checking, confirmed = null))
+        assertNull(stored(mapped.checking).mapping)
+        assertTrue(pending())
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A8: Move an Account Mapping or Map a Bank Account Again", businessRules = ["BR-003"])
+    @DisplayName("BR-003 (O-13, with a planted Sent Record): a send through an earlier Account Mapping of the Bank Account to the same Budget Account counts: removed with the confirmation and mapped again to Checking without one, the Bank Account has no first_sent_at, is shown as sent through, and its next move is refused until confirmed")
+    fun aSendThroughAnEarlierAccountMappingToTheSameBudgetAccountCounts() = runBlocking {
+        val mapped = mapped()
+        val mappings = RoomMappingStore(main.connections())
+        val checkingAccount = mapped.budgetAccounts.getValue("Checking")
+        transactionOf(1, mapped.checking, TransactionStatus.New.text)
+        sent(1, checkingAccount, mapped.householdId, SentRecordOutcome.Written)
+
+        assertEquals(MappingStored.Stored, mappings.remove(mapped.checking, confirmed = SentThrough(1, 0)))
+        assertEquals(MappingStored.Stored, mappings.mapAgain(mapped.checking, checkingAccount))
+
+        assertNull(stored(mapped.checking).mapping!!.firstSentAt)
+        assertEquals(SentThrough(1, 0), connections.sentThroughMappings()[mapped.checking])
+        assertEquals(MappingStored.ToConfirm(SentThrough(1, 0)), mappings.move(mapped.checking, mapped.budgetAccounts.getValue("Travel Card"), confirmed = null))
+        assertEquals(checkingAccount, stored(mapped.checking).mapping!!.budgetAccountId)
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A8: Move an Account Mapping or Map a Bank Account Again", businessRules = ["BR-001", "BR-015"])
+    @DisplayName("A8 step 1, BR-001, BR-015 (O-13): a move and a new Account Mapping are refused, storing nothing, for a Budget Account that receives through another Account Mapping, a Manually Kept Account, one of another currency and an unknown one, a new Account Mapping for a Bank Account that has one and a move or removal of none; a move into another Budget leaves its Bank Transactions not compared yet, a move within the Budget keeps their statuses")
+    fun aMoveIsRefusedForABudgetAccountThatIsNotFree() = runBlocking {
+        val mapped = mapped()
+        val mappings = RoomMappingStore(main.connections())
+        val accounts = mapped.budgetAccounts
+        connections.setManuallyKept(accounts.getValue("Old Savings"), true)
+        transactionOf(1, mapped.checking, TransactionStatus.New.text)
+        concluded()
+        val start = stateVersion()
+        val before = connections.bankAccounts()
+
+        listOf("Rewards Card", "Old Savings", "Savings").forEach { name ->
+            assertEquals(MappingStored.NotAllowed, mappings.move(mapped.checking, accounts.getValue(name), confirmed = null), name)
+        }
+        assertEquals(MappingStored.NotAllowed, mappings.move(mapped.checking, 999_999, confirmed = null))
+        assertEquals(MappingStored.NotAllowed, mappings.mapAgain(mapped.checking, accounts.getValue("Travel Card")))
+        assertEquals(MappingStored.NotFound, mappings.move(mapped.checking + 1000, accounts.getValue("Travel Card"), confirmed = null))
+        assertEquals(before, connections.bankAccounts())
+        assertEquals(start, stateVersion())
+        assertFalse(pending())
+
+        assertEquals(MappingStored.Stored, mappings.move(mapped.checking, accounts.getValue("Travel Card"), confirmed = null))
+        assertEquals(TransactionStatus.New.text, main.fetches().bankTransactionsOf(mapped.checking).single().status)
+        assertEquals(MappingStored.Stored, mappings.move(mapped.checking, accounts.getValue("Health Savings"), confirmed = null))
+        assertNull(main.fetches().bankTransactionsOf(mapped.checking).single().status)
+
+        assertEquals(MappingStored.Stored, mappings.remove(mapped.checking, confirmed = null))
+        assertEquals(MappingStored.NotAllowed, mappings.remove(mapped.checking, confirmed = null))
+        assertEquals(MappingStored.NotAllowed, mappings.move(mapped.checking, accounts.getValue("Travel Card"), confirmed = null))
+        assertEquals(MappingStored.NotAllowed, mappings.mapAgain(mapped.checking, accounts.getValue("Savings")))
+        assertEquals(MappingStored.Stored, mappings.mapAgain(mapped.checking, accounts.getValue("Travel Card")))
+        assertEquals(accounts.getValue("Travel Card"), stored(mapped.checking).mapping!!.budgetAccountId)
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A7: Identify Again After Transactions Were Sent", businessRules = ["BR-004", "BR-007"])
+    @DisplayName("Steps 4-6, A2, A7, BR-004, BR-007 (O-13, with a planted Sent Record): a new identification is stored with its fingerprint, the Data Provider's Bank and identified_at, raising state_version without comparison_pending; it is refused, storing nothing, for a reference or fingerprint another Bank Account has, a Left-Out reference, a Bank Account no Data Provider reads, and while a written send is not confirmed with its numbers")
+    fun anIdentificationIsStoredAndRefusedAsTheEntityModelSays() = runBlocking {
+        val feeds = RoomPluginRegistryStore(main.registry()).reconcile(
+            listOf(DataProviderRegistration("Kestrel Feeds", "example-feeds", true, false, 60, RequestLimitDeclaration.Published(20, "an invented source"))),
+            emptyList(),
+        ).dataProviders.single().id
+        val mapped = mapped()
+        val mappings = RoomMappingStore(main.connections())
+        val accounts = mapped.budgetAccounts
+        val provided = (
+            connections.addBankAccount(
+                newBankAccount(accounts.getValue("Travel Card")).copy(
+                    generatedIdentifier = "d4c6a8e0-3f5b-4c7d-9e1f-2b3c4d5e6f70", name = "Kestrel Travel", dataProviderId = feeds,
+                    providerReference = "acct-4410", bankAccountFingerprint = "fp-4410",
+                ),
+            ) as AddOutcome.Added
+            ).bankAccountId
+        val other = (
+            connections.addBankAccount(
+                newBankAccount(accounts.getValue("Old Savings")).copy(
+                    generatedIdentifier = "e5d7b9f1-4a6c-4d8e-8f20-3c4d5e6f7a81", name = "Kestrel Old", dataProviderId = feeds,
+                    providerReference = "acct-7781", bankAccountFingerprint = "fp-7781",
+                ),
+            ) as AddOutcome.Added
+            ).bankAccountId
+        assertTrue(connections.leaveOut(listOf(NewLeftOutBankAccount(feeds, "acct-2290", "Kids Saver", now))))
+        val bank = connections.bankNamed("Kestrel Bank").id
+        transactionOf(1, provided, TransactionStatus.New.text)
+        val record = sent(1, accounts.getValue("Travel Card"), mapped.householdId, SentRecordOutcome.Written)
+        val identification = NewIdentification("acct-5512", "fp-5512", bank, now.plusSeconds(60))
+        val before = connections.bankAccounts()
+        val start = stateVersion()
+
+        assertEquals(IdentificationStored.AlreadyUsed("Kestrel Old"), mappings.identify(provided, identification.copy(providerReference = "acct-7781"), confirmed = SentThrough(1, 0)))
+        assertEquals(IdentificationStored.AlreadyUsed("Kestrel Old"), mappings.identify(provided, identification.copy(bankAccountFingerprint = "fp-7781"), confirmed = SentThrough(1, 0)))
+        assertEquals(IdentificationStored.LeftOut, mappings.identify(provided, identification.copy(providerReference = "acct-2290"), confirmed = SentThrough(1, 0)))
+        assertEquals(IdentificationStored.NotFound, mappings.identify(mapped.checking, identification, confirmed = null))
+        assertEquals(IdentificationStored.ToConfirm(SentThrough(1, 0)), mappings.identify(provided, identification, confirmed = null))
+        assertEquals(before, connections.bankAccounts())
+        assertEquals(start, stateVersion())
+
+        assertEquals(IdentificationStored.Stored, mappings.identify(provided, identification, confirmed = SentThrough(1, 0)))
+
+        val after = connections.bankAccounts().single { it.id == provided }
+        assertEquals(
+            before.single { it.id == provided }.copy(providerReference = "acct-5512", bankAccountFingerprint = "fp-5512", providerBankId = bank, identifiedAt = now.plusSeconds(60)),
+            after,
+        )
+        assertEquals(accounts.getValue("Travel Card"), main.uploads().sentRecord(record)!!.budgetAccountId)
+        assertTrue(stateVersion() > start)
+        assertFalse(pending())
+        assertTrue(connections.bankAccounts().single { it.id == other }.providerReference == "acct-7781")
     }
 }

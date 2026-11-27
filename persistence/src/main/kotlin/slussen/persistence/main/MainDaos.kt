@@ -13,6 +13,13 @@ import slussen.core.port.DeliveredTransactions
 import slussen.core.port.DeliveryStored
 import slussen.core.port.DataProviderRegistration
 import slussen.core.port.StoredRequestLimit
+import slussen.core.port.IdentificationStored
+import slussen.core.port.MappingStored
+import slussen.core.port.NewIdentification
+import slussen.core.port.SentRecordOutcome
+import slussen.core.port.SentThrough
+import slussen.core.port.StoredSentRecord
+import slussen.persistence.valueOfText
 import java.time.Instant
 import java.time.LocalDate
 
@@ -136,6 +143,23 @@ abstract class PluginRegistryDao : StateVersionDao {
 
 /** A Budget Account with the Budget it belongs to, for the reads of UC-013 and UC-008. */
 data class MappingEntry(val bankAccountId: Long, val bankAccountName: String, val budgetId: Long)
+
+/** One `sent_record` with the Bank Account of its Bank Transaction, as UC-009 BR-003 counts it. */
+data class SentRecordOfBankAccount(
+    val bankAccountId: Long,
+    val bankTransaction: Long,
+    val budgetAccountId: Long,
+    val sentAsTransfer: Boolean,
+    val outcome: String,
+) {
+    /** The core's view of the record; an unknown `Values:` text is unreadable data. */
+    fun stored() = StoredSentRecord(
+        storedBankTransaction = bankTransaction,
+        budgetAccountId = budgetAccountId,
+        sentAsTransfer = sentAsTransfer,
+        outcome = valueOfText<SentRecordOutcome>(outcome, "slussen.db") { it.text },
+    )
+}
 
 @Dao
 abstract class ConnectionDao : StateVersionDao {
@@ -311,7 +335,7 @@ abstract class ConnectionDao : StateVersionDao {
             val ownBudget = budgetAccount(own)?.budgetId
             val chosen = budgetAccount(budgetAccountId) ?: return OtherSide.NotAllowed
             val fetchedFor = mappingInto(budgetAccountId)?.let { bankAccount(it.bankAccountId) }
-            // UC-009 BR-008: Both are always a Budget Account that Slussen fetches: of the same Budget, not the Bank Account's own, never a Manually Kept Account, fed by a Bank Account that is not a Retired Account.
+            // UC-005 BR-014: A Funded By or Transfer Partner is a Budget Account that Slussen fetches, one a Bank Account that is not a Retired Account is mapped to, never a Manually Kept Account; entity model BANK_ACCOUNT: of the same Budget as the Bank Account's own Account Mapping and not its own Budget Account.
             if (budgetAccountId == own || chosen.budgetId != ownBudget || chosen.manuallyKept || fetchedFor == null || fetchedFor.retired) {
                 return OtherSide.NotAllowed
             }
@@ -319,6 +343,142 @@ abstract class ConnectionDao : StateVersionDao {
         if (fundedBy) updateFundedBy(id, budgetAccountId) else updateTransferPartner(id, budgetAccountId)
         storedWithStatusesToGive()
         return OtherSide.Stored
+    }
+
+    // ---- UC-009 identification and moves (build-out phase B5) ----------------------------------------------------------
+
+    @Query(
+        "SELECT bt.bank_account_id AS bankAccountId, sr.bank_transaction_id AS bankTransaction, sr.budget_account_id AS budgetAccountId, " +
+            "sr.sent_as_transfer AS sentAsTransfer, sr.outcome AS outcome FROM sent_record sr " +
+            "JOIN bank_transaction bt ON bt.id = sr.bank_transaction_id ORDER BY sr.id",
+    )
+    abstract suspend fun sentRecordsByBankAccount(): List<SentRecordOfBankAccount>
+
+    @Query(
+        "SELECT bt.bank_account_id AS bankAccountId, sr.bank_transaction_id AS bankTransaction, sr.budget_account_id AS budgetAccountId, " +
+            "sr.sent_as_transfer AS sentAsTransfer, sr.outcome AS outcome FROM sent_record sr " +
+            "JOIN bank_transaction bt ON bt.id = sr.bank_transaction_id WHERE bt.bank_account_id = :bankAccountId ORDER BY sr.id",
+    )
+    protected abstract suspend fun sentRecordsOfBankAccount(bankAccountId: Long): List<SentRecordOfBankAccount>
+
+    /** UC-009 BR-003: what was sent through the Account Mapping of [bankAccountId], counted by the core's rule ([SentThrough.of]). */
+    @Transaction
+    open suspend fun sentThrough(bankAccountId: Long): SentThrough {
+        if (bankAccount(bankAccountId) == null) return SentThrough.NONE
+        return SentThrough.of(sentRecordsOfBankAccount(bankAccountId).map { it.stored() }, mappingOf(bankAccountId)?.budgetAccountId)
+    }
+
+    /**
+     * Entity model `ACCOUNT_MAPPING`: what blocks a move, a removal or a new identification of [bankAccountId] inside the
+     * caller's transaction: the count as it is now, while something sent through the Account Mapping was written and
+     * [confirmed] is not that count; null when nothing blocks it.
+     */
+    private suspend fun unconfirmed(bankAccountId: Long, confirmed: SentThrough?): SentThrough? =
+        sentThrough(bankAccountId).takeIf { it.needsConfirmation && it != confirmed }
+
+    @Query(
+        "UPDATE bank_account SET provider_reference = :providerReference, bank_account_fingerprint = :fingerprint, " +
+            "provider_bank_id = :providerBankId, identified_at = :identifiedAt WHERE id = :id",
+    )
+    protected abstract suspend fun updateIdentification(id: Long, providerReference: String, fingerprint: String?, providerBankId: Long?, identifiedAt: Instant)
+
+    /**
+     * O-13 (ADR-002 §3), UC-009 steps 4-6, A1, A6, A7: the new identification with `identified_at`, in one transaction
+     * that raises `state_version`; no Transaction Status depends on it, so the Comparison marker is left as it is.
+     * Refused, storing nothing, for a Bank Account of a File Format, when another Bank Account of the Data Provider has
+     * the reference or the fingerprint or reports its balance, when the reference is left out, and, when the
+     * identification changes, while a written send is not confirmed with its numbers.
+     */
+    @Transaction
+    open suspend fun identify(id: Long, identification: NewIdentification, confirmed: SentThrough?): IdentificationStored {
+        val account = bankAccount(id) ?: return IdentificationStored.NotFound
+        val provider = account.dataProviderId ?: return IdentificationStored.NotFound
+        val reference = identification.providerReference
+        val fingerprint = identification.bankAccountFingerprint
+        // UC-009 BR-004: Two Account Mappings never point to the same Bank Account: a reference or fingerprint another Bank Account of the Data Provider has, or reports its balance with, identifies no second one.
+        val usedBy = bankAccounts().filter { it.id != id }.firstOrNull { other ->
+            (other.dataProviderId == provider && (other.providerReference == reference || (fingerprint != null && other.bankAccountFingerprint == fingerprint))) ||
+                (other.balanceDataProviderId == provider && other.balanceProviderReference == reference)
+        }
+        if (usedBy != null) return IdentificationStored.AlreadyUsed(usedBy.name)
+        // UC-009 BR-004: A Left-Out Bank Account is never identified as a Bank Account until the Operator brings it back.
+        if (leftOutOf(provider, reference) != null) return IdentificationStored.LeftOut
+        val changes = account.providerReference != reference || account.bankAccountFingerprint != fingerprint
+        // UC-009 BR-007: Once a transaction sent through its Account Mapping was written, already present, not yet known or unknown, the Bank Account is identified again only with the Operator's confirmation of their number.
+        if (changes) unconfirmed(id, confirmed)?.let { return IdentificationStored.ToConfirm(it) }
+        updateIdentification(id, reference, fingerprint, identification.providerBankId, identification.identifiedAt)
+        raiseStateVersion()
+        return IdentificationStored.Stored
+    }
+
+    /** UC-009 A8 step 1, UC-013 BR-014: the Budget of [budgetAccountId] when [account] can be mapped to it: served, in its currency, receiving through no Account Mapping, no Manually Kept Account. */
+    private suspend fun mappableBudget(account: BankAccountEntity, budgetAccountId: Long): BudgetEntity? {
+        val budgetAccount = budgetAccount(budgetAccountId) ?: return null
+        val budget = budget(budgetAccount.budgetId) ?: return null
+        // UC-009 BR-001: A Budget Account receives through at most one Account Mapping, and a Manually Kept Account through none.
+        return budget.takeIf { it.served && it.currency == account.currency && !budgetAccount.manuallyKept && mappingInto(budgetAccountId) == null }
+    }
+
+    @Query("UPDATE account_mapping SET budget_account_id = :budgetAccountId, first_sent_at = NULL WHERE bank_account_id = :bankAccountId")
+    protected abstract suspend fun updateMapping(bankAccountId: Long, budgetAccountId: Long)
+
+    @Query("DELETE FROM account_mapping WHERE bank_account_id = :bankAccountId")
+    protected abstract suspend fun deleteMapping(bankAccountId: Long)
+
+    @Query("UPDATE bank_transaction SET status = NULL WHERE bank_account_id = :bankAccountId")
+    protected abstract suspend fun notComparedYet(bankAccountId: Long)
+
+    /**
+     * O-13, UC-009 A8: the Account Mapping moved to [budgetAccountId] with `first_sent_at` emptied, in one transaction
+     * with `state_version` and the Comparison marker; when the new Budget Account is in another Budget, the Bank
+     * Transactions of the Bank Account are not compared yet. Refused, storing nothing, without an Account Mapping, for a
+     * Budget Account it cannot be mapped to, and while a written send is not confirmed with its numbers. No Sent Record
+     * is touched.
+     */
+    @Transaction
+    open suspend fun move(bankAccountId: Long, budgetAccountId: Long, confirmed: SentThrough?): MappingStored {
+        val account = bankAccount(bankAccountId) ?: return MappingStored.NotFound
+        val mapping = mappingOf(bankAccountId) ?: return MappingStored.NotAllowed
+        val budget = mappableBudget(account, budgetAccountId) ?: return MappingStored.NotAllowed
+        // UC-009 BR-003: Once a transaction sent through the Account Mapping was written, already present, not yet known or unknown, it is moved only by the Operator's confirmed action, which states their number.
+        unconfirmed(bankAccountId, confirmed)?.let { return MappingStored.ToConfirm(it) }
+        // UC-009 BR-015: The statuses are given again by the Budget the Bank Account is mapped into now; while that Budget is not read yet its Bank Transactions are not compared yet, so none keeps a status another Budget gave it.
+        if (budgetAccount(mapping.budgetAccountId)?.budgetId != budget.id) notComparedYet(bankAccountId)
+        updateMapping(bankAccountId, budgetAccountId)
+        storedWithStatusesToGive()
+        return MappingStored.Stored
+    }
+
+    /**
+     * O-13, UC-009 A8 for a Bank Account without an Account Mapping: a new one with `first_sent_at` empty, without a
+     * confirmation, in one transaction with `state_version`, the Comparison marker and its Bank Transactions not
+     * compared yet. Refused, storing nothing, when it has one, and for a Budget Account a move refuses.
+     */
+    @Transaction
+    open suspend fun mapAgain(bankAccountId: Long, budgetAccountId: Long): MappingStored {
+        val account = bankAccount(bankAccountId) ?: return MappingStored.NotFound
+        if (mappingOf(bankAccountId) != null || mappableBudget(account, budgetAccountId) == null) return MappingStored.NotAllowed
+        // UC-009 BR-015: The statuses are given again by the Budget the Bank Account is mapped into now; while that Budget is not read yet its Bank Transactions are not compared yet, so none keeps a status given before the removal.
+        notComparedYet(bankAccountId)
+        insert(AccountMappingEntity(bankAccountId = bankAccountId, budgetAccountId = budgetAccountId, firstSentAt = null))
+        storedWithStatusesToGive()
+        return MappingStored.Stored
+    }
+
+    /**
+     * O-13, UC-009 A11: the Account Mapping removed, in one transaction with `state_version` and the Comparison marker;
+     * the Bank Account, its identification, its Bank Transactions and every Sent Record stay. Refused, storing nothing,
+     * without an Account Mapping and while a written send is not confirmed with its numbers.
+     */
+    @Transaction
+    open suspend fun remove(bankAccountId: Long, confirmed: SentThrough?): MappingStored {
+        if (bankAccount(bankAccountId) == null) return MappingStored.NotFound
+        if (mappingOf(bankAccountId) == null) return MappingStored.NotAllowed
+        // UC-009 BR-003: Once a transaction sent through the Account Mapping was written, already present, not yet known or unknown, it is removed only by the Operator's confirmed action, which states their number.
+        unconfirmed(bankAccountId, confirmed)?.let { return MappingStored.ToConfirm(it) }
+        deleteMapping(bankAccountId)
+        storedWithStatusesToGive()
+        return MappingStored.Stored
     }
 
     private suspend fun bankIdOf(bank: BankChoice): Long = when (bank) {

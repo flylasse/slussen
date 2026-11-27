@@ -42,8 +42,8 @@ class InMemoryBudgetAppCopyStore(
     val copy = mutableListOf<StoredBudgetAppTransaction>()
     val reviewDecisions = mutableListOf<StoredReviewDecision>()
 
-    /** The Sent Records a test plants: the Uploads that write them come with their own phases (UC-006). */
-    val sentRecords = mutableListOf<StoredSentRecord>()
+    /** The Sent Records a test plants: the Uploads that write them come with their own phases (UC-006); the list of [connections]. */
+    val sentRecords: MutableList<StoredSentRecord> get() = connections.sentRecords
 
     /** Makes every Review Decision and every change of an Unreadable Transaction's status fail before anything is stored. */
     var failsToDecide: Boolean = false

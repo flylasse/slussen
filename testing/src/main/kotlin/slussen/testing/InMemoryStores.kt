@@ -24,7 +24,12 @@ import slussen.core.port.FetchStore
 import slussen.core.port.FileFormatRegistration
 import slussen.core.port.ImportStatusStore
 import slussen.core.port.JournalEntry
+import slussen.core.port.IdentificationStored
 import slussen.core.port.KeptOutcome
+import slussen.core.port.MappingStored
+import slussen.core.port.NewIdentification
+import slussen.core.port.SentThrough
+import slussen.core.port.StoredSentRecord
 import slussen.core.port.MappingStore
 import slussen.core.port.NewBackOff
 import slussen.core.port.NewBankAccount
@@ -453,6 +458,115 @@ class InMemoryConnectionStore(val stateVersion: InMemoryStateVersion = InMemoryS
         return OtherSideStored.Stored
     }
 
+    /**
+     * The Sent Records a test plants (`sent_record`): the Uploads that write them come with their own phases (UC-006).
+     * [InMemoryBudgetAppCopyStore.sentRecords] is this list, so that the Comparison and the locks of O-13 read the same.
+     */
+    val sentRecords = mutableListOf<StoredSentRecord>()
+
+    /**
+     * The stored Bank Transactions (`bank_transaction`), which the [InMemoryImportStatusStore] of the same slice holds:
+     * the Sent Records are counted for the Bank Account of their Bank Transaction, and a move empties their statuses.
+     */
+    internal var transactionStore: InMemoryImportStatusStore? = null
+
+    private fun sentRecordsOf(bankAccountId: Long): List<StoredSentRecord> {
+        val own = transactionStore?.bankTransactions.orEmpty().filter { it.bankAccountId == bankAccountId }.map { it.id }.toSet()
+        return sentRecords.filter { it.storedBankTransaction in own }
+    }
+
+    private fun sentThroughNow(bankAccount: StoredBankAccount): SentThrough =
+        SentThrough.of(sentRecordsOf(bankAccount.id), bankAccount.mapping?.budgetAccountId)
+
+    override suspend fun sentThroughMappings(): Map<Long, SentThrough> =
+        bankAccountList.filter { sentRecordsOf(it.id).isNotEmpty() }.associate { it.id to sentThroughNow(it) }
+
+    override suspend fun sentThrough(bankAccountId: Long): SentThrough =
+        bankAccountList.firstOrNull { it.id == bankAccountId }?.let(::sentThroughNow) ?: SentThrough.NONE
+
+    /** Entity model `ACCOUNT_MAPPING`: while something sent through it was written, only with the Operator's confirmation of the numbers as they are now. */
+    private fun unconfirmed(bankAccount: StoredBankAccount, confirmed: SentThrough?): SentThrough? =
+        sentThroughNow(bankAccount).takeIf { it.needsConfirmation && it != confirmed }
+
+    override suspend fun identify(bankAccountId: Long, identification: NewIdentification, confirmed: SentThrough?): IdentificationStored {
+        storing()
+        val bankAccount = bankAccountList.firstOrNull { it.id == bankAccountId && it.dataProviderId != null } ?: return IdentificationStored.NotFound
+        val provider = bankAccount.dataProviderId
+        val reference = identification.providerReference
+        val fingerprint = identification.bankAccountFingerprint
+        // Entity model `BANK_ACCOUNT`: two Bank Accounts of the same Data Provider never have the same reference or fingerprint; a balance source is never identified as another.
+        val usedBy = bankAccountList.filter { it.id != bankAccountId }.firstOrNull { other ->
+            (other.dataProviderId == provider && (other.providerReference == reference || (fingerprint != null && other.bankAccountFingerprint == fingerprint))) ||
+                (other.balanceDataProviderId == provider && other.balanceProviderReference == reference)
+        }
+        if (usedBy != null) return IdentificationStored.AlreadyUsed(usedBy.name)
+        if (leftOutList.any { it.dataProviderId == provider && it.providerReference == reference }) return IdentificationStored.LeftOut
+        val changes = bankAccount.providerReference != reference || bankAccount.bankAccountFingerprint != fingerprint
+        if (changes) unconfirmed(bankAccount, confirmed)?.let { return IdentificationStored.ToConfirm(it) }
+        bankAccountList.replaceAll {
+            if (it.id != bankAccountId) {
+                it
+            } else {
+                it.copy(
+                    providerReference = reference,
+                    bankAccountFingerprint = fingerprint,
+                    providerBankId = identification.providerBankId,
+                    identifiedAt = identification.identifiedAt,
+                )
+            }
+        }
+        stateVersion.raise()
+        return IdentificationStored.Stored
+    }
+
+    /** UC-009 A8 step 1, UC-013 BR-014: of a served Budget in [bankAccount]'s currency, receiving through no Account Mapping, no Manually Kept Account. */
+    private fun mappable(bankAccount: StoredBankAccount, budgetAccountId: Long): StoredBudget? {
+        val budget = budgetList.firstOrNull { candidate -> candidate.budgetAccounts.any { it.id == budgetAccountId } } ?: return null
+        val account = budget.budgetAccounts.single { it.id == budgetAccountId }
+        val free = bankAccountList.none { it.mapping?.budgetAccountId == budgetAccountId }
+        return budget.takeIf { it.served && it.currency == bankAccount.currency && !account.manuallyKept && free }
+    }
+
+    private fun budgetOf(budgetAccountId: Long?): Long? =
+        budgetList.firstOrNull { budget -> budget.budgetAccounts.any { it.id == budgetAccountId } }?.id
+
+    /** As O-13 does: a Bank Account mapped into another Budget is not compared there yet, so no status the old one gave it stays. */
+    private fun notComparedYet(bankAccountId: Long) {
+        transactionStore?.bankTransactions?.replaceAll { if (it.bankAccountId == bankAccountId) it.copy(status = null) else it }
+    }
+
+    override suspend fun move(bankAccountId: Long, budgetAccountId: Long, confirmed: SentThrough?): MappingStored {
+        storing()
+        val bankAccount = bankAccountList.firstOrNull { it.id == bankAccountId } ?: return MappingStored.NotFound
+        val mapping = bankAccount.mapping ?: return MappingStored.NotAllowed
+        val budget = mappable(bankAccount, budgetAccountId) ?: return MappingStored.NotAllowed
+        unconfirmed(bankAccount, confirmed)?.let { return MappingStored.ToConfirm(it) }
+        if (budgetOf(mapping.budgetAccountId) != budget.id) notComparedYet(bankAccountId)
+        bankAccountList.replaceAll { if (it.id == bankAccountId) it.copy(mapping = mapping.copy(budgetAccountId = budgetAccountId, firstSentAt = null)) else it }
+        storedWithStatusesToGive()
+        return MappingStored.Stored
+    }
+
+    override suspend fun mapAgain(bankAccountId: Long, budgetAccountId: Long): MappingStored {
+        storing()
+        val bankAccount = bankAccountList.firstOrNull { it.id == bankAccountId } ?: return MappingStored.NotFound
+        if (bankAccount.mapping != null || mappable(bankAccount, budgetAccountId) == null) return MappingStored.NotAllowed
+        notComparedYet(bankAccountId)
+        bankAccountList.replaceAll { if (it.id == bankAccountId) it.copy(mapping = StoredAccountMapping(nextId++, bankAccountId, budgetAccountId, firstSentAt = null)) else it }
+        storedWithStatusesToGive()
+        return MappingStored.Stored
+    }
+
+    override suspend fun remove(bankAccountId: Long, confirmed: SentThrough?): MappingStored {
+        storing()
+        val bankAccount = bankAccountList.firstOrNull { it.id == bankAccountId } ?: return MappingStored.NotFound
+        if (bankAccount.mapping == null) return MappingStored.NotAllowed
+        unconfirmed(bankAccount, confirmed)?.let { return MappingStored.ToConfirm(it) }
+        bankAccountList.replaceAll { if (it.id == bankAccountId) it.copy(mapping = null) else it }
+        storedWithStatusesToGive()
+        return MappingStored.Stored
+    }
+
     /** Sets a Funded By or Transfer Partner as UC-009 BR-008 will, for the tests of UC-009 A14. */
     fun link(bankAccountId: Long, fundedBy: Long? = null, transferPartner: Long? = null) {
         bankAccountList.replaceAll {
@@ -544,6 +658,10 @@ class InMemoryImportStatusStore(
 ) : ImportStatusStore, FetchStore {
     val bankTransactions = mutableListOf<StoredBankTransaction>()
     val unreadableTransactions = mutableListOf<StoredUnreadableTransaction>()
+
+    init {
+        (connections as? InMemoryConnectionStore)?.transactionStore = this
+    }
 
     /** The stored Transfers, which [InMemoryBudgetAppCopyStore] writes and the counts read (`transfer`). */
     val transfers = mutableListOf<StoredTransfer>()

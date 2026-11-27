@@ -105,7 +105,7 @@ class CompositionRoot(log: SlussenLog) {
             ),
             providerSettings = DataProviderSettings(registered, storage.registry, coordinator, journal),
             generalSettings = GeneralSettings(storage.settings, coordinator, journal),
-            mappings = AccountMappings(registered, storage.connections, storage.mappings, storage.offered, coordinator, journal, comparison),
+            mappings = AccountMappings(registered, storage.connections, storage.mappings, storage.offered, coordinator, journal, comparison, clock),
             status = status,
             // Step 5 of UC-008: the weeks of a Bank Account's list start on the device locale's first day (survey §5 guess 6).
             bankAccountTransactions = BankAccountTransactions(

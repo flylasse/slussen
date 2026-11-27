@@ -20,7 +20,10 @@ import slussen.core.port.DeliveredTransactions
 import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
 import slussen.core.port.FetchStore
+import slussen.core.port.IdentificationStored
 import slussen.core.port.KeptOutcome
+import slussen.core.port.MappingStored
+import slussen.core.port.NewIdentification
 import slussen.core.port.MappingStore
 import slussen.core.port.NewBankAccount
 import slussen.core.port.NewFetch
@@ -147,6 +150,7 @@ class StateVersionScenario(
                 listOf(
                     BudgetAccountToStore("ba-state-version-checking", "Checking", Amount(4_140_050)),
                     BudgetAccountToStore("ba-state-version-reserve", "Reserve Savings", Amount(12_000_000)),
+                    BudgetAccountToStore("ba-state-version-travel", "Travel Card", Amount(-90_000)),
                 ),
             ),
             BudgetToServe("budget-state-version-summer", "Summer House", eur, listOf(BudgetAccountToStore("ba-state-version-current", "Current", Amount(3_402_300)))),
@@ -159,6 +163,7 @@ class StateVersionScenario(
         val checking = household.budgetAccounts.single { it.name == "Checking" }.id
         val reserve = household.budgetAccounts.single { it.name == "Reserve Savings" }.id
         val current = budgets.single { it.name == "Summer House" }.budgetAccounts.single().id
+        val travel = household.budgetAccounts.single { it.name == "Travel Card" }.id
 
         val added = stored("add a Bank Account with its Account Mapping") {
             connections.addBankAccount(bankAccount("6f1c2a4e-0b7d-4c1e-9a55-2f8e3b1c0d4a", checking))
@@ -247,6 +252,37 @@ class StateVersionScenario(
         check(connections.bankAccounts().single { it.id == added.bankAccountId }.name == "Everyday Checking")
         check(!refused("rename a Bank Account that is not stored") { mappings.rename(added.bankAccountId + 1000, "Everyday Checking") })
         check(!refused("set the Start Date of a Bank Account that is not stored") { mappings.setStartDate(added.bankAccountId + 1000, null) })
+
+        // Moving, removing and mapping again an Account Mapping, and identifying a Bank Account (UC-009 A8, A11, steps 4-6; O-13), with nothing sent through it.
+        check(stored("move an Account Mapping") { mappings.move(added.bankAccountId, travel, confirmed = null) } == MappingStored.Stored)
+        leavesTheComparisonPending("a move")
+        check(connections.bankAccounts().single { it.id == added.bankAccountId }.mapping?.budgetAccountId == travel)
+        check(
+            refused("move an Account Mapping to a Budget Account that receives through another one") {
+                mappings.move(added.bankAccountId, reserve, confirmed = null)
+            } == MappingStored.NotAllowed,
+        )
+        check(stored("remove an Account Mapping") { mappings.remove(added.bankAccountId, confirmed = null) } == MappingStored.Stored)
+        leavesTheComparisonPending("a removal")
+        check(refused("remove an Account Mapping that is not stored") { mappings.remove(added.bankAccountId, confirmed = null) } == MappingStored.NotAllowed)
+        check(stored("map a Bank Account again") { mappings.mapAgain(added.bankAccountId, checking) } == MappingStored.Stored)
+        leavesTheComparisonPending("a new Account Mapping")
+        check(connections.bankAccounts().single { it.id == added.bankAccountId }.mapping?.let { it.budgetAccountId == checking && it.firstSentAt == null } == true)
+        check(refused("map again a Bank Account that has an Account Mapping") { mappings.mapAgain(added.bankAccountId, travel) } == MappingStored.NotAllowed)
+        val fed = connections.addBankAccount(
+            bankAccount("9c4f5d7b-3e0a-4f4b-8d88-5b1b6e4f3a7d", travel).copy(name = "Kestrel Travel", dataProviderId = dataProviderId, providerReference = "acct-state-1"),
+        )
+        check(fed is AddOutcome.Added) { "$fed" }
+        val identification = NewIdentification("acct-state-2", bankAccountFingerprint = null, providerBankId = null, identifiedAt = now)
+        check(stored("identify a Bank Account again") { mappings.identify(fed.bankAccountId, identification, confirmed = null) } == IdentificationStored.Stored)
+        // UC-009 BR-015 names no identification: no Comparison is pending after it.
+        check(!comparisons.comparisonPending()) { "an identification leaves no Comparison pending" }
+        check(connections.bankAccounts().single { it.id == fed.bankAccountId }.let { it.providerReference == "acct-state-2" && it.identifiedAt == now })
+        check(
+            refused("identify a Bank Account that no Data Provider reads") {
+                mappings.identify(added.bankAccountId, identification.copy(providerReference = "acct-state-3"), confirmed = null)
+            } == IdentificationStored.NotFound,
+        )
 
         stored("change the fetch period") { settings.storeFetchPeriod(45) }
         stored("change the Request Limit of a Data Provider that publishes none") { providerSettings.storeRequestLimit(dataProviderId, 30) }
@@ -368,6 +404,14 @@ class StateVersionScenario(
             "rename a Bank Account",
             "rename a Bank Account that is not stored (refused)",
             "set the Start Date of a Bank Account that is not stored (refused)",
+            "move an Account Mapping",
+            "move an Account Mapping to a Budget Account that receives through another one (refused)",
+            "remove an Account Mapping",
+            "remove an Account Mapping that is not stored (refused)",
+            "map a Bank Account again",
+            "map again a Bank Account that has an Account Mapping (refused)",
+            "identify a Bank Account again",
+            "identify a Bank Account that no Data Provider reads (refused)",
             "change the fetch period",
             "change the Request Limit of a Data Provider that publishes none",
             "change the Request Limit of a Data Provider that publishes its Request Limit (refused)",

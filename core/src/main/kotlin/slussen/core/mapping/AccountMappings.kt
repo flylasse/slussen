@@ -22,13 +22,20 @@ import slussen.core.port.JournalEventKind
 import slussen.core.port.MappingStore
 import slussen.core.port.OfferedBankAccountStore
 import slussen.core.port.OtherSideKind
+import slussen.core.port.IdentificationStored
+import slussen.core.port.MappingStored
+import slussen.core.port.NewIdentification
 import slussen.core.port.OtherSideStored
+import slussen.core.port.StoredOfferedBankAccount
+import slussen.core.port.SentThrough
 import slussen.core.port.StartedBy
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredBudget
 import slussen.core.transfer.TransferDetection
 import slussen.pluginapi.value.CurrencyCode
+import java.time.Clock
 import java.time.LocalDate
+import kotlinx.coroutines.CancellationException
 
 /** A Funded By or a Transfer Partner of a Bank Account (UC-005 BR-006, UC-009 BR-008). */
 enum class LinkedBudgetAccount { FundedBy, TransferPartner }
@@ -150,8 +157,10 @@ data class MappingsList(
  * A9, the Funded By and the Transfer Partner; A12, the name; A13, the Start Date; A14, the Bank Account type and the
  * Bank (BR-012). Each change is one storage operation (O-13, ADR-002 §3) admitted by the operation coordinator and
  * recorded in the Decision Journal, and every one but the name is followed, within the same operation, by the statuses
- * given again from stored data ([Comparison.statusesAgainAfter], BR-015). Confirming and identifying a Bank Account and
- * moving, storing and removing an Account Mapping (steps 2-7, A1-A3, A6-A8, A10, A11) come with the phase that builds them.
+ * given again from stored data ([Comparison.statusesAgainAfter], BR-015). Confirming and identifying a Bank Account
+ * (steps 2-7, A1-A3, A6, A7, A10) from the stored Offered Bank Accounts, and moving, storing and removing an Account
+ * Mapping (A8, A11), each with the locks of BR-003 and BR-007 read from the Sent Records, which the storage checks again
+ * in its own transaction; a move or a removal is followed by the statuses given again, an identification by none.
  */
 class AccountMappings(
     private val plugins: RegisteredPlugins,
@@ -162,6 +171,8 @@ class AccountMappings(
     private val journal: DecisionJournal,
     /** BR-015: gives the statuses again after a change, by the Comparison's own conclusions. */
     private val comparison: Comparison,
+    /** Step 6: the time a confirmed identification is recorded with (`identified_at`). */
+    private val clock: Clock,
 ) {
     private val reads = ConnectionReads(plugins, connections, offered)
 
@@ -234,6 +245,7 @@ class AccountMappings(
                 }
                 recorded = "Bank Account ${bankAccount.name}: Bank Account type ${bankAccount.type.text} to ${type.text}, " +
                     "Bank $oldBank to $newBank" + (cleared?.let { "; ${linkName(it.link)} ${it.budgetAccountName} cleared" } ?: "")
+                // UC-009 BR-015: After a change of a Bank Account type Slussen detects the Transfers among the Bank Transactions not yet uploaded again from stored data; the change and the Comparison marker are stored together, so that no Upload Plan is prepared before it has.
                 store.changeTypeAndBank(
                     bankAccountId,
                     type,
@@ -248,7 +260,7 @@ class AccountMappings(
             outcome
         }
         return when (result) {
-            // UC-009 BR-015: After a change of a Bank Account type Slussen detects the Transfers among the Bank Transactions not yet uploaded again; when it could not, the change is stored and no Upload Plan is prepared before it has.
+            // A14 step 4: stored, and said to be stored with the Transfers still to detect when the conclusions could not be stored now.
             is OperationResult.Ran -> when {
                 result.value.change == TypeAndBankOutcome.Stored && !result.value.statusesGiven -> TypeAndBankOutcome.StoredNotDetectedYet
                 else -> result.value.change
@@ -257,6 +269,7 @@ class AccountMappings(
         }
     }
 
+    // UC-009 BR-015: The change and the new statuses are stored so that, when Slussen stops between the two, no Upload Plan is prepared before the statuses are given again.
     /**
      * One change of the Bank Account [bankAccountId] that BR-015 follows with statuses given again: admitted by the
      * coordinator, stored by [change] (O-13, the last step that can fail), recorded in the Decision Journal with the text
@@ -266,7 +279,7 @@ class AccountMappings(
         // UC-009 BR-012: Like every change of Manage Account Mappings, it is not possible while an Upload Plan awaits confirmation or an Upload is written.
         val result = comparison.statusesAgainAfter(OperationKind.AccountMappingChange) { storedAndRecorded(bankAccountId, change) }
         return when (result) {
-            // UC-009 BR-015: The change and the new statuses are stored so that, when Slussen stops between the two, no Upload Plan is prepared before the statuses are given again.
+            // The outcome says whether the statuses were given again within the operation.
             is OperationResult.Ran -> when (val outcome = result.value.change) {
                 is MappingChangeOutcome.Stored -> outcome.copy(statusesGiven = result.value.statusesGiven)
                 else -> outcome
@@ -344,7 +357,7 @@ class AccountMappings(
         )
     }
 
-    // UC-009 BR-008: A Funded By and a Transfer Partner are always a Budget Account that Slussen fetches (UC-005 BR-014).
+    // UC-005 BR-014: A Funded By or Transfer Partner is always a Budget Account that Slussen fetches, one that a Bank Account that is not a Retired Account is mapped to, never a Manually Kept Account.
     /**
      * A9 step 1: the Budget Accounts of the Budget [bankAccount] is mapped into, other than its own, that Slussen
      * fetches, each with the Bank Account mapped to it, in the Budget's order: those the Transfer detection takes as a
@@ -370,7 +383,7 @@ class AccountMappings(
         fun named(id: Long?) = id?.let { "Budget Account ${names[it].orEmpty()}" } ?: "none"
         when {
             current.budgetAccountId == budgetAccountId -> MappingChangeOutcome.Unchanged to null
-            // UC-009 BR-008: A Funded By and a Transfer Partner are always a Budget Account that Slussen fetches, of the same Budget and other than the Bank Account's own.
+            // UC-009 BR-008: A Funded By and a Transfer Partner are always a Budget Account that Slussen fetches; of the Budget the Bank Account is mapped into and other than its own Budget Account (UC-005 BR-014, entity model BANK_ACCOUNT).
             budgetAccountId != null && offeredAsOtherSide(bankAccount, budgets, bankAccounts).none { it.first == budgetAccountId } ->
                 MappingChangeOutcome.NotOffered to null
             else -> when (store.setOtherSide(bankAccountId, current.kind, budgetAccountId)) {
@@ -403,6 +416,248 @@ class AccountMappings(
             is OperationResult.Refused -> MappingChangeOutcome.Unavailable(result.reason)
         }
     }
+
+    // ---- Steps 2-7, A1-A3, A6, A7, A10: confirming and identifying ---------------------------------------------------
+
+    /** The Offered Bank Accounts of the Data Provider of [bankAccount] that can identify it: never a Left-Out Bank Account (BR-004). */
+    private fun identifiableOffers(bankAccount: StoredBankAccount, snapshot: ConnectionReads.Snapshot): List<StoredOfferedBankAccount> =
+        snapshot.offered.filter { offer ->
+            offer.dataProviderId == bankAccount.dataProviderId &&
+                // UC-009 BR-004: A Left-Out Bank Account is never proposed as a likely Bank Account, never offered to confirm or identify a Bank Account, and never identified as one.
+                snapshot.leftOut.none { it.dataProviderId == offer.dataProviderId && it.providerReference == offer.providerReference }
+        }
+
+    private fun offeredView(offer: StoredOfferedBankAccount, bankAccount: StoredBankAccount, snapshot: ConnectionReads.Snapshot) = OfferedToIdentify(
+        offeredBankAccountId = offer.id,
+        bankName = offer.bankId?.let { snapshot.bankNames[it] },
+        name = offer.name,
+        kind = offer.bankAccountKind,
+        currency = offer.currency,
+        lastFourDigits = offer.lastFourDigits,
+        current = offer.providerReference == bankAccount.providerReference,
+    )
+
+    /**
+     * Steps 2-3, A6 steps 1-2, A7 step 1, A10: what the Bank Account [bankAccountId] is confirmed or identified from, or
+     * null when no Bank Account has this id or its transactions come from Transaction Files, which no Data Provider
+     * identifies.
+     */
+    suspend fun identification(bankAccountId: Long): IdentificationSheet? {
+        // UC-009 BR-009: The Bank Account is confirmed or identified again from the Offered Bank Accounts stored at the last delivery, without contacting the Data Provider.
+        val snapshot = reads.snapshot()
+        val bankAccount = snapshot.bankAccounts.firstOrNull { it.id == bankAccountId && it.dataProviderId != null } ?: return null
+        val offers = identifiableOffers(bankAccount, snapshot)
+        // UC-009 BR-004: Slussen only proposes a likely Bank Account for the Operator to confirm; it never identifies one by a guess.
+        val proposed = offers.firstOrNull { it.proposedBankAccountId == bankAccountId }
+        return IdentificationSheet(
+            bankAccountId = bankAccount.id,
+            name = bankAccount.name,
+            sourceName = reads.sourceNameOf(bankAccount),
+            proposed = proposed?.let { offeredView(it, bankAccount, snapshot) },
+            others = offers.filter { it.id != proposed?.id }.map { offeredView(it, bankAccount, snapshot) },
+            sentThrough = store.sentThrough(bankAccountId),
+        )
+    }
+
+    /**
+     * Steps 4-7, A1, A6, A7: the Operator confirms the Offered Bank Account [offeredBankAccountId] as the Bank Account
+     * [bankAccountId]; [confirmed] is the Operator's confirmation of the numbers A7 stated.
+     */
+    suspend fun identify(bankAccountId: Long, offeredBankAccountId: Long, confirmed: SentThrough? = null): IdentifyOutcome {
+        // UC-009 BR-012: Like every change of Manage Account Mappings, it is not possible while an Upload Plan awaits confirmation or an Upload is written.
+        val result = coordinator.run(OperationKind.AccountMappingChange, StartedBy.Operator) {
+            var recorded = ""
+            val outcome = unlessStorageFails<IdentifyOutcome>(IdentifyOutcome.NotStored) {
+                val snapshot = reads.snapshot()
+                val bankAccount = snapshot.bankAccounts.firstOrNull { it.id == bankAccountId } ?: return@run IdentifyOutcome.NotFound
+                if (bankAccount.dataProviderId == null) return@run IdentifyOutcome.NotIdentifiable
+                val offer = identifiableOffers(bankAccount, snapshot).firstOrNull { it.id == offeredBankAccountId } ?: return@run IdentifyOutcome.NotOffered
+                if (offer.providerReference == bankAccount.providerReference && offer.bankAccountFingerprint == bankAccount.bankAccountFingerprint) {
+                    return@run IdentifyOutcome.Unchanged
+                }
+                val identification = NewIdentification(offer.providerReference, offer.bankAccountFingerprint, offer.bankId, clock.instant())
+                // The numbers as the storage checks them: no Upload runs while the coordinator holds this operation (ADR-007 §2).
+                val through = store.sentThrough(bankAccountId)
+                // UC-009 BR-007: Once a transaction sent through its Account Mapping was written, already present, not yet known or unknown, the Bank Account is identified again only after the Operator confirms their number; until then the current identification stays in use.
+                when (val stored = store.identify(bankAccountId, identification, confirmed)) {
+                    is IdentificationStored.ToConfirm -> IdentifyOutcome.ToConfirm(stored.sentThrough)
+                    // UC-009 BR-004: Two Account Mappings never point to the same Bank Account: an Offered Bank Account another one uses is refused with its name (A2).
+                    is IdentificationStored.AlreadyUsed -> IdentifyOutcome.AlreadyUsed(stored.bankAccountName)
+                    IdentificationStored.LeftOut -> IdentifyOutcome.NotOffered
+                    IdentificationStored.NotFound -> IdentifyOutcome.NotFound
+                    IdentificationStored.Stored -> {
+                        recorded = "Bank Account ${bankAccount.name} identified as the Offered Bank Account ${offer.name ?: "without a name"} of " +
+                            "${reads.sourceNameOf(bankAccount)}, confirmed by the Operator" + identifiedStatement(through)
+                        IdentifyOutcome.Identified
+                    }
+                }
+            }
+            // Step 7: the confirmation is recorded in the Decision Journal; it never names the Data Provider's reference (NFR-012).
+            if (outcome == IdentifyOutcome.Identified) journal.record(JournalEventKind.AccountMappingChange, recorded)
+            outcome
+        }
+        return when (result) {
+            is OperationResult.Ran -> result.value
+            is OperationResult.Refused -> IdentifyOutcome.Unavailable(result.reason)
+        }
+    }
+
+    /** A7 step 1, BR-007: the numbers a new identification records, as [through] counts them. */
+    private fun identifiedStatement(through: SentThrough): String =
+        (if (through.sent > 0) "; ${counted(through.sent)} sent through its Account Mapping stay as they are and are never sent again" else "") +
+            (if (through.rejected > 0) "; ${through.rejected} the Budget App rejected are sent again at their next Upload" else "")
+
+    /** A3: the Operator rejects the Offered Bank Account [offeredBankAccountId] proposed as the Bank Account [bankAccountId]. */
+    suspend fun reject(bankAccountId: Long, offeredBankAccountId: Long): IdentifyOutcome {
+        // UC-009 BR-012: Like every change of Manage Account Mappings, it is not possible while an Upload Plan awaits confirmation or an Upload is written.
+        val result = coordinator.run(OperationKind.AccountMappingChange, StartedBy.Operator) {
+            val snapshot = try {
+                reads.snapshot()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                return@run IdentifyOutcome.NotStored
+            }
+            val bankAccount = snapshot.bankAccounts.firstOrNull { it.id == bankAccountId } ?: return@run IdentifyOutcome.NotFound
+            val proposal = identifiableOffers(bankAccount, snapshot).firstOrNull { it.id == offeredBankAccountId && it.proposedBankAccountId == bankAccountId }
+                ?: return@run IdentifyOutcome.NotOffered
+            // A3 steps 1-3: no identification is recorded, so the Bank Account's transactions stay out of use; only the rejection is recorded.
+            journal.record(
+                JournalEventKind.AccountMappingChange,
+                "Bank Account ${bankAccount.name}: the proposed match ${proposal.name ?: "without a name"} rejected by the Operator; " +
+                    "no identification recorded, its transactions stay out of use until it is identified",
+            )
+            IdentifyOutcome.Rejected
+        }
+        return when (result) {
+            is OperationResult.Ran -> result.value
+            is OperationResult.Refused -> IdentifyOutcome.Unavailable(result.reason)
+        }
+    }
+
+    // ---- A8, A11: moving, storing and removing an Account Mapping ----------------------------------------------------------
+
+    /**
+     * A8 step 1: the Budget Accounts [bankAccount] can be mapped to: of the Budgets Slussen serves, receiving through no
+     * Account Mapping, no Manually Kept Account (S-B-10, UC-013 BR-014) and in the Bank Account's currency.
+     */
+    private fun mappingChoices(bankAccount: StoredBankAccount, snapshot: ConnectionReads.Snapshot): List<MappingChoice> =
+        // UC-009 BR-001: A Budget Account receives the transactions of at most one Bank Account, and a Manually Kept Account has no Account Mapping.
+        reads.freeBudgetAccounts(snapshot).filter { it.budgetCurrency == bankAccount.currency }.map {
+            MappingChoice(it.budgetAccountId, it.budgetName, it.name, it.balance)
+        }
+
+    private fun budgetAccountName(budgetAccountId: Long?, snapshot: ConnectionReads.Snapshot): String? =
+        budgetAccountId?.let { id -> snapshot.budgets.flatMap { it.budgetAccounts }.firstOrNull { it.id == id }?.name }
+
+    /** A8 steps 1 and 3, A11 step 1: where the Bank Account [bankAccountId] can be mapped and what a move or a removal states; null when there is no such Bank Account. */
+    suspend fun moveSheet(bankAccountId: Long): MoveSheet? {
+        val snapshot = reads.snapshot()
+        val bankAccount = snapshot.bankAccounts.firstOrNull { it.id == bankAccountId } ?: return null
+        return MoveSheet(
+            bankAccountId = bankAccount.id,
+            name = bankAccount.name,
+            currentBudgetAccountName = budgetAccountName(bankAccount.mapping?.budgetAccountId, snapshot),
+            choices = mappingChoices(bankAccount, snapshot),
+            sentThrough = store.sentThrough(bankAccountId),
+        )
+    }
+
+    /**
+     * A8 steps 2-5: the Operator maps the Bank Account [bankAccountId] to [budgetAccountId], moving its Account Mapping
+     * or storing a new one when it has none; [confirmed] is the Operator's confirmation of the numbers step 3 stated.
+     */
+    suspend fun move(bankAccountId: Long, budgetAccountId: Long, confirmed: SentThrough? = null): MoveOutcome = moved(bankAccountId) { bankAccount, snapshot ->
+        val from = bankAccount.mapping?.budgetAccountId
+        val to = budgetAccountName(budgetAccountId, snapshot)
+        // The numbers as the storage checks them: no Upload runs while the coordinator holds this operation (ADR-007 §2).
+        val through = store.sentThrough(bankAccountId)
+        when {
+            from == budgetAccountId -> MoveOutcome.Unchanged to null
+            mappingChoices(bankAccount, snapshot).none { it.budgetAccountId == budgetAccountId } || to == null -> MoveOutcome.NotOffered to null
+            // UC-009 BR-003: Once a transaction sent through the Account Mapping was written, already present, not yet known or unknown, it is moved only by an action the Operator confirms, after Slussen stated their number.
+            from != null -> when (val stored = store.move(bankAccountId, budgetAccountId, confirmed)) {
+                MappingStored.Stored -> moveStored to "Bank Account ${bankAccount.name}: Account Mapping moved from Budget Account " +
+                    "${budgetAccountName(from, snapshot)} to Budget Account $to" + statement(through, budgetAccountName(from, snapshot), "go to Budget Account $to at their next Upload")
+                else -> refusedMove(stored)
+            }
+            // A8 step 3: a Bank Account that has no Account Mapping is mapped again without a question.
+            else -> when (val stored = store.mapAgain(bankAccountId, budgetAccountId)) {
+                MappingStored.Stored -> moveStored to "Bank Account ${bankAccount.name} mapped to Budget Account $to" +
+                    rejectedStatement(through, "go to Budget Account $to at their next Upload")
+                else -> refusedMove(stored)
+            }
+        }
+    }
+
+    /** A11 steps 1-4: the Operator removes the Account Mapping of [bankAccountId]; [confirmed] is the confirmation of the numbers step 1 stated. */
+    suspend fun remove(bankAccountId: Long, confirmed: SentThrough? = null): MoveOutcome = moved(bankAccountId) { bankAccount, snapshot ->
+        val from = bankAccount.mapping?.budgetAccountId ?: return@moved MoveOutcome.NotMapped to null
+        val through = store.sentThrough(bankAccountId)
+        // UC-009 BR-003: Once a transaction sent through the Account Mapping was written, already present, not yet known or unknown, it is removed only by an action the Operator confirms; the rejected ones wait until the Bank Account is mapped again.
+        when (val stored = store.remove(bankAccountId, confirmed)) {
+            MappingStored.Stored -> moveStored to "Bank Account ${bankAccount.name}: Account Mapping to Budget Account ${budgetAccountName(from, snapshot)} removed; " +
+                "its identification and history are kept" + statement(through, budgetAccountName(from, snapshot), "wait until the Bank Account is mapped again")
+            else -> refusedMove(stored)
+        }
+    }
+
+    private fun refusedMove(stored: MappingStored): Pair<MoveOutcome, String?> = when (stored) {
+        is MappingStored.ToConfirm -> MoveOutcome.ToConfirm(stored.sentThrough)
+        MappingStored.NotFound -> MoveOutcome.NotFound
+        MappingStored.NotAllowed, MappingStored.Stored -> MoveOutcome.NotOffered
+    } to null
+
+    /**
+     * A8 step 5, A11 step 4: the number recorded with the change, as [through] counts them: the transactions written
+     * through the Account Mapping, which stay in [stayIn], and the rejected ones, which [rejectedThen].
+     */
+    private fun statement(through: SentThrough, stayIn: String?, rejectedThen: String): String {
+        val written = through.sent
+        val stays = if (written > 0) {
+            "; ${counted(written)} written through it ${if (written == 1) "stays" else "stay"} in Budget Account $stayIn and " +
+                "${if (written == 1) "is" else "are"} never sent again; the Operator moves or deletes them in the Budget App"
+        } else {
+            "; no transaction written through it"
+        }
+        return stays + rejectedStatement(through, rejectedThen)
+    }
+
+    private fun rejectedStatement(through: SentThrough, rejectedThen: String): String =
+        if (through.rejected > 0) "; ${through.rejected} the Budget App rejected $rejectedThen" else ""
+
+    // UC-009 BR-015: After moving, storing or removing an Account Mapping, the statuses are given again and the Transfers detected again from stored data; the change and the Comparison marker are stored together, so that no Upload Plan is prepared before they are when Slussen stops between the two.
+    /**
+     * One move, new Account Mapping or removal of the Bank Account [bankAccountId], which BR-015 follows with statuses
+     * given again: admitted by the coordinator, stored by [change] (O-13, the last step that can fail), recorded in the
+     * Decision Journal with the text [change] gives for it, and concluded from stored data within the same operation.
+     */
+    private suspend fun moved(bankAccountId: Long, change: suspend (StoredBankAccount, ConnectionReads.Snapshot) -> Pair<MoveOutcome, String?>): MoveOutcome {
+        // UC-009 BR-012: Like every change of Manage Account Mappings, it is not possible while an Upload Plan awaits confirmation or an Upload is written.
+        val result = comparison.statusesAgainAfter(OperationKind.AccountMappingChange) {
+            // NFR-023: O-13 is the last step that can fail here, so "not stored" is only ever said of a change that was not stored.
+            val (outcome, recorded) = unlessStorageFails<Pair<MoveOutcome, String?>>(MoveOutcome.NotStored to null) {
+                val snapshot = reads.snapshot()
+                val bankAccount = snapshot.bankAccounts.firstOrNull { it.id == bankAccountId } ?: return@unlessStorageFails MoveOutcome.NotFound to null
+                change(bankAccount, snapshot)
+            }
+            // A8 step 5, A11 step 4: the change is recorded, with its number, before the statuses are given again.
+            if (outcome is MoveOutcome.Stored && recorded != null) journal.record(JournalEventKind.AccountMappingChange, recorded)
+            outcome
+        }
+        return when (result) {
+            is OperationResult.Ran -> when (val outcome = result.value.change) {
+                // The outcome says whether the statuses were given again within the operation.
+                is MoveOutcome.Stored -> outcome.copy(statusesGiven = result.value.statusesGiven)
+                else -> outcome
+            }
+            is OperationResult.Refused -> MoveOutcome.Unavailable(result.reason)
+        }
+    }
+
+    private val moveStored = MoveOutcome.Stored(statusesGiven = true)
+
+    private fun counted(n: Int): String = if (n == 1) "1 transaction" else "$n transactions"
 
     /**
      * What [type] would clear of [bankAccount]: a Funded By belongs only to a credit card and a Transfer Partner only to

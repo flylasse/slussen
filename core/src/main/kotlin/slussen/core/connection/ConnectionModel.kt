@@ -377,4 +377,6 @@ data class AddedBankAccount(
     val sentThrough: Boolean = false,
     /** Whether its Source identifies it: a Data Provider's reference is recorded for it, or its transactions come from Transaction Files. */
     val identified: Boolean = true,
+    /** Step 2 of UC-009: an Offered Bank Account its Source last delivered is proposed as a likely match of it and waits for the Operator's confirmation (UC-013 A6). */
+    val waitsForConfirmation: Boolean = false,
 )

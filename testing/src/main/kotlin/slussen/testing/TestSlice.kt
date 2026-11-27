@@ -100,7 +100,7 @@ class TestSlice(
     val transferDecisions = TransferDecisions(
         connectionStore, copyStore.transferStore, copyStore, comparison, settings, journal, clock, plugins.budgetApp.profile.matchingDateWindowDays,
     )
-    val mappings = AccountMappings(plugins, connectionStore, connectionStore, offeredStore, coordinator, journal, comparison)
+    val mappings = AccountMappings(plugins, connectionStore, connectionStore, offeredStore, coordinator, journal, comparison, clock)
     val status = ImportStatus(
         budgetAppName = plugins.budgetApp.profile.name,
         currentDataProviders = { plugins.dataProviders.map { it.stored } },

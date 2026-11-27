@@ -5,6 +5,7 @@ import slussen.core.port.BankAccountType
 import slussen.core.port.ConnectionStore
 import slussen.core.port.OfferedBankAccountStore
 import slussen.core.port.OtherSideKind
+import slussen.core.port.SentThrough
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredBudget
 import slussen.core.port.StoredLeftOutBankAccount
@@ -28,6 +29,8 @@ internal class ConnectionReads(
         val bankNames: Map<Long, String>,
         val offered: List<StoredOfferedBankAccount>,
         val leftOut: List<StoredLeftOutBankAccount>,
+        /** What was sent through the Account Mapping of each Bank Account with a Sent Record (UC-009 BR-003). */
+        val sentThrough: Map<Long, SentThrough> = emptyMap(),
     )
 
     suspend fun snapshot(): Snapshot = Snapshot(
@@ -36,6 +39,7 @@ internal class ConnectionReads(
         bankNames = store.banks().associate { it.id to it.name },
         offered = offered.offered(),
         leftOut = store.leftOutBankAccounts(),
+        sentThrough = store.sentThroughMappings(),
     )
 
     fun sourceName(dataProviderId: Long): String =
@@ -119,11 +123,22 @@ internal class ConnectionReads(
             startDate = bankAccount.startDate,
             retired = bankAccount.retired,
             otherSide = otherSide(bankAccount, snapshot.budgets, snapshot.bankAccounts),
-            // Step 1 of UC-009: whether transactions were sent through its Account Mapping, by the time of the first send to its current Budget Account.
-            sentThrough = bankAccount.mapping?.firstSentAt != null,
+            sentThrough = sentThroughShown(bankAccount, snapshot),
             // Step 1 of UC-009, whether it is identified (BR-004): a Data Provider identifies it by the reference recorded for it; Transaction Files need none.
             identified = bankAccount.dataProviderId == null || bankAccount.providerReference != null,
+            waitsForConfirmation = snapshot.offered.any { it.proposedBankAccountId == bankAccount.id && stateOf(it, snapshot) is ImportState.ProbablyAdded },
         )
+    }
+
+    // UC-009 BR-003: A transaction counts as sent through the Account Mapping when it was sent from the Bank Account to the Budget Account the Account Mapping now names, also through an earlier Account Mapping of the Bank Account to that Budget Account.
+    /**
+     * Step 1 of UC-009: whether transactions were sent through the Account Mapping of [bankAccount], read from the Sent
+     * Records of its own Bank Transactions ([SentThrough.of]), a rejected one included, or from the time of the first
+     * send through it; `first_sent_at` is empty after a move or a new Account Mapping, so it never says "not sent" alone.
+     */
+    private fun sentThroughShown(bankAccount: StoredBankAccount, snapshot: Snapshot): Boolean {
+        val through = snapshot.sentThrough[bankAccount.id] ?: SentThrough.NONE
+        return bankAccount.mapping?.firstSentAt != null || through.sent > 0 || through.rejected > 0
     }
 
     // UC-009 BR-008: A credit card Bank Account can have a Funded By and every other Bank Account a Transfer Partner; both start empty.

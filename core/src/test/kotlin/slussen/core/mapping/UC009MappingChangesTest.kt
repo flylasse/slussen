@@ -596,8 +596,8 @@ class UC009MappingChangesTest {
 
     @Test
     @UseCase(id = "UC-009", scenario = "A9: Set, Change or Clear Funded By or Transfer Partner", businessRules = ["BR-008"])
-    @DisplayName("BR-008 (O-13): the storage itself refuses a Funded By for a Bank Account that is not a credit card, a Transfer Partner for a credit card, and a Budget Account that is its own, of another Budget, a Manually Kept Account or fed by no Bank Account that is not a Retired Account, storing nothing; it stores one that is allowed and clears one")
-    fun theStorageRefusesAFundedByTheEntityModelForbids() = runTest {
+    @DisplayName("BR-008 (O-13, the in-memory fake of :testing; the Room store's own refusals are tested on a device in UC009ManageAccountMappingsPersistenceIT): the fake storage refuses a Funded By for a Bank Account that is not a credit card, a Transfer Partner for a credit card, and a Budget Account that is its own, of another Budget, a Manually Kept Account or fed by no Bank Account that is not a Retired Account, storing nothing; it stores one that is allowed and clears one")
+    fun theFakeStorageRefusesAFundedByTheEntityModelForbids() = runTest {
         ready()
         val checking = checking()
         val card = rewardsCard()
@@ -850,6 +850,52 @@ class UC009MappingChangesTest {
         assertEquals(0, eligibleOf(transaction(paid).bankAccountId))
     }
 
+    @Test
+    @UseCase(id = "UC-009", scenario = "A14: Change the Bank Account Type or the Bank", businessRules = ["BR-015"])
+    @DisplayName("A14 step 4, UC-005 BR-015 (S-B-17): a Card Payment the Operator split is never dissolved by the change of the type: it stays split with both Transfer Legs, each an ordinary Bank Transaction, and nothing is journaled as dropped")
+    fun aTypeChangeNeverDissolvesASplitTransfer() = runTest {
+        val (paid, received) = plainPair()
+        decide(paid, TransferChoice.Split, TransferDecision.Split)
+        val split = transferOf(paid)!!
+        val card = transaction(received).bankAccountId
+        val journaled = slice.journalRecorder.entries.size
+
+        val outcome = slice.mappings.changeTypeAndBank(card, BankAccountType.Other, BankChoice.Known(bankAccountOf(card).bankId), clearingConfirmed = true)
+
+        assertEquals(TypeAndBankOutcome.Stored, outcome)
+        assertEquals(listOf(split), slice.copyStore.transfers.toList())
+        assertEquals(setOf(paid, received), legsOf(split))
+        assertEquals(TransactionStatus.New, status(paid))
+        assertEquals(TransactionStatus.New, status(received))
+        assertTrue(entries(journaled, JournalEventKind.OperatorDecision).isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A4: Retire a Bank Account", businessRules = ["BR-005", "BR-015"])
+    @DisplayName("A4, A5, UC-005 BR-015 (S-B-17): a Transfer the Operator split stays split while the Bank Account of a side is a Retired Account and after it is restored: both Transfer Legs keep their Transfer, the other side stays an ordinary Bank Transaction, and nothing is journaled as dropped")
+    fun retiringAndRestoringKeepASplitTransferSplit() = runTest {
+        val (paid, received) = plainPair()
+        decide(paid, TransferChoice.Split, TransferDecision.Split)
+        val split = transferOf(paid)!!
+        val card = transaction(received).bankAccountId
+        val journaled = slice.journalRecorder.entries.size
+
+        assertEquals(stored, slice.mappings.retire(card))
+
+        assertEquals(listOf(split), slice.copyStore.transfers.toList())
+        assertEquals(setOf(paid, received), legsOf(split))
+        assertEquals(TransactionStatus.New, status(paid))
+        assertEquals(0, eligibleOf(card))
+
+        assertEquals(stored, slice.mappings.restore(card))
+
+        assertEquals(listOf(split), slice.copyStore.transfers.toList())
+        assertEquals(setOf(paid, received), legsOf(split))
+        assertEquals(TransactionStatus.New, status(paid))
+        assertEquals(TransactionStatus.New, status(received))
+        assertTrue(entries(journaled, JournalEventKind.OperatorDecision).isEmpty())
+    }
+
     // ---- BR-015: the statuses after a change -----------------------------------------------------------------------------
 
     @Test
@@ -904,8 +950,9 @@ class UC009MappingChangesTest {
 
     /**
      * BR-015: [change] stores its change and the Comparison marker in one step; while the conclusions cannot be stored, as
-     * when Slussen stops between the two, [paid] keeps the status it had and the marker blocks every Upload Plan (ADR-007
-     * §3); the next start concludes from stored data, without a read, and gives [after].
+     * when Slussen stops between the two, [paid] keeps the status it had and the marker stays set (ADR-007 §3 makes the
+     * marker block every Upload Plan; the preparation of an Upload Plan comes with Wave 4, so this asserts the marker
+     * only); the next start concludes from stored data, without a read, and gives [after].
      */
     private suspend fun assertConcludedAtTheNextStart(paid: Long, after: TransactionStatus, notGivenYet: Any, change: suspend () -> Any) {
         val before = status(paid)
@@ -933,7 +980,7 @@ class UC009MappingChangesTest {
 
     @Test
     @UseCase(id = "UC-009", scenario = "A4: Retire a Bank Account", businessRules = ["BR-015"])
-    @DisplayName("BR-015: retiring is stored together with the Comparison marker: when Slussen stops before the statuses are given again, the change is said to be stored with the statuses still to give, no Upload Plan can be prepared from the old statuses, and the next start gives them from stored data")
+    @DisplayName("BR-015: retiring is stored together with the Comparison marker: when Slussen stops before the statuses are given again, the change is said to be stored with the statuses still to give, the old status stays with the Comparison marker set, which ADR-007 §3 makes block every Upload Plan, and the next start gives the statuses from stored data")
     fun aStopAfterRetiringIsConcludedAtTheNextStart() = runTest {
         val (paid, received) = plainPair()
         val card = transaction(received).bankAccountId

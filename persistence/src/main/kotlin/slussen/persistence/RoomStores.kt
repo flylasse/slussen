@@ -22,7 +22,11 @@ import slussen.core.port.FetchResultOutcome
 import slussen.core.port.FetchStore
 import slussen.core.port.FileFormatRegistration
 import slussen.core.port.ImportStatusStore
+import slussen.core.port.IdentificationStored
 import slussen.core.port.KeptOutcome
+import slussen.core.port.MappingStored
+import slussen.core.port.NewIdentification
+import slussen.core.port.SentThrough
 import slussen.core.port.MappingStore
 import slussen.core.port.NewBackOff
 import slussen.core.port.NewBankAccount
@@ -320,6 +324,13 @@ class RoomConnectionStore(private val dao: ConnectionDao) : ConnectionStore {
 
     override suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome =
         dao.setManuallyKept(budgetAccountId, manuallyKept).outcome()
+
+    override suspend fun sentThroughMappings(): Map<Long, SentThrough> {
+        val mapped = dao.mappings().associate { it.bankAccountId to it.budgetAccountId }
+        return dao.sentRecordsByBankAccount().groupBy { it.bankAccountId }.mapValues { (bankAccountId, records) ->
+            SentThrough.of(records.map { it.stored() }, mapped[bankAccountId])
+        }
+    }
 }
 
 private fun LeftOutBankAccountEntity.stored() = StoredLeftOutBankAccount(id, dataProviderId, providerReference, name, leftOutAt)
@@ -358,6 +369,18 @@ class RoomMappingStore(private val dao: ConnectionDao) : MappingStore {
             ConnectionDao.OtherSide.NotAllowed -> OtherSideStored.NotAllowed
             ConnectionDao.OtherSide.NotFound -> OtherSideStored.NotFound
         }
+
+    override suspend fun sentThrough(bankAccountId: Long): SentThrough = dao.sentThrough(bankAccountId)
+
+    override suspend fun identify(bankAccountId: Long, identification: NewIdentification, confirmed: SentThrough?): IdentificationStored =
+        dao.identify(bankAccountId, identification, confirmed)
+
+    override suspend fun move(bankAccountId: Long, budgetAccountId: Long, confirmed: SentThrough?): MappingStored =
+        dao.move(bankAccountId, budgetAccountId, confirmed)
+
+    override suspend fun mapAgain(bankAccountId: Long, budgetAccountId: Long): MappingStored = dao.mapAgain(bankAccountId, budgetAccountId)
+
+    override suspend fun remove(bankAccountId: Long, confirmed: SentThrough?): MappingStored = dao.remove(bankAccountId, confirmed)
 }
 
 /** The Offered Bank Accounts in `device.db` (O-2). */
