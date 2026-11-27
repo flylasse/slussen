@@ -163,6 +163,48 @@ class UC010TransferDescriptionsViewModelTest {
 
     @Test
     @UseCase(id = "UC-010", scenario = "A7: Edit a Description List", requirements = ["NFR-023"])
+    @DisplayName("Failure postconditions: a changed entry that cannot be stored is answered at the list, and tapping the entry and Change offers the text typed again; another entry offers its own text")
+    fun aChangeThatCannotBeStoredOffersTheTypedTextAgain() {
+        slice.settings.failsToStore = true
+        val viewModel = screen()
+        viewModel.openEntry(CardPayment, "ACH PMT")
+        viewModel.startChanging()
+        viewModel.edit("ACH * PMT")
+
+        viewModel.save()
+
+        assertEquals(
+            AnswerUi("Not saved: Slussen could not store ACH * PMT. ACH PMT stays as it was.", AnswerKind.Failed, "Tap ACH PMT to try again."),
+            viewModel.ui().list(CardPayment).answer,
+        )
+        viewModel.openEntry(CardPayment, "ACH PMT")
+        viewModel.startChanging()
+        assertEquals("ACH * PMT", viewModel.ui().editor!!.value)
+        viewModel.cancelEditing()
+        viewModel.openEntry(CardPayment, "AUTOPAY")
+        viewModel.startChanging()
+        assertEquals("AUTOPAY", viewModel.ui().editor!!.value)
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "A7: Edit a Description List", businessRules = ["BR-008"])
+    @DisplayName("BR-008 (S-B-27): an entry of stars only is refused at the field with why and what to enter; nothing is stored")
+    fun anEntryOfStarsOnlyIsRefusedAtTheField() {
+        val viewModel = screen()
+        viewModel.startAdding(CardPayment)
+        viewModel.edit(" ** ")
+
+        viewModel.save()
+
+        assertEquals(
+            "Not saved: an entry of only * matches nothing. Enter the text a payee or memo holds; * stands for any characters within it.",
+            viewModel.ui().editor!!.error,
+        )
+        assertEquals(defaultCardPayment, stored(CardPayment))
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "A7: Edit a Description List", requirements = ["NFR-023"])
     @DisplayName("NFR-023: a change whose lists cannot be read is answered Not saved at its list, and the screen says the lists could not be read again; never a crash")
     fun aChangeThatCannotReadTheListsIsNotSaved() {
         val viewModel = screen()

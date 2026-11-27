@@ -42,6 +42,8 @@ object DescriptionTexts {
     /** A7 step 1, BR-008 (`#edit` Not saved): why the entry typed is refused, at the field, with what to enter. */
     fun refused(outcome: DescriptionOutcome): String? = when (outcome) {
         DescriptionOutcome.Empty -> "Not saved: an entry cannot be empty. Enter the text a payee or memo holds."
+        DescriptionOutcome.OnlyStars ->
+            "Not saved: an entry of only * matches nothing. Enter the text a payee or memo holds; * stands for any characters within it."
         is DescriptionOutcome.TooLong ->
             "Not saved: an entry is at most ${outcome.maxLength} characters, and this one has ${outcome.length}. Enter a shorter text."
         is DescriptionOutcome.AlreadyInList ->

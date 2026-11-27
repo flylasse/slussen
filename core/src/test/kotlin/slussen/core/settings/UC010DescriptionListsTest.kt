@@ -48,6 +48,9 @@ class UC010DescriptionListsTest {
 
     private fun stored(kind: TransferDescriptionKind): List<String> = slice.copyStore.transferDescriptions.filter { it.kind == kind }.map { it.text }
 
+    /** The default lists as the journal writes them: each entry in quotation marks, between " · ". */
+    private fun quoted(entries: List<String>): String = entries.joinToString(" · ") { "\"$it\"" }
+
     private fun configurationEntries() = slice.journalRecorder.entries.filter { it.eventKind == JournalEventKind.ConfigurationChange }
 
     /** A Bank Transaction a Fetch stored, with [payee] as its payee. */
@@ -134,8 +137,8 @@ class UC010DescriptionListsTest {
         assertTrue(slice.stateVersion.value > version)
         val entry = configurationEntries().single()
         assertEquals(
-            "Card Payment Descriptions: PINECREST PMT added; before: ${defaultCardPayment.joinToString(" · ")}; " +
-                "after: ${(defaultCardPayment + "PINECREST PMT").joinToString(" · ")}",
+            "Card Payment Descriptions: \"PINECREST PMT\" added; before: ${quoted(defaultCardPayment)}; " +
+                "after: ${quoted(defaultCardPayment + "PINECREST PMT")}",
             entry.details,
         )
     }
@@ -166,7 +169,6 @@ class UC010DescriptionListsTest {
         assertTrue(lists.edit(CardPayment, DescriptionEdit.Add(" $hundred ")) is DescriptionOutcome.Stored)
 
         assertEquals(hundred, stored(CardPayment).last())
-        assertEquals(DescriptionRules.MAX_LENGTH, 100)
     }
 
     @Test
@@ -208,7 +210,7 @@ class UC010DescriptionListsTest {
         assertEquals(DescriptionOutcome.Stored(after, SettingEffect.StatusesGiven()), outcome)
         assertEquals(after, stored(CardPayment))
         assertEquals(
-            "Card Payment Descriptions: ACH PMT changed to ACH * PMT; before: ${defaultCardPayment.joinToString(" · ")}; after: ${after.joinToString(" · ")}",
+            "Card Payment Descriptions: \"ACH PMT\" changed to \"ACH * PMT\"; before: ${quoted(defaultCardPayment)}; after: ${quoted(after)}",
             configurationEntries().single().details,
         )
         assertTrue(lists.edit(CardPayment, DescriptionEdit.Change("AUTOPAY", "Autopay")) is DescriptionOutcome.Stored)
@@ -239,7 +241,7 @@ class UC010DescriptionListsTest {
 
         assertEquals(emptyList<String>(), stored(BankTransfer))
         assertEquals(defaultCardPayment, stored(CardPayment))
-        assertEquals("Bank Transfer Descriptions: XFER removed; before: XFER; after: no entry", configurationEntries().single().details)
+        assertEquals("Bank Transfer Descriptions: \"XFER\" removed; before: \"XFER\"; after: no entry", configurationEntries().single().details)
         assertEquals(emptyList<DescriptionEntryShown>(), lists.shown().bankTransfer.entries)
         assertEquals(DescriptionOutcome.EntryGone, lists.edit(BankTransfer, DescriptionEdit.Remove("XFER")))
         assertEquals(DescriptionOutcome.EntryGone, lists.edit(BankTransfer, DescriptionEdit.Change("XFER", "X-FER")))
@@ -265,10 +267,10 @@ class UC010DescriptionListsTest {
         assertEquals(DescriptionOutcome.Stored(defaultCardPayment, SettingEffect.StatusesGiven()), outcome)
         assertEquals(defaultCardPayment, stored(CardPayment))
         assertEquals(defaultBankTransfer + "SWEEP", stored(BankTransfer))
-        val current = "Card Payment Descriptions before the default list is restored: ${before.joinToString(" · ")}"
+        val current = "Card Payment Descriptions before the default list is restored: ${quoted(before)}"
         assertEquals(listOf(current), recordedWhenStored)
         assertEquals(
-            listOf(current, "Card Payment Descriptions restored to the default list: ${defaultCardPayment.joinToString(" · ")}"),
+            listOf(current, "Card Payment Descriptions restored to the default list: ${quoted(defaultCardPayment)}"),
             configurationEntries().drop(3).map { it.details },
         )
     }
@@ -278,15 +280,20 @@ class UC010DescriptionListsTest {
     @DisplayName("A8, failure postconditions: a restore that cannot be stored keeps the list; the current list recorded first is followed by the entry that it was not restored")
     fun aRestoreThatCannotBeStoredKeepsTheList() = runTest {
         lists.edit(CardPayment, DescriptionEdit.Add("PINECREST PMT"))
+        val journaled = configurationEntries().size
         slice.settings.failsToStore = true
 
         assertEquals(DescriptionOutcome.NotStored, lists.edit(CardPayment, DescriptionEdit.Restore))
 
         assertEquals(defaultCardPayment + "PINECREST PMT", stored(CardPayment))
         assertEquals(
-            "Card Payment Descriptions not restored: the default list could not be stored, and the list stays as recorded before",
-            configurationEntries().last().details,
+            listOf(
+                "Card Payment Descriptions before the default list is restored: ${quoted(defaultCardPayment + "PINECREST PMT")}",
+                "Card Payment Descriptions not restored: the default list could not be stored, and the list stays as recorded before",
+            ),
+            configurationEntries().drop(journaled).map { it.details },
         )
+        assertTrue(configurationEntries().none { it.details.contains("restored to the default list") })
     }
 
     // ---- Failure postconditions and the precondition ----------------------------------------------------------------
@@ -432,8 +439,8 @@ class UC010DescriptionListsTest {
 
     @Test
     @UseCase(id = "UC-010", scenario = "A7: Edit a Description List", businessRules = ["BR-009"])
-    @DisplayName("UC-005 BR-015: a Confirmed Transfer whose own sides are no longer valid, by a change stored before whose statuses an earlier stop left pending, is dissolved when a list changes, and the dropped decision is recorded with its reason for each Transfer Leg")
-    fun aConfirmedTransferWhoseSidesAreNoLongerValidIsDissolved() = runTest {
+    @DisplayName("Step 5, ADR-007 §3a, UC-005 BR-015: a list change also concludes the Comparison marker an earlier stop left: a Confirmed Transfer whose Transfer Leg lost its Account Mapping by that earlier change (not by the description) is dissolved and its dropped decision recorded for each Transfer Leg")
+    fun aListChangeConcludesAMarkerAnEarlierStopLeft() = runTest {
         val (paid, received) = sweepProposed()
         slice.transferDecisions.decide(paid, TransferChoice.Confirm)
         val reserve = slice.connectionStore.bankAccountList.single { it.name == "Kestrel Reserve" }.id
@@ -500,6 +507,58 @@ class UC010DescriptionListsTest {
         assertEquals(TransactionStatus.TransferLeg, fixture.status(paid))
     }
 
+    @Test
+    @UseCase(id = "UC-010", scenario = "A7: Edit a Description List", businessRules = ["BR-008"])
+    @DisplayName("A7 step 3: each entry is recorded in quotation marks, so that an entry holding \" · \" reads as one entry, a quotation mark in an entry is written twice, and an empty list (no entry) cannot be taken for an entry")
+    fun eachEntryIsRecordedSoThatItCannotBeMisread() = runTest {
+        slice.copyStore.transferDescriptions.removeAll { it.kind == CardPayment && it.text != "AUTOPAY" }
+
+        lists.edit(CardPayment, DescriptionEdit.Add("PAY · CARD"))
+        lists.edit(CardPayment, DescriptionEdit.Add("SAY \"HI\""))
+        slice.copyStore.transferDescriptions.removeAll { it.kind == BankTransfer && it.text != "XFER" }
+        lists.edit(BankTransfer, DescriptionEdit.Change("XFER", "no entry"))
+        lists.edit(BankTransfer, DescriptionEdit.Remove("no entry"))
+
+        assertEquals(
+            listOf(
+                "Card Payment Descriptions: \"PAY · CARD\" added; before: \"AUTOPAY\"; after: \"AUTOPAY\" · \"PAY · CARD\"",
+                "Card Payment Descriptions: \"SAY \"\"HI\"\"\" added; before: \"AUTOPAY\" · \"PAY · CARD\"; " +
+                    "after: \"AUTOPAY\" · \"PAY · CARD\" · \"SAY \"\"HI\"\"\"",
+                "Bank Transfer Descriptions: \"XFER\" changed to \"no entry\"; before: \"XFER\"; after: \"no entry\"",
+                "Bank Transfer Descriptions: \"no entry\" removed; before: \"no entry\"; after: no entry",
+            ),
+            configurationEntries().map { it.details },
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "A7: Edit a Description List", businessRules = ["BR-008"])
+    @DisplayName("BR-008 (S-B-27): an entry holds at least one character other than *: *, *** and a changed entry of stars only are refused, nothing is stored or recorded; * * holds a space and is stored")
+    fun anEntryOfStarsOnlyIsRefused() = runTest {
+        val version = slice.stateVersion.value
+
+        assertEquals(DescriptionOutcome.OnlyStars, lists.edit(CardPayment, DescriptionEdit.Add(" * ")))
+        assertEquals(DescriptionOutcome.OnlyStars, lists.edit(CardPayment, DescriptionEdit.Add("***")))
+        assertEquals(DescriptionOutcome.OnlyStars, lists.edit(CardPayment, DescriptionEdit.Change("AUTOPAY", "**")))
+
+        assertEquals(defaultCardPayment, stored(CardPayment))
+        assertEquals(version, slice.stateVersion.value)
+        assertTrue(slice.journalRecorder.entries.isEmpty())
+        assertTrue(lists.edit(CardPayment, DescriptionEdit.Add("* *")) is DescriptionOutcome.Stored)
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "A7: Edit a Description List", businessRules = ["BR-008"])
+    @DisplayName("BR-008 (S-B-27): a list that already holds an entry of stars only is not changed by the rule: another entry is added beside it, and it is removed like any other")
+    fun aStoredEntryOfStarsOnlyStays() = runTest {
+        slice.copyStore.transferDescriptions += StoredTransferDescription(CardPayment, "*")
+
+        assertTrue(lists.edit(CardPayment, DescriptionEdit.Add("PINECREST PMT")) is DescriptionOutcome.Stored)
+        assertEquals(defaultCardPayment + "*" + "PINECREST PMT", stored(CardPayment))
+        assertTrue(lists.edit(CardPayment, DescriptionEdit.Remove("*")) is DescriptionOutcome.Stored)
+        assertEquals(defaultCardPayment + "PINECREST PMT", stored(CardPayment))
+    }
+
     // ---- UC-011 BR-001: a long list in the Decision Journal ----------------------------------------------------------
 
     @Test
@@ -515,10 +574,10 @@ class UC010DescriptionListsTest {
         val parts = configurationEntries()
         assertTrue(parts.size > 1)
         assertTrue(parts.all { it.details.length <= 4000 })
-        assertTrue(parts.first().details.startsWith("Card Payment Descriptions: PINECREST PMT added (part 1 of ${parts.size}); "))
+        assertTrue(parts.first().details.startsWith("Card Payment Descriptions: \"PINECREST PMT\" added (part 1 of ${parts.size}); "))
         val all = parts.joinToString(" ") { it.details }
         // Each entry once in the list before and once in the list after; the new one only after.
-        long.forEach { entry -> assertEquals(2, Regex(Regex.escape(entry)).findAll(all).count(), entry) }
-        assertTrue(all.substringAfter("after: ").contains("PINECREST PMT"))
+        long.forEach { entry -> assertEquals(2, Regex(Regex.escape("\"$entry\"")).findAll(all).count(), entry) }
+        assertTrue(all.substringAfter("after: ").contains("\"PINECREST PMT\""))
     }
 }

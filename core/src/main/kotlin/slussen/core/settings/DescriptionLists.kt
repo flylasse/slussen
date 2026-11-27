@@ -53,6 +53,9 @@ sealed interface DescriptionOutcome {
     /** BR-008: the entry is empty once the spaces at its start and end are removed. Nothing is stored. */
     data object Empty : DescriptionOutcome
 
+    /** BR-008 (S-B-27): the entry holds no character other than `*`, so it would match nothing. Nothing is stored. */
+    data object OnlyStars : DescriptionOutcome
+
     /** BR-008: the entry, without the spaces at its start and end, is [length] characters, longer than [maxLength]. Nothing is stored. */
     data class TooLong(val length: Int, val maxLength: Int) : DescriptionOutcome
 
@@ -126,6 +129,8 @@ object DescriptionRules {
         val length = entry.codePointCount(0, entry.length)
         return when {
             entry.isEmpty() -> DescriptionOutcome.Empty
+            // UC-010 BR-008: An entry holds at least one character other than `*`, since an entry of stars only would match nothing.
+            entry.all { it == '*' } -> DescriptionOutcome.OnlyStars
             length > MAX_LENGTH -> DescriptionOutcome.TooLong(length, MAX_LENGTH)
             else -> others.firstOrNull { same(it, entry) }?.let { DescriptionOutcome.AlreadyInList(entry, it) }
         }
@@ -224,11 +229,11 @@ internal object DescriptionJournalTexts {
         TransferDescriptionKind.BankTransfer -> "Bank Transfer Descriptions"
     }
 
-    /** What [edit] did, in the journal's words ("PINECREST PMT added"). */
+    /** What [edit] did, in the journal's words (`"PINECREST PMT" added`). */
     fun what(edit: DescriptionEdit, after: List<String>, before: List<String>): String = when (edit) {
-        is DescriptionEdit.Add -> "${after.last()} added"
-        is DescriptionEdit.Change -> "${edit.entry} changed to ${after[before.indexOf(edit.entry)]}"
-        is DescriptionEdit.Remove -> "${edit.entry} removed"
+        is DescriptionEdit.Add -> "${quoted(after.last())} added"
+        is DescriptionEdit.Change -> "${quoted(edit.entry)} changed to ${quoted(after[before.indexOf(edit.entry)])}"
+        is DescriptionEdit.Remove -> "${quoted(edit.entry)} removed"
         DescriptionEdit.Restore -> "restored to the default list"
     }
 
@@ -240,7 +245,8 @@ internal object DescriptionJournalTexts {
     suspend fun record(journal: DecisionJournal, heading: String, lists: List<Pair<String?, List<String>>>) {
         val separator = if (lists.first().first == null) ": " else "; "
         val pieces = lists.flatMapIndexed { index, (label, entries) ->
-            val shown = entries.ifEmpty { listOf("no entry") }
+            // An entry is always in quotation marks, so the words "no entry" of an empty list cannot be taken for one.
+            val shown = if (entries.isEmpty()) listOf("no entry") else entries.map(::quoted)
             shown.mapIndexed { at, entry -> Piece(if (at == 0) label?.let { "$it: $entry" } ?: entry else entry, startsList = at == 0 && index > 0) }
         }
         val whole = heading + separator + joined(pieces)
@@ -263,6 +269,12 @@ internal object DescriptionJournalTexts {
             journal.record(JournalEventKind.ConfigurationChange, "$heading (part ${index + 1} of ${parts.size})$separator${joined(part.mapIndexed { at, piece -> if (at == 0) piece.copy(startsList = false) else piece })}")
         }
     }
+
+    /**
+     * [entry] in quotation marks, each quotation mark within it written twice, so that it cannot be taken for two
+     * entries or for the words around it (UC-011 BR-001).
+     */
+    fun quoted(entry: String): String = "\"" + entry.replace("\"", "\"\"") + "\""
 
     private data class Piece(val text: String, val startsList: Boolean)
 

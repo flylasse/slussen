@@ -77,8 +77,11 @@ class TransferDescriptionsViewModel(private val services: slussen.app.ui.UiServi
     /** NFR-023: the answer of the last change of each list, at the list, until the screen is opened again. */
     private val answers = mutableMapOf<TransferDescriptionKind, AnswerUi>()
 
-    /** An entry that could not be stored, offered again when the Operator taps Add entry (failure postconditions). */
-    private val retries = mutableMapOf<TransferDescriptionKind, String>()
+    /**
+     * A text that could not be stored, offered again when the Operator taps Add entry (entry null) or Change on the entry
+     * it was to replace (failure postconditions).
+     */
+    private val retries = mutableMapOf<Pair<TransferDescriptionKind, String?>, String>()
 
     init {
         viewModelScope.launch {
@@ -149,7 +152,7 @@ class TransferDescriptionsViewModel(private val services: slussen.app.ui.UiServi
     fun startAdding(kind: TransferDescriptionKind) {
         val current = mutableState.value ?: return
         if (busy(current)) return
-        mutableState.value = current.copy(editor = DescriptionEditorUi(kind, entry = null, title = DescriptionTexts.addTitle(kind), value = retries[kind].orEmpty()))
+        mutableState.value = current.copy(editor = DescriptionEditorUi(kind, entry = null, title = DescriptionTexts.addTitle(kind), value = retries[kind to null].orEmpty()))
     }
 
     /** A7: a tap on [entry] of [kind] offers Change and Remove. */
@@ -165,7 +168,9 @@ class TransferDescriptionsViewModel(private val services: slussen.app.ui.UiServi
         val choice = current.choice?.takeIf { !it.removing } ?: return
         mutableState.value = current.copy(
             choice = null,
-            editor = DescriptionEditorUi(choice.kind, entry = choice.entry, title = DescriptionTexts.changeTitle(choice.kind), value = choice.entry),
+            editor = DescriptionEditorUi(
+                choice.kind, entry = choice.entry, title = DescriptionTexts.changeTitle(choice.kind), value = retries[choice.kind to choice.entry] ?: choice.entry,
+            ),
         )
     }
 
@@ -209,7 +214,7 @@ class TransferDescriptionsViewModel(private val services: slussen.app.ui.UiServi
                 now.editor?.takeIf { it.kind == open.kind && it.entry == open.entry }?.let { mutableState.value = now.copy(editor = it.copy(error = refusal, saving = false)) }
                 return@launch
             }
-            if (outcome is DescriptionOutcome.NotStored && edit is DescriptionEdit.Add) retries[open.kind] = open.value else retries.remove(open.kind)
+            if (outcome is DescriptionOutcome.NotStored) retries[open.kind to open.entry] = open.value else retries.remove(open.kind to open.entry)
             answered(open.kind, edit, outcome)
             publish(editor = null, notReadAgain = readAgain())
         }
@@ -293,7 +298,7 @@ class TransferDescriptionsViewModel(private val services: slussen.app.ui.UiServi
             is DescriptionOutcome.Unavailable -> AnswerUi("Not changed: ${Texts.refusal(outcome.reason)}", AnswerKind.Failed)
             DescriptionOutcome.NotStored -> DescriptionTexts.notStored(edit).let { (text, detail) -> AnswerUi(text, AnswerKind.Failed, detail) }
             // Refused at the field before; a removal or a restore checks nothing that could be refused there.
-            DescriptionOutcome.Empty, is DescriptionOutcome.TooLong, is DescriptionOutcome.AlreadyInList ->
+            DescriptionOutcome.Empty, DescriptionOutcome.OnlyStars, is DescriptionOutcome.TooLong, is DescriptionOutcome.AlreadyInList ->
                 AnswerUi(DescriptionTexts.refused(outcome).orEmpty(), AnswerKind.Failed)
         }
     }
