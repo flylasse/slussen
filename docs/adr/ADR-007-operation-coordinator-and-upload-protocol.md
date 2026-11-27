@@ -95,6 +95,9 @@ Preparation is admitted only when all of these hold; otherwise the reason is sho
 - no Consent Request is unanswered and within its lifetime, so that the return from Strong Customer Authentication
   can never arrive while a plan is open (the Operator can abandon the Consent Request to proceed);
 - no Comparison is pending (§3a);
+- no read of the read period is owed for a Budget of the plan (`budget_read_state.period_read_owed`, set when a
+  served Budget gains a Budget Account or an Operator Setting change makes the read period longer: UC-003 BR-016,
+  UC-010 step 5); the Budget is read first;
 - the Budget App plug-in passed the composition checks of ADR-001 §4.2 and ADR-008 §6.
 
 ### 3a. A Comparison is never left half done (B-04)
@@ -419,3 +422,5 @@ is listed in ADR-005 §7.
 - Build-out, the review of phase W2-0 (2026-11-26): §3a (the marker also covers a Transfer Decision that releases a
   Transfer Leg or dissolves another Transfer, UC-005 BR-016; a replacing plan is prepared after the conclusions; the
   join of UC-005 BR-005 is concluded within one O-5).
+- Build-out, phase W3-0 (2026-11-27): S-B-21: §3 (no Upload Plan for a Budget whose read of the read period is owed,
+  UC-003 BR-016, UC-010 step 5).

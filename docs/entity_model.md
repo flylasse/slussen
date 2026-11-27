@@ -368,7 +368,7 @@ One read of transactions and balances from a Data Provider, started by the Opera
 
 #### Constraints
 
-- Only the most recent Fetches are kept, as many as `OPERATOR_SETTINGS.fetch_history_size`.
+- Only the most recent Fetches are kept, as many as `OPERATOR_SETTINGS.fetch_history_size`; after that value is lowered, the older ones are removed when the next Fetch is stored and are no longer shown from the change on (UC-010 step 4).
 
 ### FETCH_RESULT
 
@@ -711,8 +711,10 @@ One event in the Decision Journal: what Slussen fetched or concluded, what the O
 - `bank_account_name` is filled exactly when `import_identifier` is filled, because an Import Identifier is unique only within one Bank Account.
 - A Transfer Decision, a change to it and a Transfer Decision that Slussen drops (UC-005 BR-011, UC-005 BR-015) are recorded with `event_type` Operator Decision, one entry for each Transfer Leg of the Transfer with its `bank_account_name` and `import_identifier`; the `details` of a dropped one say that Slussen dropped it and why.
 - `details` never holds credentials, Bank Consent data, Bank Account numbers or identifiers Data Providers give Bank Accounts.
-- The Decision Journal stays within the size limit the Operator sets (`OPERATOR_SETTINGS.journal_size_limit_mb`) by dropping its oldest entries.
-- No entry is recorded while the Decision Journal is switched off (`OPERATOR_SETTINGS.journal_on`).
+- `details` is written in Slussen's own words and never holds the payee or memo of a Bank Transaction or a Budget App Transaction, so that a Journal Export whose payee and memo text are replaced by codes holds no such text (UC-011 BR-005).
+- The Decision Journal stays within the size limit the Operator sets (`OPERATOR_SETTINGS.journal_size_limit_mb`) by dropping its oldest entries, only while its size is above that limit (UC-010 BR-003).
+- No entry is recorded while the Decision Journal is switched off (`OPERATOR_SETTINGS.journal_on`); switching it off is recorded as the last entry before, and switching it on as the first entry after.
+- A change of an Operator Setting, a description list included, and switching the Decision Journal off or on are recorded with `event_type` Configuration Change; a clearing of the Decision Journal with Journal Control (UC-010 A3).
 
 ### OPERATOR_SETTINGS
 
@@ -767,5 +769,6 @@ One entry of the Operator's Card Payment Descriptions or Bank Transfer Descripti
 
 - Within one `kind`, no two entries have the same `text` when compared without regard to case and accents.
 - An entry matches a Bank Transaction when its `text` occurs anywhere in the payee or memo, compared without regard to case and accents, with `*` matching any characters; no other character has a special meaning.
-- The entries start as the default lists that ship with the build (UC-010 BR-007); restoring a default list replaces every entry of that `kind`.
+- The entries start as the default lists that ship with the build (UC-010 BR-007); restoring a default list replaces every entry of that `kind`. Whether an entry was added by the Operator is not stored: it is one that equals no entry of the default list of its `kind` (UC-010 BR-007).
+- `text` has no spaces at its start or end (UC-010 BR-008).
 - Adding, changing, removing or restoring entries changes only Transfers whose `decision` is Proposed and none of whose Transfer Legs has a Sent Record with an `outcome` other than Rejected (UC-005 BR-008, UC-005 BR-015, UC-010 BR-009).
