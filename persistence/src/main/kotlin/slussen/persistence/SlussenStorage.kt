@@ -130,6 +130,7 @@ class SlussenStorage private constructor(
     val importStatus = RoomImportStatusStore(main.fetches(), connections)
     val comparisons = RoomComparisonStore(main, connections)
     val reviews = RoomReviewStore(main, comparisons)
+    val transfers = RoomTransferStore(main, comparisons)
 
     companion object {
         /** The `Values:` columns of `slussen.db` in this schema, for the logical check of ADR-002 §8 step 1. */

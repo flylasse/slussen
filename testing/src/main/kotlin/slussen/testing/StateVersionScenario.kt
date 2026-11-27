@@ -14,6 +14,7 @@ import slussen.core.port.ComparisonStore
 import slussen.core.port.ConnectionStore
 import slussen.core.port.DataProviderRegistration
 import slussen.core.port.DataProviderSettingsStore
+import slussen.core.port.DroppedTransferDecision
 import slussen.core.port.DeliveredTransaction
 import slussen.core.port.DeliveredTransactions
 import slussen.core.port.FetchOutcome
@@ -34,7 +35,14 @@ import slussen.core.port.ReviewStore
 import slussen.core.port.ServeOutcome
 import slussen.core.port.StartedBy
 import slussen.core.port.StoredReviewDecision
+import slussen.core.port.StoredTransfer
 import slussen.core.port.TransactionStatus
+import slussen.core.port.TransferDecision
+import slussen.core.port.TransferDecisionWrite
+import slussen.core.port.TransferDropReason
+import slussen.core.port.TransferRuling
+import slussen.core.port.TransferStore
+import slussen.core.port.TransferType
 import slussen.core.port.UnreadableTransactionReason
 import slussen.core.port.UnreadableTransactionStatus
 import slussen.pluginapi.budgetapp.ChangeCursor
@@ -62,6 +70,7 @@ class StateVersionScenario(
     private val comparisons: ComparisonStore,
     private val fetches: FetchStore,
     private val reviews: ReviewStore,
+    private val transfers: TransferStore,
     private val stateVersion: suspend () -> Long,
 ) {
     /** One step: the [operation], whether what it does [mustRaise] the version, and whether the version [rose]. */
@@ -227,6 +236,43 @@ class StateVersionScenario(
         check(outsideAnyPlan("defer an Unreadable Transaction") { reviews.storeUnreadableStatus(unreadable, UnreadableTransactionStatus.Deferred) })
         check(reviews.unreadableTransaction(unreadable)?.status == UnreadableTransactionStatus.Deferred)
         check(!refused("defer an Unreadable Transaction that is not stored") { reviews.storeUnreadableStatus(unreadable + 1000, UnreadableTransactionStatus.Deferred) })
+
+        // O-13 for a Transfer Decision: a Guessed Transfer without a paying side that the Operator holds back (UC-005 A2, A8).
+        refused("rule on a Transfer Decision with nothing to store (O-13)") { transfers.decide(setOf(household.id)) { TransferRuling(write = null, answer = Unit) } }
+        val held = stored("store a Transfer Decision with its Transfer Leg and the Transaction Status that follows (O-13)") {
+            transfers.decide(setOf(household.id)) {
+                TransferRuling(
+                    TransferDecisionWrite(
+                        transfer = StoredTransfer(
+                            id = 0, outflowBudgetAccountId = null, inflowBudgetAccountId = checking, amount = Amount(18_600), type = TransferType.CardPayment,
+                            guessed = true, decision = TransferDecision.Held, decidedAt = now,
+                        ),
+                        legs = listOf(transaction),
+                        dissolved = emptyList(),
+                        kept = null,
+                        statuses = mapOf(transaction to TransactionStatus.HeldTransfer),
+                    ),
+                    answer = Unit,
+                )
+            }
+        }
+        check(held.changes.map { it.to } == listOf(TransactionStatus.HeldTransfer)) { "${held.changes}" }
+        val heldTransfer = comparisons.comparisonDataOf(setOf(household.id)).transfers.single()
+        check(heldTransfer.id == held.transferId && heldTransfer.decision == TransferDecision.Held && heldTransfer.outflowBudgetAccountId == null) { "$heldTransfer" }
+        check(fetches.bankTransactionsOf(added.bankAccountId).single().let { it.transferId == held.transferId && it.status == TransactionStatus.HeldTransfer })
+        // ADR-007 §3a: O-13 leaves the Comparison pending, so that no Upload Plan is prepared before the Transfers are detected again.
+        check(comparisons.comparisonPending())
+        stored("store the conclusions of a Comparison that drop a Transfer Decision (O-5)") {
+            comparisons.applyComparison(setOf(household.id)) { data ->
+                ComparisonConclusions(
+                    statuses = mapOf(transaction to TransactionStatus.New),
+                    dropped = listOf(DroppedTransferDecision(data.transfers.single(), TransferDropReason.TypeNoLongerFits, data.bankTransactions.filter { it.transferId != null })),
+                )
+            }
+        }
+        check(!comparisons.comparisonPending())
+        check(comparisons.comparisonDataOf(setOf(household.id)).transfers.isEmpty())
+        check(fetches.bankTransactionsOf(added.bankAccountId).single().let { it.transferId == null && it.status == TransactionStatus.New })
         return steps.toList()
     }
 
@@ -258,6 +304,9 @@ class StateVersionScenario(
             "clear a Review Decision with the Transaction Status that follows (O-13)",
             "defer an Unreadable Transaction (in no Upload Plan)",
             "defer an Unreadable Transaction that is not stored (refused)",
+            "rule on a Transfer Decision with nothing to store (O-13) (refused)",
+            "store a Transfer Decision with its Transfer Leg and the Transaction Status that follows (O-13)",
+            "store the conclusions of a Comparison that drop a Transfer Decision (O-5)",
         )
     }
 }

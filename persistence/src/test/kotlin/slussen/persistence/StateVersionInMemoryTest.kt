@@ -21,7 +21,7 @@ import slussen.testing.StateVersionScenario
  */
 class StateVersionInMemoryTest {
     @Test
-    @DisplayName("ADR-007 §6 step 2: on the in-memory fakes every storage operation that changes what an Upload Plan was prepared from (served Budgets, Bank Accounts, Account Mappings, Left-Out Bank Accounts, Manually Kept Accounts, Operator Settings, the stored copy of the Budget App, the conclusions of a Comparison, a new Bank Transaction, a Review Decision and its clearing) raises state_version, and a refused one, or the status of an Unreadable Transaction, leaves it")
+    @DisplayName("ADR-007 §6 step 2: on the in-memory fakes every storage operation that changes what an Upload Plan was prepared from (served Budgets, Bank Accounts, Account Mappings, Left-Out Bank Accounts, Manually Kept Accounts, Operator Settings, the stored copy of the Budget App, the conclusions of a Comparison, a new Bank Transaction, a Review Decision and its clearing, a Transfer Decision) raises state_version, and a refused one, or the status of an Unreadable Transaction, leaves it")
     fun everyStoredChangeRaisesTheStateVersionAndARefusalLeavesIt() = runBlocking {
         val stateVersion = InMemoryStateVersion()
         val connections = InMemoryConnectionStore(stateVersion)
@@ -30,7 +30,7 @@ class StateVersionInMemoryTest {
         val copy = InMemoryBudgetAppCopyStore(connections, transactions)
 
         val steps = StateVersionScenario(
-            registry, registry, InMemoryOperatorSettingsStore(stateVersion = stateVersion), connections, connections, copy, copy, transactions, copy,
+            registry, registry, InMemoryOperatorSettingsStore(stateVersion = stateVersion), connections, connections, copy, copy, transactions, copy, copy.transferStore,
         ) { stateVersion.value }.run()
 
         assertEquals(StateVersionScenario.OPERATIONS, steps.map { it.operation })

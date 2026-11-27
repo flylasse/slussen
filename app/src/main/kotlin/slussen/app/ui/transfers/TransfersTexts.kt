@@ -164,6 +164,9 @@ object TransfersTexts {
         TransferEligibility.Guessed -> "not eligible until it is confirmed or corrected"
         TransferEligibility.NotEligible -> "not eligible"
         TransferEligibility.GraceEnded -> "not eligible as a Transfer: the next Comparison makes it an ordinary Bank Transaction"
+        TransferEligibility.Split -> "split: each side is an ordinary Bank Transaction"
+        TransferEligibility.HeldBack -> "held back: not eligible, from either side"
+        TransferEligibility.RetiredSide -> "not eligible while a Bank Account of its sides is a Retired Account"
     }
 
     private fun statusOf(leg: LegShown): String = leg.status?.text ?: "not compared yet"
@@ -280,6 +283,11 @@ object TransfersTexts {
         TransferEligibility.GraceEnded ->
             "No: its grace period ended without the other side, so the next Comparison makes this an ordinary Bank Transaction with a " +
                 "Transaction Status of its own; it is never sent as a Transfer."
+        TransferEligibility.Split ->
+            "Not as a Transfer: it is split, so each side has a Transaction Status of its own as an ordinary Bank Transaction."
+        TransferEligibility.HeldBack -> "No: it is held back, so neither side is in an Upload Plan, as a Transfer or as an ordinary transaction."
+        TransferEligibility.RetiredSide ->
+            "No: a Bank Account of its sides is a Retired Account. It keeps its Transfer Decision and is in no Upload Plan, from either side, until that Bank Account is restored."
     }
 
     /** UC-003 step 7, A1: when the statuses were given, as the Budget tab says it. */

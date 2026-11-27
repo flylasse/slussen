@@ -476,6 +476,10 @@ abstract class FetchDao : StateVersionDao {
     @Query("SELECT * FROM bank_transaction WHERE transfer_id IS NOT NULL ORDER BY id")
     abstract suspend fun transferLegs(): List<BankTransactionEntity>
 
+    /** The stored Transfers, for the counts: one the Operator decided on is in no Upload Plan while a side is a Retired Account (UC-005 BR-015). */
+    @Query("SELECT * FROM transfer ORDER BY id")
+    abstract suspend fun transfers(): List<TransferEntity>
+
     @Insert
     protected abstract suspend fun insertBankTransactions(transactions: List<BankTransactionEntity>)
 
@@ -648,4 +652,48 @@ abstract class BudgetAppCopyDao {
     /** Releases every Transfer Leg of [transferId]. */
     @Query("UPDATE bank_transaction SET transfer_id = NULL WHERE transfer_id = :transferId")
     abstract suspend fun releaseLegs(transferId: Long)
+
+    /**
+     * Every Transfer Leg of the Transfers that a Bank Transaction of [bankAccountId] is a Transfer Leg of, also one in
+     * another Bank Account, so that a Transfer is always read with all its Transfer Legs (UC-005 BR-015).
+     */
+    @Query(
+        "SELECT * FROM bank_transaction WHERE transfer_id IN " +
+            "(SELECT transfer_id FROM bank_transaction WHERE bank_account_id = :bankAccountId AND transfer_id IS NOT NULL) ORDER BY id",
+    )
+    abstract suspend fun legsOfTransfersOf(bankAccountId: Long): List<BankTransactionEntity>
+
+    /** The Sent Records of the Bank Transactions of [bankAccountId] (UC-005 BR-008). */
+    @Query("SELECT * FROM sent_record WHERE bank_transaction_id IN (SELECT id FROM bank_transaction WHERE bank_account_id = :bankAccountId) ORDER BY id")
+    abstract suspend fun sentRecordsOf(bankAccountId: Long): List<SentRecordEntity>
+
+    /** The Sent Records of the Bank Transaction [bankTransaction]. */
+    @Query("SELECT * FROM sent_record WHERE bank_transaction_id = :bankTransaction ORDER BY id")
+    abstract suspend fun sentRecordsOfTransaction(bankTransaction: Long): List<SentRecordEntity>
+
+    @Query("SELECT * FROM transfer WHERE id = :id")
+    abstract suspend fun transfer(id: Long): TransferEntity?
+
+    /** A Transfer with the Operator's Transfer Decision, in place of the stored one with its `id` (O-13); returns how many were changed, 0 or 1. */
+    @Update
+    abstract suspend fun updateTransfer(transfer: TransferEntity): Int
+
+    /** Removes the Transfer [id] whatever its decision: one whose Transfer Decision Slussen drops (UC-005 BR-015); returns how many were removed. */
+    @Query("DELETE FROM transfer WHERE id = :id")
+    abstract suspend fun deleteTransfer(id: Long): Int
+
+    /** Removes the Transfer [id] only while its decision is [proposed]; returns how many were removed, 0 or 1. */
+    @Query("DELETE FROM transfer WHERE id = :id AND decision = :proposed")
+    abstract suspend fun deleteTransferWithoutDecision(id: Long, proposed: String): Int
+
+    @Query("SELECT COUNT(*) FROM bank_transaction WHERE id IN (:ids)")
+    abstract suspend fun countBankTransactions(ids: List<Long>): Int
+
+    /** Sets the Funded By of the Bank Account [id] (UC-005 A3 step 4); returns how many were changed, 0 or 1. */
+    @Query("UPDATE bank_account SET funded_by_budget_account_id = :budgetAccountId WHERE id = :id")
+    abstract suspend fun storeFundedBy(id: Long, budgetAccountId: Long): Int
+
+    /** Sets the Transfer Partner of the Bank Account [id] (UC-005 A3 step 4); returns how many were changed, 0 or 1. */
+    @Query("UPDATE bank_account SET transfer_partner_budget_account_id = :budgetAccountId WHERE id = :id")
+    abstract suspend fun storeTransferPartner(id: Long, budgetAccountId: Long): Int
 }

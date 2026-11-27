@@ -34,6 +34,9 @@ enum class OperationKind {
 
     /** A Review Decision, its change or its clearing, and deferring an Unreadable Transaction (UC-004). */
     ReviewDecision,
+
+    /** A Transfer Decision or its change, with the Funded By or Transfer Partner the Operator keeps from it (UC-005). */
+    TransferDecision,
 }
 
 /** Why the coordinator refused an operation (ADR-007 §2): a typed reason the screen shows. */
@@ -99,7 +102,7 @@ class OperationCoordinator(private val store: CoordinatorStore) {
          * `state_version` (ADR-002 §3), so that the plan prepared before the decision is never written unchanged; its
          * replacement by a newly prepared plan (§5, UC-004 A8) comes with the Uploads.
          */
-        val ADMITTED_WHILE_A_PLAN_IS_OPEN = setOf(OperationKind.ReviewDecision)
+        val ADMITTED_WHILE_A_PLAN_IS_OPEN = setOf(OperationKind.ReviewDecision, OperationKind.TransferDecision)
     }
 
     suspend fun <T> run(
@@ -109,7 +112,7 @@ class OperationCoordinator(private val store: CoordinatorStore) {
     ): OperationResult<T> = lane.withLock {
         // UC-006 BR-005: While an Upload Plan awaits confirmation or an Upload is written, credential changes, choosing Budgets, adding or changing Bank Accounts, changing Operator Settings, a Fetch the Operator starts and confirming First Upload Matching are unavailable.
         when (store.mode()) {
-            // ADR-007 §2: a Review Decision is admitted while an Upload Plan awaits confirmation; every other operation of this build is refused.
+            // ADR-007 §2: a Review Decision and a Transfer Decision are admitted while an Upload Plan awaits confirmation; every other operation of this build is refused.
             CoordinatorMode.PlanOpen -> if (kind !in ADMITTED_WHILE_A_PLAN_IS_OPEN) return OperationResult.Refused(OperationRefusal.UploadPlanAwaitingConfirmation)
             CoordinatorMode.Uploading -> return OperationResult.Refused(OperationRefusal.UploadBeingWritten)
             CoordinatorMode.Normal -> Unit

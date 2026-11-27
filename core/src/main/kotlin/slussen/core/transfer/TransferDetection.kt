@@ -98,8 +98,9 @@ data class TransfersDetected(
  * Transfer detection (UC-003 step 4; UC-005 BR-001..BR-006, BR-010, BR-012..BR-014, A4, A5, A8), `:core` `transfer`
  * (ADR-001 §7): which Bank Transactions of one Budget form a Transfer, and the Transaction Status its Transfer Legs
  * follow, with what the Review Decision on a Transfer Leg gives the other Transfer Legs (BR-013). Pure rules on stored
- * data, run inside the Comparison's conclusions (ADR-002 §3 O-5). The Transfer Decisions (UC-005 steps 2-6) come with a
- * later phase.
+ * data, run inside the Comparison's conclusions (ADR-002 §3 O-5), among the Bank Transactions that are a Transfer Leg of
+ * no Transfer the Operator decided on: those Transfers are kept by [TransferRules], and the grace period (BR-005) ends
+ * only a Lonely Transfer detected here, which has no Transfer Decision.
  */
 object TransferDetection {
     /** An outflow and an inflow that could be the two Transfer Legs of one Transfer (BR-002). */
@@ -129,7 +130,9 @@ object TransferDetection {
     /**
      * The Transfers among [candidates], the Bank Transactions of the Bank Accounts [bankAccounts] mapped into [budget],
      * judged by the stored [descriptions], the transfer pairing days [pairingDays] and the Lonely Transfer grace period
-     * [graceDays] (Operator Settings) and [today].
+     * [graceDays] (Operator Settings) and [today]. The [candidates] are the Bank Transactions that are a Transfer Leg of
+     * no Transfer the Comparison keeps as stored ([TransferRules.keep]) and were not uploaded as ordinary transactions;
+     * [uploadedAsOrdinary] are those that were, which are never a Transfer Leg (BR-005).
      */
     fun detect(
         budget: StoredBudget,
@@ -139,6 +142,7 @@ object TransferDetection {
         pairingDays: Int,
         graceDays: Int,
         today: LocalDate,
+        uploadedAsOrdinary: List<TransferCandidate> = emptyList(),
     ): TransfersDetected {
         val sides = sidesOf(budget, bankAccounts)
         val legs = candidates.filter { sides[it.bankAccount.mapping?.budgetAccountId]?.id == it.bankAccount.id }
@@ -149,6 +153,8 @@ object TransferDetection {
         val lonely = legs.filterNot { it.id in paired }.mapNotNull { single ->
             val known = oneSided(single, sides, descriptions) ?: return@mapNotNull null
             if (graceEnded(single.transaction, graceDays, today)) return@mapNotNull null
+            // UC-005 BR-005: A Bank Transaction is no Lonely Transfer towards a Budget Account while a Bank Transaction that was uploaded there as an ordinary transaction could be its other side.
+            if (known.otherSide != null && writtenAlready(single, sides[known.otherSide], uploadedAsOrdinary, pairingDays)) return@mapNotNull null
             if (known.otherSide == null) {
                 statuses[single.id] = statusOf(single, guessed = true)
                 withoutProposal[single.id] = WithoutProposal(single.bankAccount.id, known.payingBankAccounts)
@@ -172,6 +178,10 @@ object TransferDetection {
         }
         return TransfersDetected(transfers, statuses, withoutProposal)
     }
+
+    /** Whether [otherSide], the Bank Account of the other side of [single], holds one of [uploadedAsOrdinary] that could be that other side. */
+    private fun writtenAlready(single: TransferCandidate, otherSide: StoredBankAccount?, uploadedAsOrdinary: List<TransferCandidate>, pairingDays: Int): Boolean =
+        otherSide != null && uploadedAsOrdinary.any { it.bankAccount.id == otherSide.id && TransferRules.couldBeOtherSide(single.transaction, it.transaction, pairingDays) }
 
     // UC-005 BR-005: The grace period counts from the booked date of the Transfer Leg that has arrived, the last of its days included.
     /** The last day on which the other side of a Lonely Transfer whose arrived Transfer Leg is [arrived] can arrive. */
@@ -226,7 +236,7 @@ object TransferDetection {
      * The Budget Accounts of [budget] that can be a side of a Transfer, each with the Bank Account mapped to it: one that
      * a Bank Account that is not a Retired Account is mapped to, in the Budget's currency.
      */
-    private fun sidesOf(budget: StoredBudget, bankAccounts: List<StoredBankAccount>): Map<Long, StoredBankAccount> {
+    fun sidesOf(budget: StoredBudget, bankAccounts: List<StoredBankAccount>): Map<Long, StoredBankAccount> {
         val fetched = budget.budgetAccounts.filterNot { it.manuallyKept }.map { it.id }.toSet()
         return bankAccounts
             .filter { !it.retired && it.mapping?.budgetAccountId in fetched }
@@ -259,7 +269,7 @@ object TransferDetection {
         budgetAccountId != null && budgetAccountId in sides && budgetAccountId != bankAccount.mapping?.budgetAccountId
 
     /** A Card Payment when one side is a credit card Bank Account, a move between Bank Accounts otherwise (glossary). */
-    private fun typeOf(one: StoredBankAccount, other: StoredBankAccount): TransferType =
+    fun typeOf(one: StoredBankAccount, other: StoredBankAccount): TransferType =
         if (one.creditCard || other.creditCard) TransferType.CardPayment else TransferType.BankTransfer
 
     // UC-005 BR-002: Two Bank Transactions form a Transfer when they have equal and opposite amounts, lie in two Bank Accounts of the same Budget and currency, are dated within the transfer pairing days, and are a Card Payment or a Bank Transfer.
@@ -373,12 +383,25 @@ object TransferDetection {
     /**
      * The [detected] Transfers as O-5 stores them: each continues the [stored] Transfer with the decision Proposed that one
      * of its Transfer Legs already belongs to, so that a Lonely Transfer whose other side arrives stays the same Transfer.
-     * A stored Proposed Transfer that none continues no longer holds.
+     * A stored Proposed Transfer that none continues no longer holds, unless it is one of [kept]: a Transfer without a
+     * Transfer Decision one of whose Transfer Legs has been uploaded, which is stored again exactly as it is (BR-008).
      */
-    fun toStore(detected: List<DetectedTransfer>, stored: List<StoredTransfer>): List<TransferToStore> {
+    fun toStore(detected: List<DetectedTransfer>, stored: List<StoredTransfer>, kept: List<KeptTransfer> = emptyList()): List<TransferToStore> {
         val proposed = stored.filter { it.decision == TransferDecision.Proposed }.map { it.id }.toSet()
-        val continued = mutableSetOf<Long>()
-        return detected.map { transfer ->
+        val keptAsStored = kept.filter { it.transfer.decision == TransferDecision.Proposed }.mapNotNull { keeps ->
+            val outflow = keeps.transfer.outflowBudgetAccountId ?: return@mapNotNull null
+            TransferToStore(
+                continues = keeps.transfer.id,
+                outflowBudgetAccountId = outflow,
+                inflowBudgetAccountId = keeps.transfer.inflowBudgetAccountId,
+                amount = keeps.transfer.amount,
+                type = keeps.transfer.type,
+                guessed = keeps.transfer.guessed,
+                legs = keeps.legs.map { it.id },
+            )
+        }
+        val continued = keptAsStored.mapNotNull { it.continues }.toMutableSet()
+        return keptAsStored + detected.map { transfer ->
             val continues = transfer.legs.mapNotNull { it.transferId }.firstOrNull { it in proposed && it !in continued }
             continues?.let { continued += it }
             TransferToStore(

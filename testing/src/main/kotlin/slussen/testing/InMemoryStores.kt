@@ -61,6 +61,7 @@ import slussen.core.port.StoredProviderRequest
 import slussen.core.port.StoredFirstUploadMatching
 import slussen.core.port.StoredRequestLimit
 import slussen.core.port.StoredTransactionCounts
+import slussen.core.port.StoredTransfer
 import slussen.core.port.StoredTransactionFile
 import slussen.core.port.UnreadablePart
 import java.time.Instant
@@ -477,6 +478,9 @@ class InMemoryImportStatusStore(
 ) : ImportStatusStore, FetchStore {
     val bankTransactions = mutableListOf<StoredBankTransaction>()
     val unreadableTransactions = mutableListOf<StoredUnreadableTransaction>()
+
+    /** The stored Transfers, which [InMemoryBudgetAppCopyStore] writes and the counts read (`transfer`). */
+    val transfers = mutableListOf<StoredTransfer>()
     private var nextStoredId = 1L
     val fetches = mutableListOf<StoredFetch>()
     val balances = mutableListOf<StoredAccountBalance>()
@@ -513,9 +517,10 @@ class InMemoryImportStatusStore(
             .filter { account -> bankTransactions.any { it.bankAccountId == account.id } || unreadableTransactions.any { it.bankAccountId == account.id } }
             .map { account ->
                 val budget = budgets.firstOrNull { budget -> budget.budgetAccounts.any { it.id == account.mapping?.budgetAccountId } }
+                val transferLegs = bankTransactions.filter { it.transferId != null }
                 EligibleTransactions.countsOf(
-                    account, budget, bankTransactionsOf(account.id), unreadableTransactionsOf(account.id),
-                    transferLegs = bankTransactions.filter { it.transferId != null },
+                    account, budget, bankTransactionsOf(account.id), unreadableTransactionsOf(account.id), transferLegs,
+                    withRetiredSide = EligibleTransactions.withARetiredSide(transfers, transferLegs, store.bankAccounts()),
                 )
             }
         return counts.toList() + computed

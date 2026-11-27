@@ -6,6 +6,7 @@ import slussen.core.port.BudgetAppTransactionState
 import slussen.core.port.ChosenBudgetAppTransaction
 import slussen.core.port.ComparisonConclusions
 import slussen.core.port.ComparisonData
+import slussen.core.port.DroppedTransferDecision
 import slussen.core.port.EnteredBy
 import slussen.core.port.ReviewChoice
 import slussen.core.port.ReviewDecisionWrite
@@ -16,7 +17,6 @@ import slussen.core.port.StoredBudgetAppTransaction
 import slussen.core.port.StoredReviewDecision
 import slussen.core.port.StoredTransfer
 import slussen.core.port.TransactionStatus
-import slussen.core.port.TransferDecision
 import java.time.Instant
 
 /**
@@ -71,7 +71,12 @@ data class DecisionFacts(
 )
 
 /** What a ruling answers: the outcome for the Operator, and what the Decision Journal records when something is stored. */
-data class RuledOutcome(val outcome: ReviewOutcome, val facts: DecisionFacts? = null)
+data class RuledOutcome(
+    val outcome: ReviewOutcome,
+    val facts: DecisionFacts? = null,
+    /** UC-005 BR-015: the Transfer Decisions the conclusions stored with the decision drop, for the Decision Journal. */
+    val dropped: List<DroppedTransferDecision> = emptyList(),
+)
 
 /**
  * The rules of Review Doubtful Transactions (UC-004), `:core` `review` (ADR-001 §7): the choices a Transaction Status
@@ -102,12 +107,15 @@ object ReviewRules {
         else -> emptyList()
     }
 
-    // UC-004 BR-004: A Review Decision is locked only while its Bank Transaction is itself Already In Budget App because Slussen sent it, or is a Transfer Leg that is Arrived As Transfer Counterpart.
+    // UC-004 BR-004: A Review Decision is locked while its Bank Transaction is itself Already In Budget App because Slussen sent it.
     /**
      * Whether the Review Decision of a Bank Transaction is locked, from the status [own] the rules give it by itself
      * without its decision: without a decision, only its own Import Identifier held in its Budget Account makes it
      * Already In Budget App (UC-003 BR-003). Neither the Transfer Decision of its Transfer nor the status of another
-     * Transfer Leg locks it; Deleted In Budget App, Merged In Budget App and Outcome Unknown never do.
+     * Transfer Leg locks it; Deleted In Budget App, Merged In Budget App and Outcome Unknown never do. BR-004 also locks
+     * a Transfer Leg that is Arrived As Transfer Counterpart: no rule gives that status before the Uploads are built
+     * (Wave 4), so the second condition is not reached until then; it stands here so that the lock is there when the
+     * status is.
      */
     fun locked(own: TransactionStatus): Boolean =
         own == TransactionStatus.AlreadyInBudgetApp || own == TransactionStatus.ArrivedAsTransferCounterpart
@@ -124,11 +132,7 @@ object ReviewRules {
         val budget = data.budgets.firstOrNull { budget -> budget.budgetAccounts.any { it.id == bankAccount.mapping?.budgetAccountId } }
         if (bankAccount.retired || budget == null) return Ruled.Cannot(Undecidable.BankAccountNotCompared)
         val transfer = data.transfers.firstOrNull { it.id == transaction.transferId }
-        val withDecision = ComparisonRules.conclude(data, windows).statuses[storedBankTransaction]
-        if (withDecision == null) {
-            val decided = transfer != null && transfer.decision != TransferDecision.Proposed && transfer.decision != TransferDecision.Split
-            return Ruled.Cannot(if (decided) Undecidable.LegOfDecidedTransfer else Undecidable.NotComparedYet)
-        }
+        val withDecision = ComparisonRules.conclude(data, windows).statuses[storedBankTransaction] ?: return Ruled.Cannot(Undecidable.NotComparedYet)
         val decision = data.reviewDecisions.firstOrNull { it.storedBankTransaction == storedBankTransaction }
         val withoutDecision = if (decision == null) {
             withDecision
@@ -239,7 +243,7 @@ object ReviewRules {
             hadGiven = hadGiven,
             now = status,
         )
-        return ReviewDecisionWrite(id, decision, conclusions) to RuledOutcome(ReviewOutcome.Stored(decision?.choice, status), facts)
+        return ReviewDecisionWrite(id, decision, conclusions) to RuledOutcome(ReviewOutcome.Stored(decision?.choice, status), facts, conclusions.dropped)
     }
 
     /** One of the Imports by an Other Import Path that resemble a Bank Transaction, as the list of step 4 shows it. */

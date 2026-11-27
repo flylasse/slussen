@@ -61,3 +61,16 @@ data class StoredReviewDecision(
     /** The time the Operator made or last changed the decision. */
     val decidedAt: Instant,
 )
+
+/**
+ * `SENT_RECORD` (entity model) as far as the rules of the Transfers read it: that Slussen sent the Bank Transaction
+ * [storedBankTransaction] to [budgetAccountId], as a linked transfer ([sentAsTransfer]) or as an ordinary transaction, and
+ * what the Budget App confirmed of it. The Uploads, which write Sent Records, come with their own phases; until then none
+ * is stored.
+ */
+data class StoredSentRecord(
+    val storedBankTransaction: Long,
+    val budgetAccountId: Long,
+    val sentAsTransfer: Boolean,
+    val outcome: SentRecordOutcome,
+)

@@ -74,12 +74,6 @@ enum class Undecidable {
 
     /** Its Bank Account has no Account Mapping into a served Budget or is a Retired Account: it is not compared (UC-003 step 2). */
     BankAccountNotCompared,
-
-    /**
-     * It is a Transfer Leg of a Transfer with the Transfer Decision Confirmed, Held or Budget Account Chosen, whose
-     * Transfer Legs the Comparison leaves as they are stored until it handles Transfer Decisions (UC-005 BR-010).
-     */
-    LegOfDecidedTransfer,
 }
 
 /**

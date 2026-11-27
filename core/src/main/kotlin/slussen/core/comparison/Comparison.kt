@@ -13,12 +13,14 @@ import slussen.core.port.BudgetReadToStore
 import slussen.core.port.ChangeSetApplied
 import slussen.core.port.ComparisonStore
 import slussen.core.port.ConnectionStore
+import slussen.core.port.DroppedTransferDecision
 import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.ServiceKey
 import slussen.core.port.StartedBy
 import slussen.core.port.StatusChange
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredBudget
+import slussen.core.transfer.TransferJournal
 import slussen.pluginapi.budgetapp.BudgetRead
 import slussen.pluginapi.budgetapp.ChangeCursor
 import slussen.pluginapi.budgetapp.ChangeSet
@@ -37,8 +39,8 @@ import java.time.LocalDate
  * the Budget App again, and within a Fetch (UC-001 step 10), always through the operation coordinator (ADR-007 §1); it
  * reads the Budget App only (BR-015). A Comparison left between O-4 and O-5 is concluded from the stored data alone at
  * the next start and whenever its marker is found (ADR-007 §3a, §8). The Review Decisions are followed in the order of
- * BR-001 (BR-009, BR-010). Sent Records (BR-017, BR-021), Transfer Decisions and First Upload Matching (BR-019) come
- * with later phases.
+ * BR-001 (BR-009, BR-010), and a Transfer the Operator decided on is kept, joined or dropped as UC-005 BR-005 and BR-015
+ * say. The statuses Sent Records give (BR-017, BR-021) and First Upload Matching (BR-019) come with later phases.
  */
 class Comparison(
     private val plugins: RegisteredPlugins,
@@ -202,21 +204,41 @@ class Comparison(
     }
 
     /**
+     * ADR-007 §3a: within the operation that holds the lane, the conclusions from the stored data alone for every Budget
+     * read so far, without a request and with the time of each read unchanged: what follows a change that the
+     * specification follows with statuses given again or Transfers detected again, such as a Transfer Decision (UC-005
+     * BR-016, UC-009 BR-015). It clears the Comparison-pending marker.
+     */
+    internal suspend fun concludeFromStoredData(): List<StatusChange> =
+        conclude(connections.budgets().filter { it.lastReadAt != null }.map { it.id }.toSet())
+
+    /**
      * Steps 2-4 and 6 (O-5): the Transaction Statuses and the Transfers from the stored data alone, and the Decision
-     * Journal of each changed status, also that of a Transfer Leg (UC-011 BR-001).
+     * Journal of each changed status, also that of a Transfer Leg (UC-011 BR-001), and of each Transfer Decision the
+     * conclusions dropped (UC-005 BR-015).
      */
     private suspend fun conclude(budgetIds: Set<Long>): List<StatusChange> {
         val windows = ComparisonWindows.of(settings.current(), plugins.budgetApp.profile.matchingDateWindowDays, today())
-        val changes = comparisons.applyComparison(budgetIds) { data -> ComparisonRules.conclude(data, windows) }
-        journalChanges(changes)
+        var dropped = emptyList<DroppedTransferDecision>()
+        val changes = comparisons.applyComparison(budgetIds) { data -> ComparisonRules.conclude(data, windows).also { dropped = it.dropped } }
+        journalChanges(changes, dropped)
         return changes
     }
 
     // UC-011 BR-001: Every change of the Transaction Status Slussen gave a Bank Transaction is recorded, naming its Bank Account and its Import Identifier.
-    /** Step 6: one Decision Journal entry per changed Transaction Status, in Slussen's own words, never a payee or memo. */
-    private suspend fun journalChanges(changes: List<StatusChange>) {
-        if (changes.isEmpty()) return
-        journal.recordStatusChanges(changes, connections.bankAccounts().associate { it.id to it.name })
+    /**
+     * Step 6: one Decision Journal entry per changed Transaction Status, in Slussen's own words, never a payee or memo,
+     * and the entries of each Transfer Decision Slussen [dropped].
+     */
+    private suspend fun journalChanges(changes: List<StatusChange>, dropped: List<DroppedTransferDecision>) {
+        if (changes.isEmpty() && dropped.isEmpty()) return
+        val bankAccountNames = connections.bankAccounts().associate { it.id to it.name }
+        // UC-005 BR-015: Slussen records the dropped Transfer Decision with its reason in the Decision Journal.
+        if (dropped.isNotEmpty()) {
+            val budgetAccountNames = connections.budgets().flatMap { it.budgetAccounts }.associate { it.id to it.name }
+            TransferJournal.recordDropped(journal, dropped, bankAccountNames, budgetAccountNames)
+        }
+        journal.recordStatusChanges(changes, bankAccountNames)
     }
 
     private fun notRead(budget: StoredBudget, kind: FailureKind?) =

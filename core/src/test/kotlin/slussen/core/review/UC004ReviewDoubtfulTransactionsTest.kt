@@ -871,22 +871,90 @@ class UC004ReviewDoubtfulTransactionsTest {
         assertNull(status(arrivedSince))
     }
 
-    @Test
-    @UseCase(id = "UC-004", scenario = "A11: Doubtful Transfer Leg", businessRules = ["BR-009"])
-    @DisplayName("A11: a Transfer Leg of a Transfer the Operator confirmed, held back or gave another Budget Account is not decided yet, with nothing stored: the Comparison leaves such Transfer Legs as they are stored until it handles Transfer Decisions")
-    fun aLegOfADecidedTransferIsNotDecidedYet() = runTest {
-        val (paid, _) = cardPaymentWithADoubtfulLeg()
-        val version = slice.stateVersion.value
+    // ---- A doubtful Transfer Leg of a Transfer the Operator decided on (W2-0 item 1; review of phase B2, D) --------------
 
-        listOf(TransferDecision.Confirmed, TransferDecision.Held, TransferDecision.BudgetAccountChosen).forEach { decision ->
-            slice.copyStore.transfers[0] = slice.copyStore.transfers.single().copy(decision = decision, decidedAt = now)
-
-            assertEquals(ReviewOutcome.NotDecidable(Undecidable.LegOfDecidedTransfer), slice.review.decide(paid, ReviewChoice.ImportAnyway))
-            assertEquals(Undecidable.LegOfDecidedTransfer, sheet(paid).undecidable)
-        }
-        assertTrue(slice.copyStore.reviewDecisions.isEmpty())
+    /**
+     * The Card Payment of [cardPaymentWithADoubtfulLeg] with the Transfer Decision [decision], as UC-005 stored it, and
+     * compared again: its outflow waits for a Review Decision, its inflow has [inflowStatus]. Returns (outflow, inflow).
+     */
+    private suspend fun decidedTransferWithADoubtfulLeg(decision: TransferDecision, inflowStatus: TransactionStatus): Pair<Long, Long> {
+        val (paid, received) = cardPaymentWithADoubtfulLeg()
+        slice.copyStore.transfers[0] = slice.copyStore.transfers.single().copy(decision = decision, decidedAt = now, guessed = false)
+        compare()
         assertEquals(TransactionStatus.NeedsReview, status(paid))
-        assertEquals(version, slice.stateVersion.value)
+        assertEquals(inflowStatus, status(received))
+        assertNull(sheet(paid).undecidable)
+        assertFalse(sheet(paid).locked)
+        assertEquals(listOf(ReviewChoice.ImportAnyway, ReviewChoice.Defer), sheet(paid).choices)
+        assertEquals(decision, sheet(paid).transfer?.decision)
+        return paid to received
+    }
+
+    @Test
+    @UseCase(id = "UC-004", scenario = "A11: Doubtful Transfer Leg", businessRules = ["BR-004", "BR-009"])
+    @DisplayName("A11, BR-009 (W2-0 item 1): a doubtful Transfer Leg of a Confirmed Transfer is decided and cleared like any other: Import Anyway lets it rejoin, so that the Transfer is eligible as one linked transfer through its outflow side; clearing makes the Transfer wait again, and it keeps its Transfer Decision throughout")
+    fun aDoubtfulLegOfAConfirmedTransferIsDecidedAndCleared() = runTest {
+        val (paid, received) = decidedTransferWithADoubtfulLeg(TransferDecision.Confirmed, TransactionStatus.TransferLeg)
+        assertEquals(NotYetUploaded(0, 1), counts())
+
+        assertEquals(ReviewOutcome.Stored(ReviewChoice.ImportAnyway, TransactionStatus.TransferLeg), slice.review.decide(paid, ReviewChoice.ImportAnyway))
+
+        assertEquals(TransactionStatus.TransferLeg, status(paid))
+        assertEquals(TransactionStatus.TransferLeg, status(received))
+        assertEquals(NotYetUploaded(1, 0), counts())
+        assertEquals(1, slice.importStatusStore.transactionCounts().single { it.bankAccountId == transaction(paid).bankAccountId }.eligible)
+
+        assertEquals(ReviewOutcome.Stored(null, TransactionStatus.NeedsReview), slice.review.clear(paid))
+
+        assertEquals(TransactionStatus.NeedsReview, status(paid))
+        assertEquals(TransactionStatus.TransferLeg, status(received))
+        assertEquals(NotYetUploaded(0, 1), counts())
+        assertEquals(TransferDecision.Confirmed, slice.copyStore.transfers.single().decision)
+        assertEquals(slice.copyStore.transfers.single().id, transaction(paid).transferId)
+    }
+
+    @Test
+    @UseCase(id = "UC-004", scenario = "A11: Doubtful Transfer Leg", businessRules = ["BR-004", "BR-009"])
+    @DisplayName("A11, BR-009 (W2-0 item 1): a doubtful Transfer Leg of a Held Transfer is decided and cleared like any other: with Import Anyway it rejoins its Transfer, which stays held back, so both Transfer Legs are Held Transfer and nothing is eligible; Defer gives the other Transfer Leg Deferred; clearing makes it wait again")
+    fun aDoubtfulLegOfAHeldTransferIsDecidedAndCleared() = runTest {
+        val (paid, received) = decidedTransferWithADoubtfulLeg(TransferDecision.Held, TransactionStatus.HeldTransfer)
+
+        assertEquals(ReviewOutcome.Stored(ReviewChoice.ImportAnyway, TransactionStatus.HeldTransfer), slice.review.decide(paid, ReviewChoice.ImportAnyway))
+
+        assertEquals(TransactionStatus.HeldTransfer, status(paid))
+        assertEquals(TransactionStatus.HeldTransfer, status(received))
+        assertEquals(NotYetUploaded(0, 0), counts())
+
+        assertEquals(ReviewOutcome.Stored(ReviewChoice.Defer, TransactionStatus.Deferred), slice.review.decide(paid, ReviewChoice.Defer))
+        assertEquals(TransactionStatus.Deferred, status(received))
+
+        assertEquals(ReviewOutcome.Stored(null, TransactionStatus.NeedsReview), slice.review.clear(paid))
+
+        assertEquals(TransactionStatus.NeedsReview, status(paid))
+        assertEquals(TransactionStatus.HeldTransfer, status(received))
+        assertEquals(NotYetUploaded(0, 1), counts())
+        assertEquals(TransferDecision.Held, slice.copyStore.transfers.single().decision)
+        assertNull(decisionOf(paid))
+    }
+
+    @Test
+    @UseCase(id = "UC-004", scenario = "A11: Doubtful Transfer Leg", businessRules = ["BR-004", "BR-009"])
+    @DisplayName("A11, BR-009 (W2-0 item 1): a doubtful Transfer Leg of a Budget Account Chosen Transfer is decided and cleared like any other: Import Anyway lets it rejoin, so that the Transfer is eligible as one linked transfer; a later Comparison keeps the statuses; clearing makes the Transfer wait again")
+    fun aDoubtfulLegOfABudgetAccountChosenTransferIsDecidedAndCleared() = runTest {
+        val (paid, received) = decidedTransferWithADoubtfulLeg(TransferDecision.BudgetAccountChosen, TransactionStatus.TransferLeg)
+
+        assertEquals(ReviewOutcome.Stored(ReviewChoice.ImportAnyway, TransactionStatus.TransferLeg), slice.review.decide(paid, ReviewChoice.ImportAnyway))
+
+        assertEquals(NotYetUploaded(1, 0), counts())
+        compare()
+        assertEquals(TransactionStatus.TransferLeg, status(paid))
+        assertEquals(TransactionStatus.TransferLeg, status(received))
+
+        assertEquals(ReviewOutcome.Stored(null, TransactionStatus.NeedsReview), slice.review.clear(paid))
+
+        assertEquals(TransactionStatus.NeedsReview, status(paid))
+        assertEquals(NotYetUploaded(0, 1), counts())
+        assertEquals(TransferDecision.BudgetAccountChosen, slice.copyStore.transfers.single().decision)
     }
 
     @Test

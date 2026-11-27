@@ -28,6 +28,7 @@ import slussen.core.port.UnreadableTransactionStatus
 import slussen.core.status.BankAccountTransactions
 import slussen.core.status.BudgetAppEntry
 import slussen.core.status.OtherLeg
+import slussen.core.transfer.TransferJournal
 import slussen.pluginapi.value.Amount
 import java.time.Clock
 import java.time.LocalDate
@@ -196,6 +197,8 @@ class ReviewDecisions(
                 journal.record(JournalEventKind.OperatorDecision, detailsOf(facts, budgetAccountNames), facts.importIdentifier, bankAccountNames[facts.bankAccountId].orEmpty())
                 // UC-011 BR-001: Every change of the Transaction Status Slussen gave a Bank Transaction is recorded, also that of another Transfer Leg which the Review Decision changed.
                 journal.recordStatusChanges(decided.changes.filterNot { it.storedBankTransaction == storedBankTransaction }, bankAccountNames)
+                // UC-005 BR-015: A Transfer Decision the conclusions stored with the Review Decision dropped is recorded with its reason.
+                TransferJournal.recordDropped(journal, decided.answer.dropped, bankAccountNames, budgetAccountNames)
             }
             decided.answer.outcome
         }

@@ -547,7 +547,9 @@ class RoomImportStatusStore(private val fetches: FetchDao, private val connectio
     override suspend fun transactionCounts(): List<StoredTransactionCounts> {
         val budgets = connections.budgets()
         val transferLegs = fetches.transferLegs().map { it.stored() }
-        return connections.bankAccounts().map { account ->
+        val bankAccounts = connections.bankAccounts()
+        val withRetiredSide = EligibleTransactions.withARetiredSide(fetches.transfers().map { it.stored() }, transferLegs, bankAccounts)
+        return bankAccounts.map { account ->
             val budget = budgets.firstOrNull { budget -> budget.budgetAccounts.any { it.id == account.mapping?.budgetAccountId } }
             EligibleTransactions.countsOf(
                 account,
@@ -555,6 +557,7 @@ class RoomImportStatusStore(private val fetches: FetchDao, private val connectio
                 fetches.bankTransactionsOf(account.id).map { it.stored() },
                 fetches.unreadableTransactionsOf(account.id).map { it.stored() },
                 transferLegs,
+                withRetiredSide,
             )
         }
     }

@@ -27,6 +27,7 @@ import slussen.core.settings.GeneralSettings
 import slussen.core.status.BankAccountTransactions
 import slussen.core.status.BudgetTransfers
 import slussen.core.status.ImportStatus
+import slussen.core.transfer.TransferDecisions
 import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.value.Secret
 import java.time.DayOfWeek
@@ -94,6 +95,10 @@ class TestSlice(
     val review = ReviewDecisions(
         connectionStore, copyStore, copyStore, coordinator, settings, journal, clock,
         plugins.budgetApp.profile.matchingDateWindowDays, plugins.budgetApp.profile.refusesReusedImportIdentifier,
+    )
+    /** UC-005: the Transfer Decisions, on the stored data the Comparison concludes from. */
+    val transferDecisions = TransferDecisions(
+        connectionStore, copyStore.transferStore, copyStore, comparison, coordinator, settings, journal, clock, plugins.budgetApp.profile.matchingDateWindowDays,
     )
     val mappings = AccountMappings(plugins, connectionStore, connectionStore, offeredStore, coordinator, journal)
     val status = ImportStatus(

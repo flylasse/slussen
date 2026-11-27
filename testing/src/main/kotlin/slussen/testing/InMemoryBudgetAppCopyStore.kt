@@ -7,6 +7,7 @@ import slussen.core.port.ChangeSetApplied
 import slussen.core.port.ComparisonConclusions
 import slussen.core.port.ComparisonData
 import slussen.core.port.ComparisonStore
+import slussen.core.port.OtherSideKind
 import slussen.core.port.ReviewDecided
 import slussen.core.port.ReviewRuling
 import slussen.core.port.ReviewStore
@@ -14,16 +15,20 @@ import slussen.core.port.StatusChange
 import slussen.core.port.StoredBankTransaction
 import slussen.core.port.StoredBudgetAppTransaction
 import slussen.core.port.StoredReviewDecision
+import slussen.core.port.StoredSentRecord
 import slussen.core.port.StoredTransfer
 import slussen.core.port.StoredTransferDescription
+import slussen.core.port.TransferDecided
 import slussen.core.port.TransferDecision
 import slussen.core.port.TransferDescriptionKind
+import slussen.core.port.TransferRuling
+import slussen.core.port.TransferStore
 import slussen.core.port.StoredUnreadableTransaction
 import slussen.core.port.UnreadableTransactionStatus
 import slussen.pluginapi.budgetapp.ChangeCursor
 
 /**
- * In-memory fake of O-4 [BudgetAppCopyStore], O-5 [ComparisonStore] and O-13 [ReviewStore] (ADR-002 §3), all or nothing
+ * In-memory fake of O-4 [BudgetAppCopyStore], O-5 [ComparisonStore] and O-13 [ReviewStore] and [TransferStore] ([transferStore]) (ADR-002 §3), all or nothing
  * like the real ones, on the Budgets of [connections] and the Bank Transactions of [transactions], with the stored
  * Transfers ([transfers]), the Review Decisions ([reviewDecisions]) and the description lists ([transferDescriptions],
  * which start as the default lists of UC-010 BR-007, as the real storage does). A test makes O-5 fail with
@@ -37,11 +42,14 @@ class InMemoryBudgetAppCopyStore(
     val copy = mutableListOf<StoredBudgetAppTransaction>()
     val reviewDecisions = mutableListOf<StoredReviewDecision>()
 
+    /** The Sent Records a test plants: the Uploads that write them come with their own phases (UC-006). */
+    val sentRecords = mutableListOf<StoredSentRecord>()
+
     /** Makes every Review Decision and every change of an Unreadable Transaction's status fail before anything is stored. */
     var failsToDecide: Boolean = false
     val cursors = mutableMapOf<Long, ChangeCursor>()
     val periodOwed = mutableSetOf<Long>()
-    val transfers = mutableListOf<StoredTransfer>()
+    val transfers: MutableList<StoredTransfer> get() = transactions.transfers
     val transferDescriptions: MutableList<StoredTransferDescription> = DEFAULT_TRANSFER_DESCRIPTIONS.toMutableList()
     private var nextTransferId = 9000L
     var pending: Boolean = false
@@ -137,6 +145,10 @@ class InMemoryBudgetAppCopyStore(
         changes.forEach { change ->
             transactions.bankTransactions.replaceAll { if (it.id == change.storedBankTransaction) it.copy(status = change.to) else it }
         }
+        // A Transfer whose Transfer Decision the conclusions drop is removed and its Transfer Legs are released (UC-005 BR-015).
+        val droppedIds = conclusions.dropped.map { it.transfer.id }.toSet()
+        transactions.bankTransactions.replaceAll { if (it.transferId in droppedIds) it.copy(transferId = null) else it }
+        transfers.removeAll { it.id in droppedIds }
         val continued = mutableSetOf<Long>()
         conclusions.transfers.forEach { detected ->
             val id = detected.continues ?: nextTransferId++
@@ -159,7 +171,72 @@ class InMemoryBudgetAppCopyStore(
         val released = data.transfers.filter { it.decision == TransferDecision.Proposed && it.id !in continued }.map { it.id }.toSet()
         transactions.bankTransactions.replaceAll { if (it.transferId in released) it.copy(transferId = null) else it }
         transfers.removeAll { it.id in released }
+        // The arriving other side joins the Transfer the Operator decided on, which keeps its Transfer Decision (UC-005 BR-005).
+        conclusions.joins.forEach { join ->
+            transactions.bankTransactions.replaceAll { if (it.id == join.leg) it.copy(transferId = join.transferId) else it }
+        }
         return changes
+    }
+
+    /** Makes every Transfer Decision fail before anything is stored, as a storage that cannot be written would. */
+    var failsToDecideTransfers: Boolean = false
+
+    /** O-13 [TransferStore] on the same stored data: the Transfer Decisions of UC-005. */
+    val transferStore: TransferStore = object : TransferStore {
+        override suspend fun <T> decide(budgetIds: Set<Long>, rule: (ComparisonData) -> TransferRuling<T>): TransferDecided<T> = decideTransfer(budgetIds, rule)
+
+        override suspend fun bankTransaction(storedBankTransaction: Long): StoredBankTransaction? =
+            transactions.bankTransactions.firstOrNull { it.id == storedBankTransaction }
+    }
+
+    private fun <T> decideTransfer(budgetIds: Set<Long>, rule: (ComparisonData) -> TransferRuling<T>): TransferDecided<T> {
+        if (failsToDecideTransfers) throw IllegalStateException("The invented storage of this test cannot be written.")
+        val data = dataOf(budgetIds)
+        val ruling = rule(data)
+        val write = ruling.write ?: return TransferDecided(ruling.answer, transferId = null, changes = emptyList())
+        // As the Room store refuses them, before anything is written.
+        require(write.legs.size in 1..2 && write.legs.distinct().size == write.legs.size) { "A Transfer has one or two Transfer Legs." }
+        require(write.transfer.decision != TransferDecision.Proposed && write.transfer.decidedAt != null) { "O-13 stores a Transfer Decision with its time." }
+        require(write.transfer.outflowBudgetAccountId != null || write.transfer.decision in setOf(TransferDecision.Split, TransferDecision.Held)) {
+            "Confirmed and Budget Account Chosen need both sides."
+        }
+        check(write.transfer.id == 0L || transfers.any { it.id == write.transfer.id }) { "The Transfer decided on is stored." }
+        check(write.legs.all { leg -> transactions.bankTransactions.any { it.id == leg } }) { "A Transfer Leg is a stored Bank Transaction." }
+        check(write.dissolved.all { id -> transfers.any { it.id == id && it.decision == TransferDecision.Proposed } }) {
+            "Only a Transfer without a Transfer Decision is dissolved by a choice."
+        }
+        check(write.kept == null || connections.bankAccountList.any { it.id == write.kept?.bankAccountId }) { "The Funded By or Transfer Partner is kept for a stored Bank Account." }
+        val id = if (write.transfer.id == 0L) nextTransferId++ else write.transfer.id
+        val stored = write.transfer.copy(id = id)
+        val index = transfers.indexOfFirst { it.id == id }
+        if (index < 0) transfers += stored else transfers[index] = stored
+        transfers.removeAll { it.id in write.dissolved }
+        transactions.bankTransactions.replaceAll {
+            when {
+                it.id in write.legs -> it.copy(transferId = id)
+                it.transferId == id || it.transferId in write.dissolved -> it.copy(transferId = null)
+                else -> it
+            }
+        }
+        write.kept?.let { kept ->
+            connections.bankAccountList.replaceAll { account ->
+                when {
+                    account.id != kept.bankAccountId -> account
+                    kept.kind == OtherSideKind.FundedBy -> account.copy(fundedByBudgetAccountId = kept.budgetAccountId)
+                    else -> account.copy(transferPartnerBudgetAccountId = kept.budgetAccountId)
+                }
+            }
+        }
+        val changes = data.bankTransactions.mapNotNull { before ->
+            val status = write.statuses[before.id] ?: return@mapNotNull null
+            if (status == before.status) null else StatusChange(before.id, before.bankAccountId, before.importIdentifier, before.status, status)
+        }
+        changes.forEach { change ->
+            transactions.bankTransactions.replaceAll { if (it.id == change.storedBankTransaction) it.copy(status = change.to) else it }
+        }
+        pending = true
+        connections.stateVersion.raise()
+        return TransferDecided(ruling.answer, id, changes)
     }
 
     override suspend fun <T> decide(budgetIds: Set<Long>, rule: (ComparisonData) -> ReviewRuling<T>): ReviewDecided<T> {
@@ -206,18 +283,22 @@ class InMemoryBudgetAppCopyStore(
     private fun dataOf(budgetIds: Set<Long>): ComparisonData {
         val budgets = connections.budgetList.filter { it.id in budgetIds }
         val accountIds = budgets.flatMap { it.budgetAccounts }.map { it.id }.toSet()
-        val bankAccounts = connections.bankAccountList.filter { it.mapping?.budgetAccountId in accountIds }
-        val bankAccountIds = bankAccounts.map { it.id }.toSet()
-        val bankTransactions = transactions.bankTransactions.filter { it.bankAccountId in bankAccountIds }
-        val transferIds = bankTransactions.mapNotNull { it.transferId }.toSet()
+        val mapped = connections.bankAccountList.filter { it.mapping?.budgetAccountId in accountIds }
+        val mappedIds = mapped.map { it.id }.toSet()
+        val ofMapped = transactions.bankTransactions.filter { it.bankAccountId in mappedIds }
+        val transferIds = ofMapped.mapNotNull { it.transferId }.toSet()
+        // A Transfer is judged with all its Transfer Legs (UC-005 BR-015), also one whose Bank Account is mapped elsewhere or not at all now.
+        val legsElsewhere = transactions.bankTransactions.filter { it.transferId in transferIds && it.bankAccountId !in mappedIds }
+        val bankTransactions = ofMapped + legsElsewhere
         return ComparisonData(
             budgets = budgets,
-            bankAccounts = bankAccounts,
+            bankAccounts = mapped + connections.bankAccountList.filter { account -> account.id !in mappedIds && legsElsewhere.any { it.bankAccountId == account.id } },
             bankTransactions = bankTransactions,
             budgetAppTransactions = copy.filter { it.budgetAccountId in accountIds },
             transfers = transfers.filter { it.id in transferIds },
             transferDescriptions = transferDescriptions.toList(),
             reviewDecisions = reviewDecisions.filter { decision -> bankTransactions.any { it.id == decision.storedBankTransaction } },
+            sentRecords = sentRecords.filter { record -> bankTransactions.any { it.id == record.storedBankTransaction } },
         )
     }
 

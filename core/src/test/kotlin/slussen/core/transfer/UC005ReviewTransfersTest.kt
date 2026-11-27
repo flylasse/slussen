@@ -57,9 +57,9 @@ import java.time.LocalDate
  * Review Transfers (UC-005) as far as the transactions plan's Phase 7b builds it: Transfers detected inside the
  * Comparison's conclusions (UC-003 step 4) from stored data, with BR-001..BR-006, BR-010, BR-012..BR-014, A4, A5 and A8
  * as far as they give a Transaction Status, the stored Transfers with the decision Proposed, the Eligible Transactions
- * and counts (UC-003 BR-014) and the Decision Journal (UC-011 BR-001). The Transfer Decisions (steps 2-6, A1-A3, A9,
- * BR-007, BR-008, BR-011), A6, A7 and BR-009 are later initiatives, and every screen is Phase 7c. Every name, amount,
- * payee and identifier is invented (C-005).
+ * and counts (UC-003 BR-014) and the Decision Journal (UC-011 BR-001). The Transfer Decisions (steps 2-6, A1-A4, A8-A10,
+ * BR-005, BR-007, BR-008, BR-011, BR-015, BR-016) are tested in [UC005TransferDecisionsTest]; A6 and BR-009 come with the
+ * Uploads. Every name, amount, payee and identifier is invented (C-005).
  */
 @DisplayName("UC-005: Review Transfers")
 class UC005ReviewTransfersTest {
@@ -1057,8 +1057,8 @@ class UC005ReviewTransfersTest {
         val held = slice.copyStore.transfers.single().copy(decision = TransferDecision.Held, decidedAt = now)
         slice.copyStore.transfers[0] = held
         slice.importStatusStore.bankTransactions.replaceAll { if (it.transferId == held.id) it.copy(status = TransactionStatus.HeldTransfer) else it }
-        // Even when the pair no longer holds as Slussen would detect it.
-        change(card) { it.copy(type = BankAccountType.Savings) }
+        // Even when the pair no longer holds as Slussen would detect it: with no transfer pairing days the two are a day too far apart (BR-015).
+        slice.settings.settings = slice.settings.settings.copy(transferPairingDays = 0)
 
         assertEquals(0, compare())
 

@@ -18,6 +18,7 @@ import slussen.core.port.StoredBudgetAppTransaction
 import slussen.core.port.StoredTransfer
 import slussen.core.port.StoredUnreadableTransaction
 import slussen.core.port.TransactionStatus
+import slussen.core.port.TransferDecision
 import slussen.core.port.TransferType
 import slussen.core.port.UnreadableTransactionStatus
 import slussen.core.transfer.TransferDetection
@@ -76,6 +77,8 @@ data class TransferShown(
      * BR-013), this side or the other, or null when nothing does.
      */
     val keptOutBy: TransferKeptOut?,
+    /** Its Transfer Decision, Proposed while the Operator has made none (UC-005 BR-010). */
+    val decision: TransferDecision = TransferDecision.Proposed,
 )
 
 /** The Transfer Leg that keeps its Transfer out of every Upload Plan: this side or the other, with its [status]. */
@@ -277,6 +280,9 @@ class BankAccountTransactions(
         val held: List<StoredBudgetAppTransaction> = data.budgetAppTransactions.filter { it.budgetAccountId == bankAccount.mapping?.budgetAccountId }
         val transferLegs: List<StoredBankTransaction> = data.bankTransactions.filter { it.transferId != null }
 
+        /** UC-005 BR-015: the Transfers the Operator decided on that have a Retired Account on a side, which are in no Upload Plan. */
+        val withRetiredSide: Set<Long> = EligibleTransactions.withARetiredSide(data.transfers, transferLegs, data.bankAccounts)
+
         fun entry(transaction: StoredBudgetAppTransaction) =
             BudgetAppEntry(transaction.transactionDate, transaction.amount, transaction.payee, names[transaction.budgetAccountId].orEmpty())
     }
@@ -373,7 +379,7 @@ class BankAccountTransactions(
             firstSeenAt = transaction.firstSeenAt,
             status = transaction.status,
             reason = reason,
-            eligible = ground != null && EligibleTransactions.isEligible(transaction, ground.bankAccount, ground.budget, ground.transferLegs),
+            eligible = ground != null && EligibleTransactions.isEligible(transaction, ground.bankAccount, ground.budget, ground.transferLegs, ground.withRetiredSide),
             transfer = transfer,
         )
     }
@@ -444,8 +450,11 @@ class BankAccountTransactions(
             }
             TransactionStatus.InTheFuture -> if (transaction.bookedDate.isAfter(windows.today)) StatusReason.InTheFuture else StatusReason.AsStored(status)
             TransactionStatus.TransferLeg -> transfer
-                // UC-005 BR-005: a Lonely Transfer whose grace period ended since the latest Comparison is not shown as still expected.
-                ?.takeUnless { it.otherLeg == null && TransferDetection.graceEnded(transaction, windows.lonelyTransferGraceDays, windows.today) }
+                // UC-005 BR-005: a Lonely Transfer without a Transfer Decision whose grace period ended since the latest Comparison is not shown as still expected.
+                ?.takeUnless {
+                    it.decision == TransferDecision.Proposed && it.otherLeg == null &&
+                        TransferDetection.graceEnded(transaction, windows.lonelyTransferGraceDays, windows.today)
+                }
                 ?.let { StatusReason.TransferLeg(it) } ?: StatusReason.AsStored(status)
             // UC-005 BR-002: A Card Payment to a credit card Bank Account without a Funded By is a Guessed Transfer; A8 may propose no Budget Account.
             TransactionStatus.GuessedTransfer -> StatusReason.GuessedTransfer(
@@ -490,7 +499,13 @@ class BankAccountTransactions(
             otherBudgetAccountName = ground.names[otherSide].orEmpty(),
             otherLeg = other?.let { leg -> OtherLeg(bankAccounts.firstOrNull { it.id == leg.bankAccountId }?.name.orEmpty(), leg.bookedDate, leg.amount, leg.payee) },
             // A4 of UC-005: a Lonely Transfer shows the date by which its other side must arrive.
-            expectedBy = if (other == null) TransferDetection.lastDayOfGrace(transaction, ground.windows.lonelyTransferGraceDays) else null,
+            // UC-005 BR-005: The grace period ends only a Lonely Transfer that has no Transfer Decision.
+            expectedBy = if (other == null && stored.decision == TransferDecision.Proposed) {
+                TransferDetection.lastDayOfGrace(transaction, ground.windows.lonelyTransferGraceDays)
+            } else {
+                null
+            },
+            decision = stored.decision,
             writesIt = EligibleTransactions.writesItsSide(transaction, otherLegs),
             keptOutBy = EligibleTransactions.keptOutBy(transaction, ground.transferLegs)?.let { leg ->
                 leg.status?.let { TransferKeptOut(byThisSide = leg.id == transaction.id, status = it) }

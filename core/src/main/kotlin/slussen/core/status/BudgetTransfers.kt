@@ -13,6 +13,7 @@ import slussen.core.port.StoredBudget
 import slussen.core.port.StoredBudgetAppTransaction
 import slussen.core.port.StoredTransfer
 import slussen.core.port.TransactionStatus
+import slussen.core.port.TransferDecision
 import slussen.core.port.TransferType
 import slussen.core.transfer.DetectedTransfer
 import slussen.core.transfer.GuessReason
@@ -86,6 +87,15 @@ sealed interface TransferEligibility {
 
     /** UC-003 BR-014: not eligible for none of these reasons: its Bank Account is blocked or a Retired Account. */
     data object NotEligible : TransferEligibility
+
+    /** UC-005 A1, BR-010: the Operator split it: each Transfer Leg is an ordinary Bank Transaction, eligible or not on its own. */
+    data object Split : TransferEligibility
+
+    /** UC-005 A2, BR-007: the Operator holds it back: neither Transfer Leg is in an Upload Plan, as a Transfer or as an ordinary transaction. */
+    data object HeldBack : TransferEligibility
+
+    /** UC-005 BR-015: the Operator decided on it and the Bank Account of one of its sides is a Retired Account: it is in no Upload Plan until that Bank Account is restored. */
+    data object RetiredSide : TransferEligibility
 }
 
 /**
@@ -117,6 +127,8 @@ data class TransferItem(
     val eligibility: TransferEligibility,
     /** Null unless it is a Lonely Transfer whose other side is known. */
     val expected: ExpectedOtherSide?,
+    /** Its Transfer Decision, Proposed while the Operator has made none (UC-005 steps 4-5, A1-A3). */
+    val decision: TransferDecision = TransferDecision.Proposed,
 ) {
     val legs: List<LegShown> get() = listOfNotNull(outflowLeg, inflowLeg)
 
@@ -149,8 +161,9 @@ data class BudgetTransfersView(
     /** The dates of the compared Bank Transactions of the Budget, oldest to newest; null when none is compared. */
     val covers: ClosedRange<LocalDate>?,
 ) {
+    // UC-005 BR-010: The number of Guessed Transfers of a Budget counts only those that have no Transfer Decision.
     /** Step 1: the number of Guessed Transfers of the Budget. */
-    val guessedTransfers: Int get() = transfers.count { it.guessed }
+    val guessedTransfers: Int get() = transfers.count { it.guessed && it.decision == TransferDecision.Proposed }
 
     /**
      * UX-27: the Bank Transactions of these Transfers with the status Guessed Transfer that the Budget counts among those
@@ -192,6 +205,9 @@ class BudgetTransfers(
         /** Its compared Bank Transactions. */
         val transactions: List<StoredBankTransaction> = data.bankTransactions.filter { it.bankAccountId in comparedIds }
         val transferLegs: List<StoredBankTransaction> = data.bankTransactions.filter { it.transferId != null }
+
+        /** UC-005 BR-015: the Transfers the Operator decided on that have a Retired Account on a side. */
+        val withRetiredSide: Set<Long> = EligibleTransactions.withARetiredSide(data.transfers, transferLegs, data.bankAccounts)
 
         fun bankAccountOf(transaction: StoredBankTransaction): StoredBankAccount = bankAccountsById.getValue(transaction.bankAccountId)
 
@@ -255,11 +271,13 @@ class BudgetTransfers(
         val outflow = legs.firstOrNull { it.amount.thousandths < 0 }
         val inflow = legs.firstOrNull { it.amount.thousandths >= 0 }
         val graceDays = ground.windows.lonelyTransferGraceDays
-        val single = legs.singleOrNull()
+        // UC-005 BR-005: The grace period ends only a Lonely Transfer that has no Transfer Decision; one the Operator decided on stays a Lonely Transfer.
+        val single = legs.singleOrNull()?.takeIf { stored.decision == TransferDecision.Proposed }
         return TransferItem(
+            decision = stored.decision,
             type = stored.type,
             amount = stored.amount,
-            outflowBudgetAccountName = ground.names[stored.outflowBudgetAccountId].orEmpty(),
+            outflowBudgetAccountName = stored.outflowBudgetAccountId?.let { ground.names[it].orEmpty() },
             inflowBudgetAccountName = ground.names[stored.inflowBudgetAccountId].orEmpty(),
             outflowLeg = outflow?.let(ground::leg),
             inflowLeg = inflow?.let(ground::leg),
@@ -270,7 +288,7 @@ class BudgetTransfers(
             eligibility = if (single != null && TransferDetection.graceEnded(single, graceDays, ground.windows.today)) {
                 TransferEligibility.GraceEnded
             } else {
-                eligibilityOf(legs, ground)
+                eligibilityOf(legs, ground, stored)
             },
             // A4 of UC-005: a Lonely Transfer shows the Budget Account of its expected other side and the date by which it must arrive.
             expected = single?.let { arrived ->
@@ -342,7 +360,11 @@ class BudgetTransfers(
      * Whether the Transfer with the stored Transfer Legs [legs] is eligible, by the rule the counts use (UC-003 BR-014):
      * the Transfer Leg that keeps it out of every Upload Plan, or the one it is written through (UC-006 BR-009).
      */
-    private fun eligibilityOf(legs: List<StoredBankTransaction>, ground: Ground): TransferEligibility {
+    private fun eligibilityOf(legs: List<StoredBankTransaction>, ground: Ground, stored: StoredTransfer? = null): TransferEligibility {
+        // UC-005 BR-010: After Split, each Transfer Leg gets its status as an ordinary Bank Transaction.
+        if (stored?.decision == TransferDecision.Split) return TransferEligibility.Split
+        // UC-005 BR-015: While the Bank Account of one of its sides is a Retired Account, a Transfer the Operator decided on is in no Upload Plan, from either side.
+        if (stored != null && stored.id in ground.withRetiredSide) return TransferEligibility.RetiredSide
         val writing = legs.firstOrNull { leg -> EligibleTransactions.writesItsSide(leg, legs.filter { it.id != leg.id }) } ?: legs.first()
         val keptOut = if (writing.transferId == null) writing.takeIf { it.status != TransactionStatus.TransferLeg } else {
             EligibleTransactions.keptOutBy(writing, ground.transferLegs)
@@ -361,13 +383,15 @@ class BudgetTransfers(
             }
             // UC-005 BR-010: The Transfer Legs of a Guessed Transfer are not eligible until the Operator confirms the Transfer or chooses another Budget Account.
             TransactionStatus.GuessedTransfer -> TransferEligibility.Guessed
+            // UC-005 BR-007: A Transfer the Operator holds back keeps both Transfer Legs out of every Upload Plan.
+            TransactionStatus.HeldTransfer -> TransferEligibility.HeldBack
             // UC-005 BR-010: While a Transfer has a Transfer Leg to which an earlier rule gave its status, the whole Transfer is in no Upload Plan.
             else -> TransferEligibility.KeptOutBy(ground.leg(keptOut))
         }
     }
 
     private fun eligibleOrNot(writing: StoredBankTransaction, ground: Ground): TransferEligibility =
-        if (EligibleTransactions.isEligible(writing, ground.bankAccountOf(writing), ground.budget, ground.transferLegs)) {
+        if (EligibleTransactions.isEligible(writing, ground.bankAccountOf(writing), ground.budget, ground.transferLegs, ground.withRetiredSide)) {
             TransferEligibility.Eligible(ground.leg(writing))
         } else {
             TransferEligibility.NotEligible
