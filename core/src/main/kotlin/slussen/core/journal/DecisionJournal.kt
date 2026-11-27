@@ -1,6 +1,8 @@
 package slussen.core.journal
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import slussen.core.port.DecisionJournalRecorder
 import slussen.core.port.JournalEntry
 import slussen.core.port.JournalEventKind
@@ -22,6 +24,13 @@ class DecisionJournal(
     private val droppedEntries = AtomicLong()
 
     /**
+     * UC-010 postconditions: the one order in which `journal_on` is read and an entry handed over, by every caller, on
+     * the operation lane or not, and by the switch, so that no entry is handed over after "switched off" and none before
+     * "switched on". It is held only while the setting is read and the entry handed over, which returns at once.
+     */
+    private val order = Mutex()
+
+    /**
      * ADR-002 §9: the entries dropped here, in memory since this process started, because what they need could not be
      * read; the recorder counts its own drops apart.
      */
@@ -35,10 +44,12 @@ class DecisionJournal(
         require((importIdentifier == null) == (bankAccountName == null)) { "An Import Identifier is unique only within its Bank Account." }
         // ADR-002 §9: any failure, also of reading whether the Decision Journal is on, is dropped and never reaches the caller.
         try {
-            val current = settings.current()
-            if (!current.journalOn) return
-            // UC-010 BR-003: After an entry is recorded, the oldest entries are removed while the Decision Journal is above its size limit.
-            hand(entry(kind, details, importIdentifier, bankAccountName), JournalRules.limitBytes(current.journalSizeLimitMb))
+            order.withLock {
+                val current = settings.current()
+                if (!current.journalOn) return
+                // UC-010 BR-003: After an entry is recorded, the oldest entries are removed while the Decision Journal is above its size limit.
+                hand(entry(kind, details, importIdentifier, bankAccountName), JournalRules.limitBytes(current.journalSizeLimitMb))
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -47,8 +58,15 @@ class DecisionJournal(
     }
 
     /**
+     * Runs [block] in the one order of reading `journal_on` and handing entries over, with the Operator Settings read in
+     * it: the switch, and the Decision Journal's own changes, hand their entries over and store their value inside it.
+     * [block] must not call [record], which waits for the same order.
+     */
+    internal suspend fun <T> inOrder(block: suspend (OperatorSettings) -> T): T = order.withLock { block(settings.current()) }
+
+    /**
      * An entry of the Decision Journal's own control (UC-010 postconditions, BR-003), handed to the recorder at once, with
-     * [current] the settings it was read with and nothing read again. While the Decision Journal is off it is dropped,
+     * [current] the settings it was read with and nothing read again; called within [inOrder]. While the Decision Journal is off it is dropped,
      * unless [alsoWhileOff]: the entry of switching it off, handed over before `journal_on` is stored and never refused
      * for it. It removes no entry after it: switching, raising the size limit and changing the warning threshold remove
      * none, and a lower size limit is followed by its own trimming. Like every recording it never reaches the caller.

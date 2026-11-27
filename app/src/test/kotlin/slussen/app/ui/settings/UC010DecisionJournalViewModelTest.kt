@@ -195,15 +195,14 @@ class UC010DecisionJournalViewModelTest {
             viewModel.ui().journalConfirm,
         )
         assertEquals(50, slice.settings.settings.journalSizeLimitMb)
-        val hold = CompletableDeferred<Unit>()
-        journal.beforeKeepWithin = { hold.await() }
+        journal.hold()
 
         viewModel.confirmJournal()
         assertEquals("Lowering…", viewModel.ui().journalConfirm!!.confirm)
         assertTrue(viewModel.ui().journalConfirm!!.saving)
         viewModel.cancelJournalConfirm()
         assertTrue(viewModel.ui().journalConfirm!!.saving)
-        hold.complete(Unit)
+        journal.release()
 
         assertNull(viewModel.ui().journalConfirm)
         val line = viewModel.line(JournalControlKind.SizeLimit)
@@ -251,11 +250,90 @@ class UC010DecisionJournalViewModelTest {
         assertEquals(
             AnswerUi(
                 "Saved: 10 MB (50 by default). The Decision Journal's oldest entries could not be removed now; Slussen removes them " +
-                    "after the next entry it records. Recorded in the Decision Journal.",
+                    "after the next entry it records that is not about the Decision Journal's own settings. Recorded in the Decision Journal.",
                 AnswerKind.Done,
             ),
             viewModel.line(JournalControlKind.SizeLimit).answer,
         )
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "A2: Lower the Decision Journal Size Limit", businessRules = ["BR-003", "BR-004"], requirements = ["NFR-023"])
+    @DisplayName("BR-003: a trimming that fails part-way says how many oldest entries were removed and that the rest could not be now")
+    fun aLowerLimitWhoseTrimmingFailsPartWay() {
+        entries(12)
+        journal.trimFailsAfter = 1
+        val viewModel = settings()
+        viewModel.tapJournal(JournalControlKind.SizeLimit)
+        viewModel.saveJournal("10")
+
+        viewModel.confirmJournal()
+
+        assertEquals(
+            AnswerUi(
+                "Saved: 10 MB (50 by default). The Decision Journal's oldest entry was removed; the others above the limit could not " +
+                    "be removed now. Slussen removes them after the next entry it records that is not about the Decision Journal's own " +
+                    "settings. Recorded in the Decision Journal.",
+                AnswerKind.Done,
+            ),
+            viewModel.line(JournalControlKind.SizeLimit).answer,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "A2: Lower the Decision Journal Size Limit", businessRules = ["BR-003", "BR-004"], requirements = ["NFR-023"])
+    @DisplayName("BR-003: while the Decision Journal is off, a trimming that failed says when its oldest entries really are removed")
+    fun aLowerLimitWhoseTrimmingFailsWhileOff() {
+        entries(12)
+        journal.failsToTrim = true
+        val viewModel = settings()
+        viewModel.tapJournal(JournalControlKind.Switch)
+        viewModel.tapJournal(JournalControlKind.SizeLimit)
+        viewModel.saveJournal("10")
+
+        viewModel.confirmJournal()
+
+        assertEquals(
+            AnswerUi(
+                "Saved: 10 MB (50 by default). The Decision Journal's oldest entries could not be removed now. While it is off they " +
+                    "are removed only when its size limit is lowered again; once it is on, after the next entry it records that is not " +
+                    "about its own settings.",
+                AnswerKind.Done,
+            ),
+            viewModel.line(JournalControlKind.SizeLimit).answer,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-004"], requirements = ["NFR-023"])
+    @DisplayName("BR-004: Settings opens at once while the journal's own thread is busy; the size limit's line says the size is being worked out, and shows it when it is read")
+    fun settingsOpensWhileTheJournalIsBusy() {
+        journal.baseBytes = 12_449_999
+        journal.hold()
+
+        val viewModel = settings()
+
+        assertEquals("MB · default 50 · 10 to 500 · current size being worked out…", viewModel.line(JournalControlKind.SizeLimit).hint)
+        assertEquals("50 MB", viewModel.line(JournalControlKind.SizeLimit).value)
+        journal.release()
+        assertEquals("MB · default 50 · 10 to 500 · current size 12.4 MB", viewModel.line(JournalControlKind.SizeLimit).hint)
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-004"], requirements = ["NFR-023"])
+    @DisplayName("BR-004: another setting's change is answered at its line while the journal's own thread is busy; its entry waits there")
+    fun anotherSettingDoesNotWaitForTheJournal() {
+        val viewModel = settings()
+        journal.hold()
+        viewModel.startEditing(NumberSetting.DefaultWait)
+
+        viewModel.save("9")
+
+        assertNull(viewModel.ui().numberEditor)
+        assertTrue(viewModel.ui().line(NumberSetting.DefaultWait)!!.answer!!.text.startsWith("Saved: 9 hours"))
+        assertTrue(journal.waiting > 0)
+        journal.release()
+        assertEquals("Default wait changed from 8 to 9 hours", journal.entries.last().details)
     }
 
     @Test
@@ -391,13 +469,12 @@ class UC010DecisionJournalViewModelTest {
             ),
             viewModel.ui().journalConfirm,
         )
-        val hold = CompletableDeferred<Unit>()
-        journal.beforeClear = { hold.await() }
+        journal.hold()
 
         viewModel.confirmJournal()
         assertEquals("Clearing…", viewModel.ui().journalConfirm!!.confirm)
         assertEquals(30, journal.entries.size)
-        hold.complete(Unit)
+        journal.release()
 
         assertNull(viewModel.ui().journalConfirm)
         assertEquals(

@@ -1,5 +1,6 @@
 package slussen.core.port
 
+import kotlinx.coroutines.Deferred
 import java.time.Instant
 
 /** The `Values:` of `DECISION_JOURNAL_ENTRY.event_type`. */
@@ -43,25 +44,30 @@ interface DecisionJournalRecorder {
     fun record(entry: JournalEntry, keepWithinBytes: Long?)
 }
 
+/** What a trimming came to: [removed] oldest entries removed, and whether it is [complete] (within the limit, or none left). */
+data class Trimmed(val removed: Int, val complete: Boolean)
+
 /**
  * The Decision Journal's own control (ADR-001 §3, ADR-002 §9; UC-010 A2-A4, BR-003): its size, keeping it within a size
- * limit and clearing it. It reads no entry (Konsist K-07). Every method runs on the journal's own database and dispatcher,
- * after every entry handed to the recorder before it, never inside a transaction of `slussen.db`, and throws when the
- * journal's database fails; the core catches that.
+ * limit and clearing it. It reads no entry (Konsist K-07). Every method runs on the journal's own database and thread,
+ * after every entry handed to the recorder before it, never inside a transaction of `slussen.db`. [keepWithin] and
+ * [clear] only queue and return at once, so that they can be handed over in order while the operation lane is held and
+ * awaited after it is released.
  */
 interface DecisionJournalControl {
-    /** The space the Decision Journal takes on the device: `page_count × page_size` of `journal.db`, in bytes (ADR-002 §9). */
+    /** The space the Decision Journal takes on the device: `page_count × page_size` of `journal.db`, in bytes (ADR-002 §9). Throws when it cannot be read. */
     suspend fun sizeBytes(): Long
 
     /**
-     * While the size is above [limitBytes], removes the oldest entries (lowest `id`) and returns their space, until it is
-     * within it or no entry is left; removes nothing while it is within. Returns how many entries were removed.
+     * Queues: while the size is above [limitBytes], the oldest entries (lowest `id`) removed and their space returned,
+     * until it is within it or no entry is left; nothing while it is within. A failure part-way keeps what was removed
+     * before it and answers [Trimmed.complete] false.
      */
-    suspend fun keepWithin(limitBytes: Long): Int
+    fun keepWithin(limitBytes: Long): Deferred<Trimmed>
 
     /**
-     * Removes every entry and returns the space they took (UC-010 A3), then writes [firstEntry], if given, as the first
-     * entry after, all or nothing: when it throws, every entry is kept.
+     * Queues: every entry removed and the space they took returned (UC-010 A3), then [firstEntry], if given, written as the
+     * first entry after, all or nothing: when it fails, every entry is kept and what it returns completes with the failure.
      */
-    suspend fun clear(firstEntry: JournalEntry?)
+    fun clear(firstEntry: JournalEntry?): Deferred<Unit>
 }

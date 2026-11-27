@@ -1,5 +1,6 @@
 package slussen.core.journal
 
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -53,8 +54,9 @@ class UC010DecisionJournalControlTest {
     fun theDecisionJournalIsShownWithItsDefaults() = runTest {
         journal.baseBytes = 12_400_000
 
-        assertEquals(JournalShown(on = true, sizeLimitMb = 50, warningPercent = 80, sizeBytes = 12_400_000), control.shown())
-        assertFalse(control.shown().nearLimit)
+        assertEquals(JournalShown(on = true, sizeLimitMb = 50, warningPercent = 80), control.shown())
+        assertEquals(12_400_000, control.sizeBytes())
+        assertFalse(JournalRules.nearLimit(control.shown(), control.sizeBytes()))
     }
 
     @Test
@@ -72,15 +74,16 @@ class UC010DecisionJournalControlTest {
     @UseCase(id = "UC-010", scenario = "A4: Decision Journal Near Its Limit", businessRules = ["BR-003"])
     @DisplayName("A4: the Decision Journal is near its limit once its size reaches the warning threshold of its size limit, 40 MB of 50 MB at 80%, and not 1 byte before")
     fun nearItsLimitAtTheWarningThreshold() = runTest {
+        suspend fun near() = JournalRules.nearLimit(control.shown(), control.sizeBytes())
         journal.baseBytes = 40_000_000
-        assertTrue(control.shown().nearLimit)
+        assertTrue(near())
 
         journal.baseBytes = 39_999_999
-        assertFalse(control.shown().nearLimit)
+        assertFalse(near())
 
         assertEquals(SettingOutcome.Stored(70), control.changeWarningThreshold(70))
         journal.baseBytes = 35_000_000
-        assertTrue(control.shown().nearLimit)
+        assertTrue(near())
     }
 
     @Test
@@ -89,8 +92,9 @@ class UC010DecisionJournalControlTest {
     fun aSizeThatCannotBeReadIsNotKnown() = runTest {
         journal.failsToReadSize = true
 
-        assertEquals(JournalShown(on = true, sizeLimitMb = 50, warningPercent = 80, sizeBytes = null), control.shown())
-        assertFalse(control.shown().nearLimit)
+        assertEquals(JournalShown(on = true, sizeLimitMb = 50, warningPercent = 80), control.shown())
+        assertEquals(null, control.sizeBytes())
+        assertFalse(JournalRules.nearLimit(control.shown(), control.sizeBytes()))
     }
 
     // ---- BR-003: trimming after each write ------------------------------------------------------------------------
@@ -143,6 +147,40 @@ class UC010DecisionJournalControlTest {
             details(),
         )
         assertEquals(JournalEventKind.ConfigurationChange, journal.entries[1].eventKind)
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-003"])
+    @DisplayName("Postconditions: a start of a session racing the switch off, after the off entry is handed over and before journal_on is stored, records no entry after switched off")
+    fun aSessionStartRacingTheSwitchOffComesNotAfterIt() = runTest {
+        var race: kotlinx.coroutines.Deferred<*>? = null
+        slice.settings.beforeStore = {
+            race = async { slice.status.open() }
+            kotlinx.coroutines.yield()
+        }
+
+        assertEquals(SwitchOutcome.Stored(false), control.switch(false))
+        race!!.await()
+
+        assertEquals("Decision Journal switched off", details().last())
+        assertTrue("Slussen opened" !in details())
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-003"])
+    @DisplayName("Postconditions: a start of a session racing the switch on, after journal_on is stored and before the on entry is handed over, records no entry before switched on")
+    fun aSessionStartRacingTheSwitchOnComesNotBeforeIt() = runTest {
+        control.switch(false)
+        var race: kotlinx.coroutines.Deferred<*>? = null
+        slice.settings.afterStore = {
+            race = async { slice.status.open() }
+            kotlinx.coroutines.yield()
+        }
+
+        assertEquals(SwitchOutcome.Stored(true), control.switch(true))
+        race!!.await()
+
+        assertEquals(listOf("Decision Journal switched off", "Decision Journal switched on", "Slussen opened"), details())
     }
 
     @Test
@@ -325,8 +363,22 @@ class UC010DecisionJournalControlTest {
         earlierEntries(12)
         journal.failsToTrim = true
 
-        assertEquals(SizeLimitOutcome.Stored(10, Trimming.Failed), control.changeSizeLimit(10, confirmed = true))
+        assertEquals(SizeLimitOutcome.Stored(10, Trimming.Failed(removed = 0)), control.changeSizeLimit(10, confirmed = true))
         assertEquals(10, slice.settings.settings.journalSizeLimitMb)
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "A2: Lower the Decision Journal Size Limit", businessRules = ["BR-003", "BR-004"])
+    @DisplayName("BR-003: a trimming that fails part-way answers how many oldest entries it removed before it failed; the rest stay")
+    fun aTrimmingThatFailsPartWaySaysWhatItRemoved() = runTest {
+        journal.bytesPerEntry = 1_000_000
+        earlierEntries(12)
+        journal.trimFailsAfter = 2
+
+        assertEquals(SizeLimitOutcome.Stored(10, Trimming.Failed(removed = 2)), control.changeSizeLimit(10, confirmed = true))
+
+        assertEquals(11, journal.entries.size)
+        assertEquals("Session 2 started", journal.entries.first().details)
     }
 
     @Test
@@ -435,12 +487,80 @@ class UC010DecisionJournalControlTest {
     @DisplayName("A3: clearing does not hold the operation lane while the journal's database works: a decision can run meanwhile")
     fun clearingDoesNotHoldTheLane() = runTest {
         earlierEntries(4)
-        var laneFree = false
-        journal.beforeClear = { laneFree = slice.coordinator.running.value == null }
+        journal.hold()
 
-        control.clear()
+        val clearing = async { control.clear() }
+        testScheduler.runCurrent()
 
-        assertTrue(laneFree)
+        assertEquals(null, slice.coordinator.running.value)
+        assertEquals(4, journal.entries.size)
+        journal.release()
+        assertEquals(ClearOutcome.Cleared(recorded = true, sizeBytes = 100), clearing.await())
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "A3: Clear the Decision Journal", businessRules = ["BR-004"])
+    @DisplayName("A3: an entry handed over after the clearing was asked for, while the journal's thread is still busy, is not removed by it")
+    fun anEntryAfterTheClearingIsNotRemovedByIt() = runTest {
+        earlierEntries(4)
+        journal.hold()
+
+        val clearing = async { control.clear() }
+        testScheduler.runCurrent()
+        slice.status.open()
+        journal.release()
+        clearing.await()
+
+        assertEquals(listOf("Decision Journal cleared", "Slussen opened"), details())
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "A3: Clear the Decision Journal", businessRules = ["BR-004"])
+    @DisplayName("A3 step 3: the Decision Journal switched off between the question and the clearing: the clearing records nothing, and nothing follows switched off")
+    fun aSwitchOffBetweenTheQuestionAndTheClearing() = runTest {
+        earlierEntries(4)
+        // The question is asked while it is on; the Operator answers after it was switched off.
+        control.switch(false)
+        journal.hold()
+
+        val clearing = async { control.clear() }
+        testScheduler.runCurrent()
+        journal.release()
+
+        assertEquals(ClearOutcome.Cleared(recorded = false, sizeBytes = 0), clearing.await())
+        assertTrue(journal.entries.isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "A3: Clear the Decision Journal", businessRules = ["BR-004"])
+    @DisplayName("A3 step 3: a switch-off waiting for the lane while a clearing holds it comes after the clearing in the one order: the clearing entry is before switched off, none after")
+    fun aSwitchOffWaitingForTheLaneDuringAClearing() = runTest {
+        earlierEntries(4)
+
+        val clearing = async { control.clear() }
+        val switching = async { control.switch(false) }
+        clearing.await()
+        switching.await()
+
+        assertEquals(listOf("Decision Journal cleared", "Decision Journal switched off"), details())
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "A3: Clear the Decision Journal", businessRules = ["BR-004"])
+    @DisplayName("A3 step 3: a clearing queued while the Decision Journal is on, then switched off before the journal's thread runs it, records its entry before switched off and none after")
+    fun aSwitchOffQueuedAfterAClearingFollowsIt() = runTest {
+        earlierEntries(4)
+        journal.hold()
+
+        val clearing = async { control.clear() }
+        testScheduler.runCurrent()
+        val switching = async { control.switch(false) }
+        testScheduler.runCurrent()
+        journal.release()
+        clearing.await()
+        switching.await()
+
+        assertEquals(listOf("Decision Journal cleared", "Decision Journal switched off"), details())
     }
 
     // ---- BR-004: no decision waits for the Decision Journal or fails with it ----------------------------------------
@@ -458,23 +578,32 @@ class UC010DecisionJournalControlTest {
 
     @Test
     @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-004"], requirements = ["NFR-006"])
-    @DisplayName("BR-004: a Review Decision taken while the journal's database fails, to write, to trim and to read its size, is stored with its status")
+    @DisplayName("BR-004: a Review Decision taken while the journal's database fails, to write, to trim and to read its size, is stored with its status; its entries fail later on the journal's own thread, counted and dropped")
     fun aReviewDecisionIsStoredWhileTheJournalDatabaseFails() = runTest {
         val doubtful = doubtful()
+        val written = journal.entries.size
         journal.failsToRecord = true
         journal.failsToTrim = true
         journal.failsToReadSize = true
+        journal.hold()
 
         val outcome = slice.review.decide(doubtful, ReviewChoice.ImportAnyway)
 
         assertEquals(ReviewOutcome.Stored(ReviewChoice.ImportAnyway, TransactionStatus.New), outcome)
         assertEquals(ReviewChoice.ImportAnyway, slice.copyStore.reviewDecisions.single().choice)
         assertEquals(TransactionStatus.New, fixture.status(doubtful))
+        // The decision's entries were handed over and wait on the journal's own thread; they fail there, later.
+        assertTrue(journal.waiting > 0)
+        assertEquals(0, journal.dropped)
+        val handedOver = journal.waiting
+        journal.release()
+        assertEquals(handedOver.toLong(), journal.dropped)
+        assertEquals(written, journal.entries.size)
     }
 
     @Test
     @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-004"], requirements = ["NFR-006"])
-    @DisplayName("BR-003, BR-004: a Transfer Decision taken while the Decision Journal is above its limit and cannot trim is stored; its entries are written and the oldest stay")
+    @DisplayName("BR-003, BR-004: a Transfer Decision taken while the Decision Journal is above its limit and cannot trim is stored; its entries are written later on the journal's own thread, each trimming not done is counted, and the oldest stay")
     fun aTransferDecisionIsStoredWhileTheJournalCannotTrim() = runTest {
         fixture.ready()
         val checking = fixture.bankAccount("Kestrel Checking", "Checking")
@@ -485,32 +614,38 @@ class UC010DecisionJournalControlTest {
         fixture.compare()
         journal.baseBytes = 60_000_000
         journal.failsToTrim = true
+        journal.hold()
 
         val outcome = slice.transferDecisions.decide(paid, TransferChoice.Hold)
 
         assertTrue(outcome is TransferOutcome.Stored)
         assertEquals(TransferDecision.Held, slice.copyStore.transfers.single().decision)
         assertEquals(TransactionStatus.HeldTransfer, fixture.status(paid))
+        val handedOver = journal.waiting
+        assertTrue(handedOver > 0)
+        journal.release()
         assertTrue(journal.entries.any { it.eventKind == JournalEventKind.OperatorDecision })
+        assertEquals(handedOver.toLong(), journal.trimmingsNotDone)
+        assertEquals(0, journal.dropped)
         assertEquals(0, journal.removed)
     }
 
     @Test
     @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-004"], requirements = ["NFR-006"])
-    @DisplayName("BR-003, BR-004: a decision does not wait for the trimming after its entries are written; it is stored while the trimming still waits, and the trimming runs after")
+    @DisplayName("BR-003, BR-004: a decision does not wait for the journal's own thread: it is stored while its entries and their trimming still wait there, and they run after")
     fun aDecisionDoesNotWaitForTheJournalsTrimming() = runTest {
         val doubtful = doubtful()
         journal.bytesPerEntry = 1_000_000
         journal.baseBytes = 49_500_000
-        journal.holdsTrimming = true
+        journal.hold()
         val before = journal.entries.size
 
         assertEquals(ReviewOutcome.Stored(ReviewChoice.ImportAnyway, TransactionStatus.New), slice.review.decide(doubtful, ReviewChoice.ImportAnyway))
         assertEquals(0, journal.removed)
-        assertTrue(journal.entries.size > before)
+        assertEquals(before, journal.entries.size)
 
-        journal.runHeldTrimming()
+        journal.release()
         assertTrue(journal.removed > 0)
-        assertTrue(control.shown().sizeBytes!! <= 50_000_000)
+        assertTrue(control.sizeBytes()!! <= 50_000_000)
     }
 }

@@ -17,6 +17,7 @@ import slussen.core.mapping.AccountMappings
 import slussen.core.operation.OperationCoordinator
 import slussen.core.plugin.PluginRegistration
 import slussen.core.plugin.RegisteredPlugins
+import slussen.core.port.DecisionJournalRecorder
 import slussen.core.port.RandomSource
 import slussen.core.port.ServiceKey
 import slussen.core.port.StartKind
@@ -44,6 +45,8 @@ class TestSlice(
     unreadableParts: List<UnreadablePart> = emptyList(),
     /** Computes the Import Identifiers O-1 stores; a test passes a test-only digest to plant a collision (ADR-008 §5). */
     identify: (ImportIdentifierInput) -> String = ImportIdentifierProtocol::importIdentifier,
+    /** The recorder the core records through; the fake [journalRecorder] unless a test gives the real one of `:persistence`. */
+    recorder: DecisionJournalRecorder? = null,
 ) {
     val clock = MutableClock()
     val budgetApp = FakeBudgetApp()
@@ -73,7 +76,7 @@ class TestSlice(
         PluginRegistration(registry).register(budgetApp, listOf(feeds, openBanking, wren), listOf(fileFormat))
     }
     val coordinator = OperationCoordinator(coordinatorStore)
-    val journal = DecisionJournal(journalRecorder, settings, clock)
+    val journal = DecisionJournal(recorder ?: journalRecorder, settings, clock)
 
     /** UC-010 A2-A4: the Decision Journal's own control, on the same fake journal database as the recorder. */
     val journalControl = JournalControl(settings, journal, journalRecorder, coordinator)

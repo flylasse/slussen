@@ -33,6 +33,7 @@ import slussen.core.port.UnreadablePart
 import slussen.persistence.credential.KeystoreCredentialVault
 import slussen.persistence.device.DeviceDatabase
 import slussen.persistence.journal.JournalDatabase
+import slussen.persistence.journal.RoomJournalFile
 import slussen.persistence.journal.JournalEventType
 import slussen.persistence.main.CoordinatorStateEntity
 import slussen.persistence.main.FirstUploadMatchingEntity
@@ -88,7 +89,7 @@ class SlussenStorage private constructor(
     val coordinator = RoomCoordinatorStore(main.coordinator())
     val credentialVault = KeystoreCredentialVault(device.serviceCredentials())
     /** `journal.db`: the recorder and the Decision Journal's own control, on one thread of their own (ADR-002 §9). */
-    private val journalDatabase = RoomDecisionJournal(journal)
+    val journalDatabase = RoomDecisionJournal(RoomJournalFile(journal))
     val journalRecorder: DecisionJournalRecorder = journalDatabase
     val journalControl: DecisionJournalControl = journalDatabase
     val fetches = RoomFetchStore(main.fetches())

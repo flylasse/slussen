@@ -18,6 +18,18 @@ import slussen.core.settings.SwitchOutcome
  * `#journal-limit`, `#clear-journal`, `#journal-near`): its lines, its dialogs and questions, and the answer of each
  * change at its own line, in Slussen's words.
  */
+/** The Decision Journal's size as Settings knows it: still being worked out on the journal's own thread, read, or not readable. */
+internal sealed interface JournalSizeUi {
+    data object Reading : JournalSizeUi
+
+    data class Known(override val bytes: Long) : JournalSizeUi
+
+    data object NotRead : JournalSizeUi
+
+    /** The size in bytes, when it is known. */
+    val bytes: Long? get() = null
+}
+
 internal object JournalTexts {
     private val defaults = OperatorSettings.DEFAULT
     private val limitRange = AllowedRanges.JOURNAL_SIZE_LIMIT_MB
@@ -50,9 +62,18 @@ internal object JournalTexts {
     private fun stillOnOrOff(on: Boolean) = if (on) "Still on, the default." else "Still off (on by default)."
 
     /** Step 1 (`#list-2`): the four lines of the Decision Journal with the answers and the state of a change on its way. */
-    fun lines(shown: JournalShown, answers: Map<JournalControlKind, AnswerUi>, pending: Pair<JournalControlKind, String>?): List<JournalLineUi> {
+    fun lines(
+        shown: JournalShown,
+        journalSize: JournalSizeUi,
+        answers: Map<JournalControlKind, AnswerUi>,
+        pending: Pair<JournalControlKind, String>?,
+    ): List<JournalLineUi> {
         fun pendingOf(control: JournalControlKind) = pending?.takeIf { it.first == control }?.second
-        val current = shown.sizeBytes?.let { "current size ${size(it)}" } ?: "current size could not be read"
+        val current = when (journalSize) {
+            JournalSizeUi.Reading -> "current size being worked out…"
+            is JournalSizeUi.Known -> "current size ${size(journalSize.bytes)}"
+            JournalSizeUi.NotRead -> "current size could not be read"
+        }
         return listOf(
             JournalLineUi(
                 JournalControlKind.Switch, "Decision Journal", "On by default", if (shown.on) "On" else "Off",
@@ -77,9 +98,9 @@ internal object JournalTexts {
     }
 
     /** A4 (`#journal-near`): the size and the limit, and what keeps more entries. */
-    fun nearLimit(shown: JournalShown): JournalWarningUi? {
-        if (!shown.nearLimit) return null
-        val size = shown.sizeBytes ?: return null
+    fun nearLimit(shown: JournalShown, journalSize: JournalSizeUi): JournalWarningUi? {
+        val size = journalSize.bytes ?: return null
+        if (!JournalRules.nearLimit(shown, size)) return null
         return JournalWarningUi(
             "Decision Journal nearly full",
             "${size(size)} of ${limit(shown.sizeLimitMb)}, the size limit set in Operator Settings. Above it the oldest entries are " +
@@ -115,10 +136,14 @@ internal object JournalTexts {
         if (control == JournalControlKind.SizeLimit) "New value · MB · default ${defaults.journalSizeLimitMb}"
         else "New value · percent · default ${defaults.journalWarningPercent}%"
 
-    fun explanation(control: JournalControlKind, shown: JournalShown): String = if (control == JournalControlKind.SizeLimit) {
+    fun explanation(control: JournalControlKind, journalSize: JournalSizeUi): String = if (control == JournalControlKind.SizeLimit) {
         "How much space the Decision Journal may take on this device, an Operator Setting: ${defaults.journalSizeLimitMb} MB by default, " +
             "${limitRange.first} to ${limitRange.last} MB. " +
-            (shown.sizeBytes?.let { "It takes ${size(it)} now. " } ?: "Its size could not be read now. ") +
+            when (journalSize) {
+                JournalSizeUi.Reading -> "Its size is being worked out. "
+                is JournalSizeUi.Known -> "It takes ${size(journalSize.bytes)} now. "
+                JournalSizeUi.NotRead -> "Its size could not be read now. "
+            } +
             "Above the limit its oldest entries are removed; a higher limit removes none."
     } else {
         "At what share of its size limit Slussen warns that the Decision Journal is nearly full, an Operator Setting: " +
@@ -170,8 +195,21 @@ internal object JournalTexts {
                     else -> "The Decision Journal's ${trimming.removed} oldest entries were removed; $now."
                 }
             }
-            Trimming.Failed -> "The Decision Journal's oldest entries could not be removed now; Slussen removes them after the next entry it records" +
-                if (journalOnNow) "." else ", once the Decision Journal is on again, or when the size limit is lowered again."
+            is Trimming.Failed -> {
+                val done = when (trimming.removed) {
+                    0 -> "The Decision Journal's oldest entries could not be removed now"
+                    1 -> "The Decision Journal's oldest entry was removed; the others above the limit could not be removed now"
+                    else -> "The Decision Journal's ${trimming.removed} oldest entries were removed; the others above the limit could not be removed now"
+                }
+                // When they go (UC-010 BR-003): entries are removed after an entry is recorded (not one of the Decision Journal's own settings, which removes none) and right after a lower limit.
+                done + if (journalOnNow) {
+                    if (trimming.removed == 0) "; Slussen removes them after the next entry it records that is not about the Decision Journal's own settings."
+                    else ". Slussen removes them after the next entry it records that is not about the Decision Journal's own settings."
+                } else {
+                    ". While it is off they are removed only when its size limit is lowered again; once it is on, after the next entry it " +
+                        "records that is not about its own settings."
+                }
+            }
         }
         return AnswerUi("$head $body" + if (journalOnNow) RECORDED else "", AnswerKind.Done)
     }

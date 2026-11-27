@@ -203,8 +203,17 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
     private var detailedLoggingAnswer: AnswerUi? = null
     private var detailedLoggingPending: String? = null
 
-    /** The Decision Journal as last read or stored (step 1, A4). */
+    /** The Decision Journal's settings as last read or stored (step 1). */
     private var journalShown: JournalShown? = null
+
+    /**
+     * Step 1, A4: the Decision Journal's size as last read. It is read apart, on the journal's own thread, so that nothing
+     * else on Settings waits for it (UC-010 BR-004); until the first read is done its line says it is being worked out.
+     */
+    private var journalSize: JournalSizeUi = JournalSizeUi.Reading
+
+    /** The latest read of the size handed over; an older one that ends after it is not shown. */
+    private var sizeReads = 0
 
     /** NFR-023: the answer of the last change of each control of the Decision Journal, at its line. */
     private val journalAnswers = mutableMapOf<JournalControlKind, AnswerUi>()
@@ -235,6 +244,31 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
             SETTINGS_NOT_READ_AGAIN
         }
         publish(notReadAgain = notReadAgain)
+        readJournalSize()
+    }
+
+    /** Reads the Decision Journal's size apart and shows it when it is read; the last one read stays shown meanwhile. */
+    private fun readJournalSize() {
+        val read = ++sizeReads
+        viewModelScope.launch {
+            val bytes = try {
+                services.journalControl.sizeBytes()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                null
+            }
+            if (read != sizeReads) return@launch
+            journalSize = bytes?.let { JournalSizeUi.Known(it) } ?: JournalSizeUi.NotRead
+            publish(notReadAgain = mutableState.value?.notReadAgain)
+        }
+    }
+
+    /** The size a change of the Decision Journal answered with, shown at once; a read handed over before it is not shown. */
+    private fun sizeAnswered(bytes: Long?) {
+        if (bytes == null) return readJournalSize()
+        sizeReads++
+        journalSize = JournalSizeUi.Known(bytes)
     }
 
     fun load() {
@@ -257,9 +291,11 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                     detailedLoggingStatement = mutableState.value?.detailedLoggingStatement,
                     journalEditor = mutableState.value?.journalEditor,
                     journalConfirm = mutableState.value?.journalConfirm,
-                    journalNearLimit = journalShown?.let(JournalTexts::nearLimit),
+                    journalNearLimit = journalShown?.let { JournalTexts.nearLimit(it, journalSize) },
                 )
                 mutableNotOpened.value = null
+                // UC-010 BR-004: Settings is shown at once; the Decision Journal's size follows when its own thread has read it.
+                readJournalSize()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -375,8 +411,8 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
      * Decision Journal as last read, or from the stored settings when it has not been read yet.
      */
     private fun journalLines(values: OperatorSettings): List<SettingItemUi> {
-        val journal = journalShown ?: JournalShown(values.journalOn, values.journalSizeLimitMb, values.journalWarningPercent, sizeBytes = null)
-        return JournalTexts.lines(journal, journalAnswers, journalPending).map { SettingItemUi.Journal(it) }
+        val journal = journalShown ?: JournalShown(values.journalOn, values.journalSizeLimitMb, values.journalWarningPercent)
+        return JournalTexts.lines(journal, journalSize, journalAnswers, journalPending).map { SettingItemUi.Journal(it) }
     }
 
     /** UC-010 step 1 (`settings.html#list`): the two description lists with their number of entries, each opening the Transfer Descriptions. */
@@ -404,7 +440,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
             notReadAgain = notReadAgain,
             journalEditor = journalEditor,
             journalConfirm = journalConfirm,
-            journalNearLimit = journalShown?.let(JournalTexts::nearLimit),
+            journalNearLimit = journalShown?.let { JournalTexts.nearLimit(it, journalSize) },
         )
     }
 
@@ -684,7 +720,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                             title = JournalTexts.editorTitle(control),
                             fieldName = JournalTexts.fieldName(control),
                             value = value,
-                            explanation = JournalTexts.explanation(control, journal),
+                            explanation = JournalTexts.explanation(control, journalSize),
                         ),
                     ),
                 )
@@ -755,7 +791,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                 }
                 val notReadAgain = readJournalAgain(stored = null)
                 journalAnswers[JournalControlKind.Clear] = JournalTexts.cleared(outcome)
-                if (outcome is ClearOutcome.Cleared) journalShown = journalShown?.copy(sizeBytes = outcome.sizeBytes ?: journalShown?.sizeBytes)
+                if (outcome is ClearOutcome.Cleared) sizeAnswered(outcome.sizeBytes)
                 publish(journalConfirm = null, notReadAgain = notReadAgain)
             } else {
                 val megabytes = pendingLowerLimit ?: return@launch
@@ -812,7 +848,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
         val notReadAgain = readJournalAgain(stored = if (outcome is SizeLimitOutcome.Stored) SettingValue.JournalSizeLimit(megabytes) else null)
         if (outcome is SizeLimitOutcome.Stored) {
             val trimming = outcome.trimming
-            if (trimming is Trimming.Done && trimming.sizeBytes != null) journalShown = journalShown?.copy(sizeBytes = trimming.sizeBytes)
+            sizeAnswered((trimming as? Trimming.Done)?.sizeBytes)
         }
         journalRetries.remove(control)
         journalAnswers[control] = when (outcome) {

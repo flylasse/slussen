@@ -19,7 +19,11 @@ import slussen.core.port.CoordinatorMode
 import slussen.core.port.CoordinatorStore
 import slussen.core.port.DataProviderRegistration
 import slussen.core.port.DataProviderSettingsStore
+import kotlinx.coroutines.Deferred
+import slussen.core.journal.JournalQueue
 import slussen.core.port.DecisionJournalControl
+import slussen.core.port.Trimmed
+import java.util.concurrent.Executor
 import slussen.core.port.DecisionJournalRecorder
 import slussen.core.port.FetchStore
 import slussen.core.port.FileFormatRegistration
@@ -109,6 +113,9 @@ class InMemoryOperatorSettingsStore(
     private val copies: InMemoryBudgetAppCopyStore? = null,
 ) : OperatorSettingsStore {
     var beforeStore: suspend () -> Unit = {}
+
+    /** Runs after an Operator Setting is stored, before the caller goes on; a test races another caller there. */
+    var afterStore: suspend () -> Unit = {}
     var failsToStore: Boolean = false
 
     /** Makes every read of the Operator Settings fail, as a storage that cannot be read would. */
@@ -130,6 +137,7 @@ class InMemoryOperatorSettingsStore(
         }
         settings = change.value.appliedTo(settings)
         stateVersion.raise()
+        afterStore()
     }
 
     /** The description lists of the stored copy this fake was made with, in their order (`transfer_description`). */
@@ -163,16 +171,44 @@ class InMemoryCoordinatorStore(var mode: CoordinatorMode = CoordinatorMode.Norma
 }
 
 /**
- * In-memory fake of the Decision Journal's database: the recorder and the control (ADR-002 §9). It keeps every entry it
- * was given that no trimming or clearing removed, oldest first. Its size is [baseBytes] plus [bytesPerEntry] for each
- * entry kept, so that a test chooses how many entries fill a size limit. A test makes the journal's database fail with
- * [failsToRecord], [failsToTrim], [failsToReadSize] and [failsToClear]; these throw, as a database that fails would, so
- * that what the core does with a failure is tested, not the fake's catching. [holdsTrimming] keeps the trimming after
- * each write waiting until [runHeldTrimming], as the journal's own dispatcher may still be busy when a caller goes on.
+ * The journal's own thread for the fake of `:testing`: a task runs at once, on the caller's thread, unless the test
+ * [hold]s it; held tasks run in order at [release], as a busy journal thread would run them later. While it holds, a
+ * caller that waits for the journal waits, and one that only hands an entry over goes on.
+ */
+class HeldExecutor : Executor {
+    private val held = ArrayDeque<Runnable>()
+    private var holding = false
+
+    fun hold() {
+        holding = true
+    }
+
+    /** Runs every held task in the order handed over, and those they hand over, and runs tasks at once again. */
+    fun release() {
+        holding = false
+        while (held.isNotEmpty()) held.removeFirst().run()
+    }
+
+    /** How many tasks wait. */
+    val waiting: Int get() = held.size
+
+    override fun execute(command: Runnable) {
+        if (holding) held += command else command.run()
+    }
+}
+
+/**
+ * In-memory fake of the Decision Journal's database: the recorder and the control (ADR-002 §9), on the protection every
+ * recorder shares ([JournalQueue]) and a thread a test can hold ([HeldExecutor]), so that it fails the way the real
+ * recorder does: later, on its own thread, never by throwing to the caller. It keeps every entry written that no
+ * trimming or clearing removed, oldest first. Its size is [baseBytes] plus [bytesPerEntry] for each entry kept. A test
+ * makes the journal's database fail with [failsToRecord], [failsToTrim] (or [trimFailsAfter] entries), [failsToReadSize]
+ * and [failsToClear]; [hold] keeps everything handed over waiting until [release].
  */
 class InMemoryDecisionJournal : DecisionJournalRecorder, DecisionJournalControl {
     private val recorded = mutableListOf<JournalEntry>()
-    private val heldTrimming = mutableListOf<Long>()
+    private val thread = HeldExecutor()
+    private val queue = JournalQueue(thread)
 
     /** The entries kept, oldest first. */
     val entries: List<JournalEntry> get() = recorded.toList()
@@ -184,56 +220,67 @@ class InMemoryDecisionJournal : DecisionJournalRecorder, DecisionJournalControl 
     var bytesPerEntry: Long = 100
     var failsToRecord: Boolean = false
     var failsToTrim: Boolean = false
+
+    /** A trimming fails after removing this many entries, as a database that fails part-way; null: it does not. */
+    var trimFailsAfter: Int? = null
     var failsToReadSize: Boolean = false
     var failsToClear: Boolean = false
-    var holdsTrimming: Boolean = false
-    var beforeClear: suspend () -> Unit = {}
-    var beforeKeepWithin: suspend () -> Unit = {}
 
     /** How many entries trimming and clearing removed so far. */
     var removed: Int = 0
         private set
 
+    /** Entries that could not be written, counted on the journal's own thread as the real recorder counts them. */
+    val dropped: Long get() = queue.dropped
+
+    /** Trimmings after a write that could not be done in full. */
+    val trimmingsNotDone: Long get() = queue.trimmingsNotDone
+
+    /** Keeps everything handed over to the journal's own thread waiting. */
+    fun hold() = thread.hold()
+
+    /** Runs what waits, in the order handed over. */
+    fun release() = thread.release()
+
+    /** How many tasks of the journal's own thread wait. */
+    val waiting: Int get() = thread.waiting
+
     private fun size(): Long = baseBytes + recorded.size * bytesPerEntry
 
     override fun record(entry: JournalEntry, keepWithinBytes: Long?) {
-        if (failsToRecord) throw IllegalStateException("The invented journal database of this test cannot be written.")
-        recorded += entry
         limitsHandedOver += keepWithinBytes
-        if (keepWithinBytes == null) return
-        if (holdsTrimming) heldTrimming += keepWithinBytes else trim(keepWithinBytes)
+        queue.write(
+            write = {
+                if (failsToRecord) throw IllegalStateException("The invented journal database of this test cannot be written.")
+                recorded += entry
+            },
+            trimAfter = keepWithinBytes?.let { limit -> { trim(limit).complete } },
+        )
     }
 
-    /** Runs the trimming held by [holdsTrimming], in the order the entries were handed over. */
-    fun runHeldTrimming() {
-        val held = heldTrimming.toList()
-        heldTrimming.clear()
-        held.forEach(::trim)
-    }
-
-    private fun trim(limitBytes: Long): Int {
-        if (failsToTrim) throw IllegalStateException("The invented journal database of this test cannot be trimmed.")
+    private fun trim(limitBytes: Long): Trimmed {
         var count = 0
         while (size() > limitBytes && recorded.isNotEmpty()) {
+            val failsAt = if (failsToTrim) 0 else trimFailsAfter
+            if (failsAt != null && count >= failsAt) {
+                removed += count
+                return Trimmed(count, complete = false)
+            }
             recorded.removeAt(0)
             count++
         }
         removed += count
-        return count
+        return Trimmed(count, complete = true)
     }
 
-    override suspend fun sizeBytes(): Long {
+    override suspend fun sizeBytes(): Long = queue.queue {
         if (failsToReadSize) throw IllegalStateException("The invented journal database of this test cannot be read.")
-        return size()
-    }
+        size()
+    }.await()
 
-    override suspend fun keepWithin(limitBytes: Long): Int {
-        beforeKeepWithin()
-        return trim(limitBytes)
-    }
+    override fun keepWithin(limitBytes: Long): Deferred<Trimmed> = queue.queue { trim(limitBytes) }
 
-    override suspend fun clear(firstEntry: JournalEntry?) {
-        beforeClear()
+    override fun clear(firstEntry: JournalEntry?): Deferred<Unit> = queue.queue {
         if (failsToClear) throw IllegalStateException("The invented journal database of this test cannot be cleared.")
         removed += recorded.size
         recorded.clear()

@@ -28,7 +28,7 @@ class UC010JournalTrimmingTest {
     }
 
     private fun PagedJournal.keepWithin(limitBytes: Long): Int =
-        JournalTrimming.keepWithin(limitBytes, pageBytes, size = ::size, entries = { ids.size }, removeOldest = ::removeOldest)
+        JournalTrimming.keepWithin(limitBytes, pageBytes, size = ::size, entries = { ids.size }, removeOldest = ::removeOldest).removed
 
     @Test
     @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-003"])

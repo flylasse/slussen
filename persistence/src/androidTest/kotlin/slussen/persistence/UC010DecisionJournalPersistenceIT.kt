@@ -51,8 +51,10 @@ class UC010DecisionJournalPersistenceIT {
         assertTrue(full > 3_000_000, "size: $full")
         val newest = checkNotNull(storage.journal.entries().newestId())
 
-        val removed = storage.journalControl.keepWithin(1_000_000)
+        val trimmed = storage.journalControl.keepWithin(1_000_000).await()
+        val removed = trimmed.removed
 
+        assertTrue(trimmed.complete)
         assertTrue(removed > 0)
         assertTrue(storage.journalControl.sizeBytes() <= 1_000_000)
         assertEquals(1_000 - removed, storage.journal.entries().count())
@@ -87,7 +89,7 @@ class UC010DecisionJournalPersistenceIT {
         val full = storage.filled(500)
         val newestBefore = checkNotNull(storage.journal.entries().newestId())
 
-        storage.journalControl.clear(JournalEntry(now, JournalEventKind.JournalControl, "Decision Journal cleared"))
+        storage.journalControl.clear(JournalEntry(now, JournalEventKind.JournalControl, "Decision Journal cleared")).await()
 
         assertTrue(storage.journalControl.sizeBytes() < full / 10, "size after: ${storage.journalControl.sizeBytes()} of $full")
         assertEquals(1, storage.journal.entries().count())
@@ -95,17 +97,55 @@ class UC010DecisionJournalPersistenceIT {
         storage.close()
     }
 
+    /** Makes every insert or every delete of `journal.db` fail, as a database that fails would, with SQLite's own error. */
+    private fun SlussenStorage.failing(statement: String) {
+        journal.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER failing_$statement BEFORE $statement ON decision_journal_entry BEGIN SELECT RAISE(ABORT, 'invented failure'); END",
+        )
+    }
+
+    private fun SlussenStorage.notFailing(statement: String) {
+        journal.openHelper.writableDatabase.execSQL("DROP TRIGGER failing_$statement")
+    }
+
     @Test
     @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-004"], requirements = ["NFR-006"])
-    @DisplayName("BR-004: with journal.db closed, as a database that fails, a write never throws and an Operator Setting is still stored in slussen.db")
-    fun aFailingJournalDatabaseDoesNotStopAStore() = runBlocking {
+    @DisplayName("BR-004: while journal.db refuses every write, a write throws nothing, an Operator Setting is still stored in slussen.db, the entry is counted as dropped and the journal holds exactly what it held before")
+    fun aWriteTheDatabaseRefusesIsDroppedAndCounted() = runBlocking {
         val storage = SlussenStorage.open(DeviceFiles.context, clock)
-        storage.journal.close()
+        storage.filled(3)
+        storage.failing("INSERT")
 
-        storage.journalRecorder.record(entry(0), keepWithinBytes = 1_000_000)
+        storage.journalRecorder.record(entry(3), keepWithinBytes = 1_000_000)
         storage.settings.store(SettingChange(SettingValue.JournalSizeLimit(20), SettingFollowUp.None))
+        storage.journalControl.sizeBytes()
 
         assertEquals(20, storage.settings.current().journalSizeLimitMb)
-        storage.main.close(); storage.device.close()
+        assertEquals(1, storage.journalDatabase.droppedEntries)
+        assertEquals(3, storage.journal.entries().count())
+        storage.notFailing("INSERT")
+        storage.journalRecorder.record(entry(4), keepWithinBytes = null)
+        storage.journalControl.sizeBytes()
+        assertEquals(4, storage.journal.entries().count())
+        storage.close()
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-004"], requirements = ["NFR-006"])
+    @DisplayName("BR-003, BR-004: while journal.db refuses every removal, an entry handed over with a limit it is above is written, the trimming not done is counted, and no entry is removed")
+    fun aTrimmingTheDatabaseRefusesKeepsTheEntry() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        val full = storage.filled(100)
+        storage.failing("DELETE")
+
+        storage.journalRecorder.record(entry(100), keepWithinBytes = full / 2)
+        storage.journalControl.sizeBytes()
+
+        assertEquals(101, storage.journal.entries().count())
+        assertEquals(1, storage.journalDatabase.trimmingsNotDone)
+        assertEquals(0, storage.journalDatabase.droppedEntries)
+        val trimmed = storage.journalControl.keepWithin(full / 2).await()
+        assertEquals(slussen.core.port.Trimmed(removed = 0, complete = false), trimmed)
+        storage.close()
     }
 }
