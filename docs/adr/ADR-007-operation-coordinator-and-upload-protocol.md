@@ -97,7 +97,7 @@ Preparation is admitted only when all of these hold; otherwise the reason is sho
 - no Comparison is pending (§3a);
 - no read of the read period is owed for a Budget of the plan (`budget_read_state.period_read_owed`, set when a
   served Budget gains a Budget Account or an Operator Setting change makes the read period longer: UC-003 BR-016,
-  UC-010 step 5); the Budget is read first;
+  UC-010 step 5, UC-006 A14);
 - the Budget App plug-in passed the composition checks of ADR-001 §4.2 and ADR-008 §6.
 
 ### 3a. A Comparison is never left half done (B-04)
@@ -117,7 +117,11 @@ within the same operation, or at the next start when Slussen stopped in between.
 `budget.last_read_at` stays as it is. A plan that replaces an open one after such a Transfer Decision (§5) is prepared
 only after these conclusions, since preparation waits for the marker (§3). The join of UC-005 BR-005, the removal of a
 Transfer the joining Bank Transaction leaves and the new detection of that Transfer's other Transfer Leg are part of
-one O-5, so no marker is needed between them.
+one O-5, so no marker is needed between them. While a Budget owes a read of its read period
+(`budget_read_state.period_read_owed`, UC-003 BR-016), no conclusion from stored data changes the Transaction Statuses
+of its Bank Transactions: the change that owes the read sets no `comparison_pending` of its own, and a conclusion that
+clears a marker set for another reason, or follows a UC-009 change, leaves that Budget's statuses as they are; only a
+Comparison that reads the Budget, with its period, gives them again.
 
 ### 4. Preparation: the immutable write set and retries
 
@@ -424,3 +428,6 @@ is listed in ADR-005 §7.
   join of UC-005 BR-005 is concluded within one O-5).
 - Build-out, phase W3-0 (2026-11-27): S-B-21: §3 (no Upload Plan for a Budget whose read of the read period is owed,
   UC-003 BR-016, UC-010 step 5).
+- Build-out, the review of phase W3-0 (2026-11-27): §3 (the reason is shown, UC-006 A14; no read is started by the
+  preparation), §3a (no conclusion from stored data changes the statuses of a Budget that owes a read of its read
+  period).

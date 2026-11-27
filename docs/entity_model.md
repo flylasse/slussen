@@ -713,7 +713,7 @@ One event in the Decision Journal: what Slussen fetched or concluded, what the O
 - `details` never holds credentials, Bank Consent data, Bank Account numbers or identifiers Data Providers give Bank Accounts.
 - `details` is written in Slussen's own words and never holds the payee or memo of a Bank Transaction or a Budget App Transaction, so that a Journal Export whose payee and memo text are replaced by codes holds no such text (UC-011 BR-005).
 - The Decision Journal stays within the size limit the Operator sets (`OPERATOR_SETTINGS.journal_size_limit_mb`) by dropping its oldest entries, only while its size is above that limit (UC-010 BR-003).
-- No entry is recorded while the Decision Journal is switched off (`OPERATOR_SETTINGS.journal_on`); switching it off is recorded as the last entry before, and switching it on as the first entry after.
+- No entry is recorded while the Decision Journal is switched off (`OPERATOR_SETTINGS.journal_on`); switching it off is recorded as the last entry before, handed to the Decision Journal before `journal_on` is stored and never refused for `journal_on` being false, and switching it on as the first entry after.
 - A change of an Operator Setting, a description list included, and switching the Decision Journal off or on are recorded with `event_type` Configuration Change; a clearing of the Decision Journal with Journal Control (UC-010 A3).
 
 ### OPERATOR_SETTINGS

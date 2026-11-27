@@ -146,6 +146,15 @@
 2. Slussen shows that Uploads wait for First Upload Matching, with its explanation and the reason of its cause (UC-008 BR-009), and offers to start First Upload Matching (UC-008 A9).
 3. Use case ends.
 
+### A14: Read of the Read Period Owed
+
+**Trigger:** The Budget owes a read of its read period, because it gained a Budget Account (UC-013) or an Operator Setting made its read period longer (UC-010 step 5) since its last read, and that read has not succeeded yet (UC-003 BR-016) (step 2)  
+**Flow:**
+
+1. Slussen prepares no Upload Plan.
+2. Slussen shows that the Budget must be read from the Budget App first and why, and offers to read it and compare (UC-003).
+3. Use case ends.
+
 ## Postconditions
 
 ### Success Postconditions
