@@ -55,6 +55,7 @@ fun SettingsScreen(
     onAccountMappings: () -> Unit,
     onRecentFetches: () -> Unit,
     actions: SettingsActions = SettingsActions(),
+    onTransferDescriptions: () -> Unit = {},
 ) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
@@ -95,6 +96,11 @@ fun SettingsScreen(
                             line.answer?.let { AnswerLine(it) }
                         }
                         is SettingItemUi.Shown -> SettingLine(item.line.name, item.line.hint, item.line.value)
+                        // A7, A8 of UC-010 (`#list`): each description list opens the Transfer Descriptions.
+                        is SettingItemUi.Lists -> SettingLine(
+                            item.line.name, item.line.hint, "›",
+                            Modifier.clickable(onClick = onTransferDescriptions).testTag(item.line.tag),
+                        )
                     }
                 }
                 section.note?.let { Muted(it) }

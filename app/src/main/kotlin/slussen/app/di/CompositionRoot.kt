@@ -23,6 +23,7 @@ import slussen.core.transfer.TransferDecisions
 import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.settings.GeneralSettings
+import slussen.core.settings.DescriptionLists
 import slussen.core.status.BankAccountTransactions
 import slussen.core.status.BudgetTransfers
 import slussen.core.status.ImportStatus
@@ -113,6 +114,7 @@ class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLogg
                 storage.settings, comparison, storage.connections, storage.comparisons, journal,
                 applied = { detailedLogging.set(it.detailedLogging) },
             ),
+            descriptionLists = DescriptionLists(storage.settings, comparison, storage.connections, storage.comparisons, journal),
             mappings = AccountMappings(registered, storage.connections, storage.mappings, storage.offered, coordinator, journal, comparison, clock),
             status = status,
             // Step 5 of UC-008: the weeks of a Bank Account's list start on the device locale's first day (survey §5 guess 6).

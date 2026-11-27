@@ -265,10 +265,12 @@ class GeneralSettings(
         }
     }
 
-    /** UC-003 BR-016: the served Budgets that owe a read of their read period, by name. */
-    private suspend fun budgetsOwingARead(): List<String> =
-        connections.budgets().filter { it.served && copies.periodReadOwed(it.id) }.map { it.name }
+    private suspend fun budgetsOwingARead(): List<String> = budgetsOwingARead(connections, copies)
 }
+
+/** UC-003 BR-016: the served Budgets that owe a read of their read period, by name. */
+internal suspend fun budgetsOwingARead(connections: ConnectionStore, copies: BudgetAppCopyStore): List<String> =
+    connections.budgets().filter { it.served && copies.periodReadOwed(it.id) }.map { it.name }
 
 /** The names and units of the Operator Settings as the Decision Journal records them (UC-011 BR-001). */
 object SettingTexts {

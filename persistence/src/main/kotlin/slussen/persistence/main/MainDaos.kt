@@ -18,6 +18,7 @@ import slussen.core.port.MappingStored
 import slussen.core.port.NewIdentification
 import slussen.core.port.OperatorSettings
 import slussen.core.port.SettingChange
+import slussen.core.port.DescriptionListChange
 import slussen.core.port.SettingFollowUp
 import slussen.core.port.SentRecordOutcome
 import slussen.core.port.SentThrough
@@ -65,6 +66,29 @@ abstract class OperatorSettingsDao : StateVersionDao {
             SettingFollowUp.StatusesAgain -> markComparisonPending()
             SettingFollowUp.PeriodReadOwed -> owePeriodReadOfEveryBudgetWithACursor()
         }
+    }
+
+    @Query("SELECT * FROM transfer_description ORDER BY id")
+    abstract suspend fun transferDescriptions(): List<TransferDescriptionEntity>
+
+    @Query("DELETE FROM transfer_description WHERE kind = :kind")
+    protected abstract suspend fun deleteDescriptions(kind: String)
+
+    @Insert
+    protected abstract suspend fun insertDescriptions(entries: List<TransferDescriptionEntity>)
+
+    /**
+     * O-13 `SettingsStore.*` for a description list (UC-010 A7, A8, step 5; ADR-002 §3): in one transaction, all or
+     * nothing, every `transfer_description` of the list's `kind` replaced by its entries in their order, the other list
+     * kept, `state_version` raised (ADR-007 §6 step 2) and `comparison_pending` set, so that the Transfers are detected
+     * again from stored data before any Upload Plan is prepared (UC-010 BR-009, ADR-007 §3a).
+     */
+    @Transaction
+    open suspend fun storeDescriptions(change: DescriptionListChange) {
+        deleteDescriptions(change.kind.text)
+        insertDescriptions(change.entries.map { TransferDescriptionEntity(kind = change.kind.text, text = it) })
+        raiseStateVersion()
+        markComparisonPending()
     }
 }
 

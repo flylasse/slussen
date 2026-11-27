@@ -42,6 +42,8 @@ import slussen.core.port.NewProviderRequest
 import slussen.core.port.OfferedBankAccountStore
 import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
+import slussen.core.port.DescriptionListChange
+import slussen.core.port.StoredTransferDescription
 import slussen.core.port.SettingChange
 import slussen.core.port.SettingFollowUp
 import slussen.core.port.OtherSideKind
@@ -126,6 +128,25 @@ class InMemoryOperatorSettingsStore(
             SettingFollowUp.PeriodReadOwed -> checkNotNull(copies) { "This fake was made without the stored copy." }.let { copy -> copy.periodOwed += copy.cursors.keys }
         }
         settings = change.value.appliedTo(settings)
+        stateVersion.raise()
+    }
+
+    /** The description lists of the stored copy this fake was made with, in their order (`transfer_description`). */
+    override suspend fun transferDescriptions(): List<StoredTransferDescription> {
+        if (failsToRead) throw IllegalStateException("The invented storage of this test cannot be read.")
+        return checkNotNull(copies) { "This fake was made without the stored copy." }.transferDescriptions.toList()
+    }
+
+    /** As the Room store: the entries of one `kind` replaced in their order, the other list kept, the marker set and the version raised. */
+    override suspend fun store(change: DescriptionListChange) {
+        beforeStore()
+        if (failsToStore) throw IllegalStateException("The invented storage of this test cannot be written.")
+        val copy = checkNotNull(copies) { "This fake was made without the stored copy." }
+        val marker = checkNotNull(connections) { "This fake was made without the Comparison marker." }
+        val kept = copy.transferDescriptions.filter { it.kind != change.kind }
+        copy.transferDescriptions.clear()
+        copy.transferDescriptions += kept + change.entries.map { StoredTransferDescription(change.kind, it) }
+        marker.comparisonPending = true
         stateVersion.raise()
     }
 }

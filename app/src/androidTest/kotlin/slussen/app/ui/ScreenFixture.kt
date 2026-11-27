@@ -25,6 +25,7 @@ class ScreenFixture(
         connect = slice.connect,
         providerSettings = slice.providerSettings,
         generalSettings = slice.generalSettings,
+        descriptionLists = slice.descriptionLists,
         mappings = slice.mappings,
         status = slice.status,
         bankAccountTransactions = slice.bankAccountTransactions,

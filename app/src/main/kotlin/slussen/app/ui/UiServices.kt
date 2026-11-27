@@ -10,6 +10,7 @@ import slussen.core.operation.RunningOperation
 import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.settings.GeneralSettings
+import slussen.core.settings.DescriptionLists
 import slussen.core.status.BankAccountTransactions
 import slussen.core.status.BudgetTransfers
 import slussen.core.status.ImportStatus
@@ -24,6 +25,8 @@ class UiServices(
     val providerSettings: DataProviderSettings,
     /** The Operator Settings that apply to everything, on Settings (UC-010): the fetch period. */
     val generalSettings: GeneralSettings,
+    /** The Card Payment Descriptions and Bank Transfer Descriptions (UC-010 A7, A8), on their own screen from Settings. */
+    val descriptionLists: DescriptionLists,
     val mappings: AccountMappings,
     val status: ImportStatus,
     /** One Bank Account's Bank Transactions with their Transaction Statuses and reasons (UC-008 step 5), from stored data only. */

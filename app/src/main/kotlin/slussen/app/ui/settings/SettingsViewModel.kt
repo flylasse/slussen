@@ -19,6 +19,8 @@ import slussen.core.port.ServiceKey
 import slussen.core.port.SettingValue
 import slussen.core.port.SwitchSetting
 import slussen.core.settings.GeneralSettingsShown
+import slussen.core.settings.DescriptionListsShown
+import slussen.core.port.TransferDescriptionKind
 import slussen.core.settings.NumberSettingShown
 import slussen.core.settings.SettingOutcome
 import slussen.core.settings.SwitchOutcome
@@ -71,7 +73,13 @@ sealed interface SettingItemUi {
     data class Switch(val line: SwitchLineUi) : SettingItemUi
 
     data class Shown(val line: ShownSettingUi) : SettingItemUi
+
+    /** A description list, which opens the Transfer Descriptions (UC-010 A7, A8). */
+    data class Lists(val line: ListsLineUi) : SettingItemUi
 }
+
+/** A description list on Settings (`settings.html#list`): its name, its number of entries, and the tag the screen tests use. */
+data class ListsLineUi(val name: String, val hint: String, val tag: String)
 
 /** One section of the Operator Settings (`settings.html#list`, `#list-2`), with a line under it, or null. */
 data class SettingSectionUi(val title: String, val items: List<SettingItemUi>, val note: String? = null)
@@ -131,6 +139,9 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
     /** The Operator Settings as last read or stored (step 1). */
     private var shown: GeneralSettingsShown? = null
 
+    /** The description lists as last read (step 1), for their lines under Transfers. */
+    private var lists: DescriptionListsShown? = null
+
     /** NFR-023: the answer of the last change of each setting, at its line, until Settings is opened again. */
     private val answers = mutableMapOf<NumberSetting, AnswerUi>()
 
@@ -151,6 +162,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
     private suspend fun showAgain() {
         val notReadAgain = try {
             shown = services.generalSettings.shown()
+            lists = services.descriptionLists.shown()
             null
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -168,6 +180,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                 val top = services.settingsOverview.entries()
                 val budgetAppName = top.entries.first { it.kind == EntryKind.BudgetApp }.name
                 val general = services.generalSettings.shown().also { shown = it }
+                lists = services.descriptionLists.shown()
                 mutableState.value = SettingsUi(
                     entries = top.entries.map { entry -> line(entry, top.next) },
                     accountMappings = mappingsLine(top.accountMappings, budgetAppName),
@@ -266,6 +279,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                 "Transfers",
                 // UC-005 BR-001: Transfer detection is always on; it is not an Operator Setting.
                 listOf(SettingItemUi.Shown(ShownSettingUi("Transfer detection", "Not an Operator Setting", "Always on"))) +
+                    descriptionLines() +
                     listOf(NumberSetting.TransferPairingDays, NumberSetting.LonelyTransferGracePeriod).map(::number),
             ),
             SettingSectionUi(
@@ -299,6 +313,14 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                     "values shown apply. No action is needed now.",
             ),
         )
+    }
+
+    /** UC-010 step 1 (`settings.html#list`): the two description lists with their number of entries, each opening the Transfer Descriptions. */
+    private fun descriptionLines(): List<SettingItemUi> {
+        val read = lists ?: return emptyList()
+        return TransferDescriptionKind.entries.map { kind ->
+            SettingItemUi.Lists(ListsLineUi(DescriptionTexts.listName(kind), DescriptionTexts.settingsHint(read.of(kind)), "lists-${kind.name}"))
+        }
     }
 
     /** Shows the sections again from [shown] and the answers, keeping the open dialogs unless told otherwise. */

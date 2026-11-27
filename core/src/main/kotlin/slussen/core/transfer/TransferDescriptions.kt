@@ -11,7 +11,7 @@ object TransferDescriptions {
     private val accents = Regex("\\p{M}+")
 
     /** [text] without regard to case and accents: ÖVERFÖRING and OVERFORING become the same text. */
-    private fun withoutCaseAndAccents(text: String): String =
+    fun withoutCaseAndAccents(text: String): String =
         accents.replace(Normalizer.normalize(text.lowercase(Locale.ROOT), Normalizer.Form.NFD), "")
 
     // UC-005 BR-012: An entry matches when its text occurs anywhere in the payee or memo, without regard to case and accents; a * stands for any characters and no other character is special.

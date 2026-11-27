@@ -137,7 +137,14 @@ enum class SettingFollowUp {
 /** One changed Operator Setting with what its storage operation writes with it. */
 data class SettingChange(val value: SettingValue, val followUp: SettingFollowUp)
 
-/** Reads and changes the one `OPERATOR_SETTINGS` record (ADR-001 §3, ADR-002 §3 O-13 `SettingsStore`). */
+/**
+ * One description list as it is to be stored (UC-010 A7, A8): every entry of the list [kind] after the change, in its
+ * order, each already checked by the core (BR-008). The storage operation replaces every `transfer_description` of that
+ * `kind` with [entries] and leaves the other list as it is.
+ */
+data class DescriptionListChange(val kind: TransferDescriptionKind, val entries: List<String>)
+
+/** Reads and changes the one `OPERATOR_SETTINGS` record and the description lists (ADR-001 §3, ADR-002 §3 O-13 `SettingsStore`). */
 interface OperatorSettingsStore {
     suspend fun current(): OperatorSettings
 
@@ -147,4 +154,15 @@ interface OperatorSettingsStore {
      * then nothing of it is stored.
      */
     suspend fun store(change: SettingChange)
+
+    /** The Card Payment Descriptions and Bank Transfer Descriptions (`transfer_description`), each list in its stored order. */
+    suspend fun transferDescriptions(): List<StoredTransferDescription>
+
+    /**
+     * O-13 `SettingsStore.*` for a description list (UC-010 A7, A8, step 5): in one transaction, all or nothing, every
+     * `transfer_description` of [DescriptionListChange.kind] replaced by its entries, `state_version` raised and
+     * `coordinator_state.comparison_pending` set, so that the Transfers are detected again from stored data before any
+     * Upload Plan is prepared (UC-010 BR-009, ADR-007 §3a). Throws when it cannot be stored, and then nothing of it is stored.
+     */
+    suspend fun store(change: DescriptionListChange)
 }

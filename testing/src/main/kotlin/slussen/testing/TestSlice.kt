@@ -24,6 +24,7 @@ import slussen.core.review.ReviewDecisions
 import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.settings.GeneralSettings
+import slussen.core.settings.DescriptionLists
 import slussen.core.status.BankAccountTransactions
 import slussen.core.status.BudgetTransfers
 import slussen.core.status.ImportStatus
@@ -93,6 +94,8 @@ class TestSlice(
     /** What the app's log reads Detailed Logging from (ADR-006): the value the last change stored, from the stored record. */
     var detailedLoggingApplied: Boolean = settings.settings.detailedLogging
     val generalSettings = GeneralSettings(settings, comparison, connectionStore, copyStore, journal, applied = { detailedLoggingApplied = it.detailedLogging })
+    /** UC-010 A7, A8: the Card Payment Descriptions and Bank Transfer Descriptions, on the stored copy's lists. */
+    val descriptionLists = DescriptionLists(settings, comparison, connectionStore, copyStore, journal)
     /** UC-004: the Review Decisions, on the stored data the Comparison concludes from. */
     val review = ReviewDecisions(
         connectionStore, copyStore, copyStore, coordinator, settings, journal, clock,

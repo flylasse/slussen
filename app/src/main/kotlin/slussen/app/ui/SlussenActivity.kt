@@ -54,6 +54,9 @@ import slussen.app.ui.service.ServicePageViewModel
 import slussen.app.ui.settings.EntryPage
 import slussen.app.ui.settings.SettingsScreen
 import slussen.app.ui.settings.SettingsViewModel
+import slussen.app.ui.settings.TransferDescriptionsScreen
+import slussen.app.ui.settings.TransferDescriptionsViewModel
+import slussen.app.ui.settings.descriptionActionsOf
 import slussen.app.ui.theme.SlussenColors
 import slussen.app.ui.transfers.TransfersScreen
 import slussen.app.ui.transfers.TransfersViewModel
@@ -104,6 +107,9 @@ sealed interface Screen {
     data class FileFormat(val fileFormatId: Long) : Screen
 
     data object AccountMappings : Screen
+
+    /** UC-010 A7, A8: the Card Payment Descriptions and Bank Transfer Descriptions, from Settings. */
+    data object TransferDescriptions : Screen
 }
 
 /**
@@ -266,6 +272,7 @@ fun SlussenScreens(services: UiServices) {
                             onAccountMappings = { go(Screen.AccountMappings) },
                             onRecentFetches = { go(Screen.RecentFetches) },
                             actions = vm.actions(),
+                            onTransferDescriptions = { go(Screen.TransferDescriptions) },
                         )
                     }
                 }
@@ -333,6 +340,15 @@ fun SlussenScreens(services: UiServices) {
                             onAdd = vm::add,
                         )
                     }
+                }
+                Screen.TransferDescriptions -> {
+                    val vm: TransferDescriptionsViewModel = viewModel(key = "transfer-descriptions") { TransferDescriptionsViewModel(services) }
+                    LaunchedEffect(current) { vm.load() }
+                    val listsUi = vm.state.collectAsState().value
+                    val listsNotOpened = vm.notOpened.collectAsState().value
+                    // NFR-023: lists whose stored data cannot be read say so, with Try again and Back.
+                    if (listsUi == null && listsNotOpened != null) NotShown(listsNotOpened, onTryAgain = vm::load, onBack = ::back)
+                    listsUi?.let { ui -> TransferDescriptionsScreen(ui, onBack = ::back, actions = descriptionActionsOf(vm)) }
                 }
                 Screen.AccountMappings -> {
                     val vm: AccountMappingsViewModel = viewModel(key = "account-mappings") { AccountMappingsViewModel(services) }

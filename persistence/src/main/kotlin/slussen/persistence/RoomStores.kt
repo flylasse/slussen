@@ -38,6 +38,8 @@ import slussen.core.port.OfferedBankAccountStore
 import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.SettingChange
+import slussen.core.port.DescriptionListChange
+import slussen.core.port.StoredTransferDescription
 import slussen.persistence.main.entity
 import slussen.persistence.main.settings
 import slussen.core.port.OtherSideKind
@@ -111,6 +113,12 @@ class RoomOperatorSettingsStore(private val dao: OperatorSettingsDao) : Operator
 
     override suspend fun store(change: SettingChange) {
         dao.store(change)
+    }
+
+    override suspend fun transferDescriptions(): List<StoredTransferDescription> = dao.transferDescriptions().map { it.stored() }
+
+    override suspend fun store(change: DescriptionListChange) {
+        dao.storeDescriptions(change)
     }
 
     /** The default content of ADR-002 §8 step 3: one record with every default, when there is none. */
