@@ -502,9 +502,13 @@ before the first slice that uploads.
   limit (UC-010 BR-003). Clearing (UC-010 A3) deletes every entry and returns the space the same way. The warning uses
   `journal_warning_percent` (80% by default, an Operator Setting).
 - Nothing in the core reads entries except the export (Konsist K-07 in ADR-001). The export notes the `id` of the newest entry
-  when it starts, reads the Budget App, and only then opens one read transaction of `journal.db` and streams the entries
-  up to that `id`, oldest first by `id`, to the file without holding them all in memory, so that no read transaction is
-  held across a request to the Budget App and no entry recorded after the start enters the file (UC-011 BR-007).
+  and the number of entries up to it when it starts, on the journal's own thread, reads the Budget App, and only then
+  streams the entries up to that `id`, oldest first by `id`, to the file without holding them all in memory, in short
+  reads bounded by entry ids, each on the journal's own thread and each after the last entry written, so that no entry
+  recorded after the start enters the file and an entry removed meanwhile by the size limit or a clearing is left out and
+  counted (UC-011 BR-007). It holds no read transaction over the whole export: one would hold every write, trimming and
+  clearing of the Decision Journal for its length (UC-010 BR-004), and no read transaction is held across a request to
+  the Budget App (S-B-28).
   Switching the Decision Journal off hands its entry to the recorder before `journal_on` is stored; the recorder never
   drops that entry for `journal_on` being false (UC-010 success postconditions).
 - Offered Bank Accounts, Bank Sessions and `state` values never reach it (`OFFERED_BANK_ACCOUNT`, `BANK_SESSION`
