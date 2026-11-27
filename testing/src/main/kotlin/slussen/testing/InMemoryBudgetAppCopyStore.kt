@@ -52,7 +52,13 @@ class InMemoryBudgetAppCopyStore(
     val transfers: MutableList<StoredTransfer> get() = transactions.transfers
     val transferDescriptions: MutableList<StoredTransferDescription> = DEFAULT_TRANSFER_DESCRIPTIONS.toMutableList()
     private var nextTransferId = 9000L
-    var pending: Boolean = false
+
+    /** The Comparison marker (ADR-007 §3a): the one of [connections], which the changes of O-13 `MappingStore` set too. */
+    var pending: Boolean
+        get() = connections.comparisonPending
+        set(value) {
+            connections.comparisonPending = value
+        }
     var failsToConclude: Boolean = false
     private var nextId = 1L
 

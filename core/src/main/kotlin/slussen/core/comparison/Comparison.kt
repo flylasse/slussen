@@ -1,5 +1,6 @@
 package slussen.core.comparison
 
+import kotlinx.coroutines.CancellationException
 import slussen.core.credential.CredentialStatus
 import slussen.core.credential.ServiceCredentials
 import slussen.core.journal.DecisionJournal
@@ -38,7 +39,9 @@ import java.time.LocalDate
  * Transactions (step 5, BR-014), the Decision Journal (step 6), A1 and A2. It runs on its own when the Operator reads
  * the Budget App again, and within a Fetch (UC-001 step 10), always through the operation coordinator (ADR-007 §1); it
  * reads the Budget App only (BR-015). A Comparison left between O-4 and O-5 is concluded from the stored data alone at
- * the next start and whenever its marker is found (ADR-007 §3a, §8). The Review Decisions are followed in the order of
+ * the next start and whenever its marker is found (ADR-007 §3a, §8); the same conclusions follow a change that the
+ * specification follows with statuses given again, through [statusesAgainAfter], the one operation for it (UC-009
+ * BR-015, UC-005 BR-016, UC-010 step 5). The Review Decisions are followed in the order of
  * BR-001 (BR-009, BR-010), and a Transfer the Operator decided on is kept, joined or dropped as UC-005 BR-005 and BR-015
  * say. The statuses Sent Records give (BR-017, BR-021) and First Upload Matching (BR-019) come with later phases.
  */
@@ -75,10 +78,47 @@ class Comparison(
      */
     suspend fun recomputePending(): Boolean {
         if (!comparisons.comparisonPending()) return false
-        val result = coordinator.run(OperationKind.Comparison, StartedBy.Operator) {
-            conclude(connections.budgets().filter { it.lastReadAt != null }.map { it.id }.toSet())
-        }
+        val result = coordinator.run(OperationKind.Comparison, StartedBy.Operator) { concludeFromStoredData() }
         return result is OperationResult.Ran
+    }
+
+    // UC-009 BR-015: After a change Slussen gives the stored Bank Transactions their Transaction Status again and detects the Transfers again by the rules of the Comparison, from what it has stored; it reads no Budget App and contacts no Bank or Data Provider, and when it stops between the change and the statuses no Upload Plan is prepared before they are given.
+    /**
+     * The one operation that follows a change with statuses given again and Transfers detected again from stored data
+     * (UC-009 BR-015, UC-010 step 5, UC-005 BR-016; ADR-007 §3a): on the coordinator's lane, admitted as [kind] (§2),
+     * it runs [change], whose storage operation (O-13) sets the Comparison marker in its own transaction when it stores
+     * something the statuses depend on, and then, when the marker is set, concludes with the Comparison's own rules from
+     * the stored copy alone and commits with O-5, which clears it. No Budget is read and the time of each read stays. A
+     * change that stores nothing leaves no marker and is followed by nothing; a marker an earlier stop left is concluded
+     * too, as §3a asks whenever it is found. When the conclusions cannot be stored now, the marker stays, which keeps
+     * every Upload Plan from being prepared (§3) until the next start concludes ([recomputePending]) or a Comparison does.
+     * [change] answers a storage that fails itself; what it throws ends the operation.
+     */
+    suspend fun <T> statusesAgainAfter(kind: OperationKind, change: suspend () -> T): OperationResult<StatusesAgain<T>> =
+        coordinator.run(kind, StartedBy.Operator) {
+            val changed = change()
+            StatusesAgain(changed, statusesGiven = concludedWhenPending())
+        }
+
+    /**
+     * Concludes from stored data when the Comparison marker is set, and answers whether none is pending after it: the
+     * marker itself says so, also when only what follows the conclusions failed.
+     */
+    private suspend fun concludedWhenPending(): Boolean {
+        try {
+            if (comparisons.comparisonPending()) concludeFromStoredData()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            // The marker, read below, says whether the conclusions were stored.
+        }
+        return try {
+            !comparisons.comparisonPending()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            false
+        }
     }
 
     /** Steps 1-6 within the operation that holds [permit]: on its own, or as step 10 of a Fetch (UC-001). */
@@ -205,11 +245,11 @@ class Comparison(
 
     /**
      * ADR-007 §3a: within the operation that holds the lane, the conclusions from the stored data alone for every Budget
-     * read so far, without a request and with the time of each read unchanged: what follows a change that the
-     * specification follows with statuses given again or Transfers detected again, such as a Transfer Decision (UC-005
-     * BR-016, UC-009 BR-015). It clears the Comparison-pending marker.
+     * read so far, without a request and with the time of each read unchanged: what [statusesAgainAfter] and
+     * [recomputePending] run. A Bank Account mapped into a Budget not read yet is not compared yet (UC-003 A1). It
+     * clears the Comparison-pending marker.
      */
-    internal suspend fun concludeFromStoredData(): List<StatusChange> =
+    private suspend fun concludeFromStoredData(): List<StatusChange> =
         conclude(connections.budgets().filter { it.lastReadAt != null }.map { it.id }.toSet())
 
     /**

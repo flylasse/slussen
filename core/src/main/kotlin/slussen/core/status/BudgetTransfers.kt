@@ -50,10 +50,12 @@ sealed interface WhyGuessed {
     data class OtherCards(val budgetAccountNames: List<String>) : WhyGuessed
 
     /**
-     * BR-002, A8: a Card Payment to [cardName], which has no Funded By; [payingBankAccounts] is the number of the
-     * Budget's Bank Accounts that are not credit cards when Slussen proposes no paying side for that reason, else null.
+     * BR-002, A8: a Card Payment to [cardName], which has no Funded By that applies; [payingBankAccounts] is the number
+     * of the Budget's Bank Accounts that are not credit cards when Slussen proposes no paying side for that reason, else
+     * null. [fundedByNotApplying] names the Budget Account of the Funded By the card has when one is set that no longer
+     * applies (BR-014), which is never called missing (A8 step 1); null when the card has none.
      */
-    data class NoFundedBy(val cardName: String, val payingBankAccounts: Int?) : WhyGuessed
+    data class NoFundedBy(val cardName: String, val payingBankAccounts: Int?, val fundedByNotApplying: String? = null) : WhyGuessed
 
     /** The latest Comparison stored it as guessed, and the rules on the stored data today no longer say why. */
     data object AsStored : WhyGuessed
@@ -193,6 +195,8 @@ class BudgetTransfers(
         val data: ComparisonData,
         val windows: ComparisonWindows,
         val detected: TransfersDetected,
+        /** The names of the Budget Accounts of every stored Budget: a Funded By that no longer applies can be one of another Budget (UC-005 BR-014). */
+        val everyBudgetAccountName: Map<Long, String>,
     ) {
         val names: Map<Long, String> = budget.budgetAccounts.associate { it.id to it.name }
         private val bankAccountsById: Map<Long, StoredBankAccount> = data.bankAccounts.associateBy { it.id }
@@ -235,12 +239,16 @@ class BudgetTransfers(
     // UC-008 BR-001: The Transfers are shown only from stored data; nothing contacts a Source, a Bank or the Budget App.
     /** The Transfers of the served Budget [budgetId]. */
     suspend fun of(budgetId: Long): BudgetTransfersView {
-        val budget = connections.budgets().single { it.id == budgetId && it.served }
+        val budgets = connections.budgets()
+        val budget = budgets.single { it.id == budgetId && it.served }
         val summary = status.summaryOf(budgetId) ?: error("Budget $budgetId is not served")
         val current = settings.current()
         val windows = ComparisonWindows.of(current, matchingDateWindowDays, LocalDate.ofInstant(clock.instant(), clock.zone))
         val data = comparisons.comparisonDataOf(setOf(budgetId))
-        val ground = Ground(budget, data, windows, ComparisonRules.transfersOf(budgetId, data, windows))
+        val ground = Ground(
+            budget, data, windows, ComparisonRules.transfersOf(budgetId, data, windows),
+            budgets.flatMap { it.budgetAccounts }.associate { it.id to it.name },
+        )
         val storedTransfers = data.transfers.filter { stored ->
             stored.outflowBudgetAccountId in ground.names || stored.inflowBudgetAccountId in ground.names
         }.filter { stored -> data.bankTransactions.any { it.transferId == stored.id } }
@@ -319,13 +327,21 @@ class BudgetTransfers(
             when (reason) {
                 is GuessReason.OtherPairings -> WhyGuessed.OtherCandidates(reason.others.map { ground.leg(byId[it.id] ?: it) })
                 is GuessReason.OtherCards -> WhyGuessed.OtherCards(reason.otherBudgetAccountIds.map { ground.names[it].orEmpty() })
-                is GuessReason.NoFundedBy -> WhyGuessed.NoFundedBy(cardName(reason.cardBankAccountId, ground), payingBankAccounts = null)
+                is GuessReason.NoFundedBy -> {
+                    val card = ground.data.bankAccounts.firstOrNull { it.id == reason.cardBankAccountId }
+                    WhyGuessed.NoFundedBy(card?.name.orEmpty(), payingBankAccounts = null, fundedByNotApplying = fundedByNotApplying(card, ground))
+                }
             }
         }
     }
 
-    private fun cardName(bankAccountId: Long, ground: Ground): String =
-        ground.data.bankAccounts.firstOrNull { it.id == bankAccountId }?.name.orEmpty()
+    /**
+     * UC-005 A8 step 1: the name of the Budget Account of the Funded By that [card] has, for a Guessed Transfer the
+     * detection gave because no Funded By of the card applies: one that is set then no longer applies (BR-014) and is
+     * named, never called missing. Null when the card has none.
+     */
+    private fun fundedByNotApplying(card: StoredBankAccount?, ground: Ground): String? =
+        card?.fundedByBudgetAccountId?.let { ground.everyBudgetAccountName[it].orEmpty() }
 
     /**
      * UC-005 A8, O-T-10: the Guessed Transfers for which Slussen proposes no Budget Account as the other side, which have
@@ -350,7 +366,7 @@ class BudgetTransfers(
                 inflowLeg = ground.leg(transaction),
                 stored = false,
                 guessed = true,
-                whyGuessed = listOf(reason?.let { WhyGuessed.NoFundedBy(card.name, it.payingBankAccounts) } ?: WhyGuessed.AsStored),
+                whyGuessed = listOf(reason?.let { WhyGuessed.NoFundedBy(card.name, it.payingBankAccounts, fundedByNotApplying(card, ground)) } ?: WhyGuessed.AsStored),
                 eligibility = eligibilityOf(listOf(transaction), ground),
                 expected = null,
             )

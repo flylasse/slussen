@@ -75,3 +75,12 @@ class ComparisonNotices {
         failures[budgetId] = failure
     }
 }
+
+/**
+ * What [Comparison.statusesAgainAfter] did (UC-009 BR-015, ADR-007 §3a): [change] is what the change answered, and
+ * [statusesGiven] says that no Comparison is pending now: the change left no marker, or the conclusions from stored data
+ * followed within the operation. False means that the marker is still set, or could not be read: the Transaction
+ * Statuses are those from before the change, no Upload Plan is prepared from them, and the conclusions follow at the
+ * next start, or with the next Comparison.
+ */
+data class StatusesAgain<out T>(val change: T, val statusesGiven: Boolean)

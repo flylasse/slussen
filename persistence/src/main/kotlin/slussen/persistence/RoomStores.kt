@@ -33,6 +33,8 @@ import slussen.core.port.NewProviderRequest
 import slussen.core.port.OfferedBankAccountStore
 import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
+import slussen.core.port.OtherSideKind
+import slussen.core.port.OtherSideStored
 import slussen.core.port.PluginRegistryStore
 import slussen.core.port.ProviderRequestKind
 import slussen.core.port.ProviderRequestStore
@@ -83,6 +85,7 @@ import slussen.persistence.main.FirstUploadMatchingDao
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
 import java.time.Instant
+import java.time.LocalDate
 
 private const val MAIN_PART = "slussen.db"
 private const val DEVICE_PART = "device.db"
@@ -327,7 +330,11 @@ private fun ConnectionDao.Kept.outcome(): KeptOutcome = when (this) {
     ConnectionDao.Kept.NotFound -> KeptOutcome.NotFound
 }
 
-/** O-13 `MappingStore` in `slussen.db`: the changes of UC-009 that this build makes. */
+/**
+ * O-13 `MappingStore` in `slussen.db`: the changes of UC-009 that this build makes, each one transaction of
+ * [ConnectionDao] that raises `state_version` and, where UC-009 BR-015 follows it with statuses given again, sets the
+ * Comparison marker.
+ */
 class RoomMappingStore(private val dao: ConnectionDao) : MappingStore {
     override suspend fun changeTypeAndBank(
         bankAccountId: Long,
@@ -338,6 +345,19 @@ class RoomMappingStore(private val dao: ConnectionDao) : MappingStore {
     ) {
         dao.changeTypeAndBank(bankAccountId, type.text, bank, clearFundedBy, clearTransferPartner)
     }
+
+    override suspend fun setRetired(bankAccountId: Long, retired: Boolean): Boolean = dao.setRetired(bankAccountId, retired)
+
+    override suspend fun rename(bankAccountId: Long, name: String): Boolean = dao.rename(bankAccountId, name)
+
+    override suspend fun setStartDate(bankAccountId: Long, startDate: LocalDate?): Boolean = dao.setStartDate(bankAccountId, startDate)
+
+    override suspend fun setOtherSide(bankAccountId: Long, kind: OtherSideKind, budgetAccountId: Long?): OtherSideStored =
+        when (dao.setOtherSide(bankAccountId, fundedBy = kind == OtherSideKind.FundedBy, budgetAccountId)) {
+            ConnectionDao.OtherSide.Stored -> OtherSideStored.Stored
+            ConnectionDao.OtherSide.NotAllowed -> OtherSideStored.NotAllowed
+            ConnectionDao.OtherSide.NotFound -> OtherSideStored.NotFound
+        }
 }
 
 /** The Offered Bank Accounts in `device.db` (O-2). */

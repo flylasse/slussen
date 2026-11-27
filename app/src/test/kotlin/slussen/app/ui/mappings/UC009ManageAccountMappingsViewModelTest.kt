@@ -169,6 +169,41 @@ class UC009ManageAccountMappingsViewModelTest {
         assertEquals(BankAccountType.Checking, stored().type)
     }
 
+    @Test
+    @UseCase(id = "UC-009", scenario = "A14: Change the Bank Account Type or the Bank", businessRules = ["BR-015"])
+    @DisplayName("A14 step 4, BR-015: when the Transfers cannot be detected again right after the change, the answer says that the change is stored and that they are detected at the next start or Comparison, with no Upload Plan before")
+    fun aChangeWhoseTransfersAreNotDetectedYetSaysSo() {
+        kestrelChecking()
+        screen.openTypeAndBank(checkingId)
+        slice.copyStore.failsToConclude = true
+
+        screen.saveTypeAndBank(BankAccountType.Savings, BankChoice.Known(bank("Kestrel Bank")))
+
+        assertNull(ui().typeAndBank)
+        assertEquals(
+            "Kestrel Checking: Savings · Kestrel Bank · stored · the Transfers are detected again when Slussen next starts or compares; " +
+                "no Upload Plan is prepared before",
+            ui().message,
+        )
+        assertEquals(BankAccountType.Savings, stored().type)
+        assertTrue(slice.copyStore.pending)
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A14: Change the Bank Account Type or the Bank", businessRules = ["BR-012"])
+    @DisplayName("A14, failure postconditions: when the stored data cannot be written, saving answers at the sheet that nothing was stored, the sheet stays for another try and the Bank Account is unchanged")
+    fun aChangeThatCannotBeStoredIsAnsweredAtTheSheet() {
+        kestrelChecking()
+        screen.openTypeAndBank(checkingId)
+        slice.connectionStore.failsToStore = true
+
+        screen.saveTypeAndBank(BankAccountType.Savings, BankChoice.Known(bank("Kestrel Bank")))
+
+        assertEquals("Not stored: Slussen could not use the data stored on this device · try again", ui().message)
+        assertTrue(ui().typeAndBank != null)
+        assertEquals(BankAccountType.Checking, stored().type)
+    }
+
     /** Kestrel Checking added; the import of Kids Saver and Pinecrest Business Visa switched off in UC-013 (BR-011, BR-012). */
     private fun withLeftOut() = runBlocking {
         kestrelChecking()

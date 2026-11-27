@@ -7,12 +7,14 @@ import androidx.room.Transaction
 import androidx.room.Update
 import slussen.core.fetch.BankTransactionIntake
 import slussen.core.identity.ImportIdentifierInput
+import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
 import slussen.core.port.DeliveredTransactions
 import slussen.core.port.DeliveryStored
 import slussen.core.port.DataProviderRegistration
 import slussen.core.port.StoredRequestLimit
 import java.time.Instant
+import java.time.LocalDate
 
 @Dao
 abstract class OperatorSettingsDao : StateVersionDao {
@@ -213,14 +215,110 @@ abstract class ConnectionDao : StateVersionDao {
     abstract suspend fun typeAndBank(id: Long, type: String, bankId: Long, clearFundedBy: Boolean, clearTransferPartner: Boolean)
 
     /**
+     * The Comparison marker (ADR-007 §3a), set inside the transaction of a change that UC-009 BR-015 follows with statuses
+     * given again from stored data, so that no Upload Plan is prepared before O-5 has given them (ADR-002 §3 O-13).
+     */
+    @Query("UPDATE coordinator_state SET comparison_pending = 1 WHERE id = 1")
+    protected abstract suspend fun markComparisonPending()
+
+    /** What O-13 does with every change the statuses depend on: `state_version` raised (ADR-007 §6 step 2) and the Comparison marker set (§3a). */
+    private suspend fun storedWithStatusesToGive() {
+        raiseStateVersion()
+        markComparisonPending()
+    }
+
+    /**
      * O-13 (ADR-002 §3), UC-009 A14: the Bank Account type and the Bank, a new Bank stored first, clearing a Funded By or
-     * Transfer Partner as asked, in one transaction, which raises `state_version` (ADR-007 §6 step 2). No Account
-     * Mapping, identification or Sent Record is touched.
+     * Transfer Partner as asked, in one transaction, which raises `state_version` (ADR-007 §6 step 2) and sets the
+     * Comparison marker, since the Transfers are detected again after it (UC-009 BR-015). No Account Mapping,
+     * identification or Sent Record is touched.
      */
     @Transaction
     open suspend fun changeTypeAndBank(id: Long, type: String, bank: BankChoice, clearFundedBy: Boolean, clearTransferPartner: Boolean) {
         typeAndBank(id, type, bankIdOf(bank), clearFundedBy, clearTransferPartner)
+        storedWithStatusesToGive()
+    }
+
+    @Query("UPDATE bank_account SET retired = :retired WHERE id = :id AND retired != :retired")
+    protected abstract suspend fun updateRetired(id: Long, retired: Boolean): Int
+
+    /**
+     * O-13, UC-009 A4, A5: marks the Bank Account as a Retired Account or restores it, in one transaction with
+     * `state_version` and the Comparison marker; false, with nothing changed, when there is none or it already is so. Only
+     * `retired` is written: the Account Mapping, the identification, the Start Date and the history stay (UC-009 BR-005).
+     */
+    @Transaction
+    open suspend fun setRetired(id: Long, retired: Boolean): Boolean {
+        if (updateRetired(id, retired) == 0) return false
+        storedWithStatusesToGive()
+        return true
+    }
+
+    @Query("UPDATE bank_account SET name = :name WHERE id = :id")
+    protected abstract suspend fun updateName(id: Long, name: String): Int
+
+    /**
+     * O-13, UC-009 A12: the name and nothing else, a single update that raises `state_version` in the same transaction;
+     * no Transaction Status depends on a name, so the Comparison marker is left as it is. False when there is none.
+     */
+    @Transaction
+    open suspend fun rename(id: Long, name: String): Boolean {
+        if (updateName(id, name) == 0) return false
         raiseStateVersion()
+        return true
+    }
+
+    @Query("UPDATE bank_account SET start_date = :startDate WHERE id = :id")
+    protected abstract suspend fun updateStartDate(id: Long, startDate: LocalDate?): Int
+
+    /**
+     * O-13, UC-009 A13: the Start Date, null to clear it, a single update in one transaction with `state_version` and the
+     * Comparison marker. False when there is none.
+     */
+    @Transaction
+    open suspend fun setStartDate(id: Long, startDate: LocalDate?): Boolean {
+        if (updateStartDate(id, startDate) == 0) return false
+        storedWithStatusesToGive()
+        return true
+    }
+
+    @Query("SELECT * FROM account_mapping WHERE bank_account_id = :bankAccountId")
+    abstract suspend fun mappingOf(bankAccountId: Long): AccountMappingEntity?
+
+    @Query("UPDATE bank_account SET funded_by_budget_account_id = :budgetAccountId WHERE id = :id")
+    protected abstract suspend fun updateFundedBy(id: Long, budgetAccountId: Long?): Int
+
+    @Query("UPDATE bank_account SET transfer_partner_budget_account_id = :budgetAccountId WHERE id = :id")
+    protected abstract suspend fun updateTransferPartner(id: Long, budgetAccountId: Long?): Int
+
+    /** The outcome of [setOtherSide]. */
+    enum class OtherSide { Stored, NotAllowed, NotFound }
+
+    /**
+     * O-13 (ADR-002 §3), UC-009 A9: the Funded By ([fundedBy]) or the Transfer Partner of the Bank Account, null to clear
+     * it, in one transaction with `state_version` and the Comparison marker. Refused, storing nothing, when the value
+     * does not fit the Bank Account type, and unless the Budget Account is in the Budget of the Bank
+     * Account's own Account Mapping, differs from its own Budget Account, is no Manually Kept Account and receives
+     * through an Account Mapping of a Bank Account that is not a Retired Account (entity model `BANK_ACCOUNT`).
+     */
+    @Transaction
+    open suspend fun setOtherSide(id: Long, fundedBy: Boolean, budgetAccountId: Long?): OtherSide {
+        val account = bankAccount(id) ?: return OtherSide.NotFound
+        // UC-009 BR-008: A credit card Bank Account can have a Funded By and every other Bank Account a Transfer Partner.
+        if ((account.bankAccountType == BankAccountType.CreditCard.text) != fundedBy) return OtherSide.NotAllowed
+        if (budgetAccountId != null) {
+            val own = mappingOf(id)?.budgetAccountId ?: return OtherSide.NotAllowed
+            val ownBudget = budgetAccount(own)?.budgetId
+            val chosen = budgetAccount(budgetAccountId) ?: return OtherSide.NotAllowed
+            val fetchedFor = mappingInto(budgetAccountId)?.let { bankAccount(it.bankAccountId) }
+            // UC-009 BR-008: Both are always a Budget Account that Slussen fetches: of the same Budget, not the Bank Account's own, never a Manually Kept Account, fed by a Bank Account that is not a Retired Account.
+            if (budgetAccountId == own || chosen.budgetId != ownBudget || chosen.manuallyKept || fetchedFor == null || fetchedFor.retired) {
+                return OtherSide.NotAllowed
+            }
+        }
+        if (fundedBy) updateFundedBy(id, budgetAccountId) else updateTransferPartner(id, budgetAccountId)
+        storedWithStatusesToGive()
+        return OtherSide.Stored
     }
 
     private suspend fun bankIdOf(bank: BankChoice): Long = when (bank) {

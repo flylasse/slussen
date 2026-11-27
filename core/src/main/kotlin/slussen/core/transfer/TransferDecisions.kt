@@ -1,10 +1,8 @@
 package slussen.core.transfer
 
-import kotlinx.coroutines.CancellationException
 import slussen.core.comparison.Comparison
 import slussen.core.comparison.ComparisonWindows
 import slussen.core.journal.DecisionJournal
-import slussen.core.operation.OperationCoordinator
 import slussen.core.operation.OperationKind
 import slussen.core.operation.OperationResult
 import slussen.core.operation.unlessStorageFails
@@ -12,7 +10,6 @@ import slussen.core.port.ComparisonStore
 import slussen.core.port.ConnectionStore
 import slussen.core.port.JournalEventKind
 import slussen.core.port.OperatorSettingsStore
-import slussen.core.port.StartedBy
 import slussen.core.port.StoredBankTransaction
 import slussen.core.port.StoredBudget
 import slussen.core.port.TransferDecided
@@ -27,7 +24,7 @@ import java.time.LocalDate
  * built from stored data only (steps 2-3, A4, A7-A9), and Confirm, Split, Hold and choosing another Budget Account, each
  * one storage operation with its effect (O-13, ADR-002 §3), admitted through the operation coordinator also while an
  * Upload Plan awaits confirmation (ADR-007 §2), followed within the same operation by the conclusions from stored data
- * (O-5, ADR-007 §3a), and recorded in the Decision Journal (BR-011). The rules are [TransferDecisionRules], [TransferRules]
+ * (O-5, ADR-007 §3a; [Comparison.statusesAgainAfter]), and recorded in the Decision Journal (BR-011). The rules are [TransferDecisionRules], [TransferRules]
  * and the Comparison's own. A Transfer is selected through one of its Transfer Legs, so that a Guessed Transfer for which
  * Slussen proposes no paying Budget Account, which has no stored Transfer, is selected like any other (A8). What waits
  * for the Uploads: the replacement of an open Upload Plan (UC-006 A3), the Sent Records the lock reads (BR-008 is built
@@ -38,7 +35,6 @@ class TransferDecisions(
     private val transfers: TransferStore,
     private val comparisons: ComparisonStore,
     private val comparison: Comparison,
-    private val coordinator: OperationCoordinator,
     private val settings: OperatorSettingsStore,
     private val journal: DecisionJournal,
     private val clock: Clock,
@@ -106,52 +102,44 @@ class TransferDecisions(
     /**
      * Steps 4-6, A1-A4, A8-A10: the Operator decides [choice] for the Transfer the Bank Transaction
      * [storedBankTransaction] is a Transfer Leg of: one operation, admitted by the coordinator, ruled and stored by O-13
-     * all or nothing with its effect, then concluded from stored data (O-5) and recorded in the Decision Journal.
+     * all or nothing with its effect, recorded in the Decision Journal, then concluded from stored data (O-5).
      */
     suspend fun decide(storedBankTransaction: Long, choice: TransferChoice): TransferOutcome {
-        // ADR-007 §2: admitted also while an Upload Plan awaits confirmation, refused while an Upload is written.
-        val result = coordinator.run(OperationKind.TransferDecision, StartedBy.Operator) {
-            var bankAccountNames = emptyMap<Long, String>()
-            var budgetAccountNames = emptyMap<Long, String>()
-            // NFR-023: O-13 is the last step that can fail here, so "not stored" is only ever said of a decision that was not stored.
-            val decided = unlessStorageFails<TransferDecided<RuledTransferOutcome>?>(null) {
-                val (_, budget) = located(storedBankTransaction) ?: return@run TransferOutcome.NotFound
-                if (budget == null) return@run TransferOutcome.NotDecidable(TransferUndecidable.BankAccountNotCompared)
-                val windows = windows()
-                bankAccountNames = connections.bankAccounts().associate { it.id to it.name }
-                budgetAccountNames = budget.budgetAccounts.associate { it.id to it.name }
-                val now = clock.instant()
-                transfers.decide(setOf(budget.id)) { data ->
-                    val (write, ruled) = TransferDecisionRules.decide(storedBankTransaction, choice, data, windows, now)
-                    TransferRuling(write, ruled)
-                }
-            } ?: return@run TransferOutcome.NotStored
-            val stored = decided.answer.outcome as? TransferOutcome.Stored ?: return@run decided.answer.outcome
-            decided.answer.facts?.let { facts -> journalDecision(facts, bankAccountNames, budgetAccountNames) }
-            journal.recordStatusChanges(decided.changes, bankAccountNames)
-            // UC-005 BR-016: Slussen detects Transfers again for a Transfer Leg the choice released, from stored data and before any Upload Plan is prepared, also when it stops in between.
-            stored.copy(detectedAgain = detectAgain())
-        }
+        // UC-005 BR-016: Slussen detects Transfers again for a Transfer Leg the choice released, from stored data and before any Upload Plan is prepared, also when it stops in between.
+        val result = comparison.statusesAgainAfter(OperationKind.TransferDecision) { store(storedBankTransaction, choice) }
         return when (result) {
-            is OperationResult.Ran -> result.value
+            // ADR-007 §3a: when the conclusions could not be given now, the decision is stored and the Comparison marker keeps every Upload Plan from being prepared until they are, at the next start at the latest.
+            is OperationResult.Ran -> when (val outcome = result.value.change) {
+                is TransferOutcome.Stored -> outcome.copy(detectedAgain = result.value.statusesGiven)
+                else -> outcome
+            }
+            // ADR-007 §2: admitted also while an Upload Plan awaits confirmation, refused while an Upload is written.
             is OperationResult.Refused -> TransferOutcome.Unavailable(result.reason)
         }
     }
 
-    /**
-     * O-5 after O-13, within the same operation (ADR-007 §3a): false when the stored data could not be read or written.
-     * The decision is stored then and the Comparison-pending marker stays set, which keeps every Upload Plan from being
-     * prepared until the conclusions are given, at the next start at the latest.
-     */
-    private suspend fun detectAgain(): Boolean =
-        try {
-            comparison.concludeFromStoredData()
-            true
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Exception) {
-            false
-        }
+    /** O-13 for one Transfer Decision within its operation, with its Decision Journal entries; nothing is stored when the rule refuses or the storage fails. */
+    private suspend fun store(storedBankTransaction: Long, choice: TransferChoice): TransferOutcome {
+        var bankAccountNames = emptyMap<Long, String>()
+        var budgetAccountNames = emptyMap<Long, String>()
+        // NFR-023: O-13 is the last step that can fail here, so "not stored" is only ever said of a decision that was not stored.
+        val decided = unlessStorageFails<TransferDecided<RuledTransferOutcome>?>(null) {
+            val (_, budget) = located(storedBankTransaction) ?: return TransferOutcome.NotFound
+            if (budget == null) return TransferOutcome.NotDecidable(TransferUndecidable.BankAccountNotCompared)
+            val windows = windows()
+            bankAccountNames = connections.bankAccounts().associate { it.id to it.name }
+            budgetAccountNames = budget.budgetAccounts.associate { it.id to it.name }
+            val now = clock.instant()
+            transfers.decide(setOf(budget.id)) { data ->
+                val (write, ruled) = TransferDecisionRules.decide(storedBankTransaction, choice, data, windows, now)
+                TransferRuling(write, ruled)
+            }
+        } ?: return TransferOutcome.NotStored
+        val stored = decided.answer.outcome as? TransferOutcome.Stored ?: return decided.answer.outcome
+        decided.answer.facts?.let { facts -> journalDecision(facts, bankAccountNames, budgetAccountNames) }
+        journal.recordStatusChanges(decided.changes, bankAccountNames)
+        return stored
+    }
 
     // UC-005 BR-011: Every Transfer Decision and every change to it is recorded in the Decision Journal together with the Transfer Slussen had proposed, once for each Transfer Leg of the Transfer.
     /** Step 6: the Decision Journal entries of one stored Transfer Decision; recording never delays or blocks the decision. */

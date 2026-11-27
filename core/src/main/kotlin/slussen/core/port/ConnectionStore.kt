@@ -207,12 +207,31 @@ interface ConnectionStore {
     suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome
 }
 
-/** O-13 `MappingStore` (ADR-002 §3): the changes of UC-009, each one transaction on `slussen.db`. */
+/** What O-13 did with a Funded By or a Transfer Partner (ADR-002 §3; UC-009 A9, BR-008). */
+enum class OtherSideStored {
+    /** Stored, or cleared. */
+    Stored,
+
+    /** Refused, nothing stored: the entity model's `BANK_ACCOUNT` constraints do not allow this value (UC-005 BR-014). */
+    NotAllowed,
+
+    /** No Bank Account has this id. */
+    NotFound,
+}
+
+/**
+ * O-13 `MappingStore` (ADR-002 §3): the changes of UC-009, each one transaction on `slussen.db` that raises
+ * `coordinator_state.state_version` when it stores something (ADR-007 §6 step 2). A change that UC-009 BR-015 follows with
+ * statuses given again and Transfers detected again (the type, retiring and restoring, the Start Date, a Funded By or
+ * Transfer Partner) sets `coordinator_state.comparison_pending` in the same transaction, so that no Upload Plan is
+ * prepared before the conclusions follow through O-5, within the same operation or at the next start (ADR-007 §3a).
+ */
 interface MappingStore {
     /**
      * UC-009 A14: the Bank Account type and the Bank (stored first when it is a new one) of [bankAccountId], clearing
-     * its Funded By when [clearFundedBy] and its Transfer Partner when [clearTransferPartner], in one transaction.
-     * It changes no Account Mapping, identification, `provider_bank_id` or Sent Record (UC-009 BR-012).
+     * its Funded By when [clearFundedBy] and its Transfer Partner when [clearTransferPartner], in one transaction, with
+     * the Comparison marker. It changes no Account Mapping, identification, `provider_bank_id` or Sent Record (UC-009
+     * BR-012).
      */
     suspend fun changeTypeAndBank(
         bankAccountId: Long,
@@ -221,4 +240,33 @@ interface MappingStore {
         clearFundedBy: Boolean,
         clearTransferPartner: Boolean,
     )
+
+    /**
+     * UC-009 A4, A5: marks [bankAccountId] as a Retired Account, or restores it, with the Comparison marker, and returns
+     * whether it stored that; false, with nothing changed, when no Bank Account has this id or it already is so. It
+     * changes nothing else: the identification, the Account Mapping, the Start Date and the history are kept (BR-005).
+     */
+    suspend fun setRetired(bankAccountId: Long, retired: Boolean): Boolean
+
+    /**
+     * UC-009 A12: the name of [bankAccountId] and nothing else, without the Comparison marker, since no Transaction
+     * Status depends on a name (BR-011); returns whether a Bank Account has this id.
+     */
+    suspend fun rename(bankAccountId: Long, name: String): Boolean
+
+    /**
+     * UC-009 A13: the Start Date of [bankAccountId], null to clear it, with the Comparison marker; returns whether a Bank
+     * Account has this id.
+     */
+    suspend fun setStartDate(bankAccountId: Long, startDate: LocalDate?): Boolean
+
+    /**
+     * UC-009 A9: the Funded By or the Transfer Partner ([kind]) of [bankAccountId], null to clear it, with the Comparison
+     * marker. Refused, storing nothing, when [kind] does not fit the Bank Account type (a Funded By belongs only to a
+     * credit card, a Transfer Partner only to another Bank Account), and unless [budgetAccountId] is in the Budget of the
+     * Bank Account's own Account Mapping, differs from its own Budget Account, is no Manually Kept Account and receives
+     * through an Account Mapping of a Bank Account that is not a Retired Account (UC-005 BR-014, entity model
+     * `BANK_ACCOUNT` constraints).
+     */
+    suspend fun setOtherSide(bankAccountId: Long, kind: OtherSideKind, budgetAccountId: Long?): OtherSideStored
 }

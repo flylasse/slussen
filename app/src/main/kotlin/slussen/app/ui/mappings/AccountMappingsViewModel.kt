@@ -438,16 +438,24 @@ class AccountMappingsViewModel(private val services: UiServices) : ViewModel() {
     private fun save(type: BankAccountType, bank: BankChoice, clearingConfirmed: Boolean) {
         val sheet = mutableState.value?.typeAndBank ?: return
         viewModelScope.launch {
-            when (val outcome = services.mappings.changeTypeAndBank(sheet.bankAccountId, type, bank, clearingConfirmed)) {
-                TypeAndBankOutcome.Stored -> {
-                    pending = null
-                    val bankName = when (bank) {
-                        is BankChoice.Known -> sheet.bankOptions.firstOrNull { it.value.bankId == bank.bankId }?.value?.name.orEmpty()
-                        is BankChoice.Named -> bank.name.trim()
-                    }
-                    val name = sheet.title.substringBefore(" · ")
-                    show(typeAndBank = null, message = "$name: ${type.text} · $bankName · stored")
+            /** A14 step 4: stored; [after] says what is still to follow, when the Transfers could not be detected again now. */
+            suspend fun stored(after: String) {
+                pending = null
+                val bankName = when (bank) {
+                    is BankChoice.Known -> sheet.bankOptions.firstOrNull { it.value.bankId == bank.bankId }?.value?.name.orEmpty()
+                    is BankChoice.Named -> bank.name.trim()
                 }
+                val name = sheet.title.substringBefore(" · ")
+                show(typeAndBank = null, message = "$name: ${type.text} · $bankName · stored$after")
+            }
+            when (val outcome = services.mappings.changeTypeAndBank(sheet.bankAccountId, type, bank, clearingConfirmed)) {
+                TypeAndBankOutcome.Stored -> stored(after = "")
+                // UC-009 BR-015: The change and the new statuses are stored so that, when Slussen stops between the two, no Upload Plan is prepared before the statuses are given again.
+                TypeAndBankOutcome.StoredNotDetectedYet ->
+                    stored(after = " · the Transfers are detected again when Slussen next starts or compares; no Upload Plan is prepared before")
+                // NFR-023: a storage that cannot be read or written is answered at the control; the sheet stays for another try.
+                TypeAndBankOutcome.NotStored ->
+                    mutableState.value = mutableState.value?.copy(message = "Not stored: Slussen could not use the data stored on this device · try again")
                 is TypeAndBankOutcome.ClearingToConfirm -> {
                     pending = type to bank
                     mutableState.value = mutableState.value?.copy(

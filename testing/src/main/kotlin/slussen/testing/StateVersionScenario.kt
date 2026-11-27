@@ -27,6 +27,8 @@ import slussen.core.port.NewFetch
 import slussen.core.port.NewLeftOutBankAccount
 import slussen.core.port.NewUnreadableTransaction
 import slussen.core.port.OperatorSettingsStore
+import slussen.core.port.OtherSideKind
+import slussen.core.port.OtherSideStored
 import slussen.core.port.PluginRegistryStore
 import slussen.core.port.ReviewChoice
 import slussen.core.port.ReviewDecisionWrite
@@ -140,7 +142,13 @@ class StateVersionScenario(
         val dataProviderId = registered.single { it.sourceKey == "example-state-version-feeds" }.id
         val publishingId = registered.single { it.sourceKey == "example-state-version-open-banking" }.id
         val listed = listOf(
-            BudgetToServe("budget-state-version-household", "Household", usd, listOf(BudgetAccountToStore("ba-state-version-checking", "Checking", Amount(4_140_050)))),
+            BudgetToServe(
+                "budget-state-version-household", "Household", usd,
+                listOf(
+                    BudgetAccountToStore("ba-state-version-checking", "Checking", Amount(4_140_050)),
+                    BudgetAccountToStore("ba-state-version-reserve", "Reserve Savings", Amount(12_000_000)),
+                ),
+            ),
             BudgetToServe("budget-state-version-summer", "Summer House", eur, listOf(BudgetAccountToStore("ba-state-version-current", "Current", Amount(3_402_300)))),
         )
         val both = listed.map { it.budgetAppReference }.toSet()
@@ -148,7 +156,8 @@ class StateVersionScenario(
         check(stored("serve Budgets") { connections.serveBudgets(listed, both, now) } == ServeOutcome.Served)
         val budgets = connections.budgets().filter { it.budgetAppReference in both }
         val household = budgets.single { it.name == "Household" }
-        val checking = household.budgetAccounts.single().id
+        val checking = household.budgetAccounts.single { it.name == "Checking" }.id
+        val reserve = household.budgetAccounts.single { it.name == "Reserve Savings" }.id
         val current = budgets.single { it.name == "Summer House" }.budgetAccounts.single().id
 
         val added = stored("add a Bank Account with its Account Mapping") {
@@ -184,6 +193,61 @@ class StateVersionScenario(
         stored("change the type and the Bank of a Bank Account") {
             mappings.changeTypeAndBank(added.bankAccountId, BankAccountType.Savings, BankChoice.Named("Aurora Bank"), clearFundedBy = false, clearTransferPartner = false)
         }
+        // ADR-007 §3a: a change of UC-009 that BR-015 follows with statuses given again leaves the Comparison pending in its own transaction, until O-5 gives them.
+        suspend fun leavesTheComparisonPending(operation: String) {
+            check(comparisons.comparisonPending()) { "$operation must leave the Comparison pending" }
+            comparisons.applyComparison(emptySet()) { ComparisonConclusions(statuses = emptyMap()) }
+            check(!comparisons.comparisonPending())
+        }
+        leavesTheComparisonPending("a change of the Bank Account type")
+
+        // The changes of one Bank Account (UC-009 A4, A5, A9, A12, A13; O-13), with a second Bank Account that feeds Reserve Savings.
+        val saver = connections.addBankAccount(bankAccount("8b3e4c6a-2d9f-4e3a-9c77-4a0a5d3e2f6c", reserve).copy(name = "Reserve Saver", type = BankAccountType.Savings))
+        check(saver is AddOutcome.Added) { "$saver" }
+        check(stored("retire a Bank Account") { mappings.setRetired(saver.bankAccountId, true) })
+        leavesTheComparisonPending("retiring")
+        check(connections.bankAccounts().single { it.id == saver.bankAccountId }.let { it.retired && it.mapping?.budgetAccountId == reserve })
+        check(!refused("retire a Retired Account") { mappings.setRetired(saver.bankAccountId, true) })
+        // UC-005 BR-014: A Budget Account that only a Retired Account is mapped to is not one that Slussen fetches.
+        check(
+            refused("set a Transfer Partner that only a Retired Account feeds") {
+                mappings.setOtherSide(added.bankAccountId, OtherSideKind.TransferPartner, reserve)
+            } == OtherSideStored.NotAllowed,
+        )
+        check(stored("restore a Retired Account") { mappings.setRetired(saver.bankAccountId, false) })
+        leavesTheComparisonPending("restoring")
+        check(stored("set the Transfer Partner of a Bank Account") { mappings.setOtherSide(added.bankAccountId, OtherSideKind.TransferPartner, reserve) } == OtherSideStored.Stored)
+        leavesTheComparisonPending("a Transfer Partner")
+        check(connections.bankAccounts().single { it.id == added.bankAccountId }.transferPartnerBudgetAccountId == reserve)
+        check(
+            refused("set a Funded By for a Bank Account that is not a credit card") {
+                mappings.setOtherSide(added.bankAccountId, OtherSideKind.FundedBy, reserve)
+            } == OtherSideStored.NotAllowed,
+        )
+        check(
+            refused("set a Bank Account's own Budget Account as its Transfer Partner") {
+                mappings.setOtherSide(added.bankAccountId, OtherSideKind.TransferPartner, checking)
+            } == OtherSideStored.NotAllowed,
+        )
+        check(
+            refused("set a Budget Account of another Budget as a Transfer Partner") {
+                mappings.setOtherSide(added.bankAccountId, OtherSideKind.TransferPartner, current)
+            } == OtherSideStored.NotAllowed,
+        )
+        check(!comparisons.comparisonPending()) { "a refused Funded By or Transfer Partner leaves no Comparison pending" }
+        check(stored("clear the Transfer Partner of a Bank Account") { mappings.setOtherSide(added.bankAccountId, OtherSideKind.TransferPartner, null) } == OtherSideStored.Stored)
+        leavesTheComparisonPending("clearing a Transfer Partner")
+        check(connections.bankAccounts().single { it.id == added.bankAccountId }.transferPartnerBudgetAccountId == null)
+        check(stored("set the Start Date of a Bank Account") { mappings.setStartDate(added.bankAccountId, LocalDate.of(2026, 11, 1)) })
+        leavesTheComparisonPending("a Start Date")
+        check(connections.bankAccounts().single { it.id == added.bankAccountId }.startDate == LocalDate.of(2026, 11, 1))
+        check(stored("rename a Bank Account") { mappings.rename(added.bankAccountId, "Everyday Checking") })
+        // UC-009 BR-011: The name never identifies a Bank Account and no Transaction Status depends on it: no Comparison is pending after it.
+        check(!comparisons.comparisonPending()) { "a new name leaves no Comparison pending" }
+        check(connections.bankAccounts().single { it.id == added.bankAccountId }.name == "Everyday Checking")
+        check(!refused("rename a Bank Account that is not stored") { mappings.rename(added.bankAccountId + 1000, "Everyday Checking") })
+        check(!refused("set the Start Date of a Bank Account that is not stored") { mappings.setStartDate(added.bankAccountId + 1000, null) })
+
         stored("change the fetch period") { settings.storeFetchPeriod(45) }
         stored("change the Request Limit of a Data Provider that publishes none") { providerSettings.storeRequestLimit(dataProviderId, 30) }
         // UC-001 BR-007: A Request Limit the Data Provider publishes is never changed by the Operator's setting.
@@ -291,6 +355,19 @@ class StateVersionScenario(
             "mark a Budget Account that receives through an Account Mapping as a Manually Kept Account (refused)",
             "unmark a Manually Kept Account",
             "change the type and the Bank of a Bank Account",
+            "retire a Bank Account",
+            "retire a Retired Account (refused)",
+            "set a Transfer Partner that only a Retired Account feeds (refused)",
+            "restore a Retired Account",
+            "set the Transfer Partner of a Bank Account",
+            "set a Funded By for a Bank Account that is not a credit card (refused)",
+            "set a Bank Account's own Budget Account as its Transfer Partner (refused)",
+            "set a Budget Account of another Budget as a Transfer Partner (refused)",
+            "clear the Transfer Partner of a Bank Account",
+            "set the Start Date of a Bank Account",
+            "rename a Bank Account",
+            "rename a Bank Account that is not stored (refused)",
+            "set the Start Date of a Bank Account that is not stored (refused)",
             "change the fetch period",
             "change the Request Limit of a Data Provider that publishes none",
             "change the Request Limit of a Data Provider that publishes its Request Limit (refused)",

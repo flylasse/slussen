@@ -35,6 +35,8 @@ import slussen.core.port.NewProviderRequest
 import slussen.core.port.OfferedBankAccountStore
 import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
+import slussen.core.port.OtherSideKind
+import slussen.core.port.OtherSideStored
 import slussen.core.port.PluginRegistryStore
 import slussen.core.port.ProviderRequestStore
 import slussen.core.port.FirstUploadMatchingCause
@@ -65,6 +67,7 @@ import slussen.core.port.StoredTransfer
 import slussen.core.port.StoredTransactionFile
 import slussen.core.port.UnreadablePart
 import java.time.Instant
+import java.time.LocalDate
 
 /**
  * In-memory stand-in for `coordinator_state.state_version` (ADR-002 §2): the version of everything an Upload Plan was
@@ -254,13 +257,21 @@ class InMemoryOfferedBankAccountStore : OfferedBankAccountStore {
 
 /**
  * In-memory fake of [ConnectionStore] with the refusals of O-15, all or nothing like the real one, with the Left-Out
- * Bank Accounts and Manually Kept Accounts of S-38, and of [MappingStore] (O-13). A test holds a switch of a Left-Out
- * Bank Account or a Manually Kept Account with [beforeStore], to see it while it is being stored, and makes it fail
- * with [failsToStore], as a storage that cannot be written would.
+ * Bank Accounts and Manually Kept Accounts of S-38, and of [MappingStore] (O-13) with its refusals and the Comparison
+ * marker it sets ([comparisonPending]). A test holds a switch of a Left-Out Bank Account or a Manually Kept Account, or a
+ * change of UC-009, with [beforeStore], to see it while it is being stored, and makes it fail with [failsToStore], as a
+ * storage that cannot be written would.
  */
 class InMemoryConnectionStore(val stateVersion: InMemoryStateVersion = InMemoryStateVersion()) : ConnectionStore, MappingStore {
     var beforeStore: suspend () -> Unit = {}
     var failsToStore: Boolean = false
+
+    /**
+     * In-memory stand-in for `coordinator_state.comparison_pending` (ADR-007 §3a), which the tables of `slussen.db` share:
+     * O-4 and the changes of O-13 that are followed by statuses given again set it, O-5 clears it
+     * ([InMemoryBudgetAppCopyStore.pending] is this marker).
+     */
+    var comparisonPending: Boolean = false
 
     private suspend fun storing() {
         beforeStore()
@@ -371,6 +382,7 @@ class InMemoryConnectionStore(val stateVersion: InMemoryStateVersion = InMemoryS
         clearFundedBy: Boolean,
         clearTransferPartner: Boolean,
     ) {
+        storing()
         val bankId = bankIdOf(bank)
         bankAccountList.replaceAll {
             if (it.id != bankAccountId) {
@@ -384,7 +396,61 @@ class InMemoryConnectionStore(val stateVersion: InMemoryStateVersion = InMemoryS
                 )
             }
         }
+        storedWithStatusesToGive()
+    }
+
+    /** As O-13 does in its transaction: `state_version` raised (ADR-007 §6 step 2) and the Comparison marker set (§3a). */
+    private fun storedWithStatusesToGive() {
         stateVersion.raise()
+        comparisonPending = true
+    }
+
+    override suspend fun setRetired(bankAccountId: Long, retired: Boolean): Boolean {
+        storing()
+        if (bankAccountList.none { it.id == bankAccountId && it.retired != retired }) return false
+        bankAccountList.replaceAll { if (it.id == bankAccountId) it.copy(retired = retired) else it }
+        storedWithStatusesToGive()
+        return true
+    }
+
+    override suspend fun rename(bankAccountId: Long, name: String): Boolean {
+        storing()
+        if (bankAccountList.none { it.id == bankAccountId }) return false
+        bankAccountList.replaceAll { if (it.id == bankAccountId) it.copy(name = name) else it }
+        stateVersion.raise()
+        return true
+    }
+
+    override suspend fun setStartDate(bankAccountId: Long, startDate: LocalDate?): Boolean {
+        storing()
+        if (bankAccountList.none { it.id == bankAccountId }) return false
+        bankAccountList.replaceAll { if (it.id == bankAccountId) it.copy(startDate = startDate) else it }
+        storedWithStatusesToGive()
+        return true
+    }
+
+    override suspend fun setOtherSide(bankAccountId: Long, kind: OtherSideKind, budgetAccountId: Long?): OtherSideStored {
+        storing()
+        val bankAccount = bankAccountList.firstOrNull { it.id == bankAccountId } ?: return OtherSideStored.NotFound
+        // Entity model `BANK_ACCOUNT`: a Funded By only for a Credit Card, a Transfer Partner only for another Bank Account.
+        if ((bankAccount.type == BankAccountType.CreditCard) != (kind == OtherSideKind.FundedBy)) return OtherSideStored.NotAllowed
+        if (budgetAccountId != null) {
+            // Entity model `BANK_ACCOUNT`: in the Budget of its own Account Mapping, not its own Budget Account, never a Manually Kept Account, fed by a Bank Account that is not a Retired Account.
+            val own = bankAccount.mapping?.budgetAccountId ?: return OtherSideStored.NotAllowed
+            val budget = budgetList.firstOrNull { candidate -> candidate.budgetAccounts.any { it.id == own } } ?: return OtherSideStored.NotAllowed
+            val chosen = budget.budgetAccounts.firstOrNull { it.id == budgetAccountId } ?: return OtherSideStored.NotAllowed
+            val fetched = bankAccountList.any { it.mapping?.budgetAccountId == budgetAccountId && !it.retired }
+            if (budgetAccountId == own || chosen.manuallyKept || !fetched) return OtherSideStored.NotAllowed
+        }
+        bankAccountList.replaceAll { account ->
+            when {
+                account.id != bankAccountId -> account
+                kind == OtherSideKind.FundedBy -> account.copy(fundedByBudgetAccountId = budgetAccountId)
+                else -> account.copy(transferPartnerBudgetAccountId = budgetAccountId)
+            }
+        }
+        storedWithStatusesToGive()
+        return OtherSideStored.Stored
     }
 
     /** Sets a Funded By or Transfer Partner as UC-009 BR-008 will, for the tests of UC-009 A14. */

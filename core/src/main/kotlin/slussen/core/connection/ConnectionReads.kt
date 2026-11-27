@@ -1,12 +1,15 @@
 package slussen.core.connection
 
 import slussen.core.plugin.RegisteredPlugins
+import slussen.core.port.BankAccountType
 import slussen.core.port.ConnectionStore
 import slussen.core.port.OfferedBankAccountStore
+import slussen.core.port.OtherSideKind
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredBudget
 import slussen.core.port.StoredLeftOutBankAccount
 import slussen.core.port.StoredOfferedBankAccount
+import slussen.core.transfer.TransferDetection
 
 /**
  * What UC-013, UC-009 and the Settings read model of UC-010 share about the Offered Bank Accounts and the Budget
@@ -115,6 +118,31 @@ internal class ConnectionReads(
             budgetAccountName = mappedInto?.second?.name,
             startDate = bankAccount.startDate,
             retired = bankAccount.retired,
+            otherSide = otherSide(bankAccount, snapshot.budgets, snapshot.bankAccounts),
+            // Step 1 of UC-009: whether transactions were sent through its Account Mapping, by the time of the first send to its current Budget Account.
+            sentThrough = bankAccount.mapping?.firstSentAt != null,
+            // Step 1 of UC-009, whether it is identified (BR-004): a Data Provider identifies it by the reference recorded for it; Transaction Files need none.
+            identified = bankAccount.dataProviderId == null || bankAccount.providerReference != null,
+        )
+    }
+
+    // UC-009 BR-008: A credit card Bank Account can have a Funded By and every other Bank Account a Transfer Partner; both start empty.
+    /**
+     * Step 1 of UC-009, A9 step 1: the Funded By or the Transfer Partner of [bankAccount] as it is stored, and whether the
+     * Transfer detection uses it, by the detection's own rule on the stored [budgets] and [bankAccounts] (UC-005 BR-014):
+     * one whose Budget Account no Bank Account that is not a Retired Account is mapped to, or that is not a Budget
+     * Account of the Budget the Bank Account is mapped into, is kept and shown as no longer applying.
+     */
+    fun otherSide(bankAccount: StoredBankAccount, budgets: List<StoredBudget>, bankAccounts: List<StoredBankAccount>): OtherSideShown {
+        val creditCard = bankAccount.type == BankAccountType.CreditCard
+        val stored = if (creditCard) bankAccount.fundedByBudgetAccountId else bankAccount.transferPartnerBudgetAccountId
+        val mappedInto = budgets.firstOrNull { budget -> budget.budgetAccounts.any { it.id == bankAccount.mapping?.budgetAccountId } }
+        val applying = mappedInto?.let { TransferDetection.otherSideThatApplies(bankAccount, it, bankAccounts) }
+        return OtherSideShown(
+            kind = if (creditCard) OtherSideKind.FundedBy else OtherSideKind.TransferPartner,
+            budgetAccountId = stored,
+            budgetAccountName = stored?.let { id -> budgets.flatMap { it.budgetAccounts }.firstOrNull { it.id == id }?.name.orEmpty() },
+            applies = stored != null && applying == stored,
         )
     }
 

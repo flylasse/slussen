@@ -98,9 +98,9 @@ class TestSlice(
     )
     /** UC-005: the Transfer Decisions, on the stored data the Comparison concludes from. */
     val transferDecisions = TransferDecisions(
-        connectionStore, copyStore.transferStore, copyStore, comparison, coordinator, settings, journal, clock, plugins.budgetApp.profile.matchingDateWindowDays,
+        connectionStore, copyStore.transferStore, copyStore, comparison, settings, journal, clock, plugins.budgetApp.profile.matchingDateWindowDays,
     )
-    val mappings = AccountMappings(plugins, connectionStore, connectionStore, offeredStore, coordinator, journal)
+    val mappings = AccountMappings(plugins, connectionStore, connectionStore, offeredStore, coordinator, journal, comparison)
     val status = ImportStatus(
         budgetAppName = plugins.budgetApp.profile.name,
         currentDataProviders = { plugins.dataProviders.map { it.stored } },
