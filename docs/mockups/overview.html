@@ -334,7 +334,7 @@
 </div>
 </div>
 <div class="state" id="notification">
-<div class="step-label"><span class="n">UC-001 A12</span><p><b>After a Scheduled Fetch</b> (outside the app). The New Transaction Notification and the badge on the app icon.</p></div>
+<div class="step-label"><span class="n">UC-001 A12</span><p><b>After a Scheduled Fetch</b> (outside the app). The New Transaction Notification and the badge on the app icon: the sum of the Overview's counts of every Budget (UC-001 BR-014). Tapping it opens the Overview. When notifications are not allowed: <a href="#notification-ask">the one question</a> and <a href="settings.html#notifications-off">the line on Settings</a>.</p></div>
 <div class="phone">
 <div class="screen-title">Android</div>
 <p class="screen-sub">Lock screen and launcher</p>
@@ -353,6 +353,17 @@
 
 </div>
 
+</div>
+</div>
+<div class="state" id="notification-ask">
+<div class="step-label"><span class="n">UC-001 BR-014</span><p><b>The one question about notifications.</b> The Overview opens while the Fetch Schedule is above 0, Slussen's notifications are not allowed and the device has no answer of the Operator yet: Slussen asks the device's question once, over the Overview. Allow shows the notification from the next change of the number; Don't allow is the Operator's answer, never asked again (<a href="settings.html#notifications-off">the line on Settings</a>). Closed without an answer, it is asked at the next opening.</p></div>
+<div class="phone">
+<div class="screen-title">Slussen</div>
+<p class="screen-sub">Overview · 2026-10-15 14:32 · device time</p>
+<div class="body">
+<div class="ghost"><a class="btn primary" href="budget.html#fetch-states">Fetch all Data Providers</a><div class="card"><div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span></div><div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:90px;margin:0"><h4>Allow Slussen to send you notifications?</h4><p class="small muted">The device's own question. Slussen shows one silent notification: the number of Bank Transactions waiting for an Upload Plan or your Review Decision.</p><div class="actions"><a class="c" href="settings.html#notifications-off">Don't allow</a> <a class="ok" href="#notification">Allow</a></div></div>
+</div>
+<div class="nav"><a class="tab on" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 </div>

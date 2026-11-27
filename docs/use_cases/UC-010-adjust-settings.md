@@ -74,7 +74,7 @@
 **Trigger:** Operator changes the Fetch Schedule (step 2)  
 **Flow:**
 
-1. Slussen states how many Scheduled Fetches it will make in any 24 hours under the new Fetch Schedule (2 by default), or that it will make none when the value is 0, and that a Scheduled Fetch never uploads.
+1. Slussen states how many Scheduled Fetches it will make in any 24 hours under the new Fetch Schedule (2 by default), or that it will make none when the value is 0, and that a Scheduled Fetch never uploads. The schedule is set again from the time of the change (UC-001 BR-013).
 2. Use case continues at step 3.
 
 ### A7: Edit a Description List

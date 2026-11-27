@@ -174,7 +174,8 @@ collision that still occurs is detected, as NFR-020 and UC-003 BR-002 require:
   with the Sent Record at confirmation and is never given to another send; skipped occurrences are never used later.
 - **Occurrence numbers.** `occurrence_number` of a transaction without a Stable Reference is allocated inside the same
   storage operation that stores it: the number of stored identical transactions of the Bank Account plus one, in the
-  order the Source delivered them (UC-002 BR-003). Once stored it never changes, also when an earlier identical
+  order the Source delivered them (UC-002 BR-003). A stored transaction with a Stable Reference is not one of the
+  identical transactions it counts; which transactions of a file are new at all is UC-002 BR-003's rule. Once stored it never changes, also when an earlier identical
   transaction is later deferred or no longer delivered.
 - A collision is recorded in the Decision Journal as a Status Changed event, and a planted-collision test forces one through a
   test-only digest.

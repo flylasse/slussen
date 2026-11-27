@@ -515,7 +515,7 @@
 </div>
 </div>
 <div class="state" id="care-fund">
-<div class="step-label"><span class="n">UC-002 1 · UC-001 BR-011</span><p><b>A file-imported Bank Account.</b> Its Source Health is the last Transaction File import, its Freshness counts from that import, and its Account Balance comes from a Fetch of SimpleFIN, with its own time and Fetch button (UC-002 BR-005, BR-006).</p></div>
+<div class="step-label"><span class="n">UC-002 1 · UC-001 BR-011</span><p><b>A file-imported Bank Account.</b> Its Source Health is the last Transaction File import, with the number of Bank Transactions that file delivered (UC-002 step 7), its Freshness counts from that import, and its Account Balance comes from a Fetch of SimpleFIN, with its own time and Fetch button (UC-002 BR-005, BR-006).</p></div>
 <div class="phone">
 <div class="screen-title">Care Fund</div>
 <p class="screen-sub">Budget · USD · from stored data</p>
@@ -528,8 +528,8 @@
 </div>
 <div class="card">
   <div class="src-h">Sources</div>
-  <div class="src-row"><span class="dot"></span> <span class="nm">Transaction File</span> <span class="ok">Imported</span> <span class="gran">File Format: Harbor Health Trust statement</span></div>
-  <div class="src-note">Source Health: Imported 2026-10-12 09:14 · taken in: 18</div>
+  <div class="src-row"><span class="dot"></span> <span class="nm">Transaction File</span> <span class="ok">Imported</span> <span class="gran">File Format: HSA CSV export</span></div>
+  <div class="src-note">Source Health: Imported 2026-10-12 09:14 · delivered: 18</div>
   <div class="src-note">Freshness: data as of the Transaction File imported 2026-10-12 09:14</div>
   <div class="src-note">Not yet uploaded: Eligible 0 · waiting for a decision 1</div>
   <a class="btn primary" href="import-file.html#choose">Import Transaction File</a>
@@ -617,7 +617,7 @@
 </div>
 </div>
 <div class="state" id="fetch-failed-scheduled">
-<div class="step-label"><span class="n">UC-001 A14</span><p><b>A Scheduled Fetch met a transient failure</b> (seen when the Operator opens the app the next morning).</p></div>
+<div class="step-label"><span class="n">UC-001 A14</span><p><b>A Scheduled Fetch met a transient failure</b> (seen when the Operator opens the app the next morning). Shown from the stored Fetch, also after the process that ran the Scheduled Fetch has ended (UC-001 BR-013). The next one falls due 12 hours after the last, by the Fetch Schedule of 2 (an Operator Setting); it has no clock time, and the device may start it later.</p></div>
 <div class="phone">
 <div class="screen-title">Household</div>
 <p class="screen-sub">Budget · USD · seen 2026-10-14 21:40</p>
@@ -633,7 +633,7 @@
   <div class="src-row"><span class="dot red"></span> <span class="nm">SimpleFIN</span> <span class="bad">Failed</span> <span class="gran">Data Provider</span></div>
   <div class="src-note">Source Health: Failed 2026-10-14 18:00 · unavailable · started by the Fetch Schedule</div>
   <div class="src-note">Freshness: data as of 2026-10-14 06:01 (kept unchanged)</div>
-  <div class="src-note">Next Scheduled Fetch 2026-10-15 06:00</div>
+  <div class="src-note">Next Scheduled Fetch about 2026-10-15 06:00, as the device allows</div>
   <span class="btn">Fetch</span>
 </div>
 <a class="card" href="bank-account.html#checking" style="display:block">
@@ -1118,7 +1118,7 @@
 <div class="bh"><span class="meta">No Bank Transactions: they come from Transaction Files</span></div></div>
 <div class="card">
   <div class="src-h">Sources</div>
-  <div class="src-row"><span class="dot grey"></span> <span class="nm">Transaction File</span> <span class="gran">File Format: Harbor Health Trust statement</span></div>
+  <div class="src-row"><span class="dot grey"></span> <span class="nm">Transaction File</span> <span class="gran">File Format: HSA CSV export</span></div>
   <div class="src-note">Importing Transaction Files comes in a later version. No action is needed now.</div>
   <div class="hair"></div>
   <div class="src-row"><span class="dot"></span> <span class="nm">SimpleFIN</span> <span class="ok">Fetched</span> <span class="gran">Account Balance only</span></div>

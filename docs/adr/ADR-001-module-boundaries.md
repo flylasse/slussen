@@ -546,7 +546,101 @@ amount: Amount, currency: CurrencyCode?, payee: String?, memo: String?, booked: 
 file layout: nothing is written to disk in it. Every transaction has a non-empty `reference` (UC-002 BR-002,
 FR-085). `convert` returns `Rejected` when any part of the file cannot be converted (UC-002 BR-001). Deciding that
 transactions sharing a reference have no Stable Reference (UC-002 A4), leaving out pending and zero amounts, the
-occurrence numbers and the all-or-nothing store (ADR-002 §3 O-3) are core rules.
+occurrence numbers and the all-or-nothing store (ADR-002 §3 O-3) are core rules. A `currency` left empty is the Bank
+Account's currency; a transaction in another currency rejects the whole file (UC-002 A2), since a file has no
+Unreadable Transactions.
+
+A `Rejected.reason` says where the file fails (a line number, counted from 1, and the column) and what is wrong, in
+English like the rest of the app, and never holds a value of the file (no amount, date, payee, memo or text of a
+line), because it is shown, stored in `TRANSACTION_FILE.rejection_reason` and backed up with `slussen.db`. The core
+shows and stores at most the first 200 characters of it (the length of `rejection_reason`) and logs it only while
+Detailed Logging is on (NFR-007), since another File Pre-processor may break this rule.
+
+##### 4.3.1 The HSA CSV export (S-B-29)
+
+`:fileformat-hsa-csv` reads the history export of a health savings account at Fidelity, one file per Bank Account, as
+the Operator described it from a sample (the build-out plan, Q-01); the sample is not in the repository, and every
+value below is invented. The rules that make a reference (the fields of a transaction and the recipe) are final once a
+file was imported, because an Import Identifier is permanent (ADR-008 §4): changing the recipe, the payee or memo
+below or the Source Key `hsa-csv` would bring every earlier transaction in again as a new one. The other rules decide
+only which files are accepted; they can be widened later without changing the reference of any transaction accepted
+now. Where the description leaves a point open, the file is rejected, never guessed.
+
+**Layout.** Anything else rejects the whole file (UC-002 A2, BR-001):
+
+1. The file is UTF-8, begins with the byte order mark (`EF BB BF`), and ends its lines with LF only; a CR anywhere
+   rejects it.
+2. Lines 1 and 2 are empty; line 3 is the header, exactly
+   `Run Date,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Cash Balance ($),Settlement Date`.
+3. Every line from line 4 up to the first empty line is a transaction line, newest first. The first empty line may
+   follow the header at once; the file then holds no transaction (UC-002 A3).
+4. After that empty line comes the legal text, which is not read. Its last line is
+   `Date downloaded MM/DD/YYYY hh:mm am` (or `pm`), and the file ends there, with or without a final LF.
+
+**A transaction line** is split into fields at commas as CSV does: a field in double quotes may hold commas, two
+double quotes inside it stand for one, the enclosing quotes are not part of the value, and `""` is an empty value. A
+line that does not give exactly the header's fields, or holds a quote that is not closed or stands inside a field
+without enclosing quotes, rejects the file. Of each line:
+
+- `Run Date` is `MM/DD/YYYY` with exactly those digits and a real calendar date, on or before the `Run Date` of the
+  line above it (newest first).
+- `Action` ends with ` (Cash)`, with at least one character before it; `Type` is `Cash`. Any other line (buying or
+  selling another fund, for example) rejects the file.
+- `Amount ($)` and `Cash Balance ($)` are a number: an optional `-`, one or more digits, and optionally a point with
+  one or two digits; nothing else (no `+`, no thousands separator, no space). `Cash Balance ($)` is the cash balance
+  after the line.
+- `Symbol` and `Description` are any text, also empty. `Price ($)`, `Quantity`, `Commission ($)`, `Fees ($)`,
+  `Accrued Interest ($)` and `Settlement Date` are not read.
+
+**The cash balance and the reinvestment.** For each transaction line but the last (the oldest), its `Cash Balance ($)`
+minus that of the line below it is either its `Amount ($)` (the line moved the cash balance: a transaction) or 0. A
+line with a difference of 0 and an amount other than 0 is a reinvestment into the cash position, not a transaction of
+the Bank Account, and is left out, only when its `Action` begins with `REINVESTMENT `; any other line with a
+difference of 0 and an amount other than 0, and any other difference, rejects the file. The last line has no line
+below it: it is a transaction, unless its `Action` begins with `REINVESTMENT `, which rejects the file, since whether
+it moved the cash balance cannot be told. The cash balance itself is never part of a transaction or its reference.
+
+**The Standard Import Format of a line** (every line that is not left out, also one with an amount of 0, which the
+core leaves out, UC-001 BR-003):
+
+| Field | Value |
+|---|---|
+| `bookedDate` | `Run Date` |
+| `amount` | `Amount ($)`, negative for an outflow |
+| `currency` | USD, as the header's `($)` names it; a Bank Account in another currency rejects every file (UC-002 A2) |
+| `payee` | `Action` without its ending ` (Cash)` |
+| `memo` | from `Description` (taken as empty when it is exactly `No Description`) and `Symbol`: the description, followed by a space and the symbol in parentheses when both are present; the one present alone; absent when neither is |
+| `booked` | true: the description names no pending line and no column that marks one |
+| `reference`, `referenceKind` | the recipe below, Derived |
+
+**The reference recipe, version 1 (final).** The reference of a line is the lower-case hexadecimal SHA-256 digest (64
+characters) of the UTF-8 bytes of
+
+```text
+field("hsa-csv-reference") field("1") field(bookedDate) field(amount) field(payee) field(memo)
+```
+
+with ADR-008 §2's `field` encoding, date, amount and text rules: the date as `YYYY-MM-DD`, the amount as the signed
+whole number of thousandths, payee and memo in Unicode Normalization Form C, and an absent memo like an empty one. So
+the run date, action, symbol, description and amount of a line make its reference, as Q-01 proposed; its position in
+the file, the cash balance and the time of the download never do, so an overlapping later export of the same Bank
+Account gives the same references to the same transactions. The reference is made from exactly the fields that decide
+whether two transactions are identical in date, amount, payee and memo (ADR-008 §2), so two transactions have the same
+reference exactly when they are identical; the core counts a later file against the stored Bank Transactions on that
+(UC-002 BR-003). Two lines that differ only in what the payee and memo leave out share a reference and go to review
+(UC-002 A4); nothing is merged. Test vectors, invented:
+
+| Line | Canonical input | Reference |
+|---|---|---|
+| `11/25/2026,DEBIT CARD PURCHASE HARBOR PHARMACY (Cash),"",No Description,Cash,"",0,"","","","-12.34",1987.66,""` | `17:hsa-csv-reference1:110:2026-11-256:-1234035:DEBIT CARD PURCHASE HARBOR PHARMACY0:` | `3a3874d3bb5b7a579326adf332596a3bc66bb62230da6e56aefe73dd8fa043d8` |
+| `11/23/2026,PARTIC CONTR CURRENT PARTICIPANT CUR YR (Cash),"",No Description,Cash,"",0,"","","",150,2000,""` | `17:hsa-csv-reference1:110:2026-11-236:15000039:PARTIC CONTR CURRENT PARTICIPANT CUR YR0:` | `7d31efe6e3271c3897da5bafc623363089b84ebeea68f23190987a30e502916c` |
+| `10/30/2026,DIVIDEND RECEIVED EXAMPLE GOVERNMENT CASH RESERVES (EXMPX) (Cash),EXMPX,EXAMPLE GOVERNMENT CASH RESERVES,Cash,"",0,"","","",4.5,1850,""` | `17:hsa-csv-reference1:110:2026-10-304:450058:DIVIDEND RECEIVED EXAMPLE GOVERNMENT CASH RESERVES (EXMPX)40:EXAMPLE GOVERNMENT CASH RESERVES (EXMPX)` | `e42b53158002d2fab3cfa8d965b197087ac51587bf48f6c4920bf06f492b3e2d` |
+
+In a file that holds these lines newest first, with the line
+`10/30/2026,REINVESTMENT EXAMPLE GOVERNMENT CASH RESERVES (EXMPX) (Cash),EXMPX,EXAMPLE GOVERNMENT CASH RESERVES,Cash,1,4.5,"","","","-4.5",1850,""`
+between the second and the third, that line is left out (its cash balance equals the dividend's below it), and the
+three others are transactions. `:fileformat-hsa-csv` commits the vectors as a test resource that is never changed, as
+ADR-008 §3 does for Import Identifiers.
 
 #### 4.4 Contract tests
 
@@ -572,7 +666,8 @@ invented recorded answers served by a local test server. They check at least:
   declared `requestLimit` and `defaultFetchCooldownMinutes` lie in their ranges: a `Published` limit within 1 to 1000
   with a non-empty `source`, a `NotPublished` range within 1 to 1000 that holds its default (§4.1, §4.5);
 - for a File Pre-processor: a file with one unreadable line is `Rejected`; converting the same bytes twice gives equal
-  results; every declared number lies in its range.
+  results; every declared number lies in its range; every reference is non-empty; a `Rejected.reason` holds no value
+  of the file it rejects (§4.3).
 
 #### 4.5 Service credentials (`slussen.pluginapi.credential`; S-24)
 
@@ -672,11 +767,23 @@ of its own module (§4.5); there is no template to add (UC-012 A2-A4). It touche
 export receive only the reader; `slussen.core.upload` receives the writer and wraps it at once in
 `AdmittedBudgetAppWriter` (ADR-007 §7).
 
-**Device permissions (S-36, NFR-022).** `app/src/main/AndroidManifest.xml` declares `android.permission.INTERNET`
-and no other permission. The merged manifest of every variant may hold only that one and the signature-level
-permission AndroidX declares for the app's own receivers (`<applicationId>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`),
-which asks the device for nothing; the permission check of §6.4 fails on any other, so a library that brings a
-permission is seen before it ships. A use case that needs another permission adds it to NFR-022 and to this list.
+**Device permissions (S-36, NFR-022; S-B-37).** The merged manifest of every variant may hold only these
+permissions, each for what it is listed with:
+
+| Permission | For |
+|---|---|
+| `android.permission.INTERNET` | the requests to the Data Providers and the Budget App |
+| `android.permission.ACCESS_NETWORK_STATE` | starting a Scheduled Fetch only while the device has a network connection (UC-001 A12) |
+| `android.permission.WAKE_LOCK` | keeping the device awake while a Scheduled Fetch runs |
+| `android.permission.RECEIVE_BOOT_COMPLETED` | keeping the Fetch Schedule after the device restarts (UC-001 BR-013) |
+| `android.permission.POST_NOTIFICATIONS` | showing the New Transaction Notification (UC-001 BR-014); the device asks the Operator for it |
+| `<applicationId>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | the signature-level permission AndroidX declares for the app's own receivers; it asks the device for nothing |
+
+The permission check of §6.4 (`build-logic`, run before every packaging task and in `check`, also for the release
+variant) holds exactly this list and fails on any other permission, so a library that brings one is seen before it
+ships. A permission a library brings that no use case needs is removed from the merged manifest, never added to the
+list: WorkManager's `android.permission.FOREGROUND_SERVICE`, since a Scheduled Fetch runs no foreground work. The
+check's list is changed only together with NFR-022 and this table, never on its own to make a build pass.
 
 UI: one ViewModel per screen in `slussen.app.ui.<screen>`; composables receive state and callbacks only. Background
 work: the Scheduled Fetch runs as a WorkManager periodic worker in `slussen.app.schedule`, which asks the coordinator
