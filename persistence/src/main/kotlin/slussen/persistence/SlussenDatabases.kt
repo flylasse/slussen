@@ -24,6 +24,7 @@ object SlussenDatabases {
 
     fun deviceFile(context: Context): File = File(context.noBackupFilesDir, DEVICE_FILE)
 
+    // UC-011 BR-004: The Decision Journal is never included in device backups: journal.db lives in noBackupFilesDir, which Android never backs up.
     fun journalFile(context: Context): File = File(context.noBackupFilesDir, JOURNAL_FILE)
 
     /**

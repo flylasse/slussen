@@ -22,8 +22,8 @@ abstract class JournalDatabase : RoomDatabase() {
 }
 
 /**
- * Writes Decision Journal entries and removes them by age or all at once (ADR-002 §9); nothing in the core reads them
- * except the export (Konsist K-07). Every method blocks: it is called only on the journal's own single thread
+ * Writes Decision Journal entries, removes them by age or all at once, and reads them for the Journal Export only (ADR-002
+ * §9, Konsist K-07). Every method blocks: it is called only on the journal's own single thread
  * ([slussen.persistence.RoomDecisionJournal]), so that writes, trimming and clearing run one after the other in the order
  * they were handed over.
  */
@@ -41,6 +41,17 @@ abstract class DecisionJournalDao {
 
     @Query("SELECT MAX(id) FROM decision_journal_entry")
     abstract fun newestId(): Long?
+
+    /** The oldest entry (lowest `id`), or null when there is none. */
+    @Query("SELECT * FROM decision_journal_entry ORDER BY id LIMIT 1")
+    abstract fun oldest(): DecisionJournalEntryEntity?
+
+    /**
+     * At most [limit] entries with an `id` from [fromId] up to and including [upToId], oldest first: one page of a Journal
+     * Export (UC-011 BR-007), read in one short statement on the primary key.
+     */
+    @Query("SELECT * FROM decision_journal_entry WHERE id >= :fromId AND id <= :upToId ORDER BY id LIMIT :limit")
+    abstract fun page(fromId: Long, upToId: Long, limit: Int): List<DecisionJournalEntryEntity>
 
     /** Removes the [count] oldest entries (lowest `id`). */
     @Query("DELETE FROM decision_journal_entry WHERE id IN (SELECT id FROM decision_journal_entry ORDER BY id LIMIT :count)")

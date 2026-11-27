@@ -37,6 +37,13 @@ enum class OperationKind {
 
     /** A Transfer Decision or its change, with the Funded By or Transfer Partner the Operator keeps from it (UC-005). */
     TransferDecision,
+
+    /**
+     * The read of the Budget App for a Journal Export (UC-011 step 3), admitted as a Comparison's read is (ADR-007 §2).
+     * Only that read runs on the lane: the export notes the Decision Journal before it and writes the file after it,
+     * with the lane free, so that no decision waits for them.
+     */
+    JournalExport,
 }
 
 /** Why the coordinator refused an operation (ADR-007 §2): a typed reason the screen shows. */

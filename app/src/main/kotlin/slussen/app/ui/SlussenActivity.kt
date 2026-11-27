@@ -3,6 +3,13 @@ package slussen.app.ui
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
+import slussen.app.platform.document.PickedDocument
+import slussen.app.ui.journal.JournalExportScreen
+import slussen.app.ui.journal.JournalExportViewModel
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -110,6 +117,9 @@ sealed interface Screen {
 
     /** UC-010 A7, A8: the Card Payment Descriptions and Bank Transfer Descriptions, from Settings. */
     data object TransferDescriptions : Screen
+
+    /** UC-011: Export the Decision Journal, from Settings. */
+    data object JournalExport : Screen
 }
 
 /**
@@ -273,6 +283,7 @@ fun SlussenScreens(services: UiServices) {
                             onRecentFetches = { go(Screen.RecentFetches) },
                             actions = vm.actions(),
                             onTransferDescriptions = { go(Screen.TransferDescriptions) },
+                            onJournalExport = { go(Screen.JournalExport) },
                         )
                     }
                 }
@@ -350,6 +361,7 @@ fun SlussenScreens(services: UiServices) {
                     if (listsUi == null && listsNotOpened != null) NotShown(listsNotOpened, onTryAgain = vm::load, onBack = ::back)
                     listsUi?.let { ui -> TransferDescriptionsScreen(ui, onBack = ::back, actions = descriptionActionsOf(vm)) }
                 }
+                Screen.JournalExport -> JournalExportRoute(services, onBack = ::back)
                 Screen.AccountMappings -> {
                     val vm: AccountMappingsViewModel = viewModel(key = "account-mappings") { AccountMappingsViewModel(services) }
                     LaunchedEffect(current) { vm.load() }
@@ -374,4 +386,35 @@ fun SlussenScreens(services: UiServices) {
             }
         }
     }
+}
+
+/**
+ * UC-011 steps 1-2: the Journal Export screen with Android's save dialog (`ACTION_CREATE_DOCUMENT`, no permission needed),
+ * proposing the name of BR-007; no place chosen is A1, a place chosen starts the export to that document.
+ */
+@Composable
+private fun JournalExportRoute(services: UiServices, onBack: () -> Unit) {
+    val vm: JournalExportViewModel = viewModel(key = "journal-export") { JournalExportViewModel(services) }
+    LaunchedEffect(Unit) { vm.load() }
+    val resolver = LocalContext.current.contentResolver
+    var proposed by rememberSaveable { mutableStateOf("") }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri == null) {
+            vm.noPlaceChosen()
+        } else {
+            val document = PickedDocument(resolver, uri)
+            vm.export(document, document.name ?: proposed)
+        }
+    }
+    JournalExportScreen(
+        ui = vm.state.collectAsState().value,
+        onBack = onBack,
+        onCodes = vm::setCodes,
+        onChoose = {
+            vm.choosePlace()?.let { name ->
+                proposed = name
+                picker.launch(name)
+            }
+        },
+    )
 }

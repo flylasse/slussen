@@ -55,7 +55,7 @@ data class SettingsActions(
  * switch and answering at its own line (UC-010 steps 1-6, A1, A5, A6, NFR-023; `#out-of-range`, `#saved`,
  * `#saved-read-owed`, `#detailed-logging`, `#fetch-schedule`, `#fetch-period-edit` to `#fetch-period-failed`); the
  * Decision Journal's switch, size limit, warning threshold and clearing with its questions and its warning (UC-010 A2-A4;
- * `#journal-limit`, `#clear-journal`, `#journal-near`); and the
+ * `#journal-limit`, `#clear-journal`, `#journal-near`); the Journal Export beside Recent Fetches (UC-011); and the
  * version of the app in "This app" (UC-010 step 1, BR-011).
  */
 @Composable
@@ -66,6 +66,7 @@ fun SettingsScreen(
     onRecentFetches: () -> Unit,
     actions: SettingsActions = SettingsActions(),
     onTransferDescriptions: () -> Unit = {},
+    onJournalExport: () -> Unit = {},
 ) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
@@ -82,8 +83,12 @@ fun SettingsScreen(
             SlussenCard(modifier = if (mappings.available) Modifier.clickable(onClick = onAccountMappings) else Modifier) {
                 EntryItem("Account Mappings", "Bank Accounts → Budget Accounts", mappings.status, mappings.isNext, enabled = mappings.available)
             }
-            SectionTitle("Fetches")
-            SlussenCard { NavigationLine("Recent Fetches", "Source, time, who started it, outcome", onRecentFetches) }
+            SectionTitle("Fetches and the Decision Journal")
+            SlussenCard {
+                NavigationLine("Recent Fetches", "Source, time, who started it, outcome", onRecentFetches)
+                // For UC-011 (`settings.html#list`): the Journal Export, from Settings.
+                NavigationLine("Export the Decision Journal", "Journal Export with the Budget App's current transactions", onJournalExport)
+            }
             ui.notReadAgain?.let { Muted(it) }
         }
         items(ui.sections) { section ->

@@ -6,7 +6,9 @@ import org.junit.jupiter.api.Assertions.assertTimeoutPreemptively
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import slussen.core.port.JournalBounds
 import slussen.core.port.JournalEntry
+import slussen.core.port.StoredJournalEntry
 import slussen.core.port.JournalEventKind
 import slussen.core.port.NumberSetting
 import slussen.core.port.Trimmed
@@ -52,6 +54,10 @@ class UC010DecisionJournalRecorderTest {
             entries.clear()
             if (firstEntry != null) entries += firstEntry
         }
+
+        override fun bounds(): JournalBounds? = null
+
+        override fun entriesFrom(fromId: Long, upToId: Long, limit: Int): List<StoredJournalEntry> = emptyList()
     }
 
     /** Waits until every task handed to the journal's thread before it is done. */

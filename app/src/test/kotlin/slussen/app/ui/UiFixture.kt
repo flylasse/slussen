@@ -32,6 +32,7 @@ class UiFixture(
         generalSettings = slice.generalSettings,
         descriptionLists = slice.descriptionLists,
         journalControl = slice.journalControl,
+        journalExport = slice.journalExport,
         mappings = slice.mappings,
         status = slice.status,
         bankAccountTransactions = slice.bankAccountTransactions,

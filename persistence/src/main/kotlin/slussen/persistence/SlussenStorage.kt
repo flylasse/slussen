@@ -9,6 +9,7 @@ import slussen.core.port.BudgetAppTransactionState
 import slussen.core.port.EnteredBy
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.DecisionJournalControl
+import slussen.core.port.DecisionJournalReader
 import slussen.core.port.DecisionJournalRecorder
 import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
@@ -92,6 +93,9 @@ class SlussenStorage private constructor(
     val journalDatabase = RoomDecisionJournal(RoomJournalFile(journal))
     val journalRecorder: DecisionJournalRecorder = journalDatabase
     val journalControl: DecisionJournalControl = journalDatabase
+
+    /** The Decision Journal read for the Journal Export only (UC-011, Konsist K-07), on the same thread. */
+    val journalReader: DecisionJournalReader = journalDatabase
     val fetches = RoomFetchStore(main.fetches())
     val importStatus = RoomImportStatusStore(main.fetches(), connections)
     val comparisons = RoomComparisonStore(main, connections)

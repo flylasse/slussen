@@ -13,6 +13,7 @@ import slussen.core.fetch.FetchTransactions
 import slussen.core.firstupload.FirstUploadMatching
 import slussen.core.journal.DecisionJournal
 import slussen.core.journal.JournalControl
+import slussen.core.journal.JournalExport
 import slussen.core.mapping.AccountMappings
 import slussen.core.operation.OperationCoordinator
 import slussen.core.plugin.PluginRegistration
@@ -35,6 +36,7 @@ import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.value.Secret
 import java.time.DayOfWeek
 import java.util.Random
+import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * The slices of Phase 7, 7a and 8a wired the way the composition root wires it (ADR-001 §5), on the fakes of `:testing`: the
@@ -83,6 +85,14 @@ class TestSlice(
     val refusals = CredentialRefusals()
     val credentials = ServiceCredentials(
         plugins, vault, coordinator, journal, settings, providerRequests, importStatusStore, refusals, clock,
+    )
+    /**
+     * UC-011: the Journal Export, reading the fake journal database the recorder writes, on the test's own thread
+     * (no dispatcher of its own), written by an invented build of version 9.8.7.
+     */
+    val journalExport = JournalExport(
+        plugins, credentials, connectionStore, copyStore, settings, coordinator, journalRecorder, clock, versionName = "9.8.7",
+        io = EmptyCoroutineContext,
     )
     val fetchNotices = FetchNotices()
     val comparisonNotices = ComparisonNotices()

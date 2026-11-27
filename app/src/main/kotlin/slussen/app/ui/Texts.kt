@@ -500,6 +500,7 @@ object Texts {
         OperationKind.AccountMappingChange -> "a change of an Account Mapping"
         OperationKind.ReviewDecision -> "a Review Decision"
         OperationKind.TransferDecision -> "a Transfer Decision"
+        OperationKind.JournalExport -> "Reading ${running.subject ?: "the Budget App"} for the Journal Export"
     }
 
     /** UC-003 A1: what the Budget App did when the read of a Budget failed; null when the read was not completed. */

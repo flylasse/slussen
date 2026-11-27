@@ -15,6 +15,7 @@ import slussen.core.fetch.FetchTransactions
 import slussen.core.firstupload.FirstUploadMatching
 import slussen.core.journal.DecisionJournal
 import slussen.core.journal.JournalControl
+import slussen.core.journal.JournalExport
 import slussen.core.mapping.AccountMappings
 import slussen.core.operation.OperationCoordinator
 import slussen.core.plugin.PluginRegistration
@@ -59,6 +60,7 @@ class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLogg
      */
     suspend fun start(context: Context, clock: Clock): UiServices {
         val storage = SlussenStorage.open(context, clock)
+        val appVersion = context.installedAppVersion()
         val random = SecureRandom()
         val registered = PluginRegistration(storage.registry).register(
             plugins.budgetApp,
@@ -118,6 +120,11 @@ class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLogg
             descriptionLists = DescriptionLists(storage.settings, comparison, storage.connections, storage.comparisons, journal),
             // The Decision Journal's own control (UC-010 A2-A4), on journal.db through its own thread (ADR-002 §9).
             journalControl = JournalControl(storage.settings, journal, storage.journalControl, coordinator),
+            // For UC-011: the Journal Export, the one reader of journal.db's entries (Konsist K-07), written off the main thread.
+            journalExport = JournalExport(
+                registered, credentials, storage.connections, storage.comparisons, storage.settings, coordinator, storage.journalReader,
+                clock, versionName = appVersion.versionName,
+            ),
             mappings = AccountMappings(registered, storage.connections, storage.mappings, storage.offered, coordinator, journal, comparison, clock),
             status = status,
             // Step 5 of UC-008: the weeks of a Bank Account's list start on the device locale's first day (survey §5 guess 6).
@@ -144,7 +151,7 @@ class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLogg
             comparison = comparison,
             formats = Formats(clock.zone),
             clock = clock,
-            appVersion = context.installedAppVersion(),
+            appVersion = appVersion,
             running = coordinator.running,
             ended = coordinator.ended,
             budgetAppName = registered.budgetApp.profile.name,

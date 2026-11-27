@@ -22,8 +22,14 @@ import slussen.core.port.DataProviderSettingsStore
 import kotlinx.coroutines.Deferred
 import slussen.core.journal.JournalQueue
 import slussen.core.port.DecisionJournalControl
+import slussen.core.port.DecisionJournalReader
+import slussen.core.port.JournalBounds
+import slussen.core.port.StoredJournalEntry
 import slussen.core.port.Trimmed
 import java.util.concurrent.Executor
+import java.io.IOException
+import java.io.Writer
+import slussen.core.port.JournalExportDocument
 import slussen.core.port.DecisionJournalRecorder
 import slussen.core.port.FetchStore
 import slussen.core.port.FileFormatRegistration
@@ -205,13 +211,19 @@ class HeldExecutor : Executor {
  * makes the journal's database fail with [failsToRecord], [failsToTrim] (or [trimFailsAfter] entries), [failsToReadSize]
  * and [failsToClear]; [hold] keeps everything handed over waiting until [release].
  */
-class InMemoryDecisionJournal : DecisionJournalRecorder, DecisionJournalControl {
-    private val recorded = mutableListOf<JournalEntry>()
+class InMemoryDecisionJournal : DecisionJournalRecorder, DecisionJournalControl, DecisionJournalReader {
+    private val recorded = mutableListOf<StoredJournalEntry>()
     private val thread = HeldExecutor()
     private val queue = JournalQueue(thread)
 
+    /** The `id` the next entry written gets: ids only grow, also after a clearing, as `AUTOINCREMENT` gives them. */
+    private var nextId = 1L
+
     /** The entries kept, oldest first. */
-    val entries: List<JournalEntry> get() = recorded.toList()
+    val entries: List<JournalEntry> get() = recorded.map { it.entry }
+
+    /** The entries kept with their ids, oldest first. */
+    val storedEntries: List<StoredJournalEntry> get() = recorded.toList()
 
     /** The limit each entry was handed over with, in order: null when it was to remove nothing. */
     val limitsHandedOver = mutableListOf<Long?>()
@@ -225,6 +237,18 @@ class InMemoryDecisionJournal : DecisionJournalRecorder, DecisionJournalControl 
     var trimFailsAfter: Int? = null
     var failsToReadSize: Boolean = false
     var failsToClear: Boolean = false
+
+    /** The export's reads of the entries fail ([bounds] and [entriesFrom]), as a database that cannot be read would. */
+    var failsToReadEntries: Boolean = false
+
+    /**
+     * Runs before each read of a page of entries is handed to the journal's own thread, with the number of the page from
+     * 0: a test records, trims or clears there, between two pages of an export.
+     */
+    var beforePage: suspend (Int) -> Unit = {}
+
+    /** The pages the export asked for, in order: the `limit` of each read of entries. */
+    val pagesAsked = mutableListOf<Int>()
 
     /** How many entries trimming and clearing removed so far. */
     var removed: Int = 0
@@ -252,7 +276,7 @@ class InMemoryDecisionJournal : DecisionJournalRecorder, DecisionJournalControl 
         queue.write(
             write = {
                 if (failsToRecord) throw IllegalStateException("The invented journal database of this test cannot be written.")
-                recorded += entry
+                recorded += StoredJournalEntry(nextId++, entry)
             },
             trimAfter = keepWithinBytes?.let { limit -> { trim(limit).complete } },
         )
@@ -273,6 +297,12 @@ class InMemoryDecisionJournal : DecisionJournalRecorder, DecisionJournalControl 
         return Trimmed(count, complete = true)
     }
 
+    /** Removes the [count] oldest entries at once, on the caller's thread, as a trimming between two pages of an export. */
+    fun removeOldest(count: Int) {
+        repeat(minOf(count, recorded.size)) { recorded.removeAt(0) }
+        removed += count
+    }
+
     override suspend fun sizeBytes(): Long = queue.queue {
         if (failsToReadSize) throw IllegalStateException("The invented journal database of this test cannot be read.")
         size()
@@ -284,7 +314,79 @@ class InMemoryDecisionJournal : DecisionJournalRecorder, DecisionJournalControl 
         if (failsToClear) throw IllegalStateException("The invented journal database of this test cannot be cleared.")
         removed += recorded.size
         recorded.clear()
-        if (firstEntry != null) recorded += firstEntry
+        if (firstEntry != null) recorded += StoredJournalEntry(nextId++, firstEntry)
+    }
+
+    override suspend fun bounds(): JournalBounds? = queue.queue {
+        if (failsToReadEntries) throw IllegalStateException("The invented journal database of this test cannot be read.")
+        val oldest = recorded.firstOrNull() ?: return@queue null
+        JournalBounds(oldest.id, oldest.entry.recordedAt, recorded.last().id)
+    }.await()
+
+    override suspend fun entriesFrom(fromId: Long, upToId: Long, limit: Int): List<StoredJournalEntry> {
+        beforePage(pagesAsked.size)
+        pagesAsked += limit
+        return queue.queue {
+            if (failsToReadEntries) throw IllegalStateException("The invented journal database of this test cannot be read.")
+            recorded.filter { it.id in fromId..upToId }.take(limit)
+        }.await()
+    }
+}
+
+/**
+ * The document of a Journal Export (UC-011 step 2) in memory, as Android's file picker would give one: what is written
+ * stays in [text] as far as it got. A test makes it fail to open ([failsToOpen]), fail after [failsAfterCharacters]
+ * characters, as a place that runs out of space would, and fail to be removed ([failsToRemove]).
+ */
+class InMemoryJournalExportDocument : JournalExportDocument {
+    private val written = StringBuilder()
+    var failsToOpen: Boolean = false
+    var failsAfterCharacters: Int? = null
+    var failsToRemove: Boolean = false
+
+    /** Whether Slussen opened the document, and whether it removed it again. */
+    var opened: Boolean = false
+        private set
+    var removed: Boolean = false
+        private set
+
+    /** Whether the writer was closed, as a complete write closes it. */
+    var closed: Boolean = false
+        private set
+
+    /** What was written so far. */
+    val text: String get() = written.toString()
+
+    /** The bytes written, as the file would hold them in UTF-8. */
+    val bytes: ByteArray get() = text.toByteArray(Charsets.UTF_8)
+
+    override fun open(): Writer {
+        if (failsToOpen) throw IOException("The invented place of this test cannot be written.")
+        opened = true
+        written.clear()
+        return object : Writer() {
+            override fun write(buffer: CharArray, offset: Int, length: Int) {
+                val limit = failsAfterCharacters
+                if (limit != null && written.length + length > limit) {
+                    written.append(buffer, offset, (limit - written.length).coerceAtLeast(0))
+                    throw IOException("The invented place of this test has no space left.")
+                }
+                written.append(buffer, offset, length)
+            }
+
+            override fun flush() = Unit
+
+            override fun close() {
+                closed = true
+            }
+        }
+    }
+
+    override fun remove(): Boolean {
+        if (failsToRemove) return false
+        removed = true
+        written.clear()
+        return true
     }
 }
 

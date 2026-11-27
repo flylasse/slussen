@@ -5,6 +5,7 @@ import slussen.core.credential.ServiceCredentials
 import slussen.core.comparison.Comparison
 import slussen.core.fetch.FetchTransactions
 import slussen.core.journal.JournalControl
+import slussen.core.journal.JournalExport
 import kotlinx.coroutines.flow.StateFlow
 import slussen.core.mapping.AccountMappings
 import slussen.core.operation.RunningOperation
@@ -30,6 +31,8 @@ class UiServices(
     val descriptionLists: DescriptionLists,
     /** The Decision Journal's own control on Settings (UC-010 A2-A4, BR-003): its switch, size limit, warning threshold and clearing. */
     val journalControl: JournalControl,
+    /** Export the Decision Journal (UC-011), from Settings: the Journal Export written to the document the Operator chooses. */
+    val journalExport: JournalExport,
     val mappings: AccountMappings,
     val status: ImportStatus,
     /** One Bank Account's Bank Transactions with their Transaction Statuses and reasons (UC-008 step 5), from stored data only. */
