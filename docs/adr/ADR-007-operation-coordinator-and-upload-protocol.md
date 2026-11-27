@@ -120,8 +120,9 @@ Transfer the joining Bank Transaction leaves and the new detection of that Trans
 one O-5, so no marker is needed between them. While a Budget owes a read of its read period
 (`budget_read_state.period_read_owed`, UC-003 BR-016), no conclusion from stored data changes the Transaction Statuses
 of its Bank Transactions: the change that owes the read sets no `comparison_pending` of its own, and a conclusion that
-clears a marker set for another reason, or follows a UC-009 change, leaves that Budget's statuses as they are; only a
-Comparison that reads the Budget, with its period, gives them again.
+clears a marker set for another reason, or follows a UC-009 change, leaves that Budget's statuses as they are, and a
+Review Decision or Transfer Decision on it is refused (UC-004 A12, UC-005 A11); only a Comparison that reads the
+Budget, with its period, gives them again. The flag is set for every Budget with a `change_cursor`, served or not.
 
 ### 4. Preparation: the immutable write set and retries
 

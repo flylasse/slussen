@@ -114,6 +114,15 @@
 2. Slussen shows what the Operator can do: change the Transfer Decision of that other Transfer while it is not locked (BR-008), choose another Budget Account, or split or hold back the selected Transfer.
 3. Use case continues at step 3.
 
+### A11: Budget Owes a Read of Its Read Period
+
+**Trigger:** The Budget of the selected Transfer owes a read of its read period, because the read period became longer or the Budget gained a Budget Account (UC-003 BR-016) (step 4)  
+**Flow:**
+
+1. Slussen refuses the Transfer Decision and stores nothing: no Transfer Decision, no Transaction Status, no Funded By or Transfer Partner.
+2. Slussen shows the reason and offers to read the Budget App again, which gives the Transfer Legs their Transaction Statuses (UC-003).
+3. Use case ends.
+
 ## Postconditions
 
 ### Success Postconditions

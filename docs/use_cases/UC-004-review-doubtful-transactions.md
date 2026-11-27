@@ -122,6 +122,15 @@
 1. Slussen also shows its Transfer with the other Transfer Leg or the expected other side, and states that the decision applies to the whole Transfer: Import Anyway lets the Transfer Leg rejoin its Transfer, Defer holds the whole Transfer back, and Already Present counts the whole Transfer as already in the Budget App (BR-009).
 2. Use case continues at step 3.
 
+### A12: Budget Owes a Read of Its Read Period
+
+**Trigger:** The Budget of the selected Bank Transaction owes a read of its read period, because the read period became longer or the Budget gained a Budget Account (UC-003 BR-016) (step 3)  
+**Flow:**
+
+1. Slussen refuses the decision and stores nothing: no Review Decision, no Transaction Status, no Transfer change.
+2. Slussen shows the reason and offers to read the Budget App again, which gives the Bank Transaction its Transaction Status (UC-003).
+3. Use case ends.
+
 ## Postconditions
 
 ### Success Postconditions
