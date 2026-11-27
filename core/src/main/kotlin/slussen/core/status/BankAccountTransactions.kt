@@ -412,11 +412,17 @@ class BankAccountTransactions(
         val underIt = ComparisonRules.underItsImportIdentifier(transaction, ground.held)
         val resembling = ComparisonRules.resembling(transaction, ground.held, windows)
         fun resemblingBy(enteredBy: EnteredBy) = resembling.filter { it.enteredBy == enteredBy }.map(ground::entry)
+        // A status that follows from a Review Decision (UC-004 BR-006, UC-005 BR-013) is shown as stored, never with the reason of a rule that did not give it.
+        val decided = ground.data.reviewDecisions.map { it.storedBankTransaction }.toSet()
+        val ownDecision = transaction.id in decided
+        val decisionInItsTransfer = ownDecision || (transaction.transferId != null && ground.transferLegs.any { it.transferId == transaction.transferId && it.id in decided })
+        val heldPresent = underIt.firstOrNull { it.state == BudgetAppTransactionState.Present }
         return when (status) {
-            TransactionStatus.New -> newReason(transaction, ground)
+            // A currency mismatch is still named: it keeps the Bank Transaction from being eligible whatever the decision (UC-003 BR-013).
+            TransactionStatus.New -> if (ownDecision && bankAccount.currency == ground.budget.currency) StatusReason.AsStored(status) else newReason(transaction, ground)
             TransactionStatus.MatchForTypedEntry -> StatusReason.TypedEntries(resemblingBy(EnteredBy.TypedEntry), windows.matchingDateWindowDays)
             TransactionStatus.AlreadyInBudgetApp ->
-                StatusReason.HeldInBudgetApp(underIt.firstOrNull { it.state == BudgetAppTransactionState.Present }?.let(ground::entry))
+                if (heldPresent == null && decisionInItsTransfer) StatusReason.AsStored(status) else StatusReason.HeldInBudgetApp(heldPresent?.let(ground::entry))
             TransactionStatus.DeletedInBudgetApp ->
                 StatusReason.DeletedInBudgetApp(underIt.firstOrNull { it.state == BudgetAppTransactionState.Deleted }?.let(ground::entry))
             TransactionStatus.MergedInBudgetApp -> {
@@ -556,9 +562,11 @@ class BankAccountTransactions(
         }
 
         /**
-         * The Transaction Statuses a Comparison of this build gives (UC-003 BR-001 as far as it is built): no Review
-         * Decision, Transfer Decision or Sent Record exists yet, so Deferred, Decision No Longer Holds, Outcome Unknown,
-         * Held Transfer, Arrived As Transfer Counterpart and Transfer Counterpart Changed do not occur.
+         * The Transaction Statuses "What the statuses mean" lists on the Bank Account screen of this build
+         * (`bank-account.html#statuses-this-build`): those a Comparison gives without any decision of the Operator. Deferred
+         * and Decision No Longer Holds follow from a Review Decision (UC-004) and join the list with the decision screens;
+         * no Transfer Decision or Sent Record exists yet, so Outcome Unknown, Held Transfer, Arrived As Transfer Counterpart
+         * and Transfer Counterpart Changed do not occur.
          */
         val GIVEN_BY_THIS_BUILD: List<TransactionStatus> = listOf(
             TransactionStatus.New,

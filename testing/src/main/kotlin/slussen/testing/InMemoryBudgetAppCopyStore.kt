@@ -7,26 +7,38 @@ import slussen.core.port.ChangeSetApplied
 import slussen.core.port.ComparisonConclusions
 import slussen.core.port.ComparisonData
 import slussen.core.port.ComparisonStore
+import slussen.core.port.ReviewDecided
+import slussen.core.port.ReviewRuling
+import slussen.core.port.ReviewStore
 import slussen.core.port.StatusChange
+import slussen.core.port.StoredBankTransaction
 import slussen.core.port.StoredBudgetAppTransaction
+import slussen.core.port.StoredReviewDecision
 import slussen.core.port.StoredTransfer
 import slussen.core.port.StoredTransferDescription
 import slussen.core.port.TransferDecision
 import slussen.core.port.TransferDescriptionKind
+import slussen.core.port.StoredUnreadableTransaction
+import slussen.core.port.UnreadableTransactionStatus
 import slussen.pluginapi.budgetapp.ChangeCursor
 
 /**
- * In-memory fake of O-4 [BudgetAppCopyStore] and O-5 [ComparisonStore] (ADR-002 §3), all or nothing like the real ones,
- * on the Budgets of [connections] and the Bank Transactions of [transactions], with the stored Transfers ([transfers])
- * and the description lists ([transferDescriptions], which start as the default lists of UC-010 BR-007, as the real
- * storage does). A test makes O-5 fail with [failsToConclude], as a process that stops between O-4 and O-5 would leave
- * it (ADR-007 §3a).
+ * In-memory fake of O-4 [BudgetAppCopyStore], O-5 [ComparisonStore] and O-13 [ReviewStore] (ADR-002 §3), all or nothing
+ * like the real ones, on the Budgets of [connections] and the Bank Transactions of [transactions], with the stored
+ * Transfers ([transfers]), the Review Decisions ([reviewDecisions]) and the description lists ([transferDescriptions],
+ * which start as the default lists of UC-010 BR-007, as the real storage does). A test makes O-5 fail with
+ * [failsToConclude], as a process that stops between O-4 and O-5 would leave it (ADR-007 §3a), and O-13 with
+ * [failsToDecide], as a storage that cannot be written would.
  */
 class InMemoryBudgetAppCopyStore(
     private val connections: InMemoryConnectionStore,
     private val transactions: InMemoryImportStatusStore,
-) : BudgetAppCopyStore, ComparisonStore {
+) : BudgetAppCopyStore, ComparisonStore, ReviewStore {
     val copy = mutableListOf<StoredBudgetAppTransaction>()
+    val reviewDecisions = mutableListOf<StoredReviewDecision>()
+
+    /** Makes every Review Decision and every change of an Unreadable Transaction's status fail before anything is stored. */
+    var failsToDecide: Boolean = false
     val cursors = mutableMapOf<Long, ChangeCursor>()
     val periodOwed = mutableSetOf<Long>()
     val transfers = mutableListOf<StoredTransfer>()
@@ -101,7 +113,18 @@ class InMemoryBudgetAppCopyStore(
     ): List<StatusChange> {
         if (failsToConclude) throw IllegalStateException("The invented process of this test stops before O-5 is committed.")
         val data = dataOf(budgetIds)
-        val conclusions = conclude(data)
+        val changes = store(data, conclude(data))
+        pending = false
+        connections.stateVersion.raise()
+        return changes
+    }
+
+    /**
+     * The conclusions of a Comparison as O-5 writes them, for O-5 and O-13: every Transaction Status that changed, each
+     * Transfer that holds with the decision Proposed and its Transfer Legs, and every stored Proposed Transfer that no
+     * longer holds released and removed. Nothing is written when a conclusion cannot be stored.
+     */
+    private fun store(data: ComparisonData, conclusions: ComparisonConclusions): List<StatusChange> {
         val proposedIds = data.transfers.filter { it.decision == TransferDecision.Proposed }.map { it.id }.toSet()
         conclusions.transfers.forEach { detected ->
             require(detected.legs.isNotEmpty()) { "A Transfer has one or two Transfer Legs." }
@@ -136,9 +159,40 @@ class InMemoryBudgetAppCopyStore(
         val released = data.transfers.filter { it.decision == TransferDecision.Proposed && it.id !in continued }.map { it.id }.toSet()
         transactions.bankTransactions.replaceAll { if (it.transferId in released) it.copy(transferId = null) else it }
         transfers.removeAll { it.id in released }
-        pending = false
-        connections.stateVersion.raise()
         return changes
+    }
+
+    override suspend fun <T> decide(budgetIds: Set<Long>, rule: (ComparisonData) -> ReviewRuling<T>): ReviewDecided<T> {
+        if (failsToDecide) throw IllegalStateException("The invented storage of this test cannot be written.")
+        val data = dataOf(budgetIds)
+        val ruling = rule(data)
+        val write = ruling.write ?: return ReviewDecided(ruling.answer, emptyList())
+        val decision = write.decision
+        require(decision == null || decision.storedBankTransaction == write.storedBankTransaction) { "A Review Decision is stored for its own Bank Transaction." }
+        // As `slussen.db` refuses them: a decision about no stored Bank Transaction, a chosen transaction in no stored Budget Account, clearing none.
+        check(decision == null || transactions.bankTransactions.any { it.id == decision.storedBankTransaction }) { "A Review Decision is about a stored Bank Transaction." }
+        check(decision?.chosen == null || connections.budgetList.any { budget -> budget.budgetAccounts.any { it.id == decision.chosen?.budgetAccountId } }) {
+            "The chosen Budget App Transaction is in a stored Budget Account."
+        }
+        check(decision != null || reviewDecisions.any { it.storedBankTransaction == write.storedBankTransaction }) { "The rule clears only a Review Decision that is stored." }
+        val changes = store(data, write.conclusions)
+        reviewDecisions.removeAll { it.storedBankTransaction == write.storedBankTransaction }
+        decision?.let { reviewDecisions += it }
+        connections.stateVersion.raise()
+        return ReviewDecided(ruling.answer, changes)
+    }
+
+    override suspend fun bankTransaction(storedBankTransaction: Long): StoredBankTransaction? =
+        transactions.bankTransactions.firstOrNull { it.id == storedBankTransaction }
+
+    override suspend fun unreadableTransaction(storedUnreadableTransaction: Long): StoredUnreadableTransaction? =
+        transactions.unreadableTransactions.firstOrNull { it.id == storedUnreadableTransaction }
+
+    override suspend fun storeUnreadableStatus(storedUnreadableTransaction: Long, status: UnreadableTransactionStatus): Boolean {
+        if (failsToDecide) throw IllegalStateException("The invented storage of this test cannot be written.")
+        if (transactions.unreadableTransactions.none { it.id == storedUnreadableTransaction }) return false
+        transactions.unreadableTransactions.replaceAll { if (it.id == storedUnreadableTransaction) it.copy(status = status) else it }
+        return true
     }
 
     /** Makes every read of [comparisonDataOf] fail, as a storage that cannot be read would (NFR-023). */
@@ -163,6 +217,7 @@ class InMemoryBudgetAppCopyStore(
             budgetAppTransactions = copy.filter { it.budgetAccountId in accountIds },
             transfers = transfers.filter { it.id in transferIds },
             transferDescriptions = transferDescriptions.toList(),
+            reviewDecisions = reviewDecisions.filter { decision -> bankTransactions.any { it.id == decision.storedBankTransaction } },
         )
     }
 

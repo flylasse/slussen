@@ -85,10 +85,11 @@ class StateVersionPersistenceIT {
     )
 
     @Test
-    @DisplayName("ADR-007 §6 step 2: every storage operation that changes what an Upload Plan was prepared from (served Budgets, Bank Accounts, Account Mappings, Left-Out Bank Accounts, Manually Kept Accounts, Operator Settings, the stored copy of the Budget App, the conclusions of a Comparison) raises state_version in slussen.db, and a refused one leaves it")
+    @DisplayName("ADR-007 §6 step 2: every storage operation that changes what an Upload Plan was prepared from (served Budgets, Bank Accounts, Account Mappings, Left-Out Bank Accounts, Manually Kept Accounts, Operator Settings, the stored copy of the Budget App, the conclusions of a Comparison, a new Bank Transaction, a Review Decision and its clearing) raises state_version in slussen.db, and a refused one, or the status of an Unreadable Transaction, leaves it")
     fun everyStoredChangeRaisesTheStateVersionAndARefusalLeavesIt() = runBlocking {
         val steps = StateVersionScenario(
             storage.registry, storage.registry, storage.settings, storage.connections, storage.mappings, storage.comparisons, storage.comparisons,
+            storage.fetches, storage.reviews,
         ) { stateVersion() }.run()
 
         assertEquals(StateVersionScenario.OPERATIONS, steps.map { it.operation })

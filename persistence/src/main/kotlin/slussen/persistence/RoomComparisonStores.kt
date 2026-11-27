@@ -7,21 +7,31 @@ import slussen.core.port.BudgetAppTransactionState
 import slussen.core.port.BudgetAppTransactionToStore
 import slussen.core.port.BudgetReadToStore
 import slussen.core.port.ChangeSetApplied
+import slussen.core.port.ChosenBudgetAppTransaction
 import slussen.core.port.ComparisonConclusions
 import slussen.core.port.ComparisonData
 import slussen.core.port.ComparisonStore
 import slussen.core.port.EnteredBy
+import slussen.core.port.ReviewChoice
+import slussen.core.port.ReviewDecided
+import slussen.core.port.ReviewRuling
+import slussen.core.port.ReviewStore
 import slussen.core.port.StatusChange
+import slussen.core.port.StoredBankTransaction
 import slussen.core.port.StoredBudgetAccount
 import slussen.core.port.StoredBudgetAppTransaction
+import slussen.core.port.StoredReviewDecision
 import slussen.core.port.StoredTransfer
 import slussen.core.port.StoredTransferDescription
 import slussen.core.port.TransferDecision
 import slussen.core.port.TransferDescriptionKind
 import slussen.core.port.TransferToStore
 import slussen.core.port.TransferType
+import slussen.core.port.StoredUnreadableTransaction
+import slussen.core.port.UnreadableTransactionStatus
 import slussen.persistence.main.BudgetAppTransactionEntity
 import slussen.persistence.main.BudgetReadStateEntity
+import slussen.persistence.main.ReviewDecisionEntity
 import slussen.persistence.main.SlussenDatabase
 import slussen.persistence.main.TransferDescriptionEntity
 import slussen.persistence.main.TransferEntity
@@ -75,6 +85,32 @@ internal fun TransferEntity.stored() = StoredTransfer(
     type = valueOfText<TransferType>(transferType, MAIN_PART) { it.text },
     guessed = guessed,
     decision = valueOfText<TransferDecision>(decision, MAIN_PART) { it.text },
+    decidedAt = decidedAt,
+)
+
+/**
+ * `review_decision` read back as the core's [StoredReviewDecision]; an unknown `Values:` text is unreadable data. The
+ * chosen transaction is read only when its three columns are filled, as they are exactly for Already Present (entity model).
+ */
+internal fun ReviewDecisionEntity.stored(): StoredReviewDecision {
+    val reference = chosenBudgetAppReference
+    val budgetAccountId = chosenBudgetAccountId
+    val amount = chosenAmount
+    return StoredReviewDecision(
+        storedBankTransaction = bankTransaction,
+        choice = valueOfText<ReviewChoice>(choice, MAIN_PART) { it.text },
+        chosen = if (reference != null && budgetAccountId != null && amount != null) ChosenBudgetAppTransaction(reference, budgetAccountId, Amount(amount)) else null,
+        decidedAt = decidedAt,
+    )
+}
+
+/** A Review Decision as `review_decision` keeps it; the row of its Bank Transaction keeps its `id` (`ReviewDecisionDao.store`). */
+private fun StoredReviewDecision.entity() = ReviewDecisionEntity(
+    bankTransaction = storedBankTransaction,
+    choice = choice.text,
+    chosenBudgetAppReference = chosen?.budgetAppReference,
+    chosenBudgetAccountId = chosen?.budgetAccountId,
+    chosenAmount = chosen?.amount?.thousandths,
     decidedAt = decidedAt,
 )
 
@@ -140,21 +176,30 @@ class RoomComparisonStore(
         conclude: (ComparisonData) -> ComparisonConclusions,
     ): List<StatusChange> = db.withTransaction {
         val data = dataOf(budgetIds)
-        val conclusions = conclude(data)
+        val changes = storeConclusions(data, conclude(data))
+        dao.storeComparisonPending(false)
+        changes
+    }
+
+    /**
+     * The conclusions of a Comparison as O-5 writes them, inside the caller's transaction, for O-5 and O-13: every
+     * Transaction Status of [conclusions] that differs from the one stored in [data], and the Transfers. Returns the
+     * status changes.
+     */
+    internal suspend fun storeConclusions(data: ComparisonData, conclusions: ComparisonConclusions): List<StatusChange> {
         val changes = data.bankTransactions.mapNotNull { stored ->
             val status = conclusions.statuses[stored.id] ?: return@mapNotNull null
             if (status == stored.status) null else StatusChange(stored.id, stored.bankAccountId, stored.importIdentifier, stored.status, status)
         }
         changes.forEach { dao.storeStatus(it.storedBankTransaction, it.to.text) }
         storeTransfers(conclusions.transfers, data.transfers)
-        dao.storeComparisonPending(false)
-        changes
+        return changes
     }
 
     override suspend fun comparisonDataOf(budgetIds: Set<Long>): ComparisonData = db.withTransaction { dataOf(budgetIds) }
 
-    /** What O-5 concludes from for [budgetIds], read inside the caller's transaction. */
-    private suspend fun dataOf(budgetIds: Set<Long>): ComparisonData {
+    /** What O-5 and O-13 conclude from for [budgetIds], read inside the caller's transaction. */
+    internal suspend fun dataOf(budgetIds: Set<Long>): ComparisonData {
         val budgets = connections.budgets().filter { it.id in budgetIds }
         val accountIds = budgets.flatMap { it.budgetAccounts }.map { it.id }.toSet()
         val bankAccounts = connections.bankAccounts().filter { it.mapping?.budgetAccountId in accountIds }
@@ -166,6 +211,7 @@ class RoomComparisonStore(
             budgetAppTransactions = budgets.flatMap { budget -> dao.copyOf(budget.id).map { it.stored() } },
             transfers = bankAccounts.flatMap { account -> dao.transfersOf(account.id) }.distinctBy { it.id }.map { it.stored() },
             transferDescriptions = dao.transferDescriptions().map { it.stored() },
+            reviewDecisions = bankAccounts.flatMap { account -> db.reviewDecisions().ofBankAccount(account.id) }.map { it.stored() },
         )
     }
 
@@ -197,4 +243,39 @@ class RoomComparisonStore(
             dao.deleteProposedTransfer(it.id, proposed)
         }
     }
+}
+
+/**
+ * O-13 [ReviewStore] in `slussen.db` (ADR-002 §3): a Review Decision with the Transaction Statuses that follow from it,
+ * one transaction on the one database, on the data and with the writes of O-5 ([comparisons]); and the status of an
+ * Unreadable Transaction the Operator defers (UC-004 A9).
+ */
+class RoomReviewStore(
+    private val db: SlussenDatabase,
+    private val comparisons: RoomComparisonStore,
+) : ReviewStore {
+    private val dao get() = db.reviewDecisions()
+
+    override suspend fun <T> decide(budgetIds: Set<Long>, rule: (ComparisonData) -> ReviewRuling<T>): ReviewDecided<T> = db.withTransaction {
+        val data = comparisons.dataOf(budgetIds)
+        val ruling = rule(data)
+        val write = ruling.write ?: return@withTransaction ReviewDecided(ruling.answer, emptyList())
+        val decision = write.decision
+        require(decision == null || decision.storedBankTransaction == write.storedBankTransaction) { "A Review Decision is stored for its own Bank Transaction." }
+        // ADR-007 §6 step 2: storing or removing the Review Decision raises `state_version` in this transaction (`ReviewDecisionDao`).
+        if (decision == null) {
+            check(dao.clear(write.storedBankTransaction)) { "The rule clears only a Review Decision that is stored." }
+        } else {
+            dao.store(decision.entity())
+        }
+        ReviewDecided(ruling.answer, comparisons.storeConclusions(data, write.conclusions))
+    }
+
+    override suspend fun bankTransaction(storedBankTransaction: Long): StoredBankTransaction? = dao.bankTransaction(storedBankTransaction)?.stored()
+
+    override suspend fun unreadableTransaction(storedUnreadableTransaction: Long): StoredUnreadableTransaction? =
+        dao.unreadableTransaction(storedUnreadableTransaction)?.stored()
+
+    override suspend fun storeUnreadableStatus(storedUnreadableTransaction: Long, status: UnreadableTransactionStatus): Boolean =
+        dao.storeUnreadableStatus(storedUnreadableTransaction, status.text) > 0
 }

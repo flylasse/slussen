@@ -463,6 +463,7 @@ object Texts {
         OperationKind.FirstUploadMatchingConfirmation -> "the confirmation of First Upload Matching"
         OperationKind.OperatorSettingChange -> "a change of an Operator Setting"
         OperationKind.AccountMappingChange -> "a change of an Account Mapping"
+        OperationKind.ReviewDecision -> "a Review Decision"
     }
 
     /** UC-003 A1: what the Budget App did when the read of a Budget failed; null when the read was not completed. */

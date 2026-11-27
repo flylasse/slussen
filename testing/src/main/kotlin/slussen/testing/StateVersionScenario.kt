@@ -1,6 +1,7 @@
 package slussen.testing
 
 import slussen.core.port.AddOutcome
+import slussen.core.port.BankAccountDelivery
 import slussen.core.port.BankAccountType
 import slussen.core.port.BankChoice
 import slussen.core.port.BudgetAccountToStore
@@ -13,26 +14,43 @@ import slussen.core.port.ComparisonStore
 import slussen.core.port.ConnectionStore
 import slussen.core.port.DataProviderRegistration
 import slussen.core.port.DataProviderSettingsStore
+import slussen.core.port.DeliveredTransaction
+import slussen.core.port.DeliveredTransactions
+import slussen.core.port.FetchOutcome
+import slussen.core.port.FetchResultOutcome
+import slussen.core.port.FetchStore
 import slussen.core.port.KeptOutcome
 import slussen.core.port.MappingStore
 import slussen.core.port.NewBankAccount
+import slussen.core.port.NewFetch
 import slussen.core.port.NewLeftOutBankAccount
+import slussen.core.port.NewUnreadableTransaction
 import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.PluginRegistryStore
+import slussen.core.port.ReviewChoice
+import slussen.core.port.ReviewDecisionWrite
+import slussen.core.port.ReviewRuling
+import slussen.core.port.ReviewStore
 import slussen.core.port.ServeOutcome
+import slussen.core.port.StartedBy
+import slussen.core.port.StoredReviewDecision
+import slussen.core.port.TransactionStatus
+import slussen.core.port.UnreadableTransactionReason
+import slussen.core.port.UnreadableTransactionStatus
 import slussen.pluginapi.budgetapp.ChangeCursor
 import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
 import java.time.Instant
+import java.time.LocalDate
 
 /**
  * Every storage operation of the core's ports that changes what an Upload Plan was prepared from, and each of their
  * refusals, run once in a fixed order on invented data against the stores it is given: the in-memory fakes on the JVM and
  * the Room stores on a device run the same steps, so that both raise `coordinator_state.state_version` for the same
  * operations (ADR-002 §3; ADR-007 §6 step 2). A stored change must raise the version, so that a confirmation finds it and
- * writes nothing (UC-006 A5); a refusal stores nothing and must leave it. O-1, which raises it for a new or changed Bank
- * Transaction, has its own test with a delivery.
+ * writes nothing (UC-006 A5); a refusal stores nothing and must leave it, and so does a change of something no Upload Plan
+ * is prepared from, such as the status of an Unreadable Transaction, which is never uploaded (UC-004 BR-007).
  */
 class StateVersionScenario(
     private val registry: PluginRegistryStore,
@@ -42,6 +60,8 @@ class StateVersionScenario(
     private val mappings: MappingStore,
     private val copy: BudgetAppCopyStore,
     private val comparisons: ComparisonStore,
+    private val fetches: FetchStore,
+    private val reviews: ReviewStore,
     private val stateVersion: suspend () -> Long,
 ) {
     /** One step: the [operation], whether what it does [mustRaise] the version, and whether the version [rose]. */
@@ -62,6 +82,9 @@ class StateVersionScenario(
     private suspend fun <T> stored(operation: String, run: suspend () -> T): T = step(operation, mustRaise = true, run)
 
     private suspend fun <T> refused(operation: String, run: suspend () -> T): T = step("$operation (refused)", mustRaise = false, run)
+
+    /** A stored change of something no Upload Plan is prepared from. */
+    private suspend fun <T> outsideAnyPlan(operation: String, run: suspend () -> T): T = step("$operation (in no Upload Plan)", mustRaise = false, run)
 
     private fun bankAccount(generatedIdentifier: String, budgetAccountId: Long) = NewBankAccount(
         generatedIdentifier = generatedIdentifier,
@@ -84,7 +107,7 @@ class StateVersionScenario(
     /** Runs every step and returns them in order; an outcome other than the one a step expects fails the run. */
     suspend fun run(): List<Step> {
         steps.clear()
-        val dataProviderId = registry.reconcile(
+        val registered = registry.reconcile(
             listOf(
                 DataProviderRegistration(
                     name = "Kestrel Feeds",
@@ -94,9 +117,19 @@ class StateVersionScenario(
                     defaultFetchCooldownMinutes = 60,
                     requestLimit = RequestLimitDeclaration.NotPublished(defaultRequests = 20, range = 1..50),
                 ),
+                DataProviderRegistration(
+                    name = "Harbor Open Banking",
+                    sourceKey = "example-state-version-open-banking",
+                    givesStableReference = true,
+                    needsBankConsent = false,
+                    defaultFetchCooldownMinutes = 60,
+                    requestLimit = RequestLimitDeclaration.Published(requests = 4, source = "the invented terms of Harbor Open Banking"),
+                ),
             ),
             emptyList(),
-        ).dataProviders.single { it.sourceKey == "example-state-version-feeds" }.id
+        ).dataProviders
+        val dataProviderId = registered.single { it.sourceKey == "example-state-version-feeds" }.id
+        val publishingId = registered.single { it.sourceKey == "example-state-version-open-banking" }.id
         val listed = listOf(
             BudgetToServe("budget-state-version-household", "Household", usd, listOf(BudgetAccountToStore("ba-state-version-checking", "Checking", Amount(4_140_050)))),
             BudgetToServe("budget-state-version-summer", "Summer House", eur, listOf(BudgetAccountToStore("ba-state-version-current", "Current", Amount(3_402_300)))),
@@ -144,6 +177,8 @@ class StateVersionScenario(
         }
         stored("change the fetch period") { settings.storeFetchPeriod(45) }
         stored("change the Request Limit of a Data Provider that publishes none") { providerSettings.storeRequestLimit(dataProviderId, 30) }
+        // UC-001 BR-007: A Request Limit the Data Provider publishes is never changed by the Operator's setting.
+        refused("change the Request Limit of a Data Provider that publishes its Request Limit") { providerSettings.storeRequestLimit(publishingId, 30) }
         stored("change the Fetch Cooldown of a Data Provider") { providerSettings.storeFetchCooldown(dataProviderId, 120) }
 
         val read = BudgetReadToStore(household.id, startedFrom = null, transactions = emptyList(), next = ChangeCursor("4182"), balances = emptyMap(), readAt = now)
@@ -152,6 +187,46 @@ class StateVersionScenario(
         stored("store the conclusions of a Comparison (O-5)") {
             comparisons.applyComparison(setOf(household.id)) { ComparisonConclusions(statuses = emptyMap()) }
         }
+
+        // O-1: a Bank Transaction and an Unreadable Transaction of the Bank Account, received before the read above.
+        val fetchId = fetches.recordFetch(NewFetch(dataProviderId, now.minusSeconds(3600), StartedBy.Operator, FetchOutcome.Fetched), keep = 60)
+        val delivery = BankAccountDelivery(
+            fetchId, added.bankAccountId, FetchResultOutcome.Fetched, transactionCount = 1, balance = null,
+            transactions = DeliveredTransactions(
+                "example-state-version-feeds", now.minusSeconds(3600),
+                listOf(DeliveredTransaction("TX-STATE-1", LocalDate.of(2026, 11, 25), Amount(-18_600), usd, "Riverside Apothecary", null)),
+                listOf(NewUnreadableTransaction(null, Amount(-7_250), usd, "Kiosk Nord", null, UnreadableTransactionReason.MissingDate)),
+            ),
+        )
+        stored("store a delivery with a new Bank Transaction (O-1)") { fetches.storeBankAccountDelivery(delivery) }
+        val transaction = fetches.bankTransactionsOf(added.bankAccountId).single().id
+        val unreadable = fetches.unreadableTransactionsOf(added.bankAccountId).single().id
+
+        refused("rule on a Review Decision with nothing to store (O-13)") { reviews.decide(setOf(household.id)) { ReviewRuling(write = null, answer = Unit) } }
+        val deferred = stored("store a Review Decision with the Transaction Status that follows from it (O-13)") {
+            reviews.decide(setOf(household.id)) {
+                ReviewRuling(
+                    ReviewDecisionWrite(
+                        transaction, StoredReviewDecision(transaction, ReviewChoice.Defer, chosen = null, decidedAt = now),
+                        ComparisonConclusions(statuses = mapOf(transaction to TransactionStatus.Deferred)),
+                    ),
+                    answer = Unit,
+                )
+            }
+        }
+        check(deferred.changes.map { it.to } == listOf(TransactionStatus.Deferred)) { "${deferred.changes}" }
+        check(fetches.bankTransactionsOf(added.bankAccountId).single().status == TransactionStatus.Deferred)
+        val cleared = stored("clear a Review Decision with the Transaction Status that follows (O-13)") {
+            reviews.decide(setOf(household.id)) { data ->
+                check(data.reviewDecisions.map { it.storedBankTransaction to it.choice } == listOf(transaction to ReviewChoice.Defer)) { "${data.reviewDecisions}" }
+                ReviewRuling(ReviewDecisionWrite(transaction, decision = null, ComparisonConclusions(statuses = mapOf(transaction to TransactionStatus.New))), answer = Unit)
+            }
+        }
+        check(cleared.changes.map { it.to } == listOf(TransactionStatus.New)) { "${cleared.changes}" }
+        check(comparisons.comparisonDataOf(setOf(household.id)).reviewDecisions.isEmpty())
+        check(outsideAnyPlan("defer an Unreadable Transaction") { reviews.storeUnreadableStatus(unreadable, UnreadableTransactionStatus.Deferred) })
+        check(reviews.unreadableTransaction(unreadable)?.status == UnreadableTransactionStatus.Deferred)
+        check(!refused("defer an Unreadable Transaction that is not stored") { reviews.storeUnreadableStatus(unreadable + 1000, UnreadableTransactionStatus.Deferred) })
         return steps.toList()
     }
 
@@ -172,10 +247,17 @@ class StateVersionScenario(
             "change the type and the Bank of a Bank Account",
             "change the fetch period",
             "change the Request Limit of a Data Provider that publishes none",
+            "change the Request Limit of a Data Provider that publishes its Request Limit (refused)",
             "change the Fetch Cooldown of a Data Provider",
             "store a read of the Budget App with its cursor (O-4)",
             "store a read that started from another cursor (O-4) (refused)",
             "store the conclusions of a Comparison (O-5)",
+            "store a delivery with a new Bank Transaction (O-1)",
+            "rule on a Review Decision with nothing to store (O-13) (refused)",
+            "store a Review Decision with the Transaction Status that follows from it (O-13)",
+            "clear a Review Decision with the Transaction Status that follows (O-13)",
+            "defer an Unreadable Transaction (in no Upload Plan)",
+            "defer an Unreadable Transaction that is not stored (refused)",
         )
     }
 }

@@ -5,10 +5,12 @@ import slussen.core.port.ComparisonConclusions
 import slussen.core.port.ComparisonData
 import slussen.core.port.EnteredBy
 import slussen.core.port.OperatorSettings
+import slussen.core.port.ReviewChoice
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredBankTransaction
 import slussen.core.port.StoredBudget
 import slussen.core.port.StoredBudgetAppTransaction
+import slussen.core.port.StoredReviewDecision
 import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.StoredUnreadableTransaction
 import slussen.core.port.TransactionStatus
@@ -47,18 +49,27 @@ data class ComparisonWindows(
     }
 }
 
-/** The statuses of a doubtful Bank Transaction, which it keeps also as a Transfer Leg (UC-003 BR-001, UC-005 BR-013). */
-private val DOUBTFUL = setOf(TransactionStatus.NeedsReview, TransactionStatus.PossibleImportByOtherPath)
+/**
+ * The statuses of a doubtful Bank Transaction, which it keeps also as a Transfer Leg (UC-003 BR-001, UC-005 BR-013): one
+ * that waits for its first Review Decision, and one whose Already Present decision does not hold any more.
+ */
+private val DOUBTFUL = setOf(TransactionStatus.NeedsReview, TransactionStatus.PossibleImportByOtherPath, TransactionStatus.DecisionNoLongerHolds)
 
 /**
- * The rules of UC-003 that give a Bank Transaction its Transaction Status, in the order of BR-001, as far as the
- * transactions plan's Phases 7a and 7b build them: with the Transfers of step 4 (UC-005, `slussen.core.transfer`), and
- * without Review Decisions (BR-009, BR-010) and Sent Records (BR-017, BR-021), which come with later initiatives. Pure:
- * O-5 applies them to stored data only.
+ * What the rules of UC-003 BR-001 conclude for one Bank Transaction by itself, before any Transfer is detected: its
+ * [status]; whether a rule that stands before "a Transfer Leg follows its Transfer" gave it ([beforeTransferLeg]), so
+ * that it keeps it also as a Transfer Leg (UC-005 BR-010); and the status its Review Decision gives the other Transfer
+ * Legs of its Transfer ([givesOtherLegs], UC-005 BR-013), null when it gives none.
+ */
+data class OwnStatus(val status: TransactionStatus, val beforeTransferLeg: Boolean, val givesOtherLegs: TransactionStatus? = null)
+
+/**
+ * The rules of UC-003 that give a Bank Transaction its Transaction Status, in the order of BR-001: with the Review
+ * Decisions (BR-009, BR-010, UC-004 BR-006) and the Transfers of step 4 (UC-005, `slussen.core.transfer`), and without
+ * Sent Records (BR-017, BR-021), which come with the Uploads. Until then nothing here can tell that a Re-upload decision
+ * is used up by the send it caused (UC-004 BR-003): no send exists. Pure: O-5 and O-13 apply them to stored data only.
  */
 object ComparisonRules {
-    /** The statuses the rules after a Transfer Leg in BR-001 give: no rule before it concluded the Bank Transaction. */
-    private val AFTER_TRANSFER_LEG = setOf(TransactionStatus.MatchForTypedEntry, TransactionStatus.New)
 
     // UC-003 BR-016: The first read covers today back by the longest of the fetch period, the Upload Window and the file upload window, plus the Matching Date Window.
     /** The first day of the first read of a Budget (BR-016); every later read takes all changes since the previous one. */
@@ -71,7 +82,9 @@ object ComparisonRules {
      * Steps 2-4: the Transaction Status of each stored Bank Transaction of a Bank Account that is not a Retired Account
      * and is mapped into one of the [data]'s Budgets, by its id, and the Transfers among them. A Bank Transaction stored
      * after its Budget's last successful read, or before any, gets none: it is not compared yet (A1, S-T-08). A Transfer
-     * Leg of a Transfer the Operator decided on is left as it is stored: Transfer Decisions come with a later initiative.
+     * Leg of a split Transfer is compared as an ordinary Bank Transaction (UC-005 BR-010); one of a Transfer the Operator
+     * confirmed, held back or gave another Budget Account is left as it is stored: those Transfer Decisions come with a
+     * later phase.
      */
     fun conclude(data: ComparisonData, windows: ComparisonWindows): ComparisonConclusions {
         val statuses = mutableMapOf<Long, TransactionStatus>()
@@ -101,7 +114,9 @@ object ComparisonRules {
         windows: ComparisonWindows,
     ): Pair<Map<Long, TransactionStatus>, TransfersDetected>? {
         val lastReadAt = budget.lastReadAt ?: return null
-        val decided = data.transfers.filter { it.decision != TransferDecision.Proposed }.map { it.id }.toSet()
+        val split = data.transfers.filter { it.decision == TransferDecision.Split }.map { it.id }.toSet()
+        val decided = data.transfers.filter { it.decision != TransferDecision.Proposed && it.id !in split }.map { it.id }.toSet()
+        val decisions = data.reviewDecisions.associateBy { it.storedBankTransaction }
         val statuses = mutableMapOf<Long, TransactionStatus>()
         val accountIds = budget.budgetAccounts.map { it.id }.toSet()
         // UC-003 BR-014: The Bank Transactions of a Retired Account are not compared.
@@ -116,10 +131,12 @@ object ComparisonRules {
                 .filterNot { it.firstSeenAt.isAfter(lastReadAt) }
                 .filterNot { it.transferId in decided }
                 .forEach { transaction ->
-                    val status = statusOf(transaction, bankAccount, budget, held, windows)
-                    statuses[transaction.id] = status
+                    val own = ownStatusOf(transaction, bankAccount, budget, held, windows, decisions[transaction.id], data.budgetAppTransactions)
+                    statuses[transaction.id] = own.status
+                    // UC-005 BR-010: After Split, each Transfer Leg gets its status as an ordinary Bank Transaction, and Slussen forms no other Transfer from it while the decision is Split.
+                    if (transaction.transferId in split) return@forEach
                     // UC-005 BR-002: Whether two Bank Transactions form a Transfer does not depend on the Upload Window or on any other rule that gives a Bank Transaction its Transaction Status.
-                    candidates += TransferCandidate(transaction, bankAccount, earlier = status.takeUnless { it in AFTER_TRANSFER_LEG })
+                    candidates += TransferCandidate(transaction, bankAccount, earlier = own.status.takeIf { own.beforeTransferLeg }, givesOtherLegs = own.givesOtherLegs)
                 }
         }
         // UC-005 BR-001: Slussen always detects Transfers; no setting switches detection off.
@@ -135,7 +152,9 @@ object ComparisonRules {
     // UC-003 BR-001: The first rule that applies gives the Transaction Status.
     /**
      * The Transaction Status of [transaction] of [bankAccount], mapped into [budget], against [held], the stored copy of
-     * its Budget Account's Budget App Transactions.
+     * its Budget Account's Budget App Transactions, with its Review Decision [decision], which is rechecked against
+     * [copy], the stored copy of every Budget Account of its Budget (BR-009); as an ordinary Bank Transaction, before any
+     * Transfer is detected.
      */
     fun statusOf(
         transaction: StoredBankTransaction,
@@ -143,32 +162,78 @@ object ComparisonRules {
         budget: StoredBudget,
         held: List<StoredBudgetAppTransaction>,
         windows: ComparisonWindows,
-    ): TransactionStatus {
+        decision: StoredReviewDecision? = null,
+        copy: List<StoredBudgetAppTransaction> = held,
+    ): TransactionStatus = ownStatusOf(transaction, bankAccount, budget, held, windows, decision, copy).status
+
+    // UC-003 BR-001: The first rule that applies gives the Transaction Status, and one with a Review Decision follows that decision only where no rule before it applies.
+    /** [statusOf], with whether the status stands before "a Transfer Leg follows its Transfer" and what it gives the other Transfer Legs. */
+    fun ownStatusOf(
+        transaction: StoredBankTransaction,
+        bankAccount: StoredBankAccount,
+        budget: StoredBudget,
+        held: List<StoredBudgetAppTransaction>,
+        windows: ComparisonWindows,
+        decision: StoredReviewDecision?,
+        copy: List<StoredBudgetAppTransaction>,
+    ): OwnStatus {
+        fun before(status: TransactionStatus) = OwnStatus(status, beforeTransferLeg = true)
         val sameIdentifier = underItsImportIdentifier(transaction, held)
         // UC-003 BR-003: A Bank Transaction whose Import Identifier its Budget Account holds is Already In Budget App.
-        if (sameIdentifier.any { it.state == BudgetAppTransactionState.Present }) return TransactionStatus.AlreadyInBudgetApp
-        // UC-003 BR-004: A Bank Transaction sent and later deleted in the Budget App is Deleted In Budget App.
-        if (sameIdentifier.any { it.state == BudgetAppTransactionState.Deleted }) return TransactionStatus.DeletedInBudgetApp
-        // UC-003 BR-005: A Bank Transaction the Budget App merged into a Typed Entry after it was sent is Merged In Budget App.
-        if (sameIdentifier.any { it.state == BudgetAppTransactionState.Merged }) return TransactionStatus.MergedInBudgetApp
+        if (sameIdentifier.any { it.state == BudgetAppTransactionState.Present }) return before(TransactionStatus.AlreadyInBudgetApp)
+        val sentAndGone = sameIdentifier.any { it.state == BudgetAppTransactionState.Deleted || it.state == BudgetAppTransactionState.Merged }
+        // UC-003 BR-001: One Slussen sent that was deleted or merged in the Budget App is Deleted In Budget App or Merged In Budget App, unless the Operator chose Re-upload.
+        if (decision?.choice != ReviewChoice.ReUpload) {
+            // UC-003 BR-004: A Bank Transaction sent and later deleted in the Budget App is Deleted In Budget App.
+            if (sameIdentifier.any { it.state == BudgetAppTransactionState.Deleted }) return before(TransactionStatus.DeletedInBudgetApp)
+            // UC-003 BR-005: A Bank Transaction the Budget App merged into a Typed Entry after it was sent is Merged In Budget App.
+            if (sameIdentifier.any { it.state == BudgetAppTransactionState.Merged }) return before(TransactionStatus.MergedInBudgetApp)
+        }
         // UC-003 BR-018: A Bank Transaction dated before the Start Date of its Bank Account is Before Start Date.
-        bankAccount.startDate?.let { startDate -> if (transaction.bookedDate.isBefore(startDate)) return TransactionStatus.BeforeStartDate }
+        bankAccount.startDate?.let { startDate -> if (transaction.bookedDate.isBefore(startDate)) return before(TransactionStatus.BeforeStartDate) }
         // UC-003 BR-011: Outside the Upload Window, or the file upload window for a file-imported Bank Account, a Bank Transaction is Too Old or In The Future.
-        if (transaction.bookedDate.isAfter(windows.today)) return TransactionStatus.InTheFuture
-        if (transaction.bookedDate.isBefore(uploadWindowStart(bankAccount, windows))) return TransactionStatus.TooOld
+        if (transaction.bookedDate.isAfter(windows.today)) return before(TransactionStatus.InTheFuture)
+        if (transaction.bookedDate.isBefore(uploadWindowStart(bankAccount, windows))) return before(TransactionStatus.TooOld)
+        when (decision?.choice) {
+            // UC-003 BR-009: A Review Decision Already Present holds only while the chosen Budget App Transaction exists, is in the Budget Account recorded with the decision and has the amount recorded with it; otherwise the Bank Transaction is Decision No Longer Holds.
+            ReviewChoice.AlreadyPresent -> return if (alreadyPresentHolds(decision, copy)) {
+                OwnStatus(TransactionStatus.AlreadyInBudgetApp, beforeTransferLeg = true, givesOtherLegs = TransactionStatus.AlreadyInBudgetApp)
+            } else {
+                before(TransactionStatus.DecisionNoLongerHolds)
+            }
+            // UC-003 BR-010: A Bank Transaction with the Review Decision Defer stays Deferred, also when the resembling Import disappears.
+            ReviewChoice.Defer -> return OwnStatus(TransactionStatus.Deferred, beforeTransferLeg = true, givesOtherLegs = TransactionStatus.Deferred)
+            // UC-004 BR-006: Import Anyway gives the status New, except that on a Transfer Leg it lets the Transfer Leg rejoin its Transfer.
+            ReviewChoice.ImportAnyway -> return OwnStatus(TransactionStatus.New, beforeTransferLeg = false)
+            // UC-004 BR-009: A Transfer Leg that Slussen sent and that was deleted or merged in the Budget App is re-uploaded as a new transaction of its own, not as a linked transfer; a Re-upload of one never sent lets it rejoin its Transfer as Import Anyway does.
+            ReviewChoice.ReUpload -> return OwnStatus(TransactionStatus.New, beforeTransferLeg = sentAndGone)
+            null -> Unit
+        }
         // UC-003 BR-012: A Bank Transaction without a Stable Reference is Needs Review.
-        if (transaction.stableReference == null) return TransactionStatus.NeedsReview
+        if (transaction.stableReference == null) return before(TransactionStatus.NeedsReview)
         // UC-003 BR-013: No amount is ever converted: a Bank Account in another currency than its Budget's is compared by nothing that compares amounts.
-        if (bankAccount.currency != budget.currency) return TransactionStatus.New
+        if (bankAccount.currency != budget.currency) return OwnStatus(TransactionStatus.New, beforeTransferLeg = false)
         val resembling = resembling(transaction, held, windows)
         // UC-003 BR-008: A Bank Transaction resembling an Import of Slussen in a form it does not support is Needs Review.
-        if (resembling.any { it.enteredBy == EnteredBy.SlussenUnsupportedFormat }) return TransactionStatus.NeedsReview
+        if (resembling.any { it.enteredBy == EnteredBy.SlussenUnsupportedFormat }) return before(TransactionStatus.NeedsReview)
         // UC-003 BR-007: A Bank Transaction resembling an Import by an Other Import Path is Possible Import By Other Path.
-        if (resembling.any { it.enteredBy == EnteredBy.OtherImportPath }) return TransactionStatus.PossibleImportByOtherPath
+        if (resembling.any { it.enteredBy == EnteredBy.OtherImportPath }) return before(TransactionStatus.PossibleImportByOtherPath)
         // UC-003 BR-006: A Bank Transaction for which its Budget Account holds a Typed Entry of the same amount within the Matching Date Window is Match For Typed Entry.
-        if (resembling.any { it.enteredBy == EnteredBy.TypedEntry }) return TransactionStatus.MatchForTypedEntry
-        return TransactionStatus.New
+        if (resembling.any { it.enteredBy == EnteredBy.TypedEntry }) return OwnStatus(TransactionStatus.MatchForTypedEntry, beforeTransferLeg = false)
+        return OwnStatus(TransactionStatus.New, beforeTransferLeg = false)
     }
+
+    // UC-003 BR-009: A Review Decision Already Present holds only while the chosen Budget App Transaction exists, is in the Budget Account recorded with the decision and has the amount recorded with it.
+    /** Whether the Already Present [decision] holds against [copy], the stored copy of the Budget's Budget App Transactions. */
+    fun alreadyPresentHolds(decision: StoredReviewDecision, copy: List<StoredBudgetAppTransaction>): Boolean {
+        val chosen = decision.chosen ?: return false
+        val stored = chosenOf(decision, copy) ?: return false
+        return stored.state == BudgetAppTransactionState.Present && stored.budgetAccountId == chosen.budgetAccountId && stored.amount == chosen.amount
+    }
+
+    /** The Budget App Transaction the Already Present [decision] names, as [copy] holds it now, or null when it holds none. */
+    fun chosenOf(decision: StoredReviewDecision, copy: List<StoredBudgetAppTransaction>): StoredBudgetAppTransaction? =
+        decision.chosen?.let { chosen -> copy.firstOrNull { it.budgetAppReference == chosen.budgetAppReference } }
 
     // UC-003 BR-003: A Bank Transaction is found in the Budget App by its Import Identifier, in its Budget Account.
     /** The transactions of [held], the stored copy of a Budget Account, that carry the Import Identifier of [transaction]. */
@@ -242,13 +307,13 @@ object EligibleTransactions {
     /**
      * The Transfer Leg of the Transfer of [transaction], itself included, whose Transaction Status keeps the whole
      * Transfer out of every Upload Plan, or null when none does: a doubtful one first (UC-005 BR-013), then one an earlier
-     * rule of the Comparison gave its status (UC-005 BR-010), then a Guessed Transfer's. [transferLegs] are the stored
-     * Bank Transactions that are a Transfer Leg, of every Bank Account.
+     * rule of the Comparison or a Review Decision gave its status (UC-005 BR-010, BR-013), then a Guessed Transfer's.
+     * [transferLegs] are the stored Bank Transactions that are a Transfer Leg, of every Bank Account.
      */
     fun keptOutBy(transaction: StoredBankTransaction, transferLegs: List<StoredBankTransaction>): StoredBankTransaction? {
         val transferId = transaction.transferId ?: return null
         val legs = listOf(transaction) + transferLegs.filter { it.transferId == transferId && it.id != transaction.id }
-        // UC-005 BR-013: A Transfer with a Transfer Leg that is Needs Review or Possible Import By Other Path is in no Upload Plan, from either side.
+        // UC-005 BR-013: A Transfer with a Transfer Leg that is Needs Review or Possible Import By Other Path, or whose Already Present decision does not hold any more, is in no Upload Plan, from either side.
         legs.firstOrNull { it.status in DOUBTFUL }?.let { return it }
         // UC-005 BR-010: While a Transfer has a Transfer Leg to which an earlier rule of the Comparison gave its Transaction Status, the whole Transfer is in no Upload Plan, from either side.
         legs.firstOrNull { it.status != TransactionStatus.TransferLeg && it.status != TransactionStatus.GuessedTransfer }?.let { return it }

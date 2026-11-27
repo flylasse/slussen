@@ -184,8 +184,9 @@ class InMemoryPluginRegistryStore(val stateVersion: InMemoryStateVersion = InMem
     override suspend fun storeRequestLimit(dataProviderId: Long, requests: Int) {
         beforeStore()
         if (failsToStore) throw IllegalStateException("The invented storage of this test cannot be written.")
-        val changes = dataProviders.any { it.id == dataProviderId }
-        dataProviders.replaceAll { if (it.id == dataProviderId) it.copy(requestLimit = requests) else it }
+        // UC-001 BR-007: A Request Limit the Data Provider publishes is never changed by the Operator's setting.
+        val changes = dataProviders.any { it.id == dataProviderId && !it.requestLimitPublished }
+        dataProviders.replaceAll { if (it.id == dataProviderId && !it.requestLimitPublished) it.copy(requestLimit = requests) else it }
         if (changes) stateVersion.raise()
     }
 

@@ -13,7 +13,6 @@ import slussen.core.port.BudgetReadToStore
 import slussen.core.port.ChangeSetApplied
 import slussen.core.port.ComparisonStore
 import slussen.core.port.ConnectionStore
-import slussen.core.port.JournalEventKind
 import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.ServiceKey
 import slussen.core.port.StartedBy
@@ -37,8 +36,9 @@ import java.time.LocalDate
  * Transactions (step 5, BR-014), the Decision Journal (step 6), A1 and A2. It runs on its own when the Operator reads
  * the Budget App again, and within a Fetch (UC-001 step 10), always through the operation coordinator (ADR-007 §1); it
  * reads the Budget App only (BR-015). A Comparison left between O-4 and O-5 is concluded from the stored data alone at
- * the next start and whenever its marker is found (ADR-007 §3a, §8). Sent Records (BR-017, BR-021), Review Decisions,
- * Transfer Decisions and First Upload Matching (BR-019) come with later phases.
+ * the next start and whenever its marker is found (ADR-007 §3a, §8). The Review Decisions are followed in the order of
+ * BR-001 (BR-009, BR-010). Sent Records (BR-017, BR-021), Transfer Decisions and First Upload Matching (BR-019) come
+ * with later phases.
  */
 class Comparison(
     private val plugins: RegisteredPlugins,
@@ -216,16 +216,7 @@ class Comparison(
     /** Step 6: one Decision Journal entry per changed Transaction Status, in Slussen's own words, never a payee or memo. */
     private suspend fun journalChanges(changes: List<StatusChange>) {
         if (changes.isEmpty()) return
-        val names = connections.bankAccounts().associate { it.id to it.name }
-        changes.forEach { change ->
-            val from = change.from?.text ?: "not compared yet"
-            journal.record(
-                JournalEventKind.StatusChanged,
-                "Transaction Status changed from $from to ${change.to.text}",
-                change.importIdentifier,
-                names.getValue(change.bankAccountId),
-            )
-        }
+        journal.recordStatusChanges(changes, connections.bankAccounts().associate { it.id to it.name })
     }
 
     private fun notRead(budget: StoredBudget, kind: FailureKind?) =

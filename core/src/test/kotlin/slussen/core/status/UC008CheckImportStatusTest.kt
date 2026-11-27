@@ -964,6 +964,52 @@ class UC008CheckImportStatusTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "Main Success Scenario")
+    @DisplayName("Step 5: a Transaction Status that follows from a Review Decision (UC-004 BR-006) is shown as the latest conclusions left it, never with the reason of a rule that did not give it: New after Import Anyway is not shown as matching nothing, Already In Budget App after Already Present is not shown as held under Slussen's own Import Identifier, on the decided Bank Transaction and on the other Transfer Leg of its Transfer")
+    fun aStatusFromAReviewDecisionIsNotShownWithAnotherRulesReason() = runTest {
+        scenario.compareEveryStatus()
+        val possible = scenario.transaction("possible")
+        assertTrue(view("Kestrel Checking").line("possible").reason is StatusReason.ResemblesOtherImport)
+
+        slice.review.decide(possible, slussen.core.port.ReviewChoice.ImportAnyway)
+        val imported = view("Kestrel Checking").line("possible")
+        slice.review.decide(possible, slussen.core.port.ReviewChoice.AlreadyPresent)
+        val present = view("Kestrel Checking").line("possible")
+        slice.review.decide(possible, slussen.core.port.ReviewChoice.Defer)
+        val deferred = view("Kestrel Checking").line("possible")
+
+        assertEquals(TransactionStatus.New to StatusReason.AsStored(TransactionStatus.New), imported.status to imported.reason)
+        assertTrue(imported.eligible)
+        assertEquals(TransactionStatus.AlreadyInBudgetApp to StatusReason.AsStored(TransactionStatus.AlreadyInBudgetApp), present.status to present.reason)
+        assertEquals(TransactionStatus.Deferred to StatusReason.AsStored(TransactionStatus.Deferred), deferred.status to deferred.reason)
+        assertFalse(deferred.eligible)
+        // A Bank Transaction without a Review Decision keeps the reason of the rule that gave its status.
+        assertEquals(StatusReason.NoMatch, view("Kestrel Checking").line("new").reason)
+        assertTrue(view("Kestrel Checking").line("already").reason is StatusReason.HeldInBudgetApp)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario")
+    @DisplayName("Step 5: the other Transfer Leg of a Transfer that counts as already in the Budget App through an Already Present decision (UC-005 BR-013) is Already In Budget App as the latest conclusions left it, not shown as held under Slussen's own Import Identifier")
+    fun theOtherTransferLegOfAnAlreadyPresentDecisionIsNotShownAsHeld() = runTest {
+        scenario.serve()
+        val checking = scenario.addBankAccount("Kestrel Checking", "Checking")
+        val card = scenario.addBankAccount("Pinecrest Rewards Card", "Rewards Card", BankAccountType.CreditCard)
+        slice.connectionStore.link(card, fundedBy = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Checking" }.id)
+        val paid = scenario.store("paid", checking, october(12), amount(-99), "Card payment")
+        val received = scenario.store("received", card, october(12), amount(99), "Payment received")
+        scenario.answerHousehold(listOf(scenario.read("y-other", october(12), amount(99), "Card payment", account = "ba-rewards", importIdentifier = "BANK:99000:2026-10-12:1")))
+        slice.comparison.readAgain()
+        assertEquals(TransactionStatus.TransferLeg, lineOf("Kestrel Checking", paid).status)
+
+        slice.review.decide(received, slussen.core.port.ReviewChoice.AlreadyPresent)
+
+        val otherLeg = lineOf("Kestrel Checking", paid)
+        assertEquals(TransactionStatus.AlreadyInBudgetApp to StatusReason.AsStored(TransactionStatus.AlreadyInBudgetApp), otherLeg.status to otherLeg.reason)
+        assertFalse(otherLeg.eligible)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario")
     @DisplayName("Step 5 (review 4c): a Retired Account without a stored transaction says that none is kept, never that a Fetch brings them in")
     fun emptyRetiredAccountPromisesNoFetch() = runTest {
         scenario.serve()

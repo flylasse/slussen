@@ -126,6 +126,8 @@ data class ComparisonData(
     val transfers: List<StoredTransfer>,
     /** The Card Payment Descriptions and Bank Transfer Descriptions (`transfer_description`, UC-005 BR-012). */
     val transferDescriptions: List<StoredTransferDescription>,
+    /** The Review Decisions of those Bank Transactions (`review_decision`, UC-004), at most one each. */
+    val reviewDecisions: List<StoredReviewDecision>,
 )
 
 /**

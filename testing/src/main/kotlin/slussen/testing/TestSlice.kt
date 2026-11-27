@@ -20,6 +20,7 @@ import slussen.core.port.RandomSource
 import slussen.core.port.ServiceKey
 import slussen.core.port.StartKind
 import slussen.core.port.UnreadablePart
+import slussen.core.review.ReviewDecisions
 import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.settings.GeneralSettings
@@ -89,6 +90,11 @@ class TestSlice(
     )
     val providerSettings = DataProviderSettings(plugins, registry, coordinator, journal)
     val generalSettings = GeneralSettings(settings, coordinator, journal)
+    /** UC-004: the Review Decisions, on the stored data the Comparison concludes from. */
+    val review = ReviewDecisions(
+        connectionStore, copyStore, copyStore, coordinator, settings, journal, clock,
+        plugins.budgetApp.profile.matchingDateWindowDays, plugins.budgetApp.profile.refusesReusedImportIdentifier,
+    )
     val mappings = AccountMappings(plugins, connectionStore, connectionStore, offeredStore, coordinator, journal)
     val status = ImportStatus(
         budgetAppName = plugins.budgetApp.profile.name,

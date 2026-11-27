@@ -19,13 +19,29 @@ interface StateVersionDao {
 }
 
 /**
- * `review_decision`: the plain reads and writes the Review Decisions are built on (UC-004; O-13 comes with its phase).
- * Each write raises `state_version` in its own transaction, also inside a larger one.
+ * `review_decision`: the reads and writes O-13 `ReviewStore.decide` is built on (UC-004, ADR-002 §3), with the Bank
+ * Transaction a decision is about and the Unreadable Transaction the Operator defers (UC-004 A9). Each write of a Review
+ * Decision raises `state_version` in its own transaction, also inside a larger one; the status of an Unreadable
+ * Transaction, which is never in an Upload Plan, does not.
  */
 @Dao
 abstract class ReviewDecisionDao : StateVersionDao {
     @Query("SELECT * FROM review_decision ORDER BY id")
     abstract suspend fun all(): List<ReviewDecisionEntity>
+
+    /** The Review Decisions of the Bank Transactions of [bankAccountId]. */
+    @Query("SELECT * FROM review_decision WHERE bank_transaction_id IN (SELECT id FROM bank_transaction WHERE bank_account_id = :bankAccountId) ORDER BY id")
+    abstract suspend fun ofBankAccount(bankAccountId: Long): List<ReviewDecisionEntity>
+
+    @Query("SELECT * FROM bank_transaction WHERE id = :id")
+    abstract suspend fun bankTransaction(id: Long): BankTransactionEntity?
+
+    @Query("SELECT * FROM unreadable_transaction WHERE id = :id")
+    abstract suspend fun unreadableTransaction(id: Long): UnreadableTransactionEntity?
+
+    /** Gives the Unreadable Transaction [id] the status [status]; returns how many were changed, 0 or 1. */
+    @Query("UPDATE unreadable_transaction SET status = :status WHERE id = :id")
+    abstract suspend fun storeUnreadableStatus(id: Long, status: String): Int
 
     @Query("SELECT * FROM review_decision WHERE bank_transaction_id = :bankTransaction")
     abstract suspend fun of(bankTransaction: Long): ReviewDecisionEntity?

@@ -31,6 +31,9 @@ enum class OperationKind {
 
     /** Reading the Budget App again and comparing (UC-003), or concluding a Comparison left pending (ADR-007 §3a). */
     Comparison,
+
+    /** A Review Decision, its change or its clearing, and deferring an Unreadable Transaction (UC-004). */
+    ReviewDecision,
 }
 
 /** Why the coordinator refused an operation (ADR-007 §2): a typed reason the screen shows. */
@@ -90,6 +93,15 @@ class OperationCoordinator(private val store: CoordinatorStore) {
      */
     val ended: StateFlow<Long> = endedCount.asStateFlow()
 
+    private companion object {
+        /**
+         * ADR-007 §2: the operations admitted while an Upload Plan awaits confirmation. Their storage operation raises
+         * `state_version` (ADR-002 §3), so that the plan prepared before the decision is never written unchanged; its
+         * replacement by a newly prepared plan (§5, UC-004 A8) comes with the Uploads.
+         */
+        val ADMITTED_WHILE_A_PLAN_IS_OPEN = setOf(OperationKind.ReviewDecision)
+    }
+
     suspend fun <T> run(
         kind: OperationKind,
         startedBy: StartedBy,
@@ -97,7 +109,8 @@ class OperationCoordinator(private val store: CoordinatorStore) {
     ): OperationResult<T> = lane.withLock {
         // UC-006 BR-005: While an Upload Plan awaits confirmation or an Upload is written, credential changes, choosing Budgets, adding or changing Bank Accounts, changing Operator Settings, a Fetch the Operator starts and confirming First Upload Matching are unavailable.
         when (store.mode()) {
-            CoordinatorMode.PlanOpen -> return OperationResult.Refused(OperationRefusal.UploadPlanAwaitingConfirmation)
+            // ADR-007 §2: a Review Decision is admitted while an Upload Plan awaits confirmation; every other operation of this build is refused.
+            CoordinatorMode.PlanOpen -> if (kind !in ADMITTED_WHILE_A_PLAN_IS_OPEN) return OperationResult.Refused(OperationRefusal.UploadPlanAwaitingConfirmation)
             CoordinatorMode.Uploading -> return OperationResult.Refused(OperationRefusal.UploadBeingWritten)
             CoordinatorMode.Normal -> Unit
         }

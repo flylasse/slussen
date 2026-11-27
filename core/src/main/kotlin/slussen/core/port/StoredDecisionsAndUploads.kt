@@ -1,5 +1,8 @@
 package slussen.core.port
 
+import slussen.pluginapi.value.Amount
+import java.time.Instant
+
 /** The `Values:` of `REVIEW_DECISION.choice`: what the Operator decided for a doubtful Bank Transaction (UC-004). */
 enum class ReviewChoice(val text: String) {
     AlreadyPresent("Already Present"),
@@ -39,3 +42,22 @@ enum class TransferCounterpartState(val text: String) {
     Cleared("Cleared"),
     ChangedInBudgetApp("Changed In Budget App"),
 }
+
+/**
+ * The Budget App Transaction an Already Present decision names (UC-004 BR-002), as `REVIEW_DECISION` keeps it: its
+ * identifier in the Budget App, the Budget Account that held it and its amount when the Operator decided, so that UC-003
+ * BR-009 can recheck the decision.
+ */
+data class ChosenBudgetAppTransaction(val budgetAppReference: String, val budgetAccountId: Long, val amount: Amount)
+
+/**
+ * `REVIEW_DECISION` (entity model) as stored: the Operator's current choice for the Bank Transaction
+ * [storedBankTransaction]. [chosen] is filled exactly when [choice] is Already Present.
+ */
+data class StoredReviewDecision(
+    val storedBankTransaction: Long,
+    val choice: ReviewChoice,
+    val chosen: ChosenBudgetAppTransaction?,
+    /** The time the Operator made or last changed the decision. */
+    val decidedAt: Instant,
+)

@@ -5,6 +5,7 @@ import slussen.core.port.DecisionJournalRecorder
 import slussen.core.port.JournalEntry
 import slussen.core.port.JournalEventKind
 import slussen.core.port.OperatorSettingsStore
+import slussen.core.port.StatusChange
 import java.time.Clock
 import java.util.concurrent.atomic.AtomicLong
 
@@ -47,6 +48,24 @@ class DecisionJournal(
             throw cancelled
         } catch (failure: Exception) {
             droppedEntries.incrementAndGet()
+        }
+    }
+
+    // UC-011 BR-001: Every change of the Transaction Status Slussen gave a Bank Transaction is recorded, naming its Bank Account and its Import Identifier.
+    /**
+     * One entry per changed Transaction Status of [changes] (UC-003 step 6), in Slussen's own words, never a payee or
+     * memo; [bankAccountNames] names the Bank Account of each by its id. Like every recording it never affects the caller:
+     * a change whose Bank Account is not named is dropped and counted (ADR-002 §9).
+     */
+    suspend fun recordStatusChanges(changes: List<StatusChange>, bankAccountNames: Map<Long, String>) {
+        changes.forEach { change ->
+            val bankAccountName = bankAccountNames[change.bankAccountId]
+            if (bankAccountName == null) {
+                droppedEntries.incrementAndGet()
+                return@forEach
+            }
+            val from = change.from?.text ?: "not compared yet"
+            record(JournalEventKind.StatusChanged, "Transaction Status changed from $from to ${change.to.text}", change.importIdentifier, bankAccountName)
         }
     }
 }

@@ -19,13 +19,16 @@ import kotlin.math.abs
 /**
  * A compared Bank Transaction of [bankAccount], which can be a Transfer Leg whatever rule of UC-003 BR-001 gave it its
  * Transaction Status (UC-005 BR-002). [earlier] is the status a rule standing before a Transfer Leg in that order gave
- * it (Too Old, Before Start Date, Needs Review, ...), which it keeps as a Transfer Leg (UC-005 BR-010, BR-013), and
- * null when none did.
+ * it (Too Old, Before Start Date, Needs Review, the status of its own Review Decision, ...), which it keeps as a Transfer
+ * Leg (UC-005 BR-010, BR-013), and null when none did. [givesOtherLegs] is the status its Review Decision gives every
+ * other Transfer Leg of its Transfer that has none of its own (UC-005 BR-013): Already In Budget App while its Already
+ * Present decision holds, Deferred for Defer, and null otherwise.
  */
 data class TransferCandidate(
     val transaction: StoredBankTransaction,
     val bankAccount: StoredBankAccount,
     val earlier: TransactionStatus?,
+    val givesOtherLegs: TransactionStatus? = null,
 )
 
 /** Why detection could not settle a Transfer for certain, so that it is a Guessed Transfer (UC-005 BR-002, BR-003, A8). */
@@ -94,8 +97,9 @@ data class TransfersDetected(
 /**
  * Transfer detection (UC-003 step 4; UC-005 BR-001..BR-006, BR-010, BR-012..BR-014, A4, A5, A8), `:core` `transfer`
  * (ADR-001 §7): which Bank Transactions of one Budget form a Transfer, and the Transaction Status its Transfer Legs
- * follow. Pure rules on stored data, run inside the Comparison's conclusions (ADR-002 §3 O-5). The Transfer Decisions
- * (UC-005 steps 2-6) come with a later initiative.
+ * follow, with what the Review Decision on a Transfer Leg gives the other Transfer Legs (BR-013). Pure rules on stored
+ * data, run inside the Comparison's conclusions (ADR-002 §3 O-5). The Transfer Decisions (UC-005 steps 2-6) come with a
+ * later phase.
  */
 object TransferDetection {
     /** An outflow and an inflow that could be the two Transfer Legs of one Transfer (BR-002). */
@@ -162,7 +166,10 @@ object TransferDetection {
         }
         val byId = legs.associateBy { it.id }
         val transfers = pairs + lonely
-        transfers.forEach { transfer -> transfer.legs.forEach { statuses[it.id] = statusOf(byId.getValue(it.id), transfer.guessed) } }
+        transfers.forEach { transfer ->
+            val candidates = transfer.legs.map { byId.getValue(it.id) }
+            candidates.forEach { leg -> statuses[leg.id] = statusOf(leg, transfer.guessed, otherLegs = candidates.filter { it.id != leg.id }) }
+        }
         return TransfersDetected(transfers, statuses, withoutProposal)
     }
 
@@ -197,10 +204,22 @@ object TransferDetection {
     }
 
     // UC-005 BR-010: The Transfer Legs of a Transfer have the status Transfer Leg, those of a Guessed Transfer the status Guessed Transfer.
-    /** The Transaction Status [leg] follows as a Transfer Leg of a Transfer that is [guessed] or not. */
-    private fun statusOf(leg: TransferCandidate, guessed: Boolean): TransactionStatus =
+    /**
+     * The Transaction Status [leg] follows as a Transfer Leg of a Transfer that is [guessed] or not, beside its
+     * [otherLegs]: the first that applies of the status an earlier rule gave it, the status the Review Decision on
+     * another Transfer Leg gives it, and the status of its Transfer.
+     */
+    private fun statusOf(leg: TransferCandidate, guessed: Boolean, otherLegs: List<TransferCandidate> = emptyList()): TransactionStatus =
         // UC-005 BR-010: A Transfer Leg to which an earlier rule of the Comparison gave its Transaction Status keeps that status and stays a Transfer Leg of its Transfer.
-        leg.earlier ?: if (guessed) TransactionStatus.GuessedTransfer else TransactionStatus.TransferLeg
+        leg.earlier ?: fromTheDecisionOnAnotherLeg(otherLegs) ?: if (guessed) TransactionStatus.GuessedTransfer else TransactionStatus.TransferLeg
+
+    // UC-005 BR-013: When a Transfer Leg is decided Already Present, every other Transfer Leg of its Transfer is Already In Budget App while that decision holds; when one is decided Defer, every other Transfer Leg is Deferred.
+    /**
+     * The status the Review Decision on one of [otherLegs] gives a Transfer Leg that has none of its own, or null when
+     * none does. A Transfer has at most two Transfer Legs, so at most one other gives it.
+     */
+    private fun fromTheDecisionOnAnotherLeg(otherLegs: List<TransferCandidate>): TransactionStatus? =
+        otherLegs.firstNotNullOfOrNull { it.givesOtherLegs }
 
     // UC-005 BR-014: The other side of a Transfer is always a Budget Account Slussen fetches, never a Manually Kept Account or one only a Retired Account is mapped to.
     /**
