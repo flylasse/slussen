@@ -26,11 +26,14 @@ interface JournalFile {
     /** Every entry removed, [firstEntry] written if given and the space returned, all in one transaction. */
     fun clear(firstEntry: JournalEntry?)
 
-    /** The oldest entry's `id` and time and the newest entry's `id`; null when there is none (UC-011 step 3). */
+    /** The oldest entry's `id` and time, the newest entry's `id` and how many up to it; null when there is none (UC-011 step 3). */
     fun bounds(): JournalBounds?
 
-    /** At most [limit] entries with an `id` from [fromId] up to [upToId], oldest first, in one short read (UC-011 BR-007). */
-    fun entriesFrom(fromId: Long, upToId: Long, limit: Int): List<StoredJournalEntry>
+    /** At most [limit] entries with an `id` above [afterId] up to [upToId], oldest first, in one short read (UC-011 BR-007). */
+    fun entriesAfter(afterId: Long, upToId: Long, limit: Int): List<StoredJournalEntry>
+
+    /** Whether an entry is written, in one statement that may be made from any thread (UC-011 precondition). */
+    fun holdsAnEntry(): Boolean
 }
 
 /** [JournalFile] on Room: `PRAGMA incremental_vacuum` returns the space of removed entries, `auto_vacuum` being INCREMENTAL. */
@@ -63,14 +66,18 @@ class RoomJournalFile(private val database: JournalDatabase) : JournalFile {
         }
     }
 
-    /** Two statements and no transaction: every write runs on the same journal thread, so none comes between them. */
+    /** Three statements and no transaction: every write runs on the same journal thread, so none comes between them. */
     override fun bounds(): JournalBounds? {
         val oldest = dao.oldest() ?: return null
-        return JournalBounds(oldest.id, oldest.recordedAt, dao.newestId() ?: oldest.id)
+        val newest = dao.newestId() ?: oldest.id
+        return JournalBounds(oldest.id, oldest.recordedAt, newest, dao.countUpTo(newest))
     }
 
-    override fun entriesFrom(fromId: Long, upToId: Long, limit: Int): List<StoredJournalEntry> =
-        dao.page(fromId, upToId, limit).map { StoredJournalEntry(it.id, it.entry()) }
+    override fun entriesAfter(afterId: Long, upToId: Long, limit: Int): List<StoredJournalEntry> =
+        dao.page(afterId, upToId, limit).map { StoredJournalEntry(it.id, it.entry()) }
+
+    /** One statement, from any thread: Room gives it a connection of its own. */
+    override fun holdsAnEntry(): Boolean = dao.oldestId() != null
 
     private fun pragma(name: String): Long =
         database.openHelper.writableDatabase.query("PRAGMA $name").use { if (it.moveToFirst()) it.getLong(0) else 0 }

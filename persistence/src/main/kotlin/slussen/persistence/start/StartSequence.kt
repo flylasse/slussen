@@ -123,14 +123,20 @@ class StartSequence(
         }
     }
 
-    /** Renames [database] and its rollback journal, unchanged, to an unused `.unreadable-<millis>-<random>` name. */
+    /**
+     * Renames [database] and every file SQLite keeps beside it, unchanged, to an unused `.unreadable-<millis>-<random>`
+     * name: its rollback journal ([rollbackJournal]) and the `-wal` and `-shm` an earlier build may have left in
+     * write-ahead logging, so that the original is kept whole (ADR-002 §8 step 5) and no log is replayed into the
+     * database created in its place.
+     */
     private fun setAside(database: File, rollbackJournal: File) {
+        val beside = listOf(rollbackJournal, File(database.path + "-wal"), File(database.path + "-shm"))
         var suffix: String
         do {
             suffix = ".unreadable-${clock.millis()}-${newRandomText()}"
-        } while (File(database.path + suffix).exists() || File(rollbackJournal.path + suffix).exists())
+        } while ((beside + database).any { File(it.path + suffix).exists() })
         check(database.renameTo(File(database.path + suffix))) { "Could not set aside ${database.name}." }
-        if (rollbackJournal.exists()) rollbackJournal.renameTo(File(rollbackJournal.path + suffix))
+        beside.filter { it.exists() }.forEach { it.renameTo(File(it.path + suffix)) }
     }
 
     private fun readIntent(): FirstUploadMatchingCause? {

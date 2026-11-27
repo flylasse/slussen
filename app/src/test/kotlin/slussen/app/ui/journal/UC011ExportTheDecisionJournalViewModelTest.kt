@@ -1,5 +1,6 @@
 package slussen.app.ui.journal
 
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -299,5 +300,101 @@ class UC011ExportTheDecisionJournalViewModelTest {
             AnswerUi("Export failed", AnswerKind.Failed, "The Decision Journal could not be read. No file was written."),
             screen.ui().answer,
         )
+    }
+
+    @Test
+    @UseCase(id = "UC-011", scenario = "Main Success Scenario", businessRules = ["BR-007"])
+    @DisplayName("BR-007 (S-B-28): when entries noted were removed while the file was written, the answer says how many")
+    fun theAnswerCountsEntriesRemovedWhileWritten() {
+        served()
+        entries(1_198)
+        journal.beforePage = { page -> if (page == 1) journal.removeOldest(800) }
+        val screen = screen()
+
+        screen.exportTo()
+
+        assertEquals(
+            AnswerUi(
+                "Journal Export complete",
+                AnswerKind.Done,
+                "Entries: 900 · $place · 300 of the entries noted were removed by the size limit or a clearing while the file was written, so they are not in it",
+            ),
+            screen.ui().answer,
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-011", scenario = "Main Success Scenario")
+    @DisplayName("Precondition, UC-010 BR-004: Choose where to save… can be tapped while the journal's own thread is busy, as soon as an entry is known to be held")
+    fun chooseDoesNotWaitForTheJournalsThread() {
+        entries(1)
+        journal.hold()
+        runBlocking { slice.journal.record(JournalEventKind.SessionStart, "Queued behind a long trimming") }
+
+        val screen = screen()
+
+        assertTrue(screen.ui().chooseEnabled)
+        assertNull(screen.ui().nothingToExport)
+        journal.release()
+    }
+
+    @Test
+    @UseCase(id = "UC-011", scenario = "Main Success Scenario")
+    @DisplayName("Steps 2-3: the name the document has at its place is read off the screen's thread and shown and answered with")
+    fun theDocumentsNameIsShown() {
+        served()
+        entries(1)
+        val screen = screen()
+
+        screen.choosePlace()
+        screen.export(document, place) { "household-review.json" }
+
+        assertEquals("Entries: 3 · household-review.json", screen.ui().answer!!.detail)
+    }
+
+    @Test
+    @UseCase(id = "UC-011", scenario = "A1: Operator Cancels")
+    @DisplayName("NFR-023 (A1): a device without an app to choose a place is answered at the control, no file is written, and Choose where to save… can be tapped again")
+    fun noAppToChooseAPlace() {
+        entries(1)
+        val screen = screen()
+        screen.choosePlace()
+
+        screen.noPlaceCanBeChosen()
+
+        assertEquals(
+            AnswerUi("No place can be chosen", AnswerKind.Failed, "This device has no app to choose where to save a file. No file was written."),
+            screen.ui().answer,
+        )
+        assertTrue(screen.ui().chooseEnabled)
+    }
+
+    @Test
+    @UseCase(id = "UC-011", scenario = "Main Success Scenario")
+    @DisplayName("ADR-007 §1: while the export waits for the lane behind another operation the control says what it waits for and offers Withdraw; withdrawn, the document is removed and no file is written")
+    fun waitingForTheLaneCanBeWithdrawn() {
+        served()
+        entries(1)
+        val lane = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val other = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined).launch {
+            slice.coordinator.run(slussen.core.operation.OperationKind.Comparison, slussen.core.port.StartedBy.Operator) { lane.await() }
+        }
+        val screen = screen()
+
+        screen.exportTo()
+
+        assertEquals(
+            WritingUi("Waits for: Reading the Budget App · then reads Example Budget App and writes the Journal Export", "To $place"),
+            screen.ui().writing,
+        )
+        assertTrue(screen.ui().canWithdraw)
+        screen.withdraw()
+
+        assertEquals(AnswerUi("Export withdrawn", AnswerKind.Unchanged, "No file was written."), screen.ui().answer)
+        assertNull(screen.ui().writing)
+        assertTrue(document.removed)
+        assertTrue(slice.budgetApp.reader.changeReads.isEmpty())
+        lane.complete(Unit)
+        other.cancel()
     }
 }

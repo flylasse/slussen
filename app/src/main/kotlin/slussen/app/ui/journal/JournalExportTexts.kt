@@ -28,6 +28,14 @@ object JournalExportTexts {
     const val COMPLETE = "Journal Export complete"
     const val COMPLETE_FROM_COPY = "Journal Export complete, from the stored copy"
     const val FAILED = "Export failed"
+    const val WITHDRAWN = "Export withdrawn"
+    const val WITHDRAW = "Withdraw"
+    const val NO_APP = "No place can be chosen"
+    const val NO_APP_DETAIL = "This device has no app to choose where to save a file. No file was written."
+
+    /** ADR-007 §1: the export waits for the lane behind [operation]. */
+    fun waiting(operation: String, budgetAppName: String): String =
+        "Waits for: $operation · then reads $budgetAppName and writes the Journal Export"
 
     private val count = DecimalFormat("#,##0", DecimalFormatSymbols(Locale.ROOT))
 
@@ -37,9 +45,21 @@ object JournalExportTexts {
     fun to(place: String): String = "To $place"
 
     /** Step 5, A2 (`#complete`, `#stored-copy`): the entries, the place and, for each Budget not read now, where its transactions come from. */
-    fun complete(entries: Int, place: String, budgets: List<ExportedBudget>, budgetAppName: String, formats: Formats, now: Instant): String {
+    fun complete(
+        entries: Int,
+        place: String,
+        budgets: List<ExportedBudget>,
+        budgetAppName: String,
+        formats: Formats,
+        now: Instant,
+        removedWhileWritten: Int = 0,
+    ): String {
         val notRead = budgets.filter { it !is ExportedBudget.Read }
         val parts = mutableListOf("Entries: ${count.format(entries)} · $place")
+        // UC-011 BR-007: The entries noted at step 3 and removed while the file was written are counted, and are not in the file.
+        if (removedWhileWritten > 0) {
+            parts += "${count.format(removedWhileWritten)} of the entries noted were removed by the size limit or a clearing while the file was written, so they are not in it"
+        }
         notRead.forEach { budget ->
             parts += when (budget) {
                 is ExportedBudget.FromStoredCopy ->
@@ -66,15 +86,12 @@ object JournalExportTexts {
     /** A3 and the other outcomes that leave no Journal Export, with what became of the document at [place]. */
     fun failed(why: ExportFailure, removed: Boolean, place: String): String {
         val reason = when (why) {
-            ExportFailure.NothingToExport -> "The Decision Journal holds no entry."
             is ExportFailure.Unavailable -> Texts.refusal(why.reason)
             ExportFailure.JournalNotRead -> "The Decision Journal could not be read."
             ExportFailure.StoredDataNotRead -> "Slussen's stored data could not be read."
-            ExportFailure.JournalChangedWhileWritten ->
-                "The Decision Journal was trimmed or cleared while it was written, so the file could not hold it; export again."
             ExportFailure.NotWritten -> "The file could not be written completely at the chosen place."
         }
-        val began = why == ExportFailure.NotWritten || why == ExportFailure.JournalChangedWhileWritten
+        val began = why == ExportFailure.NotWritten
         val document = when {
             !removed -> "The file $place is incomplete and is no Journal Export; remove it at the place you chose."
             began -> "The incomplete file was removed; no Journal Export was written."

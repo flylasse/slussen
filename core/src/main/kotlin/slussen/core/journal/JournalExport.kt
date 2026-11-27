@@ -13,6 +13,7 @@ import slussen.core.operation.OperationCoordinator
 import slussen.core.operation.OperationKind
 import slussen.core.operation.OperationPermit
 import slussen.core.operation.OperationResult
+import slussen.core.operation.RunningOperation
 import slussen.core.plugin.RegisteredPlugins
 import slussen.core.port.BudgetAppCopyStore
 import slussen.core.port.BudgetAppTransactionState
@@ -80,16 +81,27 @@ class JournalExport(
     /** The name Slussen proposes for the file. */
     fun proposedName(): String = "slussen-journal-${today()}.json"
 
-    /** Precondition: whether the Decision Journal holds at least one entry; null when it cannot be read. */
-    suspend fun hasEntries(): Boolean? = safely { reader.bounds() != null }
+    /**
+     * Precondition: whether the Decision Journal holds at least one entry; null when it cannot be read. An entry written
+     * already is found at once, without waiting for the journal's own thread; only when none is found does it ask there,
+     * behind the entries queued and not written yet.
+     */
+    suspend fun hasEntries(): Boolean? = safely { reader.holdsAnEntryNow() || reader.bounds() != null }
 
     /**
      * Steps 3-5, A2, A3: the Journal Export written to [document], the place the Operator chose (step 2), with payee and
-     * memo text replaced by codes when [codes]. A1 (no place chosen) never reaches here: no document exists then.
+     * memo text replaced by codes when [codes]. A1 (no place chosen) never reaches here: no document exists then. When
+     * the export has to wait for the lane behind another operation, [waiting] is told which (ADR-007 §1), and [reading]
+     * when it has the lane; a caller that cancels the export while it waits withdraws it, and the document is removed.
      */
-    suspend fun export(codes: Boolean, document: JournalExportDocument): JournalExportOutcome {
+    suspend fun export(
+        codes: Boolean,
+        document: JournalExportDocument,
+        waiting: (RunningOperation) -> Unit = {},
+        reading: () -> Unit = {},
+    ): JournalExportOutcome {
         val outcome = try {
-            exportTo(codes, document)
+            exportTo(codes, document, waiting, reading)
         } catch (cancelled: CancellationException) {
             // A3 failure postconditions: an export that stops leaves no incomplete file presented as a Journal Export.
             withContext(NonCancellable + io) { removeSafely(document) }
@@ -104,7 +116,12 @@ class JournalExport(
         }
     }
 
-    private suspend fun exportTo(codes: Boolean, document: JournalExportDocument): JournalExportOutcome {
+    private suspend fun exportTo(
+        codes: Boolean,
+        document: JournalExportDocument,
+        waiting: (RunningOperation) -> Unit,
+        reading: () -> Unit,
+    ): JournalExportOutcome {
         // Step 3: the newest entry is noted first, through the journal's own thread (ADR-002 §9).
         val bounds = try {
             reader.bounds()
@@ -112,9 +129,13 @@ class JournalExport(
             throw cancelled
         } catch (failure: Exception) {
             return failed(ExportFailure.JournalNotRead)
-        } ?: return failed(ExportFailure.NothingToExport)
+        }
+        coordinator.running.value?.let(waiting)
         val read = when (
-            val admitted = coordinator.run(OperationKind.JournalExport, StartedBy.Operator) { permit -> safely { readBudgets(permit, bounds) } }
+            val admitted = coordinator.run(OperationKind.JournalExport, StartedBy.Operator) { permit ->
+                reading()
+                safely { readBudgets(permit, bounds) }
+            }
         ) {
             // UC-006 BR-005: While an Upload Plan awaits confirmation or an Upload is written, no Journal Export is made.
             is OperationResult.Refused -> return failed(ExportFailure.Unavailable(admitted.reason))
@@ -131,11 +152,12 @@ class JournalExport(
      * of BR-008, read now and not stored, or the stored copy where the Budget App cannot be read. Throws when Slussen's
      * own stored data cannot be read.
      */
-    private suspend fun readBudgets(permit: OperationPermit, bounds: JournalBounds): BudgetsRead {
+    private suspend fun readBudgets(permit: OperationPermit, bounds: JournalBounds?): BudgetsRead {
         val current = settings.current()
         val today = today()
-        // UC-011 BR-008: From the day of the oldest entry back by the read period of a Budget's first read, up to and including the day of the export.
-        val firstDate = ComparisonRules.readFrom(current, plugins.budgetApp.profile.matchingDateWindowDays, LocalDate.ofInstant(bounds.oldestRecordedAt, clock.zone))
+        // UC-011 BR-008: From the day of the oldest entry back by the read period of a Budget's first read, up to and including the day of the export; with no entry, from the day of the export back by that read period.
+        val from = bounds?.let { LocalDate.ofInstant(it.oldestRecordedAt, clock.zone) } ?: today
+        val firstDate = ComparisonRules.readFrom(current, plugins.budgetApp.profile.matchingDateWindowDays, from)
         val dates = firstDate..today
         val served = connections.budgets().filter { it.served }
         // A2 of UC-011: without entered credentials, or with credentials already refused, the Budget App is not contacted (UC-014 BR-005).
@@ -247,7 +269,7 @@ class JournalExport(
      * Step 4, with the operation lane free: the header, the entries streamed up to the newest noted at step 3, the Budget
      * App's transactions and the closing part. A3: a write that fails stops; the caller removes the document.
      */
-    private suspend fun write(codes: Boolean, document: JournalExportDocument, bounds: JournalBounds, read: BudgetsRead): JournalExportOutcome {
+    private suspend fun write(codes: Boolean, document: JournalExportDocument, bounds: JournalBounds?, read: BudgetsRead): JournalExportOutcome {
         val latest = ArrayDeque<JournalEntry>()
         val writer: Writer = try {
             document.open().buffered()
@@ -258,12 +280,16 @@ class JournalExport(
         try {
             writer.use {
                 file.header(versionName, clock.instant(), codes, read.firstDate, read.budgets)
-                val streamed = streamEntries(bounds, afterPage = writer::flush) { entry ->
-                    file.entry(entry)
-                    latest.addFirst(entry)
-                    if (latest.size > LATEST_SHOWN) latest.removeLast()
+                val streamed = if (bounds == null) {
+                    true
+                } else {
+                    streamEntries(bounds, afterPage = writer::flush) { entry ->
+                        file.entry(entry)
+                        latest.addFirst(entry)
+                        if (latest.size > LATEST_SHOWN) latest.removeLast()
+                    }
                 }
-                if (streamed != null) return failed(streamed)
+                if (!streamed) return failed(ExportFailure.JournalNotRead)
                 file.entriesDone()
                 // UC-011 BR-005: When the Operator chose codes, payee and memo text are replaced by codes; nothing else is.
                 val coded = if (codes) ExportCodes() else null
@@ -272,7 +298,7 @@ class JournalExport(
                     .forEach { transaction ->
                         file.transaction(if (coded == null) transaction else transaction.copy(payee = coded.payee(transaction.payee), memo = coded.memo(transaction.memo)))
                     }
-                file.closing()
+                file.closing(removedWhileWritten(bounds, file.entriesWritten))
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -280,39 +306,38 @@ class JournalExport(
             // A3 of UC-011: the file cannot be written completely at the chosen place: Slussen stops writing.
             return failed(ExportFailure.NotWritten)
         }
-        return JournalExportOutcome.Complete(file.entriesWritten, file.transactionsWritten, read.budgets, latest.toList())
+        return JournalExportOutcome.Complete(
+            file.entriesWritten, file.transactionsWritten, read.budgets, latest.toList(), removedWhileWritten(bounds, file.entriesWritten),
+        )
     }
 
     /**
-     * The entries up to the one noted at step 3, oldest first, each handed to [write], one page of short reads at a time
-     * with the page written before the next is read. Returns null when every entry was written, or why not: the Decision
-     * Journal could not be read, or entries not written yet were removed meanwhile. Each page is handed on ([afterPage])
-     * before the next is read. The next page starts at the last entry
-     * written: the Decision Journal only ever loses its oldest entries, so while that entry is still there no later one
-     * was removed; when it is gone, a trimming or a clearing may have taken entries the file does not hold yet.
+     * How many of the entries noted at step 3 are not in the file: no entry with an `id` up to the bound is added after it
+     * is noted, so each one counted then and not written was removed meanwhile, by the size limit or a clearing.
      */
-    private suspend fun streamEntries(bounds: JournalBounds, afterPage: () -> Unit, write: (JournalEntry) -> Unit): ExportFailure? {
-        var lastWritten: Long? = null
+    private fun removedWhileWritten(bounds: JournalBounds?, written: Int): Int = (bounds?.count ?: 0) - written
+
+    /**
+     * The entries up to the one noted at step 3, oldest first, each handed to [write], one page of short reads at a time
+     * with the page handed on ([afterPage]) before the next is read. Each page starts after the last entry written: an
+     * entry removed meanwhile, by the size limit or a clearing, is left out, and the next entry still held follows
+     * (UC-011 BR-007, S-B-28). Returns false when the Decision Journal could not be read.
+     */
+    private suspend fun streamEntries(bounds: JournalBounds, afterPage: () -> Unit, write: (JournalEntry) -> Unit): Boolean {
+        var lastWritten = 0L
         while (true) {
-            val from = lastWritten ?: bounds.oldestId
             val page = try {
-                reader.entriesFrom(from, bounds.newestId, if (lastWritten == null) pageSize else pageSize + 1)
+                // UC-011 BR-007: The entries are those the Decision Journal holds when they are written, up to the newest noted at step 3.
+                reader.entriesAfter(lastWritten, bounds.newestId, pageSize)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                return ExportFailure.JournalNotRead
+                return false
             }
-            val fresh = if (lastWritten == null) {
-                page
-            } else {
-                // UC-011 BR-007: The entries are those the Decision Journal holds when they are written, and none is missing from among them.
-                if (page.firstOrNull()?.id != lastWritten) return ExportFailure.JournalChangedWhileWritten
-                page.drop(1)
-            }
-            fresh.forEach { write(it.entry) }
+            page.forEach { write(it.entry) }
             afterPage()
-            lastWritten = fresh.lastOrNull()?.id ?: lastWritten
-            if (fresh.size < pageSize || lastWritten == null || lastWritten >= bounds.newestId) return null
+            lastWritten = page.lastOrNull()?.id ?: return true
+            if (page.size < pageSize || lastWritten >= bounds.newestId) return true
         }
     }
 

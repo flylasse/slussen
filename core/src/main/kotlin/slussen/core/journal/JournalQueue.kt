@@ -52,15 +52,16 @@ class JournalQueue(private val executor: Executor) {
 
     /**
      * Hands [task] over after every task handed over before it, and returns at once; its result, or what it threw, is
-     * awaited from what this returns, by a caller that may wait for the journal (the Decision Journal's own control).
+     * awaited from what this returns (a task that throws anything, an Error too, completes it with that failure), by a caller that may wait for the journal (the Decision Journal's own control).
      */
     fun <T> queue(task: () -> T): Deferred<T> {
         val result = CompletableDeferred<T>()
         try {
             executor.execute {
+                // Any Throwable, an Error too, completes the result, so that a caller waiting for it is always answered.
                 try {
                     result.complete(task())
-                } catch (failure: Exception) {
+                } catch (failure: Throwable) {
                     result.completeExceptionally(failure)
                 }
             }

@@ -47,9 +47,18 @@ object SlussenDatabases {
             .addCallback(SynchronousFull)
             .build()
 
-    /** `auto_vacuum = INCREMENTAL`, so that the oldest entries' space can be returned (ADR-002 §9). */
+    /**
+     * `auto_vacuum = INCREMENTAL`, so that the oldest entries' space can be returned (ADR-002 §9), and
+     * `JournalMode.TRUNCATE` as the other two databases: ADR-002 §1 names `journal.db` and its rollback journal as the
+     * files it keeps, and the size the limit is kept against (`page_count × page_size`) then counts everything the
+     * Decision Journal holds, with no write-ahead log beside it. A `journal.db` an earlier build left in write-ahead
+     * logging is switched when Room opens it: SQLite writes its log back into the file and removes it, so its entries
+     * stay. Without write-ahead logging a reader would wait for a writer; the Journal Export's reads are short and run on
+     * the journal's own thread (ADR-002 §9), so none waits for long.
+     */
     fun openJournal(context: Context): JournalDatabase =
         Room.databaseBuilder(context, JournalDatabase::class.java, journalFile(context).path)
+            .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
             .addCallback(IncrementalAutoVacuum)
             .build()
 

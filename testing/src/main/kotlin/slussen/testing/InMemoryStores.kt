@@ -238,7 +238,7 @@ class InMemoryDecisionJournal : DecisionJournalRecorder, DecisionJournalControl,
     var failsToReadSize: Boolean = false
     var failsToClear: Boolean = false
 
-    /** The export's reads of the entries fail ([bounds] and [entriesFrom]), as a database that cannot be read would. */
+    /** The export's reads of the entries fail ([bounds], [entriesAfter], [holdsAnEntryNow]), as a database that cannot be read would. */
     var failsToReadEntries: Boolean = false
 
     /**
@@ -320,16 +320,26 @@ class InMemoryDecisionJournal : DecisionJournalRecorder, DecisionJournalControl,
     override suspend fun bounds(): JournalBounds? = queue.queue {
         if (failsToReadEntries) throw IllegalStateException("The invented journal database of this test cannot be read.")
         val oldest = recorded.firstOrNull() ?: return@queue null
-        JournalBounds(oldest.id, oldest.entry.recordedAt, recorded.last().id)
+        JournalBounds(oldest.id, oldest.entry.recordedAt, recorded.last().id, recorded.size)
     }.await()
 
-    override suspend fun entriesFrom(fromId: Long, upToId: Long, limit: Int): List<StoredJournalEntry> {
+    override suspend fun entriesAfter(afterId: Long, upToId: Long, limit: Int): List<StoredJournalEntry> {
         beforePage(pagesAsked.size)
         pagesAsked += limit
         return queue.queue {
             if (failsToReadEntries) throw IllegalStateException("The invented journal database of this test cannot be read.")
-            recorded.filter { it.id in fromId..upToId }.take(limit)
+            recorded.filter { it.id > afterId && it.id <= upToId }.take(limit)
         }.await()
+    }
+
+    /** How often the export asked whether an entry is held, at once, without the journal's own thread. */
+    var directReads: Int = 0
+        private set
+
+    override suspend fun holdsAnEntryNow(): Boolean {
+        directReads++
+        if (failsToReadEntries) throw IllegalStateException("The invented journal database of this test cannot be read.")
+        return recorded.isNotEmpty()
     }
 }
 

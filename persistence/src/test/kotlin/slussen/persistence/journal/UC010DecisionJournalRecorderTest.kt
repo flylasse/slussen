@@ -57,7 +57,9 @@ class UC010DecisionJournalRecorderTest {
 
         override fun bounds(): JournalBounds? = null
 
-        override fun entriesFrom(fromId: Long, upToId: Long, limit: Int): List<StoredJournalEntry> = emptyList()
+        override fun entriesAfter(afterId: Long, upToId: Long, limit: Int): List<StoredJournalEntry> = emptyList()
+
+        override fun holdsAnEntry(): Boolean = entries.isNotEmpty()
     }
 
     /** Waits until every task handed to the journal's thread before it is done. */

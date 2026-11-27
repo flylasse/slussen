@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Assertions.assertTimeoutPreemptively
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import slussen.core.journal.ExportFailure
 import slussen.core.journal.JournalExport
 import slussen.core.journal.JournalExportOutcome
 import slussen.core.port.JournalBounds
@@ -68,12 +67,14 @@ class UC011DecisionJournalReaderTest {
         }
 
         override fun bounds(): JournalBounds? =
-            entries.firstOrNull()?.let { JournalBounds(it.id, it.entry.recordedAt, entries.last().id) }
+            entries.firstOrNull()?.let { JournalBounds(it.id, it.entry.recordedAt, entries.last().id, entries.size) }
 
-        override fun entriesFrom(fromId: Long, upToId: Long, limit: Int): List<StoredJournalEntry> {
+        override fun entriesAfter(afterId: Long, upToId: Long, limit: Int): List<StoredJournalEntry> {
             pages += limit
-            return entries.filter { it.id in fromId..upToId }.take(limit)
+            return entries.filter { it.id > afterId && it.id <= upToId }.take(limit)
         }
+
+        override fun holdsAnEntry(): Boolean = entries.isNotEmpty()
     }
 
     @Test
@@ -98,13 +99,13 @@ class UC011DecisionJournalReaderTest {
             noted.await()
         }
 
-        assertEquals(JournalBounds(1, now, 2), bounds)
-        assertEquals(listOf(file.entries[0], file.entries[1]), runBlocking { journal.entriesFrom(1, 2, 10) })
+        assertEquals(JournalBounds(1, now, 2, 2), bounds)
+        assertEquals(listOf(file.entries[1]), runBlocking { journal.entriesAfter(1, 2, 10) })
     }
 
     @Test
     @UseCase(id = "UC-011", scenario = "Main Success Scenario", businessRules = ["BR-007"], requirements = ["NFR-006"])
-    @DisplayName("BR-007, UC-010 BR-004: a clearing handed over while an export is under way runs at once, between two pages; the export then removes its file and says the Decision Journal changed while it was written")
+    @DisplayName("BR-007 (S-B-28), UC-010 BR-004: a clearing handed over while an export is under way runs at once, between two pages; the export completes with the entries written before it and counts the rest as removed while the file was written")
     fun aClearingIsNotHeldByAnExport() {
         val file = IdFile()
         repeat(1_200) { file.add(entry(it)) }
@@ -144,9 +145,11 @@ class UC011DecisionJournalReaderTest {
             running.await()
         }
 
-        assertEquals(JournalExportOutcome.Failed(ExportFailure.JournalChangedWhileWritten, removed = true), outcome)
-        assertTrue(document.removed)
+        val complete = outcome as JournalExportOutcome.Complete
+        assertEquals(JournalExport.PAGE_SIZE, complete.entries)
+        assertEquals(1_200 - JournalExport.PAGE_SIZE, complete.removedWhileWritten)
+        assertTrue(!document.removed)
         assertTrue(file.entries.isEmpty())
-        assertEquals(listOf(JournalExport.PAGE_SIZE, JournalExport.PAGE_SIZE + 1), file.pages)
+        assertEquals(listOf(JournalExport.PAGE_SIZE, JournalExport.PAGE_SIZE), file.pages)
     }
 }

@@ -3,9 +3,11 @@ package slussen.app.ui.journal
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import slussen.app.ui.Texts
 import slussen.app.ui.UiServices
 import slussen.app.ui.components.AnswerKind
 import slussen.app.ui.components.AnswerUi
@@ -32,6 +34,8 @@ data class JournalExportUi(
     val answer: AnswerUi?,
     /** Step 5 (`#complete`): the latest entries in the export, newest first, for review. */
     val latest: List<String>,
+    /** While the export waits for the lane behind another operation, Withdraw ends it (ADR-007 §1). */
+    val canWithdraw: Boolean = false,
 )
 
 /**
@@ -97,8 +101,30 @@ class JournalExportViewModel(private val services: UiServices) : ViewModel() {
     }
 
     /** Steps 3-5, A2, A3: the export to [document], the place the Operator chose, named [place] on the screen. */
-    fun export(document: JournalExportDocument, place: String) {
+    /** NFR-023: the device has no app that lets the Operator choose a place; no file is written. */
+    fun noPlaceCanBeChosen() {
         choosing = false
+        mutableState.value = mutableState.value.copy(answer = AnswerUi(JournalExportTexts.NO_APP, AnswerKind.Failed, JournalExportTexts.NO_APP_DETAIL))
+        publish()
+    }
+
+    private var running: Job? = null
+    private var withdrawn = false
+
+    /** ADR-007 §1: the export waiting for the lane is withdrawn; the document is removed and no file is written. */
+    fun withdraw() {
+        if (!mutableState.value.canWithdraw) return
+        withdrawn = true
+        running?.cancel()
+    }
+
+    /**
+     * Steps 3-5, A2, A3: the export to [document], the place the Operator chose, shown as [place] until [name], read off
+     * the screen's thread, gives the name the document has at its place.
+     */
+    fun export(document: JournalExportDocument, place: String, name: suspend () -> String? = { null }) {
+        choosing = false
+        withdrawn = false
         val codes = mutableState.value.codes
         mutableState.value = mutableState.value.copy(
             writing = WritingUi(JournalExportTexts.writing(services.budgetAppName), JournalExportTexts.to(place)),
@@ -106,38 +132,71 @@ class JournalExportViewModel(private val services: UiServices) : ViewModel() {
             latest = emptyList(),
         )
         publish()
-        viewModelScope.launch {
-            val outcome = try {
-                services.journalExport.export(codes, document)
+        running = viewModelScope.launch {
+            val shown = try {
+                name() ?: place
             } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                place
+            }
+            mutableState.value = mutableState.value.copy(writing = WritingUi(JournalExportTexts.writing(services.budgetAppName), JournalExportTexts.to(shown)))
+            val outcome = try {
+                services.journalExport.export(
+                    codes,
+                    document,
+                    waiting = { other ->
+                        mutableState.value = mutableState.value.copy(
+                            writing = WritingUi(JournalExportTexts.waiting(Texts.operation(other), services.budgetAppName), JournalExportTexts.to(shown)),
+                            canWithdraw = true,
+                        )
+                    },
+                    reading = {
+                        mutableState.value = mutableState.value.copy(
+                            writing = WritingUi(JournalExportTexts.writing(services.budgetAppName), JournalExportTexts.to(shown)),
+                            canWithdraw = false,
+                        )
+                    },
+                )
+            } catch (cancelled: CancellationException) {
+                if (withdrawn) answerWithdrawn()
                 throw cancelled
             } catch (failure: Exception) {
                 JournalExportOutcome.Failed(ExportFailure.StoredDataNotRead, removed = false)
             }
-            answer(outcome, place)
+            answer(outcome, shown)
         }
+    }
+
+    private fun answerWithdrawn() {
+        mutableState.value = mutableState.value.copy(
+            writing = null,
+            canWithdraw = false,
+            answer = AnswerUi(JournalExportTexts.WITHDRAWN, AnswerKind.Unchanged, JournalExportTexts.NO_FILE),
+        )
+        publish()
     }
 
     private fun answer(outcome: JournalExportOutcome, place: String) {
         val now = services.clock.instant()
         mutableState.value = when (outcome) {
             is JournalExportOutcome.Complete -> {
-                hasEntries = true
                 val fromCopy = outcome.budgets.any { it !is ExportedBudget.Read }
                 mutableState.value.copy(
                     writing = null,
+                    canWithdraw = false,
                     answer = AnswerUi(
                         if (fromCopy) JournalExportTexts.COMPLETE_FROM_COPY else JournalExportTexts.COMPLETE,
                         AnswerKind.Done,
-                        JournalExportTexts.complete(outcome.entries, place, outcome.budgets, services.budgetAppName, services.formats, now),
+                        JournalExportTexts.complete(outcome.entries, place, outcome.budgets, services.budgetAppName, services.formats, now, outcome.removedWhileWritten),
                     ),
                     latest = outcome.latest.map { JournalExportTexts.entry(it, services.formats) },
                 )
             }
             is JournalExportOutcome.Failed -> {
-                if (outcome.why == ExportFailure.NothingToExport) hasEntries = false
                 mutableState.value.copy(
                     writing = null,
+                    canWithdraw = false,
                     answer = AnswerUi(JournalExportTexts.FAILED, AnswerKind.Failed, JournalExportTexts.failed(outcome.why, outcome.removed, place)),
                     latest = emptyList(),
                 )

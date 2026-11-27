@@ -69,6 +69,9 @@ class UC011ExportTheDecisionJournalTest {
 
     private companion object {
         const val PLANTED_ACCOUNT_NUMBER = "PLANTED-ACCOUNT-NUMBER-440211"
+        const val PLANTED_CARD_NUMBER = "PLANTED-CARD-NUMBER-118277"
+        const val PLANTED_ACCOUNT_REFERENCE = "PLANTED-ACCOUNT-REFERENCE-acct"
+        const val PLANTED_CARD_REFERENCE = "PLANTED-CARD-REFERENCE-acct"
         const val PLANTED_FINGERPRINT = "PLANTED-FINGERPRINT-77c1"
         const val PLANTED_BANK_PAYEE = "PLANTED-BANK-PAYEE-Harbor"
         const val PLANTED_BANK_MEMO = "PLANTED-BANK-MEMO-rent"
@@ -256,7 +259,11 @@ class UC011ExportTheDecisionJournalTest {
             ).sortedBy { it["amount"] as BigDecimal },
             file.list("budgetAppTransactions").sortedBy { it["amount"] as BigDecimal },
         )
-        assertEquals(mapOf("entries" to BigDecimal(entries.size), "budgetAppTransactions" to BigDecimal(2)), file.part("closing"))
+        assertEquals(
+            mapOf("entries" to BigDecimal(entries.size), "budgetAppTransactions" to BigDecimal(2), "entriesRemovedWhileWritten" to BigDecimal(0)),
+            file.part("closing"),
+        )
+        assertEquals(0, outcome.removedWhileWritten)
         assertEquals(entries.size, outcome.entries)
         assertEquals(2, outcome.transactions)
         assertEquals(entries.takeLast(3).reversed(), outcome.latest)
@@ -423,39 +430,176 @@ class UC011ExportTheDecisionJournalTest {
 
     // ---- BR-003, BR-005, NFR-012: nothing that must not leave in clear --------------------------------------------------
 
+    /**
+     * A Decision Journal that holds every kind of entry the code records, each from the real operation: the Budgets chosen
+     * and the credentials entered, a Fetch of two Bank Accounts whose Data Provider delivers a planted Bank Account number,
+     * planted references, payees and memos, with its Comparison (the entries of step 9 and the changed statuses), a Review
+     * Decision and a Transfer Decision, Account Mapping changes, an Operator Setting, a description list, and the Decision
+     * Journal's own switch and threshold. The Bank Account carries a planted reference and fingerprint, as one identified
+     * from an Offered Bank Account does. Returns the Import Identifier of the Bank Transaction the Budget App holds.
+     */
+    private suspend fun everyKindOfEntry(): String {
+        slice.enterCredentials()
+        val listed = slice.connect.readBudgets() as slussen.core.connection.BudgetsRead.Listed
+        slice.connect.chooseBudgets(listed.budgets, setOf("budget-household", "budget-summer", "budget-care"))
+        val checking = (
+            slice.connectionStore.addBankAccount(
+                slussen.core.port.NewBankAccount(
+                    generatedIdentifier = "00000000-0000-4000-8000-000000004410",
+                    bank = slussen.core.port.BankChoice.Named("Kestrel Bank"),
+                    providerBankId = null,
+                    dataProviderId = slice.feedsId,
+                    fileFormatId = null,
+                    balanceDataProviderId = null,
+                    balanceProviderReference = null,
+                    name = "Kestrel Checking",
+                    currency = USD,
+                    type = BankAccountType.Checking,
+                    providerReference = PLANTED_ACCOUNT_REFERENCE,
+                    bankAccountFingerprint = PLANTED_FINGERPRINT,
+                    identifiedAt = now.minus(Duration.ofDays(2)),
+                    startDate = null,
+                    budgetAccountId = budgetAccount("Checking").id,
+                ),
+            ) as slussen.core.port.AddOutcome.Added
+            ).bankAccountId
+        val card = (
+            slice.connectionStore.addBankAccount(
+                slussen.core.port.NewBankAccount(
+                    generatedIdentifier = "00000000-0000-4000-8000-000000001182",
+                    bank = slussen.core.port.BankChoice.Named("Pinecrest Card Services"),
+                    providerBankId = null,
+                    dataProviderId = slice.feedsId,
+                    fileFormatId = null,
+                    balanceDataProviderId = null,
+                    balanceProviderReference = null,
+                    name = "Pinecrest Rewards Card",
+                    currency = USD,
+                    type = BankAccountType.CreditCard,
+                    providerReference = PLANTED_CARD_REFERENCE,
+                    bankAccountFingerprint = null,
+                    identifiedAt = now.minus(Duration.ofDays(2)),
+                    startDate = null,
+                    budgetAccountId = budgetAccount("Rewards Card").id,
+                ),
+            ) as slussen.core.port.AddOutcome.Added
+            ).bankAccountId
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking").id)
+        fun tx(reference: String?, date: LocalDate, amount: Amount, payee: String) =
+            slussen.pluginapi.provider.ProviderTransaction.Interpretable(reference, date, amount, USD, payee, PLANTED_BANK_MEMO, true)
+        slice.feeds.fetchAnswer = {
+            slussen.pluginapi.provider.FetchResponse(
+                slussen.pluginapi.provider.SourceOutcome.Completed,
+                emptyList(),
+                listOf(
+                    slussen.pluginapi.provider.DeliveredBankAccount(
+                        providerReference = PLANTED_ACCOUNT_REFERENCE, bankReference = "Kestrel Bank", name = "CHK", kind = "checking", currency = USD,
+                        number = slussen.pluginapi.value.BankAccountNumber(PLANTED_ACCOUNT_NUMBER),
+                        result = slussen.pluginapi.provider.BankAccountResult.Read(
+                            listOf(
+                                tx("PLANTED-REF-sent", oct14, amount(-12, 340), PLANTED_BANK_PAYEE),
+                                tx(null, LocalDate.of(2026, 10, 13), amount(-7), PLANTED_BANK_PAYEE),
+                                tx("PLANTED-REF-pay", LocalDate.of(2026, 10, 12), amount(-250), PLANTED_BANK_PAYEE),
+                            ),
+                            amount(4140, 50),
+                        ),
+                    ),
+                    slussen.pluginapi.provider.DeliveredBankAccount(
+                        providerReference = PLANTED_CARD_REFERENCE, bankReference = "Pinecrest Card Services", name = "VISA", kind = "credit card",
+                        currency = USD, number = slussen.pluginapi.value.BankAccountNumber(PLANTED_CARD_NUMBER),
+                        result = slussen.pluginapi.provider.BankAccountResult.Read(
+                            listOf(tx("PLANTED-REF-received", LocalDate.of(2026, 10, 13), amount(250), PLANTED_BANK_PAYEE)),
+                            amount(-1268, 400),
+                        ),
+                    ),
+                ),
+            )
+        }
+        val sent = identifier("PLANTED-REF-sent")
+        answerHousehold(
+            read("ynab-1", oct14, amount(-12, 340), importIdentifier = sent),
+            read("ynab-2", oct14, amount(-42, 500), importIdentifier = OTHER_PATH_IDENTIFIER),
+            read("ynab-3", oct14, amount(-5)),
+        )
+        assertInstanceOf(slussen.core.fetch.FetchStart.Ran::class.java, slice.fetch.fetch(slice.feedsKey, true))
+        val stored = slice.importStatusStore.bankTransactions
+        val doubtful = stored.single { it.stableReference == null }.id
+        assertInstanceOf(slussen.core.review.ReviewOutcome.Stored::class.java, slice.review.decide(doubtful, slussen.core.port.ReviewChoice.ImportAnyway))
+        val paid = stored.single { it.amount == amount(-250) }.id
+        assertInstanceOf(slussen.core.transfer.TransferOutcome.Stored::class.java, slice.transferDecisions.decide(paid, slussen.core.transfer.TransferChoice.Hold))
+        slice.mappings.rename(checking, "Everyday Checking")
+        slice.mappings.setStartDate(checking, LocalDate.of(2026, 9, 1))
+        assertEquals(SettingOutcome.Stored(9), slice.generalSettings.change(NumberSetting.DefaultWait, 9))
+        slice.descriptionLists.edit(slussen.core.port.TransferDescriptionKind.BankTransfer, slussen.core.settings.DescriptionEdit.Add("HARBOR MOVE"))
+        slice.journalControl.changeWarningThreshold(85)
+        slice.journalControl.switch(false)
+        slice.journalControl.switch(true)
+        val kinds = journal.entries.map { it.eventKind }.toSet()
+        assertTrue(
+            kinds.containsAll(
+                listOf(
+                    JournalEventKind.ConfigurationChange, JournalEventKind.TransactionSeen, JournalEventKind.StatusChanged,
+                    JournalEventKind.OperatorDecision, JournalEventKind.AccountMappingChange,
+                ),
+            ),
+            "$kinds",
+        )
+        return sent
+    }
+
+    /** What must never be in a Journal Export, with codes or without (BR-003, BR-007, NFR-012, NFR-021). */
+    private val neverInTheFile = listOf(
+        PLANTED_BANK_PAYEE, PLANTED_BANK_MEMO, PLANTED_ACCOUNT_NUMBER, PLANTED_CARD_NUMBER, PLANTED_ACCOUNT_REFERENCE,
+        PLANTED_CARD_REFERENCE, PLANTED_FINGERPRINT, "PLANTED-REF", "4410", "1182",
+        ExampleData.BUDGET_APP_TOKEN, ExampleData.SETUP_KEY, ExampleData.EXCHANGED_ACCESS_CREDENTIAL, OTHER_PATH_IDENTIFIER,
+        "ynab-1", "ynab-2", "ynab-3", "budget-household", "ba-checking", "ba-rewards",
+    )
+
+    private fun assertNoneInTheFile(planted: List<String>) {
+        val text = String(document.bytes, Charsets.UTF_8)
+        planted.forEach { assertFalse(text.contains(it), "\"$it\" is in the Journal Export") }
+    }
+
     @Test
     @UseCase(id = "UC-011", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-005", "BR-007"], requirements = ["NFR-012"])
-    @DisplayName("BR-003, BR-005, NFR-012: with codes, no planted payee, memo, Bank Account number, fingerprint, credential or identifier the Budget App gives is in the written bytes")
+    @DisplayName("BR-003, BR-005, NFR-012: with every kind of entry recorded and codes chosen, no planted payee, memo, Bank Account number, reference, fingerprint, credential or identifier the Budget App gives is in the written bytes")
     fun withCodesNothingPlantedIsInTheFile() = runTest {
-        compared()
+        everyKindOfEntry()
 
         complete(export(codes = true))
 
-        val text = String(document.bytes, Charsets.UTF_8)
-        listOf(
-            PLANTED_PAYEE, PLANTED_MEMO, PLANTED_BANK_PAYEE, PLANTED_BANK_MEMO, PLANTED_ACCOUNT_NUMBER, PLANTED_FINGERPRINT,
-            ExampleData.BUDGET_APP_TOKEN, ExampleData.SETUP_KEY, ExampleData.EXCHANGED_ACCESS_CREDENTIAL, OTHER_PATH_IDENTIFIER,
-            "ynab-1", "ynab-2", "ynab-3", "budget-household", "ba-checking", "PLANTED",
-        ).forEach { planted -> assertFalse(text.contains(planted), "\"$planted\" is in the Journal Export") }
+        assertNoneInTheFile(neverInTheFile + listOf(PLANTED_PAYEE, PLANTED_MEMO, "PLANTED"))
         assertEquals(true, file().part("header")["codes"])
+        assertTrue(file().list("entries").size >= journal.entries.size - 2)
     }
 
     @Test
     @UseCase(id = "UC-011", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-007"], requirements = ["NFR-012"])
-    @DisplayName("BR-003, NFR-012: without codes the Budget App's payee and memo are exported as the Operator chose, and still no Bank Transaction's payee or memo, Bank Account number, fingerprint, credential or identifier the Budget App gives is in the written bytes")
+    @DisplayName("BR-003, NFR-012: without codes the Budget App's payee and memo are exported as the Operator chose, and still nothing else planted is in the written bytes, with every kind of entry recorded")
     fun withoutCodesNoSecretIsInTheFile() = runTest {
-        compared()
+        everyKindOfEntry()
 
         complete(export(codes = false))
 
+        assertNoneInTheFile(neverInTheFile)
         val text = String(document.bytes, Charsets.UTF_8)
-        listOf(
-            PLANTED_BANK_PAYEE, PLANTED_BANK_MEMO, PLANTED_ACCOUNT_NUMBER, PLANTED_FINGERPRINT,
-            ExampleData.BUDGET_APP_TOKEN, ExampleData.SETUP_KEY, ExampleData.EXCHANGED_ACCESS_CREDENTIAL, OTHER_PATH_IDENTIFIER,
-            "ynab-1", "ynab-2", "ynab-3", "budget-household", "ba-checking",
-        ).forEach { planted -> assertFalse(text.contains(planted), "\"$planted\" is in the Journal Export") }
         assertTrue(text.contains(PLANTED_PAYEE))
         assertTrue(text.contains(PLANTED_MEMO))
+    }
+
+    @Test
+    @UseCase(id = "UC-011", scenario = "A2: Budget App Cannot Be Read", businessRules = ["BR-003", "BR-005"], requirements = ["NFR-012"])
+    @DisplayName("A2, BR-005, NFR-012: from the stored copy with codes chosen, the copy's payees and memos are coded too and nothing planted is in the written bytes")
+    fun fromTheStoredCopyWithCodesNothingPlantedIsInTheFile() = runTest {
+        everyKindOfEntry()
+        slice.budgetApp.reader.changesAnswer = { ReadResult.TransientFailure(FailureKind.Timeout) }
+
+        val outcome = complete(export(codes = true))
+
+        assertInstanceOf(ExportedBudget.FromStoredCopy::class.java, outcome.budgets.first())
+        assertEquals(3, file().list("budgetAppTransactions").size)
+        assertNoneInTheFile(neverInTheFile + listOf(PLANTED_PAYEE, PLANTED_MEMO, "PLANTED"))
+        assertEquals(setOf("P1"), file().list("budgetAppTransactions").map { it["payee"] }.toSet())
     }
 
     @Test
@@ -585,21 +729,65 @@ class UC011ExportTheDecisionJournalTest {
     }
 
     @Test
-    @UseCase(id = "UC-011", scenario = "A3: File Cannot Be Written", businessRules = ["BR-007"], requirements = ["NFR-006"])
-    @DisplayName("BR-007: a clearing between two pages, which removes entries not written yet, is not blocked; the export does not present a file with a gap: it removes the file and says why")
-    fun aClearingWhileTheEntriesAreWrittenRemovesTheFile() = runTest {
+    @UseCase(id = "UC-011", scenario = "Main Success Scenario", businessRules = ["BR-007"], requirements = ["NFR-006"])
+    @DisplayName("BR-007 (S-B-28): a clearing between two pages is not blocked; the export completes with the entries written before it, and its closing part counts the noted entries removed while the file was written")
+    fun aClearingBetweenPagesIsCountedInTheClosingPart() = runTest {
         readyAndEmpty()
         records(1_200)
         journal.beforePage = { page ->
             if (page == 1) assertEquals(Unit, journal.clear(firstEntry = null).await())
         }
 
-        val outcome = failed(export())
+        val outcome = complete(export())
 
-        assertEquals(ExportFailure.JournalChangedWhileWritten, outcome.why)
-        assertTrue(outcome.removed)
-        assertTrue(document.removed)
-        assertTrue(journal.entries.isEmpty())
+        assertEquals((0 until 500).map { "Session $it started" }, file().list("entries").map { it["details"] })
+        assertEquals(BigDecimal(700), file().part("closing")["entriesRemovedWhileWritten"])
+        assertEquals(BigDecimal(500), file().part("closing")["entries"])
+        assertEquals(500, outcome.entries)
+        assertEquals(700, outcome.removedWhileWritten)
+        assertFalse(document.removed)
+    }
+
+    @Test
+    @UseCase(id = "UC-011", scenario = "Main Success Scenario", businessRules = ["BR-007"], requirements = ["NFR-006"])
+    @DisplayName("BR-007 (S-B-28): a trimming that overtakes the read leaves out the entries it removed; the file is complete and well formed, holds the entries still held in order, and counts those removed")
+    fun aTrimmingThatOvertakesTheReadIsLeftOutAndCounted() = runTest {
+        readyAndEmpty()
+        records(1_200)
+        journal.beforePage = { page -> if (page == 1) journal.removeOldest(800) }
+
+        val outcome = complete(export())
+
+        val expected = (0 until 500).map { "Session $it started" } + (800 until 1_200).map { "Session $it started" }
+        assertEquals(expected, file().list("entries").map { it["details"] })
+        assertEquals(BigDecimal(300), file().part("closing")["entriesRemovedWhileWritten"])
+        assertEquals(900, outcome.entries)
+        assertEquals(300, outcome.removedWhileWritten)
+    }
+
+    @Test
+    @UseCase(id = "UC-011", scenario = "Main Success Scenario", businessRules = ["BR-007"], requirements = ["NFR-006"])
+    @DisplayName("BR-007 (S-B-28), UC-010 BR-003: a Decision Journal at its size limit, with 600 entries recorded while the file is written, each trimming the oldest, gives a complete export; every noted entry is either in the file or counted as removed")
+    fun aJournalAtItsSizeLimitWithEntriesDuringTheReadCompletes() = runTest {
+        readyAndEmpty()
+        // A size limit of 10 MB and entries of 10,000 bytes: 1,000 entries fill it.
+        slice.settings.settings = slice.settings.settings.copy(journalSizeLimitMb = 10)
+        journal.bytesPerEntry = 10_000
+        records(1_000)
+        assertEquals(1_000, journal.entries.size)
+        journal.beforePage = { page ->
+            if (page == 1) repeat(600) { slice.journal.record(JournalEventKind.SessionStart, "Recorded during the export, $it") }
+        }
+
+        val outcome = complete(export())
+
+        assertEquals(1_000, outcome.entries + outcome.removedWhileWritten)
+        assertTrue(outcome.removedWhileWritten > 0)
+        val written = file().list("entries").map { it["details"] as String }
+        assertTrue(written.none { it.startsWith("Recorded during the export") })
+        assertEquals(written.sortedBy { it.removePrefix("Session ").removeSuffix(" started").toInt() }, written)
+        assertEquals(BigDecimal(outcome.removedWhileWritten), file().part("closing")["entriesRemovedWhileWritten"])
+        assertEquals(1_000, journal.entries.size)
     }
 
     @Test
@@ -627,6 +815,31 @@ class UC011ExportTheDecisionJournalTest {
         assertEquals(setOf(OperationKind.JournalExport), duringRead.toSet())
         assertEquals(SettingOutcome.Stored(9), changed.await())
         assertEquals(600, file().list("entries").size)
+    }
+
+    @Test
+    @UseCase(id = "UC-011", scenario = "Main Success Scenario", businessRules = ["BR-002"])
+    @DisplayName("ADR-007 §1: an export that waits for the lane behind another operation says which; cancelled while it waits, it reads nothing, removes the document and stores nothing")
+    fun anExportWaitingForTheLaneCanBeWithdrawn() = runTest {
+        compared()
+        slice.budgetApp.reader.changeReads.clear()
+        val lane = CompletableDeferred<Unit>()
+        val other = async { slice.coordinator.run(OperationKind.Comparison, slussen.core.port.StartedBy.Operator) { lane.await() } }
+        runCurrent()
+        val waitedFor = mutableListOf<OperationKind>()
+        val before = storedState()
+
+        val running = async { slice.journalExport.export(false, document, waiting = { waitedFor += it.kind }) }
+        runCurrent()
+        assertEquals(listOf(OperationKind.Comparison), waitedFor)
+        running.cancel()
+        runCurrent()
+
+        assertTrue(document.removed)
+        assertTrue(slice.budgetApp.reader.changeReads.isEmpty())
+        assertEquals(before, storedState())
+        lane.complete(Unit)
+        other.await()
     }
 
     // ---- A2: Budget App Cannot Be Read -----------------------------------------------------------------------------------
@@ -806,18 +1019,39 @@ class UC011ExportTheDecisionJournalTest {
         assertTrue(document.removed)
     }
 
+    @Test
+    @UseCase(id = "UC-011", scenario = "A3: File Cannot Be Written", businessRules = ["BR-002"], requirements = ["NFR-006"])
+    @DisplayName("ADR-002 §9: a task of the journal's own thread that throws an Error completes its result with that failure, so an export waiting for it is answered and never stays on its way")
+    fun aTaskThatThrowsAnErrorCompletesItsResult() = runTest {
+        val queue = JournalQueue { task -> task.run() }
+
+        val result = queue.queue<Int> { throw StackOverflowError("An invented failure of this test.") }
+
+        assertTrue(result.isCompleted)
+        assertInstanceOf(StackOverflowError::class.java, result.getCompletionExceptionOrNull())
+    }
+
     // ---- Preconditions -------------------------------------------------------------------------------------------------
 
     @Test
-    @UseCase(id = "UC-011", scenario = "Main Success Scenario")
-    @DisplayName("Precondition: an empty Decision Journal is nothing to export: no Budget App is contacted, the document is removed")
-    fun anEmptyJournalIsNothingToExport() = runTest {
+    @UseCase(id = "UC-011", scenario = "Main Success Scenario", businessRules = ["BR-008"])
+    @DisplayName("BR-008: with no entry at step 3 (the screen's precondition passed, then the Decision Journal emptied), the Budget App is read from the day of the export back by the read period; the file holds no entry and its closing part says so")
+    fun noEntryAtStep3FollowsBr008() = runTest {
         readyAndEmpty()
         bankAccount()
-
-        assertEquals(JournalExportOutcome.Failed(ExportFailure.NothingToExport, removed = true), export())
-        assertTrue(slice.budgetApp.reader.changeReads.isEmpty())
         assertEquals(false, slice.journalExport.hasEntries())
+        answerHousehold(read("ynab-1", oct14, amount(-1)))
+
+        val outcome = complete(export())
+
+        assertEquals(setOf(today.minusDays(70)), slice.budgetApp.reader.changeReads.map { it.from }.toSet())
+        assertEquals(today.minusDays(70).toString(), file().part("header")["firstDate"])
+        assertTrue(file().list("entries").isEmpty())
+        assertEquals(
+            mapOf("entries" to BigDecimal(0), "budgetAppTransactions" to BigDecimal(1), "entriesRemovedWhileWritten" to BigDecimal(0)),
+            file().part("closing"),
+        )
+        assertEquals(0, outcome.entries)
         records(1)
         assertEquals(true, slice.journalExport.hasEntries())
     }

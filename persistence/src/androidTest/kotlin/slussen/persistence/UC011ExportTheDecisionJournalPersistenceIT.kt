@@ -44,29 +44,30 @@ class UC011ExportTheDecisionJournalPersistenceIT {
 
         val bounds = checkNotNull(storage.journalReader.bounds())
         storage.journalRecorder.record(entry(25), keepWithinBytes = null)
-        val first = storage.journalReader.entriesFrom(bounds.oldestId, bounds.newestId, 10)
-        val rest = storage.journalReader.entriesFrom(first.last().id, bounds.newestId, 100)
+        val first = storage.journalReader.entriesAfter(0, bounds.newestId, 10)
+        val rest = storage.journalReader.entriesAfter(first.last().id, bounds.newestId, 100)
 
-        assertEquals(JournalBounds(bounds.oldestId, now, bounds.oldestId + 24), bounds)
+        assertEquals(JournalBounds(bounds.oldestId, now, bounds.oldestId + 24, 25), bounds)
         assertEquals((0 until 10).map { entry(it) }, first.map { it.entry })
-        assertEquals((9 until 25).map { entry(it) }, rest.map { it.entry })
+        assertEquals((10 until 25).map { entry(it) }, rest.map { it.entry })
+        assertEquals(true, storage.journalReader.holdsAnEntryNow())
         storage.close()
     }
 
     @Test
     @UseCase(id = "UC-011", scenario = "Main Success Scenario", businessRules = ["BR-007"], requirements = ["NFR-006"])
-    @DisplayName("BR-007, UC-010 BR-004: between two pages a trimming removes the oldest entries and a clearing every entry at once; the next page starts where the journal now starts and the ids only grow")
+    @DisplayName("BR-007, UC-010 BR-004: between two pages a trimming removes the oldest entries and a clearing every entry at once; the next page brings the next entry still held and the ids only grow")
     fun aTrimmingAndAClearingBetweenPages() = runBlocking {
         val storage = SlussenStorage.open(DeviceFiles.context, clock)
         repeat(40) { storage.journalRecorder.record(entry(it), keepWithinBytes = null) }
         val bounds = checkNotNull(storage.journalReader.bounds())
-        val first = storage.journalReader.entriesFrom(bounds.oldestId, bounds.newestId, 10)
+        val first = storage.journalReader.entriesAfter(0, bounds.newestId, 10)
 
-        storage.journal.entries().deleteOldest(5)
-        assertEquals(first.last().id, storage.journalReader.entriesFrom(first.last().id, bounds.newestId, 11).first().id)
+        storage.journal.entries().deleteOldest(15)
+        assertEquals(first.last().id + 6, storage.journalReader.entriesAfter(first.last().id, bounds.newestId, 10).first().id)
         storage.journalControl.clear(firstEntry = entry(99)).await()
 
-        assertEquals(emptyList<Any>(), storage.journalReader.entriesFrom(first.last().id, bounds.newestId, 11))
+        assertEquals(emptyList<Any>(), storage.journalReader.entriesAfter(first.last().id, bounds.newestId, 10))
         assertEquals(bounds.newestId + 1, checkNotNull(storage.journalReader.bounds()).oldestId)
         storage.close()
     }

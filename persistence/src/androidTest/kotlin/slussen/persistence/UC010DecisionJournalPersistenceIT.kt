@@ -148,4 +148,29 @@ class UC010DecisionJournalPersistenceIT {
         assertEquals(slussen.core.port.Trimmed(removed = 0, complete = false), trimmed)
         storage.close()
     }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-003"], requirements = ["NFR-006"])
+    @DisplayName("ADR-002 §1, §9: a journal.db an earlier build kept in write-ahead logging opens in TRUNCATE with its entries, no -wal file is left, and its size still falls when entries are removed")
+    fun aJournalInWriteAheadLoggingOpensWithItsEntries() = runBlocking {
+        val path = SlussenDatabases.journalFile(DeviceFiles.context).path
+        val earlier = androidx.room.Room.databaseBuilder(DeviceFiles.context, slussen.persistence.journal.JournalDatabase::class.java, path)
+            .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+            .build()
+        val earlierRecorder = RoomDecisionJournal(slussen.persistence.journal.RoomJournalFile(earlier))
+        repeat(300) { earlierRecorder.record(entry(it), keepWithinBytes = null) }
+        earlierRecorder.sizeBytes()
+        earlier.close()
+
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+
+        assertEquals(300, storage.journal.entries().count())
+        assertEquals(false, java.io.File("$path-wal").exists())
+        val mode = storage.journal.openHelper.writableDatabase.query("PRAGMA journal_mode").use { it.moveToFirst(); it.getString(0) }
+        assertEquals("truncate", mode.lowercase())
+        val before = storage.journalControl.sizeBytes()
+        assertTrue(storage.journalControl.keepWithin(before / 2).await().complete)
+        assertTrue(storage.journalControl.sizeBytes() <= before / 2)
+        storage.close()
+    }
 }

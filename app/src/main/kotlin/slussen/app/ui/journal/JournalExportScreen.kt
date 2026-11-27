@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,7 +32,13 @@ import slussen.app.ui.theme.SlussenColors
  * (`#cancelled`), failed (`#failed`), and nothing to export yet (`#empty`). [onChoose] opens Android's save dialog.
  */
 @Composable
-fun JournalExportScreen(ui: JournalExportUi, onBack: () -> Unit, onCodes: (Boolean) -> Unit, onChoose: () -> Unit) {
+fun JournalExportScreen(
+    ui: JournalExportUi,
+    onBack: () -> Unit,
+    onCodes: (Boolean) -> Unit,
+    onChoose: () -> Unit,
+    onWithdraw: () -> Unit = {},
+) {
     Column(modifier = Modifier.padding(horizontal = 12.dp).verticalScroll(rememberScrollState())) {
         ScreenTitle(JournalExportTexts.TITLE, onBack = onBack)
         SlussenCard {
@@ -54,6 +61,10 @@ fun JournalExportScreen(ui: JournalExportUi, onBack: () -> Unit, onCodes: (Boole
                 RunningText(ui.writing?.text ?: JournalExportTexts.CHOOSE, running = ui.writing != null)
             }
             ui.writing?.let { Muted(it.place) }
+            // ADR-007 §1: an export that waits for the lane behind another operation can be withdrawn.
+            if (ui.canWithdraw) {
+                TextButton(onClick = onWithdraw, modifier = Modifier.testTag("export-withdraw")) { Text(JournalExportTexts.WITHDRAW) }
+            }
             ui.answer?.let { AnswerLine(it) }
         }
         if (ui.latest.isNotEmpty()) {

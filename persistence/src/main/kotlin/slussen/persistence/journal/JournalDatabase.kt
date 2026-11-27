@@ -47,11 +47,15 @@ abstract class DecisionJournalDao {
     abstract fun oldest(): DecisionJournalEntryEntity?
 
     /**
-     * At most [limit] entries with an `id` from [fromId] up to and including [upToId], oldest first: one page of a Journal
+     * At most [limit] entries with an `id` above [afterId] up to and including [upToId], oldest first: one page of a Journal
      * Export (UC-011 BR-007), read in one short statement on the primary key.
      */
-    @Query("SELECT * FROM decision_journal_entry WHERE id >= :fromId AND id <= :upToId ORDER BY id LIMIT :limit")
-    abstract fun page(fromId: Long, upToId: Long, limit: Int): List<DecisionJournalEntryEntity>
+    @Query("SELECT * FROM decision_journal_entry WHERE id > :afterId AND id <= :upToId ORDER BY id LIMIT :limit")
+    abstract fun page(afterId: Long, upToId: Long, limit: Int): List<DecisionJournalEntryEntity>
+
+    /** How many entries have an `id` up to and including [upToId]. */
+    @Query("SELECT COUNT(*) FROM decision_journal_entry WHERE id <= :upToId")
+    abstract fun countUpTo(upToId: Long): Int
 
     /** Removes the [count] oldest entries (lowest `id`). */
     @Query("DELETE FROM decision_journal_entry WHERE id IN (SELECT id FROM decision_journal_entry ORDER BY id LIMIT :count)")

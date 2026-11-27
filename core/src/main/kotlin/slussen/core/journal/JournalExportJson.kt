@@ -140,9 +140,9 @@ internal class JournalExportJson(private val out: Writer) {
         transactions++
     }
 
-    // UC-011 BR-007: A Journal Export ends with a closing part that counts its entries and the Budget App's transactions; a file without it is incomplete.
-    fun closing() {
-        out.write("],\n\"closing\":{\"entries\":$entries,\"budgetAppTransactions\":$transactions}\n}\n")
+    // UC-011 BR-007: A Journal Export ends with a closing part that counts its entries, the Budget App's transactions and the entries noted at step 3 that were removed while the file was written; a file without it is incomplete.
+    fun closing(removedWhileWritten: Int) {
+        out.write("],\n\"closing\":{\"entries\":$entries,\"budgetAppTransactions\":$transactions,\"entriesRemovedWhileWritten\":$removedWhileWritten}\n}\n")
     }
 
     val entriesWritten: Int get() = entries

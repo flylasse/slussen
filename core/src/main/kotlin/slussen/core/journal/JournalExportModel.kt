@@ -43,9 +43,6 @@ sealed interface ExportedBudget {
 
 /** Why no Journal Export was written. */
 sealed interface ExportFailure {
-    /** Precondition: the Decision Journal holds no entry. */
-    data object NothingToExport : ExportFailure
-
     /** Precondition (UC-006 BR-005): an Upload Plan awaits confirmation or an Upload is written. */
     data class Unavailable(val reason: OperationRefusal) : ExportFailure
 
@@ -54,12 +51,6 @@ sealed interface ExportFailure {
 
     /** Slussen's own stored data (the served Budgets, the Operator Settings or the stored copy) could not be read. */
     data object StoredDataNotRead : ExportFailure
-
-    /**
-     * Entries the export had noted and not written yet were removed while it wrote them, by a trimming or a clearing of
-     * the Decision Journal, so the file could not hold them as the Decision Journal held them.
-     */
-    data object JournalChangedWhileWritten : ExportFailure
 
     /** A3: the file could not be written completely at the chosen place. */
     data object NotWritten : ExportFailure
@@ -70,12 +61,15 @@ sealed interface JournalExportOutcome {
     /**
      * Step 5: the Journal Export is complete with [entries] entries and [transactions] of the Budget App's transactions,
      * the sources of its served Budgets ([budgets]) and, for review, its [latest] entries, newest first.
+     * [removedWhileWritten] of the entries noted at step 3 were removed, by the size limit or a clearing, before they were
+     * written, and are not in it (BR-007).
      */
     data class Complete(
         val entries: Int,
         val transactions: Int,
         val budgets: List<ExportedBudget>,
         val latest: List<JournalEntry>,
+        val removedWhileWritten: Int = 0,
     ) : JournalExportOutcome
 
     /**

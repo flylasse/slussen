@@ -1,6 +1,8 @@
 package slussen.persistence
 
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import slussen.core.journal.JournalQueue
 import slussen.core.port.DecisionJournalControl
 import slussen.core.port.DecisionJournalReader
@@ -54,8 +56,11 @@ class RoomDecisionJournal(
 
     override suspend fun bounds(): JournalBounds? = queue.queue { file.bounds() }.await()
 
-    override suspend fun entriesFrom(fromId: Long, upToId: Long, limit: Int): List<StoredJournalEntry> =
-        queue.queue { file.entriesFrom(fromId, upToId, limit) }.await()
+    override suspend fun entriesAfter(afterId: Long, upToId: Long, limit: Int): List<StoredJournalEntry> =
+        queue.queue { file.entriesAfter(afterId, upToId, limit) }.await()
+
+    /** Read at once on the caller's coroutine, off the journal's thread, so that it waits for no queued task (UC-010 BR-004). */
+    override suspend fun holdsAnEntryNow(): Boolean = withContext(Dispatchers.IO) { file.holdsAnEntry() }
 
     private fun trim(limitBytes: Long): Trimmed =
         JournalTrimming.keepWithin(limitBytes, file.pageBytes(), size = file::sizeBytes, entries = file::entryCount, removeOldest = file::removeOldest)

@@ -1,5 +1,6 @@
 package slussen.app.ui
 
+import android.content.ActivityNotFoundException
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -403,9 +404,12 @@ private fun JournalExportRoute(services: UiServices, onBack: () -> Unit) {
             vm.noPlaceChosen()
         } else {
             val document = PickedDocument(resolver, uri)
-            vm.export(document, document.name ?: proposed)
+            // The document's name is asked of its provider off the main thread.
+            vm.export(document, proposed) { document.name() }
         }
     }
+    // ADR-007 §1: leaving the screen while the export still waits for the lane withdraws it; once it reads, it goes on.
+    DisposableEffect(Unit) { onDispose { vm.withdraw() } }
     JournalExportScreen(
         ui = vm.state.collectAsState().value,
         onBack = onBack,
@@ -413,8 +417,14 @@ private fun JournalExportRoute(services: UiServices, onBack: () -> Unit) {
         onChoose = {
             vm.choosePlace()?.let { name ->
                 proposed = name
-                picker.launch(name)
+                // NFR-023: a device with no app to choose a place is answered at the control, never a crash.
+                try {
+                    picker.launch(name)
+                } catch (noApp: ActivityNotFoundException) {
+                    vm.noPlaceCanBeChosen()
+                }
             }
         },
+        onWithdraw = vm::withdraw,
     )
 }
