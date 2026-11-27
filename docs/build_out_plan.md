@@ -29,6 +29,7 @@
 | B5 | e0337bc, 71c126d | green at 71c126d | `docs/reviews/build_out_reviews/B5.md`: the locks hold; 5 findings fixed (among them the source of a proposed match, which no code produced, and a stricter lock for an identification); W4-01 amended and W4-08 added; 2 to §6 (G-28) | Identification and moves (UC-009 steps 2-7, A1-A3, A6, A8, A10, A11), the locks of BR-003 and BR-007 on the Sent Records, a Fetch that proposes a match; 48 tests. Opus builder | 454k + 315k |
 | B6 | bb07200, 0f184f5 | green at 0f184f5 | `docs/reviews/build_out_reviews/B6.md` (Opus, fresh context): 8 findings fixed, the most serious an answer that landed on another Bank Transaction's sheet | The screens of the Review Decisions, the Transfer Decisions and Manage Account Mappings; the read-only lines of Wave 1 replaced (G-10, G-12, G-14 ended); 36 ViewModel tests, 3 screen ITs. Not built, waiting for Wave 4's Sent Records: `review-decision.html#counterpart-changed`, `#outcome-unknown`, `#outcome-unknown-auto`, `#reupload-unavailable`. Opus builder | 654k + 222k |
 | W3-0 | 57b0a7a, 18677e4 (S-B-18..S-B-25) | specification checks and architecture tests green | `docs/reviews/build_out_reviews/W3-0.md` (Opus, fresh context): 9 corrections written; the review confirmed the duplicate that S-B-21 closes and found that Wave 4 was not told (W4-09) | The specification of Wave 3; no code. Opus writer | 249k and its corrections + 159k |
+| A-6 | 8cf43a8, 39d3b00 (S-B-26), 5f8eb44 | green at 5f8eb44 | `docs/reviews/build_out_reviews/A-6.md` (Opus, fresh context): the guard correct on the paths it was built for; 6 findings fixed, the most serious a Review Decision that concluded a Budget that owes a read (now refused, S-B-26) | An editor for each of the 15 whole-number settings, two switches, the log reading the stored Detailed Logging, the period-read-owed flag and its guard; about 120 tests. Opus builder | 513k + 211k |
 
 - Paused on 2026-11-26 at the operator's word (the usage limit of the session) after A-4 was built; resumed the same day. The operator watches the limit and says when to pause; the orchestrator's own turns are not in the token column.
 
@@ -55,7 +56,7 @@
   3. The orchestrator's own turns draw on the same weekly limit; the operator may switch this session's model.
 - **Wave 2 is done** (W2-0, W2-1, B2..B6). Ready for the operator's device run and Windows gate, when convenient: commit 0f184f5 or later on `build-out`. To watch there: the Migration from an installed version 5 to 6 (`SlussenDatabaseMigrationIT`), `StateVersionPersistenceIT`, the UC-004, UC-005 and UC-009 persistence ITs, and the new screen ITs of the decisions and the mappings.
 - Wave 3: its specification (W3-0) is written and corrected after its review. The prompts of A-6 to A-9 are in `docs/reviews/build_out_prompts/`.
-- Next: phase A-6 (every Operator Setting), Opus.
+- Next: phase A-7 (the description lists), Opus.
 
 ## 1. Scope
 
@@ -199,6 +200,7 @@ Smaller choices taken without asking, to be confirmed at the end: the Decision J
 | G-28 | B5 | A rejected proposal (UC-009 A3) stores nothing but a Decision Journal entry; the proposal stays until the next delivery. In what a lock states, "rejected" counts Bank Transactions with a Rejected record and no other in the current Budget Account (to check again with UC-006 BR-020's retry). Identifying, moving and removing are allowed on a Retired Account. Confirming a proposed match asks for the confirmation of BR-007 like any new identification. | Text and one condition each. |
 | G-29 | B6 | A sheet cannot be left while its change is on its way (Close, back and Cancel are refused and the sheet says why), so that an answer never lands on another item. The Review Decision is part of the Bank Transaction's sheet, not a screen of its own; Re-upload is a switch. Four states of `review-decision.html` wait for Wave 4's Sent Records (`#counterpart-changed`, `#outcome-unknown`, `#outcome-unknown-auto`, `#reupload-unavailable`). | Layout and navigation only; the four states come with Wave 4. |
 | G-30 | W3-0 | A later build whose Budget App part declares a longer Matching Date Window lengthens the read period without owing the Budgets a period read. | A stored copy of the window the last read used (a schema column), compared at the start. |
+| G-31 | A-6 | While a Budget owes a read of its read period, a Review Decision or Transfer Decision in it is refused and the read offered (S-B-26); the banner names both possible causes of the owed read (a longer setting, a gained Budget Account), since one stored flag cannot tell them apart; the settings answer points to "Read YNAB again" where it exists, not a button of its own; `settings.html#upload-running` waits for Wave 4. | Text and navigation; naming the cause needs a stored field. |
 | G-06 | A-1 | Times show as HH:mm today, MM-dd HH:mm earlier in the year, the full date before that, as the mockups do. | Text only. |
 
 ### Owed to later phases (W-nn)
