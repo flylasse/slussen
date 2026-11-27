@@ -97,8 +97,15 @@ object Texts {
     /** UC-008 step 5: the line of a Bank Account card that opens its own screen, where what waits for a decision is decided. */
     fun openBankAccount(waiting: Int): String = when (waiting) {
         0 -> OPEN_BANK_TRANSACTIONS
-        1 -> "Decide on the 1 waiting for your decision ›"
-        else -> "Decide on the $waiting waiting for your decision ›"
+        1 -> "Decide on the 1 waiting for your Review Decision ›"
+        else -> "Decide on the $waiting waiting for your Review Decision ›"
+    }
+
+    /** UC-005, UX-27: a Bank Account's Bank Transactions in Guessed Transfers, decided in the Transfers; null while none is. */
+    fun inGuessedTransfers(legs: Int): String? = when (legs) {
+        0 -> null
+        1 -> "1 in a Guessed Transfer waits for your Transfer Decision: open the Transfers ›"
+        else -> "$legs in Guessed Transfers wait for your Transfer Decision: open the Transfers ›"
     }
 
     /** `overview.html#open-this-build`: why Start First Upload Matching (UC-008 A9) cannot run yet; no action is needed. */

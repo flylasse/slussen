@@ -386,4 +386,50 @@ class UC009MappingChangesViewModelTest {
         assertEquals("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", ui().message)
         assertTrue(stored("Pinecrest Rewards Card").retired)
     }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A8: Move an Account Mapping or Map a Bank Account Again", businessRules = ["BR-003"])
+    @DisplayName("NFR-023 (review B6 F1, F6): while a change is on its way its sheet, editor or question cannot be closed or cancelled and no other Bank Account opens; the confirmation it asks for is then answered on that Bank Account")
+    fun aChangeIsNotLeftWhileItIsOnItsWay() {
+        ready()
+        sentThroughChecking("new")
+        val hold = CompletableDeferred<Unit>()
+        screen.openSheet(id("Kestrel Checking"))
+        screen.startAction(MappingAction.Move)
+        slice.connectionStore.beforeStore = { hold.await() }
+
+        screen.moveTo(budgetAccount("Health Savings"))
+        val pending = ui().pending
+        screen.cancelEditor()
+        screen.closeSheet()
+        screen.openSheet(id("Kestrel Reserve"))
+
+        assertEquals("Moving…", pending)
+        assertTrue(ui().editor is MappingEditorUi.Move)
+        assertEquals(id("Kestrel Checking"), ui().bankAccountSheet!!.bankAccountId)
+        hold.complete(Unit)
+        slice.connectionStore.beforeStore = {}
+        assertEquals("Move Kestrel Checking to Health Savings?", ui().question!!.title)
+        screen.confirmQuestion()
+        assertEquals(budgetAccount("Health Savings"), stored("Kestrel Checking").mapping!!.budgetAccountId)
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A4: Retire a Bank Account", businessRules = ["BR-005"])
+    @DisplayName("NFR-023 (review B6 F5): when an operation ends elsewhere, the Account Mappings show the stored data again; an editor the Operator is typing in stays open")
+    fun theListIsShownAgainWhenAnOperationEnds() {
+        ready()
+        screen.openSheet(id("Kestrel Checking"))
+        screen.startAction(MappingAction.Rename)
+
+        runBlocking { slice.mappings.retire(id("Pinecrest Rewards Card")) }
+
+        assertTrue(ui().editor is MappingEditorUi.Rename)
+        screen.cancelEditor()
+        screen.closeSheet()
+        runBlocking { slice.mappings.restore(id("Pinecrest Rewards Card")) }
+        runBlocking { slice.mappings.retire(id("Kestrel Reserve")) }
+        assertEquals("Retired Accounts", group("Kestrel Reserve"))
+        assertEquals("Household · USD", group("Pinecrest Rewards Card"))
+    }
 }

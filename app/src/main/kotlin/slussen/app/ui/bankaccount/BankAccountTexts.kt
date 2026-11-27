@@ -146,7 +146,11 @@ object BankAccountTexts {
      */
     private fun decided(status: TransactionStatus, line: TransactionLine, budgetApp: String): String = when (status) {
         TransactionStatus.New -> "New by your Review Decision; eligible for a later Upload Plan as a new transaction"
-        TransactionStatus.AlreadyInBudgetApp -> "Already Present by your Review Decision: counted as already in $budgetApp and never sent"
+        TransactionStatus.AlreadyInBudgetApp -> if (line.transfer != null) {
+            "Already Present by your Review Decision on it or on the other side of its Transfer: counted as already in $budgetApp and never sent"
+        } else {
+            "Already Present by your Review Decision: counted as already in $budgetApp and never sent"
+        }
         TransactionStatus.Deferred -> if (line.transfer != null) {
             "Held back by your Review Decision on it or on the other side of its Transfer, until you change it"
         } else {

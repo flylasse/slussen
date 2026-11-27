@@ -165,14 +165,14 @@ private fun BankAccountSheet(sheet: BankAccountSheetUi, message: String?, pendin
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
             ScreenTitle(sheet.title, sheet.subtitle, changes.onCloseSheet)
-            pending?.let { Muted(it) }
+            pending?.let { Muted("$it ${AccountMappingsTexts.STAYS_OPEN}") }
             if (message != null) Banner(message, null)
             SlussenCard {
                 sheet.actions.forEach { action ->
                     AccountLine(action.title, action.detail, null, null, null, modifier = Modifier.clickable(enabled = pending == null) { changes.onAction(action.action) })
                 }
             }
-            TextButton(onClick = changes.onCloseSheet) { Text("Close") }
+            TextButton(onClick = changes.onCloseSheet, enabled = pending == null) { Text("Close") }
         }
     }
 }
@@ -192,7 +192,7 @@ private fun Editor(editor: MappingEditorUi, message: String?, pending: String?, 
                         Muted("The name never identifies the Bank Account.")
                         Row {
                             Button(onClick = { changes.onSaveName(name) }, enabled = enabled) { Text("Save") }
-                            TextButton(onClick = changes.onCancelEditor) { Text("Cancel") }
+                            TextButton(onClick = changes.onCancelEditor, enabled = enabled) { Text("Cancel") }
                         }
                     }
                 }
@@ -205,7 +205,7 @@ private fun Editor(editor: MappingEditorUi, message: String?, pending: String?, 
                         Row {
                             Button(onClick = { changes.onSaveStartDate(date) }, enabled = enabled) { Text("Save") }
                             TextButton(onClick = changes.onClearStartDate, enabled = enabled) { Text("Clear") }
-                            TextButton(onClick = changes.onCancelEditor) { Text("Cancel") }
+                            TextButton(onClick = changes.onCancelEditor, enabled = enabled) { Text("Cancel") }
                         }
                     }
                 }
@@ -216,7 +216,7 @@ private fun Editor(editor: MappingEditorUi, message: String?, pending: String?, 
                         editor.choices.forEach { choice ->
                             AccountLine(choice.title, choice.detail, null, null, null, modifier = Modifier.clickable(enabled = enabled) { changes.onMoveTo(choice.id) })
                         }
-                        TextButton(onClick = changes.onCancelEditor) { Text("Cancel") }
+                        TextButton(onClick = changes.onCancelEditor, enabled = enabled) { Text("Cancel") }
                     }
                 }
                 is MappingEditorUi.OtherSide -> {
@@ -228,7 +228,7 @@ private fun Editor(editor: MappingEditorUi, message: String?, pending: String?, 
                         }
                         Row {
                             TextButton(onClick = { changes.onSaveOtherSide(null) }, enabled = enabled) { Text("Clear") }
-                            TextButton(onClick = changes.onCancelEditor) { Text("Cancel") }
+                            TextButton(onClick = changes.onCancelEditor, enabled = enabled) { Text("Cancel") }
                         }
                     }
                 }
@@ -244,13 +244,13 @@ private fun Editor(editor: MappingEditorUi, message: String?, pending: String?, 
                         }
                         Row {
                             if (editor.canReject) TextButton(onClick = changes.onReject, enabled = enabled) { Text("Not this one") }
-                            TextButton(onClick = changes.onCancelEditor) { Text("Cancel") }
+                            TextButton(onClick = changes.onCancelEditor, enabled = enabled) { Text("Cancel") }
                         }
                     }
                 }
             }
-            // NFR-023: the state of the change from the tap on, and its answer, at the editor.
-            pending?.let { Muted(it) }
+            // NFR-023: the state of the change from the tap on, and its answer, at the editor, which stays until the answer is in.
+            pending?.let { Muted("$it ${AccountMappingsTexts.STAYS_OPEN}") }
             if (message != null) Banner(message, null)
         }
     }

@@ -15,7 +15,10 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -112,13 +115,22 @@ sealed interface Screen {
 fun SlussenScreens(services: UiServices) {
     val stack = remember { mutableStateListOf<Screen>(Screen.Overview) }
     val current = stack.last()
-    fun go(screen: Screen) = stack.add(screen)
+    // Review B6 F7: the screen that back returned to, so that it shows again what was open on it; null after go and tab.
+    var returnedTo by remember { mutableStateOf<Screen?>(null) }
+    fun go(screen: Screen) {
+        returnedTo = null
+        stack.add(screen)
+    }
     fun tab(screen: Screen) {
+        returnedTo = null
         stack.clear()
         stack.add(screen)
     }
     fun back() {
-        if (stack.size > 1) stack.removeAt(stack.lastIndex)
+        if (stack.size > 1) {
+            stack.removeAt(stack.lastIndex)
+            returnedTo = stack.last()
+        }
     }
     BackHandler(enabled = stack.size > 1) { back() }
     // A6 of UC-008: a remedy starts its use case, on a service's page or in Account Mappings (UC-009).
@@ -191,7 +203,9 @@ fun SlussenScreens(services: UiServices) {
                     val vm: BankAccountViewModel = viewModel(key = "bank-account-${current.bankAccountId}") {
                         BankAccountViewModel(services, current.bankAccountId)
                     }
-                    LaunchedEffect(current) { vm.load(current.openTransaction?.let { TransactionKey(unreadable = false, id = it) }) }
+                    LaunchedEffect(current) { vm.load(current.openTransaction?.let { TransactionKey(unreadable = false, id = it) }, returning = returnedTo == current) }
+                    // NFR-023 (review B6 F1): a decision on its way when the screen is left is shown with its answer on return.
+                    DisposableEffect(current) { onDispose { vm.left() } }
                     BankAccountScreen(
                         state = vm.state.collectAsState().value,
                         onBack = ::back,
@@ -205,7 +219,8 @@ fun SlussenScreens(services: UiServices) {
                 }
                 is Screen.Transfers -> {
                     val vm: TransfersViewModel = viewModel(key = "transfers-${current.budgetId}") { TransfersViewModel(services, current.budgetId) }
-                    LaunchedEffect(current) { vm.load(current.selectLeg) }
+                    LaunchedEffect(current) { vm.load(current.selectLeg, returning = returnedTo == current) }
+                    DisposableEffect(current) { onDispose { vm.left() } }
                     TransfersScreen(
                         state = vm.state.collectAsState().value,
                         onBack = ::back,
@@ -320,6 +335,7 @@ fun SlussenScreens(services: UiServices) {
                 Screen.AccountMappings -> {
                     val vm: AccountMappingsViewModel = viewModel(key = "account-mappings") { AccountMappingsViewModel(services) }
                     LaunchedEffect(current) { vm.load() }
+                    DisposableEffect(current) { onDispose { vm.left() } }
                     vm.state.collectAsState().value?.let { ui ->
                         AccountMappingsScreen(
                             ui = ui,

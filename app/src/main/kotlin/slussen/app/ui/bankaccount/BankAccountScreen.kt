@@ -150,12 +150,13 @@ private fun TransactionSheet(bankAccountName: String, sheet: TransactionSheetUi,
                 }
                 Muted(sheet.closing)
                 // Step 1 of UC-005: from a Transfer Leg to its Transfer, with both sides.
-                sheet.transferLeg?.let { leg -> TextButton(onClick = { onTransfer(leg) }) { Text(slussen.app.ui.transfers.TransfersTexts.OPEN_ITS_TRANSFER) } }
+                sheet.transferLeg?.let { leg -> TextButton(onClick = { onTransfer(leg) }, enabled = sheet.canLeave) { Text(slussen.app.ui.transfers.TransfersTexts.OPEN_ITS_TRANSFER) } }
             }
             // NFR-023: a Review Decision that could not be read is said here.
             sheet.reviewNotRead?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
             sheet.review?.let { ReviewPart(it, actions) }
-            OutlinedButton(onClick = onClose) { Text("Close") }
+            // NFR-023 (review B6 F1): the sheet stays open while its decision is on its way; the Review Decision part says why.
+            OutlinedButton(onClick = onClose, enabled = sheet.canLeave) { Text("Close") }
         }
     }
 }

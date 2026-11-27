@@ -18,6 +18,9 @@ object AccountMappingsTexts {
     /** NFR-023: the answer when the stored data could not be read or written; nothing was stored. */
     const val NOT_STORED = "Not stored: Slussen could not use the data stored on this device · try again"
 
+    /** NFR-023 (review B6 F1, F6): why a change's sheet, editor or question cannot be left while it is on its way. */
+    const val STAYS_OPEN = "This stays open until the answer is in."
+
     /** UC-009 BR-015: what follows a change of A4, A5, A8, A11, A13 and A14. */
     const val STATUSES = "the Transaction Statuses are given again"
 

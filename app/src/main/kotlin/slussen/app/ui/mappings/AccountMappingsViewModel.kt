@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import slussen.app.ui.Texts
 import slussen.app.ui.UiServices
@@ -198,8 +199,59 @@ class AccountMappingsViewModel(private val services: UiServices) : ViewModel() {
     /** The choice waiting for the Operator's save after the statement of A14 step 3. */
     private var pending: Pair<BankAccountType, BankChoice>? = null
 
-    /** Opens the Account Mappings: the list, never a sheet left open the last time they were shown; a read that fails is said (NFR-023). */
+    /** Whether the screen follows the ends of operations yet; it starts with the first [load]. */
+    private var watching = false
+
+    /** NFR-023 (review B6 F5): when an operation ends, whichever screen started it, the stored data it changed are shown again. */
+    private fun watch() {
+        if (watching) return
+        watching = true
+        viewModelScope.launch { services.ended.drop(1).collect { showAgain() } }
+    }
+
+    /** A change of this screen is on its way: its sheet, editor or question stays until its answer is in (NFR-023, review B6 F1, F6). */
+    private fun busy(): Boolean = mutableState.value?.pending != null
+
+    /** A change was on its way when the screen was left: coming back shows where it was asked, with its answer. */
+    private var keepOnReturn = false
+
+    /** The screen is left (another screen or tab is shown). */
+    fun left() {
+        if (busy()) keepOnReturn = true
+    }
+
+    /**
+     * The list and an open sheet of a Bank Account read again after an operation ended; an editor, a question, the sheet
+     * of the type and Bank or the card of UC-013 the Operator is in are left as they are, and so is a change on its way,
+     * which reads them itself.
+     */
+    private suspend fun showAgain() {
+        val now = mutableState.value ?: return
+        if (busy() || now.editor != null || now.question != null || now.typeAndBank != null || now.stage != MappingsStage.List) return
+        val open = now.bankAccountSheet
+        try {
+            show(typeAndBank = null, message = now.message)
+            val account = open?.let { listed[it.bankAccountId] } ?: return
+            mutableState.value = current().copy(bankAccountSheet = bankAccountSheetOf(account, open.actions.any { it.action == MappingAction.Identify }))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            mutableState.value = current().copy(message = AccountMappingsTexts.NOT_READ)
+        }
+    }
+
+    /**
+     * Opens the Account Mappings: the list, never a sheet left open the last time they were shown, but for one whose change
+     * was on its way when the screen was left; a read that fails is said (NFR-023).
+     */
     fun load() {
+        watch()
+        if (busy()) return
+        if (keepOnReturn) {
+            keepOnReturn = false
+            viewModelScope.launch { showAgain() }
+            return
+        }
         confirming = null
         viewModelScope.launch {
             try {
@@ -472,6 +524,7 @@ class AccountMappingsViewModel(private val services: UiServices) : ViewModel() {
 
     /** Step 2 (`#sheet`): the Operator opens one Bank Account; its actions follow what it is now. */
     fun openSheet(bankAccountId: Long) {
+        if (busy()) return
         viewModelScope.launch {
             val account = listed[bankAccountId] ?: return@launch
             val identifiable = try {
@@ -508,8 +561,9 @@ class AccountMappingsViewModel(private val services: UiServices) : ViewModel() {
     }
 
     fun closeSheet() {
+        if (busy()) return
         confirming = null
-        mutableState.value = current().copy(bankAccountSheet = null, editor = null, question = null, message = null, pending = null)
+        mutableState.value = current().copy(bankAccountSheet = null, editor = null, question = null, message = null)
     }
 
     /** Step 2: the Operator chooses one action of the sheet of the Bank Account. */
@@ -552,11 +606,13 @@ class AccountMappingsViewModel(private val services: UiServices) : ViewModel() {
 
     /** The Operator cancels the question; nothing is stored. */
     fun cancelQuestion() {
+        if (busy()) return
         confirming = null
         mutableState.value = current().copy(question = null, bankAccountSheet = null, editor = null, message = null)
     }
 
     fun cancelEditor() {
+        if (busy()) return
         confirming = null
         mutableState.value = current().copy(editor = null, question = null, message = null)
     }

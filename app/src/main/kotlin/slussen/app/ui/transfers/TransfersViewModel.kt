@@ -43,6 +43,8 @@ data class TransferSheetUi(
     val decision: TransferDecisionUi? = null,
     /** NFR-023: its Transfer Decisions could not be read; null otherwise. */
     val decisionNotRead: String? = null,
+    /** NFR-023: false while a decision of this Transfer is on its way: it stays open until its answer is in. */
+    val canLeave: Boolean = true,
 )
 
 /** The Transfer Decisions of steps 4 and A1, A2 (A3 is [TransferDecisionUi.choose]). */
@@ -266,7 +268,7 @@ class TransfersViewModel(private val services: UiServices, private val budgetId:
             val towards = chosenName ?: sheet.legs.singleOrNull()?.let { only ->
                 if (only.budgetAccountName == sheet.inflowBudgetAccountName) sheet.outflowBudgetAccountName else sheet.inflowBudgetAccountName
             }
-            val answered = TransfersTexts.answer(outcome, towards, stays?.bankAccountName, chosenName)
+            val before = view
             when (outcome) {
                 is TransferOutcome.OtherSideTaken -> taken = outcome.taken
                 is TransferOutcome.Stored -> {
@@ -278,32 +280,60 @@ class TransfersViewModel(private val services: UiServices, private val budgetId:
                 }
                 else -> Unit
             }
-            pending = null
-            answer = answered
             reload()
-            selected?.let { readDecision(it) } ?: run { listAnswer = answered }
+            selected?.let { readDecision(it) }
+            // UC-005 BR-005: A Lonely Transfer with a Transfer Decision is joined by its other side, also one taken from a Transfer without a decision, which is dissolved; the answer says so.
+            val paired = (outcome as? TransferOutcome.Stored)?.takeIf { it.lonely && it.decision != slussen.core.port.TransferDecision.Split }?.let {
+                decisionSheet?.takeIf { now -> now.legs.size == 2 }?.legs?.firstOrNull { leg -> sheet.legs.none { it.storedBankTransaction == leg.storedBankTransaction } }
+            }?.let { joined ->
+                val dissolved = before?.transfers.orEmpty().any { item ->
+                    item.legs.any { it.storedBankTransaction == joined.storedBankTransaction } && item.legs.none { leg -> sheet.legs.any { it.storedBankTransaction == leg.storedBankTransaction } }
+                }
+                PairedNow("${joined.bankAccountName} ${services.formats.date(joined.bookedDate)} ${services.formats.difference(joined.amount)}", dissolved)
+            }
+            val answered = TransfersTexts.answer(outcome, towards, stays?.bankAccountName, chosenName, paired)
+            answer = answered
+            if (selected == null) listAnswer = answered
+            pending = null
             publish()
         }
     }
 
+    /** The Bank Transaction whose Transfer is open, or null for the list. */
+    fun selectedLeg(): Long? = selected
+
+    /** The decision of the open Transfer was on its way when the screen was left: coming back shows that Transfer with its answer. */
+    private var keepOnReturn = false
+
+    /** The screen is left (another screen or tab is shown). */
+    fun left() {
+        if (pending != null) keepOnReturn = true
+    }
+
     /**
      * Opens the Transfers: the Transfer of the Bank Transaction [selectLeg] when the Operator came from a Transfer Leg on
-     * the Bank Account screen, else the list; never a Transfer left open the last time they were shown.
+     * the Bank Account screen, else the list. [returning]: the Operator came back to them with back (review B6 F7), so the
+     * Transfer that was open is shown again; so is one whose decision was on its way when the screen was left (F1).
      */
-    fun load(selectLeg: Long? = null) {
-        selected = selectLeg
-        notListed = false
-        listAnswer = null
-        forgetDecision()
+    fun load(selectLeg: Long? = null, returning: Boolean = false) {
+        val keep = returning || keepOnReturn || pending != null
+        keepOnReturn = false
+        if (!keep) {
+            selected = selectLeg
+            notListed = false
+            listAnswer = null
+            forgetDecision()
+        }
         publish()
         viewModelScope.launch {
             reload()
-            selected?.let { readDecision(it) }
+            if (!keep || pending == null) selected?.let { readDecision(it) }
         }
     }
 
-    /** Opens the Transfer of the Bank Transaction [key] with its Transfer Decisions (step 2). */
+    /** Opens the Transfer of the Bank Transaction [key] with its Transfer Decisions (step 2); not while a decision of the open one is on its way. */
     fun open(key: Long) {
+        if (pending != null) return
         selected = key
         notListed = false
         listAnswer = null
@@ -319,7 +349,9 @@ class TransfersViewModel(private val services: UiServices, private val budgetId:
         return true
     }
 
+    /** Closes the open Transfer; not while a decision of it is on its way (NFR-023), which the sheet says. */
     fun close() {
+        if (pending != null) return
         selected = null
         notListed = false
         listAnswer = null
@@ -391,6 +423,7 @@ class TransfersViewModel(private val services: UiServices, private val budgetId:
                     closing = TransfersTexts.CLOSING,
                     decision = decisionUi(item, view),
                     decisionNotRead = TransfersTexts.DECISION_NOT_READ.takeIf { decisionNotRead },
+                    canLeave = pending == null,
                 )
             },
             answer = listAnswer.takeIf { open == null },
@@ -413,6 +446,7 @@ class TransfersViewModel(private val services: UiServices, private val budgetId:
             // A9 step 1 of UC-005: the Transfer Leg that waits for a Review Decision, with why.
             sheet.waitsForReviewDecision?.let { add(DetailLine("Waits", TransfersTexts.waits(item, it))) }
             // UC-005 BR-005: A Lonely Transfer with a Transfer Decision is joined by a Bank Transaction of its other side when one arrives.
+            if (pending != null) add(DetailLine("While it is stored", TransfersTexts.STAYS_OPEN))
             if (sheet.legs.size == 1 && sheet.outflowBudgetAccountName != null && !sheet.locked && sheet.decision != slussen.core.port.TransferDecision.Split) {
                 add(DetailLine("Its other side", if (sheet.decision == slussen.core.port.TransferDecision.Proposed) TransfersTexts.LONELY_JOINS else TransfersTexts.DECIDED_LONELY_JOINS))
             }

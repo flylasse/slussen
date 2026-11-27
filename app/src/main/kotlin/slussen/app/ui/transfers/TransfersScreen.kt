@@ -146,7 +146,8 @@ private fun TransferSheet(title: String, sheet: TransferSheetUi, onClose: () -> 
             sheet.decisionNotRead?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
             sheet.decision?.let { DecisionPart(it, onOpen, actions) }
             Muted(sheet.closing)
-            OutlinedButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+            // NFR-023 (review B6 F1): the Transfer stays open while its decision is on its way; its Transfer Decision part says why.
+            OutlinedButton(onClick = onClose, enabled = sheet.canLeave, modifier = Modifier.fillMaxWidth()) { Text("Close") }
         }
     }
 }
@@ -166,7 +167,7 @@ private fun DecisionPart(decision: TransferDecisionUi, onOpen: (Long) -> Unit, a
         }
         decision.reviewLeg?.let { leg -> OutlinedButton(onClick = { actions.onReviewLeg(leg) }, enabled = decision.enabled) { Text(leg.title) } }
         decision.changeFundedBy?.let { title ->
-            OutlinedButton(onClick = actions.onAccountMappings) { Text(title) }
+            OutlinedButton(onClick = actions.onAccountMappings, enabled = decision.enabled) { Text(title) }
             Muted("In Account Mappings.")
         }
         val chooser = decision.chooser

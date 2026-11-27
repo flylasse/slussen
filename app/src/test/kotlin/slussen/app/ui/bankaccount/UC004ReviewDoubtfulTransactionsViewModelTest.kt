@@ -23,6 +23,9 @@ import slussen.core.port.ReviewChoice
 import slussen.core.port.StartedBy
 import slussen.core.port.TransactionStatus
 import slussen.core.port.UnreadableTransactionStatus
+import slussen.core.port.BudgetAppTransactionState
+import slussen.core.port.TransferDecision
+import slussen.core.transfer.TransferChoice
 import slussen.core.status.TransactionKey
 import slussen.pluginapi.budgetapp.ReadState
 import slussen.pluginapi.testfixtures.UseCase
@@ -346,13 +349,180 @@ class UC004ReviewDoubtfulTransactionsViewModelTest {
             "8 transactions wait for your decision: open a Bank Account below to decide on its own, and the Transfers for the Guessed Transfers.",
             tab().decide,
         )
-        assertEquals("Decide on the 6 waiting for your decision ›", tab().bankAccounts.single { it.name == "Kestrel Checking" }.opens)
+        // Review B6 F8: a card counts only what its Bank Account screen decides, and leads to the Transfers for its Guessed Transfers.
+        assertEquals("Decide on the 5 waiting for your Review Decision ›", tab().bankAccounts.single { it.name == "Kestrel Checking" }.opens)
+        assertEquals("1 in a Guessed Transfer waits for your Transfer Decision: open the Transfers ›", tab().bankAccounts.single { it.name == "Kestrel Checking" }.inTransfers)
+        assertEquals("Bank Transactions and their statuses ›", tab().bankAccounts.single { it.name == "Pinecrest Rewards Card" }.opens)
+        assertEquals("2 in Guessed Transfers wait for your Transfer Decision: open the Transfers ›", tab().bankAccounts.single { it.name == "Pinecrest Rewards Card" }.inTransfers)
         assertEquals("Bank Transactions and their statuses ›", tab().bankAccounts.single { it.name == "Kestrel Reserve" }.opens)
+        assertNull(tab().bankAccounts.single { it.name == "Kestrel Reserve" }.inTransfers)
         val overview = OverviewViewModel(fixture.services).also { it.load() }
         assertEquals("Waiting for your decision: open Household to decide.", overview.state.value!!.budgets.single { it.name == "Household" }.decide)
 
         checking(open = "possible").choose(ReviewChoice.ImportAnyway)
 
-        assertEquals("Decide on the 5 waiting for your decision ›", tab().bankAccounts.single { it.name == "Kestrel Checking" }.opens)
+        assertEquals("Decide on the 4 waiting for your Review Decision ›", tab().bankAccounts.single { it.name == "Kestrel Checking" }.opens)
+    }
+
+    private fun holdTheLane(): Pair<CompletableDeferred<Unit>, kotlinx.coroutines.Job> {
+        val gate = CompletableDeferred<Unit>()
+        val job = CoroutineScope(Dispatchers.Unconfined).launch { slice.coordinator.run(OperationKind.Comparison, StartedBy.Operator) { gate.await() } }
+        return gate to job
+    }
+
+    private fun BankAccountViewModel.openTitle(): String? = state.value.ui!!.sheet?.title
+
+    @Test
+    @UseCase(id = "UC-004", scenario = "A6: Change or Clear an Earlier Decision", businessRules = ["BR-005"])
+    @DisplayName("NFR-023 (review B6 F1): while a decision is on its way its sheet cannot be closed and no other line opens, and it says why; its answer lands on its own line only, also when the Operator left the screen meanwhile and comes back")
+    fun aSheetIsNotLeftWhileItsDecisionIsOnItsWay() {
+        compared()
+        val screen = checking(open = "possible")
+        val possibleTitle = screen.openTitle()
+        val (gate, job) = holdTheLane()
+
+        screen.choose(ReviewChoice.ImportAnyway)
+        screen.close()
+        screen.open(key("no-reference-1"))
+
+        assertEquals(possibleTitle, screen.openTitle())
+        assertEquals(ReviewDecisionTexts.STAYS_OPEN, screen.review().line("While it is stored"))
+        assertFalse(screen.state.value.ui!!.sheet!!.canLeave)
+        gate.complete(Unit)
+        runBlocking { job.join() }
+        assertEquals("Review Decision stored: Import Anyway · Transaction Status now New", screen.review().answer)
+        assertTrue(screen.state.value.ui!!.sheet!!.canLeave)
+        assertEquals(TransactionStatus.NeedsReview, stored("no-reference-1"))
+
+        // Left while the decision runs, the screen comes back to that line with its answer.
+        screen.open(key("no-reference-1"))
+        val noReference = screen.openTitle()
+        val (gate2, job2) = holdTheLane()
+        screen.choose(ReviewChoice.Defer)
+        screen.left()
+        gate2.complete(Unit)
+        runBlocking { job2.join() }
+        screen.load()
+        assertEquals(noReference, screen.openTitle())
+        assertEquals("Review Decision stored: Defer · Transaction Status now Deferred", screen.review().answer)
+        // Coming back after a call that had ended before leaving opens the list, as before.
+        screen.left()
+        screen.load()
+        assertNull(screen.openTitle())
+    }
+
+    /** Kestrel Checking −500.00 and Kestrel Reserve +500.00, the Bank Transfer of the scenario, held back by the Operator. */
+    private fun heldBankTransfer() {
+        compared()
+        runBlocking { slice.transferDecisions.decide(scenario.transaction("leg-out"), TransferChoice.Hold) }
+    }
+
+    @Test
+    @UseCase(id = "UC-004", scenario = "A11: Doubtful Transfer Leg", businessRules = ["BR-009"])
+    @DisplayName("BR-009, S-B-17 (review B6 F2): a doubtful Transfer Leg of a held Transfer offers no Re-upload, and its choices say that it stays in no Upload Plan while the Transfer is held back")
+    fun aTransferLegOfAHeldTransferReleasesNothing() {
+        heldBankTransfer()
+        runBlocking {
+            scenario.answerHousehold(listOf(scenario.read("y-out", LocalDate.of(2026, 10, 11), amount(-500), "Transfer out", importIdentifier = "BANK:-500000:2026-10-11:1")))
+            slice.comparison.readAgain()
+        }
+        val review = checking(open = "leg-out").review()
+
+        assertEquals(TransactionStatus.PossibleImportByOtherPath, stored("leg-out"))
+        assertEquals(listOf(ReviewChoice.AlreadyPresent, ReviewChoice.ImportAnyway, ReviewChoice.Defer), review.choices.map { it.choice })
+        assertNull(review.reUpload)
+        assertEquals(
+            "This Transfer Leg stays in no Upload Plan while you hold its Transfer back; this decision applies once you change that Transfer Decision.",
+            review.choices.single { it.choice == ReviewChoice.ImportAnyway }.effect,
+        )
+        assertTrue(review.choices.none { "eligible" in it.effect || "rejoins" in it.effect })
+    }
+
+    @Test
+    @UseCase(id = "UC-004", scenario = "A5: Re-upload a Deleted Transaction", businessRules = ["BR-009"])
+    @DisplayName("BR-009 (review B6 F2): a Transfer Leg that is Deleted In Budget App offers Re-upload as a new transaction of its own Budget Account, not as a linked transfer; once its Transfer is held back, a Re-upload it has is not shown as on and nothing is offered but clearing")
+    fun aDeletedTransferLegIsReUploadedAsANewTransaction() {
+        compared()
+        runBlocking {
+            scenario.answerHousehold(
+                listOf(scenario.read("y-out", LocalDate.of(2026, 10, 11), amount(-500), "Transfer out", importIdentifier = scenario.identifier("leg-out"), state = ReadState.Deleted)),
+            )
+            slice.comparison.readAgain()
+        }
+        val screen = checking(open = "leg-out")
+
+        assertEquals(TransactionStatus.DeletedInBudgetApp, stored("leg-out"))
+        assertEquals(
+            "Re-upload · off; switch it on to send it again as a new transaction of its own Budget Account, not as a linked transfer, inside the Upload Window.",
+            screen.review().reUpload!!.text,
+        )
+        screen.switchReUpload(on = true)
+        assertEquals(TransactionStatus.New, stored("leg-out"))
+
+        runBlocking { slice.transferDecisions.decide(scenario.transaction("leg-in"), TransferChoice.Hold) }
+        screen.open(key("leg-out"))
+        val held = screen.review()
+        assertEquals(TransferDecision.Held, slice.copyStore.transfers.single { it.id == slice.importStatusStore.bankTransactions.single { t -> t.id == scenario.transaction("leg-out") }.transferId }.decision)
+        assertNull(held.reUpload)
+        assertTrue(held.choices.isEmpty())
+        assertEquals(
+            "Kept, but it sends nothing while you hold its Transfer back; change that Transfer Decision first.",
+            held.line("Re-upload"),
+        )
+        assertTrue(held.clear != null)
+    }
+
+    @Test
+    @UseCase(id = "UC-004", scenario = "A5: Re-upload a Deleted Transaction", businessRules = ["BR-001", "BR-002"])
+    @DisplayName("UC-003 A4, BR-001 (#no-longer-holds): an Already Present decision whose Budget App Transaction was deleted is Decision No Longer Holds, says why, and offers Import Anyway, Defer and Re-upload, and Already Present only while an Import still resembles it")
+    fun aDecisionThatNoLongerHolds() {
+        compared()
+        val screen = checking(open = "possible")
+        screen.choose(ReviewChoice.AlreadyPresent)
+        screen.chooseTransaction(screen.review().chooser!!.options.single().reference)
+        runBlocking {
+            scenario.answerHousehold(
+                listOf(scenario.read("y-possible", LocalDate.of(2026, 10, 14), amount(-18, 600), "Riverside Apoth.", importIdentifier = "BANK:-18600:2026-10-14:1", state = ReadState.Deleted)),
+            )
+            slice.comparison.readAgain()
+        }
+
+        screen.open(key("possible"))
+        val review = screen.review()
+
+        assertEquals(TransactionStatus.DecisionNoLongerHolds, stored("possible"))
+        assertEquals(
+            "The chosen Budget App Transaction is no longer in Example Budget App: it was deleted, merged into another one or is not read any more.",
+            review.line("No longer holds"),
+        )
+        assertEquals(listOf(ReviewChoice.ImportAnyway, ReviewChoice.Defer), review.choices.map { it.choice })
+        assertFalse(review.reUpload!!.on)
+        screen.choose(ReviewChoice.Defer)
+        assertEquals(TransactionStatus.Deferred, stored("possible"))
+    }
+
+    @Test
+    @UseCase(id = "UC-004", scenario = "A7: Transaction Already Uploaded", businessRules = ["BR-001", "BR-002", "BR-004"])
+    @DisplayName("BR-001, BR-002, BR-004: a sheet the stored data changed under is answered by the core's own refusal at the control (locked, not offered, choose the Budget App Transaction), stores nothing, and shows the choices as they are now")
+    fun refusalsOfTheCoreAreAnsweredAtTheControl() {
+        compared()
+        val screen = checking(open = "deleted")
+        slice.copyStore.copy.replaceAll { if (it.budgetAppReference == "y-deleted") it.copy(state = BudgetAppTransactionState.Present) else it }
+        screen.switchReUpload(on = true)
+        assertEquals("Not stored: the Review Decision is locked, because Example Budget App holds this Bank Transaction under its own Import Identifier.", screen.review().answer)
+        assertTrue(slice.copyStore.reviewDecisions.isEmpty())
+
+        screen.open(key("possible"))
+        screen.choose(ReviewChoice.AlreadyPresent)
+        screen.chooseTransaction("y-not-among-them")
+        assertEquals("Not stored yet: choose which Budget App Transaction is the same.", screen.review().answer)
+        assertEquals(listOf("y-possible"), screen.review().chooser!!.options.map { it.reference })
+        assertTrue(slice.copyStore.reviewDecisions.isEmpty())
+
+        slice.copyStore.copy.removeAll { it.budgetAppReference == "y-possible" }
+        screen.chooseTransaction("y-possible")
+        assertEquals("Not stored: its Transaction Status, as stored now, does not offer that choice; the choices it offers are shown.", screen.review().answer)
+        assertTrue(slice.copyStore.reviewDecisions.isEmpty())
+        assertTrue(screen.state.value.ui!!.sheet!!.review!!.choices.isEmpty())
     }
 }

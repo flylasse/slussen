@@ -146,7 +146,10 @@ class UC005TransferDecisionsViewModelTest {
 
         screen.useChosen()
 
-        assertEquals("Transfer Decision stored: Budget Account Chosen · a Lonely Transfer towards Reserve Savings", screen.ui().answer ?: screen.decision().answer)
+        // The answer is at the control that asked: the sheet of the Transfer, shown through the Transfer Leg that stays.
+        assertNull(screen.ui().answer)
+        assertEquals(scenario.transaction("guessed-card"), screen.ui().sheet!!.let { screen.selectedLeg() })
+        assertEquals("Transfer Decision stored: Budget Account Chosen · a Lonely Transfer towards Reserve Savings; it waits for a side that arrives later", screen.decision().answer)
         val stored = slice.importStatusStore.bankTransactions.single { it.id == scenario.transaction("guessed-card") }
         assertEquals(TransferDecision.BudgetAccountChosen, slice.copyStore.transfers.single { it.id == stored.transferId }.decision)
         assertNull(slice.connectionStore.bankAccountList.single { it.id == scenario.bankAccount("Pinecrest Rewards Card") }.fundedByBudgetAccountId)
@@ -173,10 +176,10 @@ class UC005TransferDecisionsViewModelTest {
         )
         screen.useChosen()
 
-        val answer = screen.ui().answer ?: screen.decision().answer
+        assertNull(screen.ui().answer)
         assertEquals(
-            "Transfer Decision stored: Budget Account Chosen · a Lonely Transfer towards Checking · Funded By of Pinecrest Rewards Card set to Checking, recorded in the Decision Journal",
-            answer,
+            "Transfer Decision stored: Budget Account Chosen · a Lonely Transfer towards Checking; it waits for a side that arrives later · Funded By of Pinecrest Rewards Card set to Checking, recorded in the Decision Journal",
+            screen.decision().answer,
         )
         assertEquals(budgetAccount("Checking"), slice.connectionStore.bankAccountList.single { it.id == scenario.bankAccount("Pinecrest Rewards Card") }.fundedByBudgetAccountId)
     }
@@ -221,14 +224,13 @@ class UC005TransferDecisionsViewModelTest {
 
         assertEquals("Into a later Upload Plan as a linked transfer whose other side stays uncleared until it arrives.", screen.decision().actions.first().effect)
         assertEquals(
-            "Once you confirm it, hold it back or choose its Budget Account, a Bank Transaction of its other side that arrives later joins it, " +
-                "also one Slussen had paired in another Transfer it only proposed; that Transfer is then dissolved.",
+            TransfersTexts.LONELY_JOINS,
             screen.decision().line("Its other side"),
         )
 
         screen.decide(TransferAction.Confirm)
 
-        assertEquals("Transfer Decision stored: Confirmed · a Lonely Transfer towards Checking", screen.decision().answer)
+        assertEquals("Transfer Decision stored: Confirmed · a Lonely Transfer towards Checking; it waits for a side that arrives later", screen.decision().answer)
         assertEquals(TransferDecision.Confirmed, decisionOf("lonely-in"))
         // S-B-03: a decided Lonely Transfer stays one, with no date by which it must arrive, and says that its other side joins it.
         screen.close()
@@ -340,5 +342,85 @@ class UC005TransferDecisionsViewModelTest {
 
         assertNull(screen.decision().pending)
         assertEquals(TransferDecision.Held, decisionOf("leg-out"))
+    }
+
+    private fun holdTheLane(): Pair<CompletableDeferred<Unit>, kotlinx.coroutines.Job> {
+        val gate = CompletableDeferred<Unit>()
+        val job = CoroutineScope(Dispatchers.Unconfined).launch { slice.coordinator.run(OperationKind.Comparison, StartedBy.Operator) { gate.await() } }
+        return gate to job
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A2: Hold the Transfer Back", businessRules = ["BR-011"])
+    @DisplayName("NFR-023 (review B6 F1): while a Transfer Decision is on its way its Transfer cannot be closed and no other opens, and it says why; the answer lands on its own Transfer only, also when the Operator left the screen meanwhile and comes back")
+    fun aTransferIsNotLeftWhileItsDecisionIsOnItsWay() {
+        runBlocking { scenario.compareEveryStatus() }
+        val screen = transfers(open = "leg-out")
+        val (gate, job) = holdTheLane()
+
+        screen.decide(TransferAction.Hold)
+        screen.close()
+        screen.open(scenario.transaction("guessed-pay"))
+
+        assertEquals(scenario.transaction("leg-out"), screen.selectedLeg())
+        assertEquals(TransfersTexts.STAYS_OPEN, screen.decision().line("While it is stored"))
+        assertFalse(screen.ui().sheet!!.canLeave)
+        gate.complete(Unit)
+        runBlocking { job.join() }
+        assertEquals("Transfer Decision stored: Held", screen.decision().answer)
+        assertEquals(TransferDecision.Proposed, decisionOf("guessed-pay"))
+
+        val (gate2, job2) = holdTheLane()
+        screen.decide(TransferAction.Split)
+        screen.left()
+        gate2.complete(Unit)
+        runBlocking { job2.join() }
+        screen.load()
+        assertEquals(scenario.transaction("leg-out"), screen.selectedLeg())
+        assertEquals("Transfer Decision stored: Split", screen.decision().answer)
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A9: Transfer With a Doubtful Transfer Leg", businessRules = ["BR-013"])
+    @DisplayName("Review B6 F7: coming back to the Transfers from where a Transfer led (a Transfer Leg's Review Decision, Account Mappings) shows that Transfer again, not the list")
+    fun comingBackShowsTheTransferAgain() {
+        runBlocking { scenario.compareEveryStatus() }
+        val screen = transfers(open = "guessed-pay")
+
+        screen.load(selectLeg = null, returning = true)
+
+        assertEquals(scenario.transaction("guessed-pay"), screen.selectedLeg())
+        assertTrue(screen.ui().sheet!!.decision != null)
+        screen.load(selectLeg = null)
+        assertNull(screen.ui().sheet)
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A4: Lonely Transfer", businessRules = ["BR-005"])
+    @DisplayName("BR-005, G-24 (review B6 F3): confirming a Lonely Transfer whose other side has arrived in a Transfer Slussen only proposed pairs it at once; the answer says so and that the proposed Transfer was dissolved")
+    fun confirmingALonelyTransferPairsItWithAnArrivedSide() {
+        runBlocking {
+            scenario.compareEveryStatus(withLonelyTransfer = true)
+            // Pinecrest Rewards Card is funded by Checking, so out-120 is proposed as the card's payment, not as the Lonely Transfer's other side.
+            slice.connectionStore.link(scenario.bankAccount("Pinecrest Rewards Card"), fundedBy = budgetAccount("Checking"))
+            scenario.store("card-120", scenario.bankAccount("Pinecrest Rewards Card"), LocalDate.of(2026, 10, 14), amount(120), "AUTOPAY RECEIVED")
+            scenario.store("out-120", scenario.bankAccount("Kestrel Checking"), LocalDate.of(2026, 10, 14), amount(-120), "PINECREST AUTOPAY")
+            slice.comparison.readAgain()
+        }
+        fun transferOf(key: String) = slice.importStatusStore.bankTransactions.single { it.id == scenario.transaction(key) }.transferId
+        val lonely = transferOf("lonely-in")
+        assertTrue(transferOf("out-120") != null && transferOf("out-120") != lonely)
+        val screen = transfers(open = "lonely-in")
+
+        screen.decide(TransferAction.Confirm)
+
+        assertEquals(lonely, transferOf("out-120"))
+        assertEquals(
+            "Transfer Decision stored: Confirmed · paired at once with Kestrel Checking 2026-10-14 −120.00, which had arrived; " +
+                "the Transfer Slussen had proposed for it was dissolved",
+            screen.decision().answer,
+        )
+        assertEquals(2, screen.ui().sheet!!.details.count { it.name.endsWith("side") && it.name != "Expected other side" && it.name != "Its other side" })
+        assertTrue(screen.decision().lines.none { it.name == "Its other side" })
     }
 }

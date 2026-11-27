@@ -27,6 +27,9 @@ import java.time.LocalDate
  * Slussen's glossary terms: the list, a selected Transfer, its Transfer Decisions and every answer of the core at the
  * control that asked. Nothing is uploaded in this version.
  */
+/** UC-005 BR-005: the Transfer Leg [leg] (its Bank Account, date and amount) a Lonely Transfer was paired with at once, and whether it left a Transfer Slussen had proposed ([dissolved]). */
+data class PairedNow(val leg: String, val dissolved: Boolean)
+
 object TransfersTexts {
     /** NFR-023: the stored Transfers could not be read; said on the screen, never a crash. */
     const val NOT_READ = "The Transfers stored on this device could not be read; nothing was changed. Open the Transfers again to see them."
@@ -43,6 +46,9 @@ object TransfersTexts {
     /** The one line about the Transfer Decisions (UC-005 step 2) and the Uploads, which this version does not have. */
     const val DECISIONS_NOTE =
         "Open a Transfer to confirm it, split it, hold it back or choose another Budget Account. Nothing is uploaded in this version."
+
+    /** NFR-023: why the Transfer cannot be left while its decision is on its way. */
+    const val STAYS_OPEN = "This Transfer stays open until the answer is in; then you can close it or open another."
 
     /** The closing line of a selected Transfer. */
     const val CLOSING = "A Transfer Decision can be changed until a Transfer Leg is uploaded, and each one is recorded in the Decision Journal. Nothing is uploaded in this version."
@@ -408,8 +414,8 @@ object TransfersTexts {
 
     // UC-005 BR-005: A Lonely Transfer with a Transfer Decision is joined by its arriving other side, also one taken from a Transfer Slussen only proposed (G-24).
     const val LONELY_JOINS =
-        "Once you confirm it, hold it back or choose its Budget Account, a Bank Transaction of its other side that arrives later joins it, " +
-            "also one Slussen had paired in another Transfer it only proposed; that Transfer is then dissolved."
+        "If a Bank Transaction of its other side has arrived, confirming it, holding it back or choosing its Budget Account pairs it with " +
+            "that one at once, also one Slussen had proposed in another Transfer, which is then dissolved; otherwise one that arrives later joins it."
 
     /** The same for a Lonely Transfer the Operator decided on already. */
     const val DECIDED_LONELY_JOINS =
@@ -432,10 +438,15 @@ object TransfersTexts {
      * the Budget Account of the side a Lonely Transfer waits for; [keptFor] the Bank Account whose Funded By or Transfer
      * Partner an answer kept, and [keptName] the Budget Account kept.
      */
-    fun answer(outcome: TransferOutcome, towards: String?, keptFor: String?, keptName: String?): String = when (outcome) {
+    fun answer(outcome: TransferOutcome, towards: String?, keptFor: String?, keptName: String?, paired: PairedNow? = null): String = when (outcome) {
         is TransferOutcome.Stored -> buildString {
             append("Transfer Decision stored: ${outcome.decision.text}")
-            if (outcome.lonely && outcome.decision != TransferDecision.Split && towards != null) append(" · a Lonely Transfer towards $towards")
+            when {
+                // UC-005 BR-005: the side that had arrived joined at once; a Transfer Slussen had proposed for it is dissolved.
+                paired != null -> append(" · paired at once with ${paired.leg}, which had arrived" + if (paired.dissolved) "; the Transfer Slussen had proposed for it was dissolved" else "")
+                outcome.lonely && outcome.decision != TransferDecision.Split && towards != null ->
+                    append(" · a Lonely Transfer towards $towards; it waits for a side that arrives later")
+            }
             outcome.kept?.let { append(" · ${it.text} of $keptFor set to $keptName, recorded in the Decision Journal") }
             // ADR-007 §3a: the decision stands; the Comparison marker keeps every Upload Plan from being prepared until the Transfers are detected again.
             if (!outcome.detectedAgain) append(" · the other Transfers are detected again when Slussen next starts or compares; no Upload Plan is prepared before")

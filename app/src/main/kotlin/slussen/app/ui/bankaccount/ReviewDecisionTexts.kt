@@ -6,6 +6,7 @@ import slussen.core.operation.OperationRefusal
 import slussen.core.operation.RunningOperation
 import slussen.core.port.ReviewChoice
 import slussen.core.port.TransactionStatus
+import slussen.core.port.TransferDecision
 import slussen.core.port.UnreadableTransactionStatus
 import slussen.core.review.NoLongerHolds
 import slussen.core.review.ResemblingImport
@@ -26,6 +27,9 @@ object ReviewDecisionTexts {
     /** NFR-023: the Review Decision of the opened line could not be read; said in the sheet, never a crash. */
     const val NOT_READ = "The Review Decision stored on this device could not be read; nothing was changed. Close the line and open it again to decide."
 
+    /** NFR-023: why the sheet cannot be left while its decision is on its way. */
+    const val STAYS_OPEN = "This sheet stays open until the answer is in; then you can close it or open another line."
+
     /** The closing line of the Review Decision part. */
     const val CLOSING = "A Review Decision can be changed until the Bank Transaction is uploaded, and each one is recorded in the Decision Journal. " +
         "Nothing is uploaded in this version."
@@ -38,42 +42,71 @@ object ReviewDecisionTexts {
         else -> choice.text
     }
 
-    // UC-004 BR-009: On a Transfer Leg the decision applies to its whole Transfer; after Split it is decided as an ordinary Bank Transaction.
-    /** What [choice] does, as the sheet says it beside the choice (`#possible-import`, `#needs-review`, `#transfer-leg`, `#outcome-unknown`). */
+    // UC-004 BR-009: On a doubtful Transfer Leg the decision decides its whole Transfer, unless it is split; while the Transfer is held back the decision releases nothing.
+    /**
+     * What [choice] does, as the sheet says it beside the choice (`#possible-import`, `#needs-review`, `#transfer-leg`,
+     * `#outcome-unknown`): from the core's own answer whether the decision decides the whole Transfer and whether the
+     * Operator holds that Transfer back (S-B-17); the choices themselves are the core's.
+     */
     fun effect(choice: ReviewChoice, sheet: ReviewSheet, budgetAppName: String): String {
         val whole = sheet.transfer?.decidesWholeTransfer == true
+        val held = whole && sheet.transfer?.decision == TransferDecision.Held
         val replaces = sheet.decision != null
         val unknown = sheet.statusWithoutDecision == TransactionStatus.OutcomeUnknown
         val text = when (choice) {
             ReviewChoice.AlreadyPresent -> when {
+                held -> "The whole Transfer counts as already in $budgetAppName; it stays held back until you change that Transfer Decision."
                 whole -> "The whole Transfer counts as already in $budgetAppName; neither side is proposed for an Upload Plan."
                 sheet.decision?.noLongerHolds != null -> "Choose another Budget App Transaction; it is then Already In Budget App and never sent."
                 else -> "Pick the same Budget App Transaction; it is then Already In Budget App and never sent."
             }
             ReviewChoice.ImportAnyway -> when {
+                held -> "This Transfer Leg stays in no Upload Plan while you hold its Transfer back; this decision applies once you change that Transfer Decision."
                 whole -> "This Transfer Leg rejoins its Transfer, which is then eligible as one linked transfer."
                 // UC-004 BR-008: an unknown outcome is sent again under the same Import Identifier; the Operator checks the Budget App first.
                 unknown -> "Sent again in a later Upload Plan under the same Import Identifier; check $budgetAppName first."
                 else -> "Eligible for a later Upload Plan as a new transaction."
             }
             ReviewChoice.Defer -> when {
+                held -> "Deferred; its Transfer stays held back as well until you change that Transfer Decision."
                 whole -> "The whole Transfer is held back until you change it."
                 unknown -> "Held back, still Outcome Unknown, until you change it."
                 else -> "Held back, Deferred, until you change it."
             }
-            ReviewChoice.ReUpload -> reUpload(on = false, whole)
+            ReviewChoice.ReUpload -> reUpload(on = false, sheet)
         }
         return if (replaces) "Replace the decision: ${text.replaceFirstChar { it.lowercase() }}" else text
     }
 
     // UC-004 BR-003: Re-upload is chosen per Bank Transaction, is off by default, and sends it only inside the Upload Window.
-    /** The switch of Re-upload (`#reupload`, `#reupload-merged`, `#no-longer-holds`). */
-    fun reUpload(on: Boolean, whole: Boolean): String = when {
-        on && whole -> "Re-upload · on: this Transfer Leg rejoins its Transfer. Switch it off to clear the decision."
-        on -> "Re-upload · on: sent again as a new transaction under a new Import Identifier, inside the Upload Window. Switch it off to clear the decision."
-        whole -> "Re-upload · off; switch it on to let this Transfer Leg rejoin its Transfer."
-        else -> "Re-upload · off; switch it on to send it again as a new transaction, inside the Upload Window."
+    /**
+     * The switch of Re-upload (`#reupload`, `#reupload-merged`, `#no-longer-holds`). On a Transfer Leg that is Decision No
+     * Longer Holds it lets the Transfer Leg rejoin its Transfer (UC-005 BR-013); one that is Deleted or Merged In Budget
+     * App is sent as a new transaction of its own Budget Account, not as a linked transfer (UC-004 BR-009).
+     */
+    fun reUpload(on: Boolean, sheet: ReviewSheet): String {
+        val leg = sheet.transfer?.decidesWholeTransfer == true
+        val deletedOrMerged = sheet.statusWithoutDecision == TransactionStatus.DeletedInBudgetApp || sheet.statusWithoutDecision == TransactionStatus.MergedInBudgetApp
+        return when {
+            leg && !deletedOrMerged && on -> "Re-upload · on: this Transfer Leg rejoins its Transfer. Switch it off to clear the decision."
+            leg && !deletedOrMerged -> "Re-upload · off; switch it on to let this Transfer Leg rejoin its Transfer."
+            sheet.transfer != null && on ->
+                "Re-upload · on: sent again as a new transaction of its own Budget Account, not as a linked transfer, inside the Upload Window. Switch it off to clear the decision."
+            sheet.transfer != null ->
+                "Re-upload · off; switch it on to send it again as a new transaction of its own Budget Account, not as a linked transfer, inside the Upload Window."
+            on -> "Re-upload · on: sent again as a new transaction under a new Import Identifier, inside the Upload Window. Switch it off to clear the decision."
+            else -> "Re-upload · off; switch it on to send it again as a new transaction, inside the Upload Window."
+        }
     }
+
+    // UC-005 BR-007: While its Transfer is held back, a Re-upload decision a Transfer Leg already has does not make it a New transaction.
+    /** A Re-upload decision the core offers no switch for now: kept, sending nothing; held back, the Transfer Decision is changed first. */
+    fun reUploadKept(sheet: ReviewSheet): String =
+        if (sheet.transfer?.decision == TransferDecision.Held) {
+            "Kept, but it sends nothing while you hold its Transfer back; change that Transfer Decision first."
+        } else {
+            "Kept, but its Transaction Status as stored now offers no Re-upload; it sends nothing until it does."
+        }
 
     /** UC-004 A6, BR-006: clearing gives the status the Comparison gives without a decision. */
     fun clearEffect(sheet: ReviewSheet): String = "Back to Slussen's status: ${sheet.statusWithoutDecision?.text ?: "the one without a decision"}."

@@ -64,8 +64,10 @@ data class BankAccountCard(
     val balanceNotice: String? = null,
     /** UC-008 A2 (UX-24): the remedy of an outdated Account Balance, a Fetch of its Data Provider; null otherwise. */
     val balanceRemedy: String? = null,
-    /** The line that opens its screen: where what waits for a decision is decided, when something does (UC-004). */
+    /** The line that opens its screen: where what waits for its Review Decision is decided, when something does (UC-004). */
     val opens: String = Texts.OPEN_BANK_TRANSACTIONS,
+    /** UC-005 (review B6 F8): its Bank Transactions in Guessed Transfers, which are decided in the Transfers; null while none is. */
+    val inTransfers: String? = null,
 )
 
 /** One Budget's workspace (UC-008 steps 4-8, BR-007). */
@@ -191,7 +193,7 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
             val serviceByName = services.settingsOverview.entries().entries
                 .mapNotNull { entry -> entry.service?.let { entry.name to it } }.toMap()
             // NFR-023 (review 4a): every read that suspends comes before the state is built, so that a line that changed meanwhile, such as Read again, is not overwritten.
-            val (transfers, guessedLegs) = transfersEntry()
+            val (transfers, guessedLegs, guessedByBankAccount) = transfersEntry()
             fun lines(blocked: List<Blocked>, dataProvider: ServiceKey?) =
                 blocked.map { BlockedLine(Texts.blocked(it, formats), remedyAction(it, serviceByName[it.subject] ?: dataProvider), Texts.advice(it)) }
             mutableFailure.value = null
@@ -226,7 +228,9 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                         blocked = lines(account.blocked, account.dataProviderId?.let(ServiceKey::dataProvider)),
                         balanceNotice = account.balanceInOtherCurrency?.let { Texts.balanceInOtherCurrencyNotice(it, formats) },
                         balanceRemedy = Texts.balanceRemedy(account.balance),
-                        opens = Texts.openBankAccount(account.notYetUploaded.waitingForDecision),
+                        // UX-27 (review B6 F8): of what waits, the Transfer Legs of Guessed Transfers are decided in the Transfers, the rest on the Bank Account.
+                        opens = Texts.openBankAccount((account.notYetUploaded.waitingForDecision - (guessedByBankAccount[account.bankAccountId] ?: 0)).coerceAtLeast(0)),
+                        inTransfers = Texts.inGuessedTransfers(guessedByBankAccount[account.bankAccountId] ?: 0),
                     )
                 },
                 // `budget.html#household-this-build`: the one line about Uploads and the decisions, which are not built yet.
@@ -247,13 +251,16 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
      * UX-27: the entry's counts come from the read model the Transfers list shows, with the number of Transfer Legs of its
      * Guessed Transfers, which wait for a Transfer Decision there; a read that fails is said there (NFR-023), the number null.
      */
-    private suspend fun transfersEntry(): Pair<String, Int?> = try {
+    private suspend fun transfersEntry(): Triple<String, Int?, Map<Long, Int>> = try {
         val view = services.transfers.of(budgetId)
-        TransfersTexts.entry(view) to view.guessedTransferLegs
+        // The Transfer Legs that are Guessed Transfer, by Bank Account: those waiting for a Transfer Decision.
+        val byBankAccount = view.transfers.flatMap { it.legs }.filter { it.status == slussen.core.port.TransactionStatus.GuessedTransfer }
+            .groupingBy { it.bankAccountId }.eachCount()
+        Triple(TransfersTexts.entry(view), view.guessedTransferLegs, byBankAccount)
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (failure: Exception) {
-        TransfersTexts.ENTRY_NOT_READ to null
+        Triple(TransfersTexts.ENTRY_NOT_READ, null, emptyMap())
     }
 
     private fun counts(counts: NotYetUploaded) = Texts.counts(counts, notComparedYet = 0)

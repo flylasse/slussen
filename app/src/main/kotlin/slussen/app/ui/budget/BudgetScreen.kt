@@ -81,6 +81,8 @@ fun BudgetScreen(
                 // Step 5 of UC-008 (`bank-account.html`): the way to the Bank Account's own screen with its Bank Transactions.
                 // For UC-004: where it has transactions waiting for a decision, the line says so; they are decided there.
                 NavigationLine(account.opens, null) { onBankAccount(account.bankAccountId) }
+                // Review B6 F8: its Guessed Transfers are decided in the Transfers (UC-005).
+                account.inTransfers?.let { NavigationLine(it, null, onTransfers) }
             }
         }
     }

@@ -51,6 +51,8 @@ data class TransactionSheetUi(
     val review: ReviewUi? = null,
     /** NFR-023: the Review Decision of the line could not be read; null otherwise. */
     val reviewNotRead: String? = null,
+    /** NFR-023: false while a decision of this sheet is on its way: the sheet stays open until its answer is in. */
+    val canLeave: Boolean = true,
 )
 
 /** One choice of the Review Decision sheet with what it does (`review-decision.html`). */
@@ -164,24 +166,39 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
      * Opens the Bank Account: its list, or the line [openKey] when the Operator came to decide on it (UC-005 A9), never a
      * sheet left open the last time it was shown.
      */
-    fun load(openKey: TransactionKey? = null) {
-        openLine = null
-        statusesOpen = false
-        forgetReview()
+    fun load(openKey: TransactionKey? = null, returning: Boolean = false) {
+        // NFR-023 (review B6 F1, F7): a line whose decision was on its way when the screen was left, and one the Operator
+        // comes back to with back, is shown again with its answer; any other opening starts from the list.
+        val keep = returning || keepOnReturn || reviewPending != null
+        keepOnReturn = false
+        if (!keep) {
+            openLine = null
+            statusesOpen = false
+            forgetReview()
+        }
         publish()
         viewModelScope.launch {
             reload()
-            openKey?.let(::open)
+            if (keep) openLine?.let { readReview(it) } else openKey?.let(::open)
         }
     }
 
-    /** Opens the details of the line [key], with its Review Decision (UC-004 step 1). */
+    /** Opens the details of the line [key], with its Review Decision (UC-004 step 1); not while a decision of the open line is on its way. */
     fun open(key: TransactionKey) {
+        if (reviewPending != null) return
         openLine = key
         statusesOpen = false
         forgetReview()
         publish()
         viewModelScope.launch { readReview(key) }
+    }
+
+    /** The decision of the open line was on its way when the screen was left: coming back shows that line with its answer. */
+    private var keepOnReturn = false
+
+    /** The screen is left (another screen or tab is shown). */
+    fun left() {
+        if (reviewPending != null) keepOnReturn = true
     }
 
     private fun forgetReview() {
@@ -310,7 +327,8 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
         if (key.unreadable) {
             val sheet = unreadableSheet ?: return null
             return ReviewUi(
-                lines = ReviewDecisionTexts.unreadableLines(sheet, budgetAppName),
+                lines = ReviewDecisionTexts.unreadableLines(sheet, budgetAppName) +
+                    listOfNotNull(DetailLine("While it is stored", ReviewDecisionTexts.STAYS_OPEN).takeIf { pending != null }),
                 choices = listOfNotNull(ReviewChoiceUi(ReviewChoice.Defer, ReviewChoice.Defer.text, ReviewDecisionTexts.unreadableEffect()).takeIf { sheet.canDefer }),
                 reUpload = null,
                 clear = ReviewChoiceUi(null, "Clear the decision", ReviewDecisionTexts.unreadableClearEffect()).takeIf { sheet.canClear },
@@ -326,9 +344,15 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
         // UC-004 BR-001: a Transaction Status that offers no choice, without a decision and unlocked, shows no Review Decision.
         if (sheet.choices.isEmpty() && current == null && !sheet.locked && sheet.undecidable == null && reviewAnswer == null) return null
         val open = !sheet.locked
-        val reUploadShown = open && (ReviewChoice.ReUpload in sheet.choices || current == ReviewChoice.ReUpload)
+        // UC-004 BR-009: While its Transfer is held back, a Transfer Leg offers no Re-upload; Re-upload is shown only as the core offers it, and one already decided is said to send nothing.
+        val reUploadShown = open && ReviewChoice.ReUpload in sheet.choices
+        val keptReUpload = open && current == ReviewChoice.ReUpload && !reUploadShown
         return ReviewUi(
-            lines = ReviewDecisionTexts.lines(sheet, budgetAppName, formats),
+            lines = ReviewDecisionTexts.lines(sheet, budgetAppName, formats) +
+                listOfNotNull(
+                    DetailLine("Re-upload", ReviewDecisionTexts.reUploadKept(sheet)).takeIf { keptReUpload },
+                    DetailLine("While it is stored", ReviewDecisionTexts.STAYS_OPEN).takeIf { pending != null },
+                ),
             // A6: the choices of the status without the decision, the current one apart; Re-upload is its own switch.
             choices = if (open) {
                 sheet.choices.filter { it != ReviewChoice.ReUpload && it != current }.map {
@@ -338,7 +362,7 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
                 emptyList()
             },
             reUpload = if (reUploadShown) {
-                ReUploadUi(current == ReviewChoice.ReUpload, ReviewDecisionTexts.reUpload(current == ReviewChoice.ReUpload, sheet.transfer?.decidesWholeTransfer == true))
+                ReUploadUi(current == ReviewChoice.ReUpload, ReviewDecisionTexts.reUpload(current == ReviewChoice.ReUpload, sheet))
             } else {
                 null
             },
@@ -360,6 +384,7 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
 
     /** Opens "What the statuses mean". */
     fun openStatuses() {
+        if (reviewPending != null) return
         openLine = null
         statusesOpen = true
         publish()
@@ -372,7 +397,9 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
         return true
     }
 
+    /** Closes the open sheet; not while a decision of it is on its way (NFR-023), which the sheet says. */
     fun close() {
+        if (reviewPending != null) return
         openLine = null
         statusesOpen = false
         forgetReview()
@@ -454,6 +481,7 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
                 BankAccountTexts.sheet(line, view, formats, today).copy(
                     review = reviewUi(line.key, budgetApp),
                     reviewNotRead = ReviewDecisionTexts.NOT_READ.takeIf { reviewNotRead },
+                    canLeave = reviewPending == null,
                 )
             },
             statusesSheet = if (statusesOpen) BankAccountTexts.statusesSheet(view, statusesAsOf, formats, today) else null,
