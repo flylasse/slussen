@@ -31,7 +31,18 @@
 - **Wave 1 is done** (A-1..A-5). Ready for the operator's device run and Windows gate, when convenient: commit bb7172a or later on `build-out`. New instrumented tests since `main`: in `UC008CheckImportStatusScreenIT`, `UC005ReviewTransfersScreenIT`, and the UC-013 and UC-014 screen ITs.
 - Wave 2: its specification (W2-0) is written and corrected after its review; storage version 6 (W2-1) is built and green, its review is running. The prompts of B2 to B6 are in `docs/reviews/build_out_prompts/`.
 - Paused a second time on 2026-11-26 after W2-1's review, resumed the same evening.
-- Next: phase B4 (mapping changes).
+- 2026-11-27: phase B4's builder was stopped by the session's usage limit while it was still reading; nothing was written and nothing lost. Resumed in the next window.
+- **Usage, what three windows showed** (sub-agent tokens; the orchestrator's own turns are not measured):
+
+| Window | What ran | Strongest model | Opus | Sonnet | Ended at |
+|---|---|---|---|---|---|
+| 1 | the five surveys, A-1..A-3, A-4's builder | 1.1M | 2.3M | 0.3M | 90% (operator) |
+| 2 | A-4's review and fixes, A-5, W2-0, W2-1 | 1.2M | 1.0M | 0.04M | 85% before the last review (operator) |
+| 3 | B2, B3, the start of B4 | 1.2M and B4's reading | 0.5M | 0 | the limit |
+
+  The strongest model counts several times more against the limit than Opus; three windows do not pin the ratio. A screen phase costs 0.5 to 0.7M with its review and fixes, a specification phase about 0.6M, a core or storage phase 0.8 to 0.9M.
+- **Pacing rule (from 2026-11-27):** the orchestrator stops only between phases; a window is the five hours from its first call after a reset; it keeps a running count by model and starts no builder or reviewer that does not fit what is left, with a margin; at the stop it schedules the restart for five minutes after the window's end and reports the count, and the operator gives the percentage he sees, to pin the weights.
+- Next: phase B4 (mapping changes), resumed; then B5 with an Opus builder; then a pause.
 
 ## 1. Scope
 
