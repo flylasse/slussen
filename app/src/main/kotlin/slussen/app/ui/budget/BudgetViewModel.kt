@@ -26,7 +26,14 @@ import java.time.Instant
  * The action that removes a Blocked Reason (UC-008 A6). Only [available] actions start their use case; an action whose
  * use case no slice has built yet is shown with [note] instead.
  */
-data class RemedyAction(val title: String, val available: Boolean, val service: ServiceKey?, val note: String?)
+data class RemedyAction(
+    val title: String,
+    val available: Boolean,
+    val service: ServiceKey?,
+    val note: String?,
+    /** The remedy is taken in Account Mappings (UC-009), not on a service's page. */
+    val accountMappings: Boolean = false,
+)
 
 /** One Blocked Reason with its action, and the advice it carries (UC-001 A19, A20). */
 data class BlockedLine(val text: String, val action: RemedyAction?, val advice: String? = null)
@@ -57,6 +64,8 @@ data class BankAccountCard(
     val balanceNotice: String? = null,
     /** UC-008 A2 (UX-24): the remedy of an outdated Account Balance, a Fetch of its Data Provider; null otherwise. */
     val balanceRemedy: String? = null,
+    /** The line that opens its screen: where what waits for a decision is decided, when something does (UC-004). */
+    val opens: String = Texts.OPEN_BANK_TRANSACTIONS,
 )
 
 /** One Budget's workspace (UC-008 steps 4-8, BR-007). */
@@ -83,6 +92,8 @@ data class BudgetUi(
      * from the same read model as the list, or that they could not be read.
      */
     val transfers: String = "",
+    /** UC-004, UC-005: where the transactions waiting for a decision are decided; null while none waits. */
+    val decide: String? = null,
 )
 
 /** A Budget tab (UC-008 steps 4-8), from stored data only. */
@@ -180,7 +191,7 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
             val serviceByName = services.settingsOverview.entries().entries
                 .mapNotNull { entry -> entry.service?.let { entry.name to it } }.toMap()
             // NFR-023 (review 4a): every read that suspends comes before the state is built, so that a line that changed meanwhile, such as Read again, is not overwritten.
-            val transfers = transfersEntry()
+            val (transfers, guessedLegs) = transfersEntry()
             fun lines(blocked: List<Blocked>, dataProvider: ServiceKey?) =
                 blocked.map { BlockedLine(Texts.blocked(it, formats), remedyAction(it, serviceByName[it.subject] ?: dataProvider), Texts.advice(it)) }
             mutableFailure.value = null
@@ -215,6 +226,7 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                         blocked = lines(account.blocked, account.dataProviderId?.let(ServiceKey::dataProvider)),
                         balanceNotice = account.balanceInOtherCurrency?.let { Texts.balanceInOtherCurrencyNotice(it, formats) },
                         balanceRemedy = Texts.balanceRemedy(account.balance),
+                        opens = Texts.openBankAccount(account.notYetUploaded.waitingForDecision),
                     )
                 },
                 // `budget.html#household-this-build`: the one line about Uploads and the decisions, which are not built yet.
@@ -226,17 +238,22 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                 notComparedYet = Texts.notComparedYet(workspace.summary.notComparedYet, workspace.budgetAppName),
                 readAgainNote = Texts.readAgainNote(workspace.summary, workspace.budgetAppName),
                 transfers = transfers,
+                decide = Texts.decideOnBudget(workspace.summary.notYetUploaded.waitingForDecision, guessedLegs),
             )
         }
     }
 
-    /** UX-27: the entry's counts come from the read model the Transfers list shows; a read that fails is said there (NFR-023). */
-    private suspend fun transfersEntry(): String = try {
-        TransfersTexts.entry(services.transfers.of(budgetId))
+    /**
+     * UX-27: the entry's counts come from the read model the Transfers list shows, with the number of Transfer Legs of its
+     * Guessed Transfers, which wait for a Transfer Decision there; a read that fails is said there (NFR-023), the number null.
+     */
+    private suspend fun transfersEntry(): Pair<String, Int?> = try {
+        val view = services.transfers.of(budgetId)
+        TransfersTexts.entry(view) to view.guessedTransferLegs
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (failure: Exception) {
-        TransfersTexts.ENTRY_NOT_READ
+        TransfersTexts.ENTRY_NOT_READ to null
     }
 
     private fun counts(counts: NotYetUploaded) = Texts.counts(counts, notComparedYet = 0)
@@ -257,8 +274,9 @@ fun remedyAction(blocked: Blocked, service: ServiceKey?): RemedyAction? {
         // UC-008 BR-006: A failed Fetch, a Bank Account not delivered and the Bank's sign-in (after signing in) are removed by fetching again.
         Remedy.FetchAgain, Remedy.SignInAtDataProvider -> RemedyAction(title, available = service != null, service = service, note = null)
         Remedy.GrantBankConsent -> RemedyAction(title, available = false, service = null, note = Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD)
+        // steps 2-7, A8 of UC-009: identifying a Bank Account and moving its Account Mapping are done in Account Mappings.
         Remedy.IdentifyBankAccount, Remedy.MoveAccountMapping ->
-            RemedyAction(title, available = false, service = null, note = "comes with Manage Account Mappings")
+            RemedyAction(title, available = true, service = null, note = "in Account Mappings", accountMappings = true)
         // A9 of UC-008: the confirmation of First Upload Matching comes with Uploads; no action is needed now.
         Remedy.StartFirstUploadMatching ->
             RemedyAction(title, available = false, service = null, note = "comes with Uploads in a later version; no action is needed now")

@@ -49,6 +49,8 @@ fun BudgetScreen(
             ui.notComparedYet?.let { Muted(it) }
             ui.readAgainNote?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
             if (ui.note != null) Muted(ui.note)
+            // For UC-004, UC-005: where the transactions waiting for a decision are decided.
+            ui.decide?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
             // Step 1 of UC-005 (`budget.html` → `transfers.html#list`): the entry to the Transfers, whose counts agree with its list (UX-27).
             SlussenCard { NavigationLine(TransfersTexts.OPEN_TRANSFERS, ui.transfers, onTransfers) }
             SectionTitle("Sources")
@@ -77,7 +79,8 @@ fun BudgetScreen(
                 account.balanceNotice?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
                 account.blocked.forEach { BlockedReasonLine(it.text, it.action, onRemedy, it.advice) }
                 // Step 5 of UC-008 (`bank-account.html`): the way to the Bank Account's own screen with its Bank Transactions.
-                NavigationLine(Texts.OPEN_BANK_TRANSACTIONS, null) { onBankAccount(account.bankAccountId) }
+                // For UC-004: where it has transactions waiting for a decision, the line says so; they are decided there.
+                NavigationLine(account.opens, null) { onBankAccount(account.bankAccountId) }
             }
         }
     }

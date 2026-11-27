@@ -1,5 +1,6 @@
 package slussen.app.ui.mappings
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,6 +45,40 @@ class CardActions(
     val onDone: () -> Unit,
 )
 
+/** What the Operator does in the sheet of the Bank Account of one Bank Account and its editors (UC-009 step 2, A4-A13). */
+class MappingChangeActions(
+    val onOpenSheet: (Long) -> Unit = {},
+    val onCloseSheet: () -> Unit = {},
+    val onAction: (MappingAction) -> Unit = {},
+    val onSaveName: (String) -> Unit = {},
+    val onSaveStartDate: (String) -> Unit = {},
+    val onClearStartDate: () -> Unit = {},
+    val onMoveTo: (Long) -> Unit = {},
+    val onSaveOtherSide: (Long?) -> Unit = {},
+    val onIdentifyWith: (Long) -> Unit = {},
+    val onReject: () -> Unit = {},
+    val onCancelEditor: () -> Unit = {},
+    val onConfirmQuestion: () -> Unit = {},
+    val onCancelQuestion: () -> Unit = {},
+)
+
+/** The sheet of a Bank Account actions of [viewModel], as the screen calls them. */
+fun mappingChangeActionsOf(viewModel: AccountMappingsViewModel) = MappingChangeActions(
+    onOpenSheet = viewModel::openSheet,
+    onCloseSheet = viewModel::closeSheet,
+    onAction = viewModel::startAction,
+    onSaveName = viewModel::saveName,
+    onSaveStartDate = viewModel::saveStartDate,
+    onClearStartDate = viewModel::clearStartDate,
+    onMoveTo = { viewModel.moveTo(it) },
+    onSaveOtherSide = viewModel::saveOtherSide,
+    onIdentifyWith = { viewModel.identifyWith(it) },
+    onReject = viewModel::rejectProposal,
+    onCancelEditor = viewModel::cancelEditor,
+    onConfirmQuestion = viewModel::confirmQuestion,
+    onCancelQuestion = viewModel::cancelQuestion,
+)
+
 /** The card actions of [viewModel], as the screen calls them. */
 fun cardActionsOf(viewModel: AccountMappingsViewModel) = CardActions(
     onChooseBudgetAccount = viewModel::chooseBudgetAccount,
@@ -57,10 +92,10 @@ fun cardActionsOf(viewModel: AccountMappingsViewModel) = CardActions(
 /**
  * The Account Mappings (`docs/mockups/account-mappings.html#to-map`, `#map`, `#not-imported`, `#kept-by-hand`): the
  * Bank Accounts to map first, one line each, each opening the card of one Bank Account at a time (UC-013 steps 8-15);
- * then each Bank Account → Budget Account by Budget, with the Bank Account type and Bank of each changed in the sheet of
- * `#type-and-bank` (UC-009 A14); then, only when there is one, Not imported and Kept by hand, read-only, leading to the
- * Data Provider's and the Budget App's pages (UC-009 A15, A16, BR-013, BR-014). There is no Add Bank Account and no
- * Keep by hand button.
+ * then each Bank Account → Budget Account by Budget with its Funded By or Transfer Partner, whether anything was sent
+ * through it and whether it is identified, each opening its sheet (`#sheet`) with every change of UC-009 (A4-A14);
+ * then, only when there is one, Not imported and Kept by hand, read-only, leading to the Data Provider's and the Budget
+ * App's pages (UC-009 A15, A16, BR-013, BR-014). There is no Add Bank Account and no Keep by hand button.
  */
 @Composable
 fun AccountMappingsScreen(
@@ -75,7 +110,26 @@ fun AccountMappingsScreen(
     onConfirmClearing: () -> Unit,
     onCancelClearing: () -> Unit,
     onCancelTypeAndBank: () -> Unit,
+    changes: MappingChangeActions = MappingChangeActions(),
 ) {
+    // System back closes an open editor or sheet of a Bank Account first, before it leaves the Account Mappings.
+    BackHandler(enabled = ui.editor != null || ui.bankAccountSheet != null) { if (ui.editor != null) changes.onCancelEditor() else changes.onCloseSheet() }
+    ui.question?.let { question ->
+        AlertDialog(
+            onDismissRequest = changes.onCancelQuestion,
+            title = { Text(question.title) },
+            text = {
+                androidx.compose.foundation.layout.Column {
+                    question.lines.forEach { Text(it) }
+                    // NFR-023: the state and the answer of the confirmation, at the confirmation.
+                    ui.pending?.let { Muted(it) }
+                    ui.message?.let { Text(it, color = SlussenColors.Amber) }
+                }
+            },
+            confirmButton = { TextButton(onClick = changes.onConfirmQuestion, enabled = ui.pending == null) { Text(question.confirm) } },
+            dismissButton = { TextButton(onClick = changes.onCancelQuestion, enabled = ui.pending == null) { Text("Cancel") } },
+        )
+    }
     val sheet = ui.typeAndBank
     if (sheet != null) {
         TypeAndBankSheet(sheet, ui.message, onSaveTypeAndBank, onCancelTypeAndBank)
@@ -90,10 +144,115 @@ fun AccountMappingsScreen(
         }
         return
     }
+    ui.editor?.let { editor ->
+        Editor(editor, ui.message, ui.pending, changes)
+        return
+    }
+    ui.bankAccountSheet?.let { bankAccountSheet ->
+        BankAccountSheet(bankAccountSheet, ui.message, ui.pending, changes)
+        return
+    }
     when (ui.stage) {
         MappingsStage.Card -> ui.card?.let { BankAccountCard(it, ui.message, card, onBack) }
         MappingsStage.Summary -> ui.summary?.let { SummaryCard(it, card) }
-        MappingsStage.List -> MappingsList(ui, onBack, onMapAll, onMapOne, onService, onOpenTypeAndBank)
+        MappingsStage.List -> MappingsList(ui, onBack, onMapAll, onMapOne, onService, changes.onOpenSheet)
+    }
+}
+
+/** UC-009 step 2 (`#sheet`): every action for one Bank Account, with Close. */
+@Composable
+private fun BankAccountSheet(sheet: BankAccountSheetUi, message: String?, pending: String?, changes: MappingChangeActions) {
+    LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
+        item {
+            ScreenTitle(sheet.title, sheet.subtitle, changes.onCloseSheet)
+            pending?.let { Muted(it) }
+            if (message != null) Banner(message, null)
+            SlussenCard {
+                sheet.actions.forEach { action ->
+                    AccountLine(action.title, action.detail, null, null, null, modifier = Modifier.clickable(enabled = pending == null) { changes.onAction(action.action) })
+                }
+            }
+            TextButton(onClick = changes.onCloseSheet) { Text("Close") }
+        }
+    }
+}
+
+/** The editors of A6, A8, A9, A12 and A13, each answering at its own controls (NFR-023). */
+@Composable
+private fun Editor(editor: MappingEditorUi, message: String?, pending: String?, changes: MappingChangeActions) {
+    val enabled = pending == null
+    LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
+        item {
+            when (editor) {
+                is MappingEditorUi.Rename -> {
+                    var name by remember(editor.bankAccountId) { mutableStateOf(editor.name) }
+                    ScreenTitle("Rename", editor.detail, changes.onCancelEditor)
+                    SlussenCard {
+                        OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+                        Muted("The name never identifies the Bank Account.")
+                        Row {
+                            Button(onClick = { changes.onSaveName(name) }, enabled = enabled) { Text("Save") }
+                            TextButton(onClick = changes.onCancelEditor) { Text("Cancel") }
+                        }
+                    }
+                }
+                is MappingEditorUi.StartDate -> {
+                    var date by remember(editor.bankAccountId) { mutableStateOf(editor.current) }
+                    ScreenTitle("Start Date", editor.name, changes.onCancelEditor)
+                    SlussenCard {
+                        OutlinedTextField(value = date, onValueChange = { date = it }, singleLine = true, label = { Text("Start Date") }, placeholder = { Text("2026-09-01") })
+                        Muted("Nothing before a Start Date is offered for Upload")
+                        Row {
+                            Button(onClick = { changes.onSaveStartDate(date) }, enabled = enabled) { Text("Save") }
+                            TextButton(onClick = changes.onClearStartDate, enabled = enabled) { Text("Clear") }
+                            TextButton(onClick = changes.onCancelEditor) { Text("Cancel") }
+                        }
+                    }
+                }
+                is MappingEditorUi.Move -> {
+                    ScreenTitle(editor.title, editor.subtitle, changes.onCancelEditor)
+                    SlussenCard {
+                        if (editor.choices.isEmpty()) Muted("No Budget Account in its currency receives through no Account Mapping.")
+                        editor.choices.forEach { choice ->
+                            AccountLine(choice.title, choice.detail, null, null, null, modifier = Modifier.clickable(enabled = enabled) { changes.onMoveTo(choice.id) })
+                        }
+                        TextButton(onClick = changes.onCancelEditor) { Text("Cancel") }
+                    }
+                }
+                is MappingEditorUi.OtherSide -> {
+                    ScreenTitle(editor.title, "Now: ${editor.current}", changes.onCancelEditor)
+                    SlussenCard {
+                        Muted("Budget Accounts Slussen fetches")
+                        editor.choices.forEach { choice ->
+                            AccountLine(choice.title, choice.detail, null, null, null, modifier = Modifier.clickable(enabled = enabled) { changes.onSaveOtherSide(choice.id) })
+                        }
+                        Row {
+                            TextButton(onClick = { changes.onSaveOtherSide(null) }, enabled = enabled) { Text("Clear") }
+                            TextButton(onClick = changes.onCancelEditor) { Text("Cancel") }
+                        }
+                    }
+                }
+                is MappingEditorUi.Identify -> {
+                    ScreenTitle(editor.title, editor.subtitle, changes.onCancelEditor)
+                    SlussenCard {
+                        editor.none?.let { Muted(it) }
+                        editor.options.forEach { option ->
+                            AccountLine(
+                                listOfNotNull(option.title, option.tag).joinToString(" · "), option.detail, null, null, null,
+                                modifier = Modifier.clickable(enabled = enabled) { changes.onIdentifyWith(option.id) },
+                            )
+                        }
+                        Row {
+                            if (editor.canReject) TextButton(onClick = changes.onReject, enabled = enabled) { Text("Not this one") }
+                            TextButton(onClick = changes.onCancelEditor) { Text("Cancel") }
+                        }
+                    }
+                }
+            }
+            // NFR-023: the state of the change from the tap on, and its answer, at the editor.
+            pending?.let { Muted(it) }
+            if (message != null) Banner(message, null)
+        }
     }
 }
 
@@ -104,7 +263,7 @@ private fun MappingsList(
     onMapAll: () -> Unit,
     onMapOne: (Long) -> Unit,
     onService: (ServiceKey) -> Unit,
-    onOpenTypeAndBank: (Long) -> Unit,
+    onOpenSheet: (Long) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
@@ -133,10 +292,12 @@ private fun MappingsList(
         ui.groups.forEach { group ->
             item { SectionTitle(group.title) }
             items(group.lines) { line ->
-                SlussenCard(modifier = Modifier.clickable { onOpenTypeAndBank(line.bankAccountId) }) {
+                SlussenCard(modifier = Modifier.clickable { onOpenSheet(line.bankAccountId) }) {
                     Text("${line.bankAccount} → ${line.budgetAccount}", color = SlussenColors.Text, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                     Muted(line.detail)
-                    if (line.note != null) Muted(line.note)
+                    // step 1 of UC-009: its Funded By or Transfer Partner, its Start Date, what was sent through it and whether it is identified.
+                    Muted(listOfNotNull(line.otherSide, line.note).joinToString(" · "))
+                    line.state?.let { Muted(it) }
                 }
             }
         }

@@ -18,6 +18,8 @@ import slussen.core.mapping.AccountMappings
 import slussen.core.operation.OperationCoordinator
 import slussen.core.plugin.PluginRegistration
 import slussen.core.port.RandomSource
+import slussen.core.review.ReviewDecisions
+import slussen.core.transfer.TransferDecisions
 import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.settings.GeneralSettings
@@ -119,12 +121,22 @@ class CompositionRoot(log: SlussenLog) {
                 registered, credentials, storage.connections, storage.offered, storage.fetches, storage.providerRequests,
                 coordinator, storage.settings, journal, clock, fetchNotices, comparison,
             ),
+            // For UC-004, UC-005: the decisions, each one storage operation admitted by the coordinator (O-13, ADR-007 §2).
+            review = ReviewDecisions(
+                storage.connections, storage.reviews, storage.comparisons, coordinator, storage.settings, journal, clock,
+                registered.budgetApp.profile.matchingDateWindowDays, registered.budgetApp.profile.refusesReusedImportIdentifier,
+            ),
+            transferDecisions = TransferDecisions(
+                storage.connections, storage.transfers, storage.comparisons, comparison, storage.settings, journal, clock,
+                registered.budgetApp.profile.matchingDateWindowDays,
+            ),
             comparison = comparison,
             formats = Formats(clock.zone),
             clock = clock,
             appVersion = context.installedAppVersion(),
             running = coordinator.running,
             ended = coordinator.ended,
+            budgetAppName = registered.budgetApp.profile.name,
         )
     }
 

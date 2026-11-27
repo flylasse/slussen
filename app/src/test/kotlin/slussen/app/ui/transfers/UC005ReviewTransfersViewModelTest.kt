@@ -59,7 +59,7 @@ class UC005ReviewTransfersViewModelTest {
                 "one Eligible Transaction, the side it is written through.",
             ui.countsNote,
         )
-        assertEquals(TransfersTexts.READ_ONLY, ui.note)
+        assertEquals(TransfersTexts.DECISIONS_NOTE, ui.note)
         assertNull(ui.empty)
         assertEquals(listOf(true, true, false, false), ui.transfers.map { it.guessed })
         val pair = ui.card("guessed-pay")
@@ -102,7 +102,7 @@ class UC005ReviewTransfersViewModelTest {
         )
         assertEquals("Pinecrest Rewards Card · Budget Account Rewards Card · 2026-10-13 · +410.00 · AUTOPAY RECEIVED · Guessed Transfer", ui.detail("Inflow side"))
         assertEquals("Pinecrest Rewards Card has no Funded By, so its paying side is only proposed.", ui.detail("Why not certain"))
-        assertEquals("No: a Guessed Transfer is in no Upload Plan until it is confirmed or corrected, which comes in a later version.", ui.detail("Eligible"))
+        assertEquals("No: a Guessed Transfer is in no Upload Plan until you confirm it or choose another Budget Account.", ui.detail("Eligible"))
         assertEquals(TransfersTexts.CLOSING, ui.sheet!!.closing)
     }
 
@@ -206,8 +206,8 @@ class UC005ReviewTransfersViewModelTest {
         )
         screen.open(paid)
         assertEquals(
-            "No: its Kestrel Reserve side is Needs Review, so the whole Transfer waits for the Review Decision on that Transfer Leg. " +
-                "Review Decisions come in a later version.",
+            "No: its Kestrel Reserve side is Needs Review, so the whole Transfer waits for your Review Decision on that Transfer Leg; " +
+                "decide on it, or split the Transfer.",
             screen.ui().detail("Eligible"),
         )
         assertTrue(screen.ui().detail("Inflow side").endsWith("· Needs Review"))

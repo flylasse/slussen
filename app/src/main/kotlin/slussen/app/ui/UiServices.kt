@@ -13,6 +13,8 @@ import slussen.core.settings.GeneralSettings
 import slussen.core.status.BankAccountTransactions
 import slussen.core.status.BudgetTransfers
 import slussen.core.status.ImportStatus
+import slussen.core.review.ReviewDecisions
+import slussen.core.transfer.TransferDecisions
 
 /** The core services the screens of this build use, created once by the composition root (ADR-001 §5). */
 class UiServices(
@@ -29,6 +31,10 @@ class UiServices(
     /** The Transfers of one Budget with why each is guessed and whether it is eligible (UC-005 step 1), from stored data only. */
     val transfers: BudgetTransfers,
     val fetch: FetchTransactions,
+    /** The Review Decisions on doubtful Bank Transactions and Unreadable Transactions (UC-004), from the Bank Account screen. */
+    val review: ReviewDecisions,
+    /** The Transfer Decisions (UC-005 steps 2-6), from the Transfers of a Budget. */
+    val transferDecisions: TransferDecisions,
     /** Reading the Budget App again and comparing (UC-003, FR-040), from the line of the Budget App of the Overview and every Budget tab. */
     val comparison: Comparison,
     val formats: Formats,
@@ -39,4 +45,6 @@ class UiServices(
     val running: StateFlow<RunningOperation?>,
     /** How many operations have ended, from the operation coordinator, so that a screen shows the stored data again (NFR-023). */
     val ended: StateFlow<Long>,
+    /** The name of the Budget App of this build, as its part declares it (C-010). */
+    val budgetAppName: String = "the Budget App",
 )

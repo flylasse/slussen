@@ -66,12 +66,40 @@ object Texts {
     const val OPEN_BANK_TRANSACTIONS = "Bank Transactions and their statuses ›"
 
     /**
-     * `budget.html#household-this-build`: the one line of a Budget tab about the parts not built yet, Uploads (UC-006),
-     * Review Decisions (UC-004) and Transfer Decisions (UC-005), for which no action is needed.
+     * `budget.html#household-this-build`: the one line of a Budget tab about the part not built yet, Uploads (UC-006), for
+     * which no action is needed; the Review Decisions and Transfer Decisions are taken in this version.
      */
     const val UPLOADS_NOT_IN_THIS_BUILD =
-        "Nothing is uploaded in this version: Uploads, Review Decisions and Transfer Decisions come in a later version. " +
-            "No action is needed for them now."
+        "Nothing is uploaded in this version: Uploads come in a later version. Your Review Decisions and Transfer Decisions " +
+            "are stored and decide what a later Upload Plan holds."
+
+    /**
+     * UC-008 BR-003, UC-004, UC-005: where the transactions waiting for a decision are decided, on a Budget tab; null while
+     * none waits.
+     */
+    fun decideOnBudget(waiting: Int, guessedTransferLegs: Int?): String? {
+        if (waiting == 0) return null
+        val head = if (waiting == 1) "1 transaction waits for your decision" else "$waiting transactions wait for your decision"
+        // UX-27: the Transfer Legs of the Guessed Transfers are among them, and are decided in the Transfers; the others on their Bank Account.
+        val where = when {
+            guessedTransferLegs == null -> "open a Bank Account below to decide on its own, and the Transfers for a Guessed Transfer"
+            guessedTransferLegs == 0 -> "open a Bank Account below to decide on its own"
+            guessedTransferLegs >= waiting -> "open the Transfers to confirm or correct the Guessed Transfers"
+            else -> "open a Bank Account below to decide on its own, and the Transfers for the Guessed Transfers"
+        }
+        return "$head: $where."
+    }
+
+    /** UC-008 BR-003: on the Overview, where the transactions waiting for a decision of a Budget are decided; null while none waits. */
+    fun decideOnOverview(waiting: Int, budgetName: String): String? =
+        if (waiting == 0) null else "Waiting for your decision: open $budgetName to decide."
+
+    /** UC-008 step 5: the line of a Bank Account card that opens its own screen, where what waits for a decision is decided. */
+    fun openBankAccount(waiting: Int): String = when (waiting) {
+        0 -> OPEN_BANK_TRANSACTIONS
+        1 -> "Decide on the 1 waiting for your decision ›"
+        else -> "Decide on the $waiting waiting for your decision ›"
+    }
 
     /** `overview.html#open-this-build`: why Start First Upload Matching (UC-008 A9) cannot run yet; no action is needed. */
     const val FIRST_UPLOAD_MATCHING_COMES_WITH_UPLOADS =

@@ -26,6 +26,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import slussen.app.SlussenApplication
 import slussen.app.ui.bankaccount.BankAccountScreen
 import slussen.app.ui.bankaccount.BankAccountViewModel
+import slussen.app.ui.bankaccount.reviewActionsOf
+import slussen.app.ui.budget.RemedyAction
+import slussen.app.ui.mappings.mappingChangeActionsOf
+import slussen.app.ui.transfers.transferDecisionActionsOf
+import slussen.core.status.TransactionKey
 import slussen.app.ui.budget.BudgetScreen
 import slussen.app.ui.budget.BudgetViewModel
 import slussen.app.ui.components.Muted
@@ -75,8 +80,11 @@ sealed interface Screen {
 
     data class Budget(val budgetId: Long, val name: String) : Screen
 
-    /** UC-008 step 5: one Bank Account of the Budget [budgetId], reached from its card on the Budget tab. */
-    data class BankAccount(val bankAccountId: Long, val budgetId: Long) : Screen
+    /**
+     * UC-008 step 5: one Bank Account of the Budget [budgetId], reached from its card on the Budget tab, or from a Transfer
+     * whose Transfer Leg [openTransaction] waits for its Review Decision (UC-005 A9), with that line open.
+     */
+    data class BankAccount(val bankAccountId: Long, val budgetId: Long, val openTransaction: Long? = null) : Screen
 
     /**
      * UC-005 step 1: the Transfers of the Budget [budgetId], from its tab, or from a Transfer Leg on the Bank Account screen
@@ -113,6 +121,10 @@ fun SlussenScreens(services: UiServices) {
         if (stack.size > 1) stack.removeAt(stack.lastIndex)
     }
     BackHandler(enabled = stack.size > 1) { back() }
+    // A6 of UC-008: a remedy starts its use case, on a service's page or in Account Mappings (UC-009).
+    fun remedy(action: RemedyAction) {
+        if (action.accountMappings) go(Screen.AccountMappings) else action.service?.let { go(Screen.Service(it)) }
+    }
 
     val overview: OverviewViewModel = viewModel(key = "overview") { OverviewViewModel(services) }
     val overviewUi by overview.state.collectAsState()
@@ -153,7 +165,7 @@ fun SlussenScreens(services: UiServices) {
                             onConfirmFetch = overview::confirmFetch,
                             onCancelFetch = overview::cancelFetch,
                             onReadAgain = overview::readAgain,
-                            onRemedy = { action -> action.service?.let { go(Screen.Service(it)) } },
+                            onRemedy = ::remedy,
                         )
                     }
                 }
@@ -167,7 +179,7 @@ fun SlussenScreens(services: UiServices) {
                     budgetUi?.let { ui ->
                         BudgetScreen(
                             ui,
-                            onRemedy = { action -> action.service?.let { go(Screen.Service(it)) } },
+                            onRemedy = ::remedy,
                             onStartFirstUploadMatching = { overview.startFirstUploadMatching() },
                             onReadAgain = vm::readAgain,
                             onBankAccount = { id -> go(Screen.BankAccount(id, current.budgetId)) },
@@ -179,21 +191,34 @@ fun SlussenScreens(services: UiServices) {
                     val vm: BankAccountViewModel = viewModel(key = "bank-account-${current.bankAccountId}") {
                         BankAccountViewModel(services, current.bankAccountId)
                     }
-                    LaunchedEffect(current) { vm.load() }
+                    LaunchedEffect(current) { vm.load(current.openTransaction?.let { TransactionKey(unreadable = false, id = it) }) }
                     BankAccountScreen(
                         state = vm.state.collectAsState().value,
                         onBack = ::back,
                         onOpen = vm::open,
                         onStatuses = vm::openStatuses,
                         onClose = vm::close,
-                        onRemedy = { action -> action.service?.let { go(Screen.Service(it)) } },
+                        onRemedy = ::remedy,
                         onTransfer = { leg -> go(Screen.Transfers(current.budgetId, leg)) },
+                        review = reviewActionsOf(vm),
                     )
                 }
                 is Screen.Transfers -> {
                     val vm: TransfersViewModel = viewModel(key = "transfers-${current.budgetId}") { TransfersViewModel(services, current.budgetId) }
                     LaunchedEffect(current) { vm.load(current.selectLeg) }
-                    TransfersScreen(state = vm.state.collectAsState().value, onBack = ::back, onOpen = vm::open, onClose = vm::close)
+                    TransfersScreen(
+                        state = vm.state.collectAsState().value,
+                        onBack = ::back,
+                        onOpen = vm::open,
+                        onClose = vm::close,
+                        decisions = transferDecisionActionsOf(
+                            vm,
+                            // A9 step 2 of UC-005: to the Review Decision of the Transfer Leg that waits for it.
+                            onReviewLeg = { leg -> go(Screen.BankAccount(leg.bankAccountId, current.budgetId, leg.storedBankTransaction)) },
+                            // A8 step 1 of UC-005: a Funded By that no longer applies is changed or cleared in Account Mappings.
+                            onAccountMappings = { go(Screen.AccountMappings) },
+                        ),
+                    )
                 }
                 Screen.RecentFetches -> {
                     val vm: RecentFetchesViewModel = viewModel(key = "fetches") { RecentFetchesViewModel(services) }
@@ -204,7 +229,7 @@ fun SlussenScreens(services: UiServices) {
                         onOpen = vm::open,
                         onClose = vm::close,
                         onFetchAll = { tab(Screen.Overview) },
-                        onRemedy = { action -> action.service?.let { go(Screen.Service(it)) } },
+                        onRemedy = ::remedy,
                     )
                 }
                 Screen.Settings -> {
@@ -308,6 +333,7 @@ fun SlussenScreens(services: UiServices) {
                             onConfirmClearing = vm::confirmClearing,
                             onCancelClearing = vm::cancelClearing,
                             onCancelTypeAndBank = vm::cancelTypeAndBank,
+                            changes = mappingChangeActionsOf(vm),
                         )
                     }
                 }

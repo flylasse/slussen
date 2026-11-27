@@ -25,7 +25,7 @@ import slussen.pluginapi.testfixtures.UseCase
 import slussen.testing.EveryStatusScenario
 
 @OptIn(ExperimentalTestApi::class)
-@DisplayName("UC-005: Review Transfers, the screen on a device")
+@DisplayName("UC-005: Review Transfers, the screen and a Transfer Decision on a device")
 class UC005ReviewTransfersScreenIT {
     @JvmField
     @RegisterExtension
@@ -61,7 +61,7 @@ class UC005ReviewTransfersScreenIT {
         onNodeWithText("Transfers: 4 · Guessed Transfers: 2").assertExists()
         onNodeWithText(TransfersTexts.OPEN_TRANSFERS).performClick()
         onNodeWithText("Transfers in Household: 4 · of them Guessed Transfers: 2").assertExists()
-        onNodeWithText(TransfersTexts.READ_ONLY).assertExists()
+        onNodeWithText(TransfersTexts.DECISIONS_NOTE).assertExists()
         onNodeWithText("Checking? → Rewards Card").assertExists()
         onNodeWithText("Kestrel Checking −410.00 · 10-12 · arrived").assertExists()
         onNode(hasScrollAction()).performScrollToNode(hasText("Kestrel Reserve +500.00 · 10-11 · arrived"))
@@ -81,5 +81,36 @@ class UC005ReviewTransfersScreenIT {
         onNodeWithText("Pinecrest Rewards Card has no Funded By, so its paying side is only proposed.").assertExists()
         onNodeWithText("Close").performClick()
         onNodeWithText("Transfers in Household: 4 · of them Guessed Transfers: 2").assertExists()
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A2: Hold the Transfer Back", businessRules = ["BR-007"])
+    @DisplayName("A2 (#selected, #held): a selected Transfer offers its Transfer Decisions with what each does; Hold back answers at the control and both Transfer Legs are Held Transfer")
+    fun aTransferIsHeldBack() = compose.use {
+        val fixture = ScreenFixture()
+        val scenario = EveryStatusScenario(fixture.slice)
+        kotlinx.coroutines.runBlocking { scenario.compareEveryStatus() }
+        val household = kotlinx.coroutines.runBlocking { fixture.slice.connectionStore.budgets().single { it.name == "Household" }.id }
+        val transfers = TransfersViewModel(fixture.services, household)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { transfers.load(scenario.transaction("leg-out")) }
+        setContent {
+            SlussenTheme {
+                TransfersScreen(
+                    transfers.state.collectAsState().value, onBack = {}, onOpen = transfers::open, onClose = transfers::close,
+                    decisions = slussen.app.ui.transfers.transferDecisionActionsOf(transfers, onReviewLeg = {}, onAccountMappings = {}),
+                )
+            }
+        }
+
+        onNode(hasScrollAction()).performScrollToNode(hasText("Hold back"))
+        onNodeWithText("Neither Transfer Leg is in any Upload Plan until you change it.").assertExists()
+        onNodeWithText("Hold back").performClick()
+
+        onNode(hasScrollAction()).performScrollToNode(hasText("Transfer Decision stored: Held"))
+        onNodeWithText("Transfer Decision stored: Held").assertExists()
+        org.junit.jupiter.api.Assertions.assertEquals(
+            slussen.core.port.TransactionStatus.HeldTransfer,
+            fixture.slice.importStatusStore.bankTransactions.single { it.id == scenario.transaction("leg-in") }.status,
+        )
     }
 }

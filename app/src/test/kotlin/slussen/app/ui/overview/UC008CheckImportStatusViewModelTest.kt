@@ -426,7 +426,7 @@ class UC008CheckImportStatusViewModelTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A6: Operator Takes the Remedy", businessRules = ["BR-006"])
-    @DisplayName("A6: credentials missing leads to the service's page; a remedy whose use case is not built yet is shown unavailable")
+    @DisplayName("A6: credentials missing leads to the service's page; a Bank Account to confirm leads to Account Mappings, where it is confirmed (UC-009 steps 2-7)")
     fun remediesLeadToTheirUseCase() {
         household()
         runBlocking { slice.credentials.remove(slice.feedsKey) }
@@ -443,7 +443,7 @@ class UC008CheckImportStatusViewModelTest {
         val unrecognised = BudgetViewModel(fixture.services, budgetId("Household")).also { it.load() }.state.value!!
             .bankAccounts.single().blocked.single()
         assertEquals(
-            RemedyAction("Confirm the Bank Account", available = false, service = null, note = "comes with Manage Account Mappings"),
+            RemedyAction("Confirm the Bank Account", available = true, service = null, note = "in Account Mappings", accountMappings = true),
             unrecognised.action,
         )
     }
@@ -471,8 +471,8 @@ class UC008CheckImportStatusViewModelTest {
         assertTrue(account.blocked.isEmpty())
         assertEquals("Source Health: Fetched 2026-10-15 14:00 · started by you", ui.sources.single().health)
         assertEquals(
-            "Nothing is uploaded in this version: Uploads, Review Decisions and Transfer Decisions come in a later version. " +
-                "No action is needed for them now.",
+            "Nothing is uploaded in this version: Uploads come in a later version. Your Review Decisions and Transfer Decisions " +
+                "are stored and decide what a later Upload Plan holds.",
             ui.note,
         )
         assertEquals("Statuses as of 14:00", ui.statuses)
@@ -590,7 +590,7 @@ class UC008CheckImportStatusViewModelTest {
         assertEquals("Statuses as of 14:00 · Eligible 3 · waiting for a decision 6 · not compared yet 1", ui.statuses)
         assertEquals("Read $budgetApp again to bring them up to date; nothing else is needed.", ui.readAgainNote)
         assertEquals("Start Date 2026-10-01", ui.startDate)
-        assertEquals("Transfer Partner: not set · set in a later version", ui.otherSide)
+        assertEquals("Transfer Partner: not set · set it in Account Mappings", ui.otherSide)
         val typed = ui.line("typed")
         assertEquals(
             listOf("10-12", "Northwind Power", "A possible pairing with your Typed Entry; nothing paired or written yet", "−88.40", "Match For Typed Entry"),
@@ -639,7 +639,7 @@ class UC008CheckImportStatusViewModelTest {
         assertEquals("Transfer Partner: Checking", reserve.otherSide)
         assertEquals("Card Payment; its paying side is not known, since Pinecrest Rewards Card has no Funded By", card.line("guessed-alone").reason)
         assertEquals("Card Payment Slussen cannot pair for certain; proposed with Kestrel Checking 10-12 −410.00", card.line("guessed-card").reason)
-        assertEquals("Funded By: not set · set in a later version", card.otherSide)
+        assertEquals("Funded By: not set · set it in Account Mappings", card.otherSide)
     }
 
     @Test
@@ -662,7 +662,7 @@ class UC008CheckImportStatusViewModelTest {
             ),
             match.details,
         )
-        assertEquals("It stays visible with its reason. Nothing is uploaded, and no decision is needed now.", match.closing)
+        assertEquals("It stays visible with its reason. Nothing is uploaded in this version.", match.closing)
 
         screen.open(screen.ui().line("possible").key)
         assertEquals(
@@ -699,6 +699,7 @@ class UC008CheckImportStatusViewModelTest {
             listOf(
                 "New", "Match For Typed Entry", "Already In Budget App", "Possible Import By Other Path", "Needs Review", "Transfer Leg",
                 "Guessed Transfer", "Deleted In Budget App", "Merged In Budget App", "Too Old", "Before Start Date", "In The Future",
+                "Deferred", "Decision No Longer Holds", "Held Transfer",
             ),
             sheet.statuses.map { it.status },
         )
@@ -709,7 +710,7 @@ class UC008CheckImportStatusViewModelTest {
             tooOld.meaning,
         )
         assertEquals("no action is needed.", tooOld.now)
-        assertEquals("no decision is needed; Review Decisions come in a later version.", sheet.statuses.single { it.status == "Needs Review" }.now)
+        assertEquals("open it and take your Review Decision.", sheet.statuses.single { it.status == "Needs Review" }.now)
         assertEquals("Dated before the Start Date of its Bank Account, 2026-10-01. Never offered for Upload.", sheet.statuses.single { it.status == "Before Start Date" }.meaning)
         assertEquals("Nothing is written to $budgetApp in this version.", sheet.closing)
     }
@@ -759,7 +760,7 @@ class UC008CheckImportStatusViewModelTest {
 
         assertEquals("Summer House → Budget Account Savings · Kestrel Bank · Kestrel Feeds", ui.placement)
         assertEquals(listOf("Blocked: Aurora Dollar, currency mismatch"), ui.blocked.map { it.text })
-        assertEquals(RemedyAction("Move the Account Mapping", available = false, service = null, note = "comes with Manage Account Mappings"), ui.blocked.single().action)
+        assertEquals(RemedyAction("Move the Account Mapping", available = true, service = null, note = "in Account Mappings", accountMappings = true), ui.blocked.single().action)
         assertEquals("Bank Account in USD, Budget in EUR · currency mismatch · difference hidden", ui.balance)
         assertEquals("Shown, but not eligible while the Bank Account is blocked: USD Bank Account, EUR Budget", ui.line("interest").reason)
         assertFalse(ui.line("interest").eligible)
@@ -896,7 +897,6 @@ class UC008CheckImportStatusViewModelTest {
             listOf(
                 slussen.app.ui.bankaccount.DetailLine("Resembles", "Streamline 2026-10-12 −29.00 in Budget Account Checking, with Slussen's marker in a form this version does not support"),
                 slussen.app.ui.bankaccount.DetailLine("Why it waits", "Slussen cannot tell whether that Import is this Bank Transaction, so it never uploads it without your decision."),
-                slussen.app.ui.bankaccount.DetailLine("Later", "Review Decisions come in a later version: Import Anyway or Defer"),
             ),
             screen.ui().sheet!!.details,
         )

@@ -30,12 +30,15 @@ class ScreenFixture(
         bankAccountTransactions = slice.bankAccountTransactions,
         transfers = slice.budgetTransfers,
         fetch = slice.fetch,
+        review = slice.review,
+        transferDecisions = slice.transferDecisions,
         comparison = slice.comparison,
         formats = Formats(ZoneId.of("Europe/Stockholm")),
         clock = slice.clock,
         appVersion = appVersion,
         running = slice.coordinator.running,
         ended = slice.coordinator.ended,
+        budgetAppName = slice.plugins.budgetApp.profile.name,
     )
 }
 
@@ -85,7 +88,7 @@ fun ServicePage(viewModel: ServicePageViewModel, onMap: () -> Unit = {}) {
     }
 }
 
-/** The Account Mappings of [viewModel] with every action wired as `SlussenScreens` wires them; a list line opens [onService]. */
+/** The Account Mappings of [viewModel] with every action wired as `SlussenScreens` wires them; a line of Not imported or Kept by hand opens [onService]. */
 @Composable
 fun AccountMappings(viewModel: slussen.app.ui.mappings.AccountMappingsViewModel, onService: (slussen.core.port.ServiceKey) -> Unit = {}) {
     viewModel.state.collectAsState().value?.let {
@@ -94,6 +97,7 @@ fun AccountMappings(viewModel: slussen.app.ui.mappings.AccountMappingsViewModel,
             card = slussen.app.ui.mappings.cardActionsOf(viewModel), onOpenTypeAndBank = viewModel::openTypeAndBank,
             onSaveTypeAndBank = viewModel::saveTypeAndBank, onConfirmClearing = viewModel::confirmClearing,
             onCancelClearing = viewModel::cancelClearing, onCancelTypeAndBank = viewModel::cancelTypeAndBank,
+            changes = slussen.app.ui.mappings.mappingChangeActionsOf(viewModel),
         )
     }
 }

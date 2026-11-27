@@ -11,7 +11,13 @@ import slussen.app.ui.Texts
 import slussen.app.ui.UiServices
 import slussen.app.ui.budget.BlockedLine
 import slussen.app.ui.budget.remedyAction
+import slussen.core.port.ReviewChoice
 import slussen.core.port.ServiceKey
+import slussen.core.review.ResemblingImport
+import slussen.core.review.ReviewOutcome
+import slussen.core.review.ReviewSheet
+import slussen.core.review.UnreadableOutcome
+import slussen.core.review.UnreadableSheet
 import slussen.core.status.BankAccountTransactionsView
 import slussen.core.status.TransactionKey
 import java.time.Instant
@@ -41,6 +47,40 @@ data class TransactionSheetUi(
     val closing: String,
     /** UC-005 step 1: the Bank Transaction to open on the Transfers of its Budget, for a Transfer Leg; null otherwise. */
     val transferLeg: Long? = null,
+    /** UC-004: the Review Decision of the line, with its choices and its answer; null while it offers none and has none. */
+    val review: ReviewUi? = null,
+    /** NFR-023: the Review Decision of the line could not be read; null otherwise. */
+    val reviewNotRead: String? = null,
+)
+
+/** One choice of the Review Decision sheet with what it does (`review-decision.html`). */
+data class ReviewChoiceUi(val choice: ReviewChoice?, val title: String, val effect: String)
+
+/** UC-004 A5, BR-003: the Re-upload switch, off by default. */
+data class ReUploadUi(val on: Boolean, val text: String)
+
+/** One resembling Import the Operator can name as the same (UC-004 step 4, BR-002). */
+data class ResemblingUi(val reference: String, val text: String)
+
+/** UC-004 steps 4-5, A3 (`#choose-resembling`, `#one-resembling`): the Budget App Transaction Already Present names. */
+data class ChooserUi(val question: String, val options: List<ResemblingUi>, val confirm: String)
+
+/**
+ * The Review Decision part of a line's sheet (UC-004; `review-decision.html`): why it is doubtful, its Transfer, the current
+ * decision or the lock, the choices of its Transaction Status, Re-upload and clearing, the Budget App Transaction to
+ * name, and at the control what it is doing ([pending]) and its answer ([answer]). [enabled] is false while a decision
+ * of this sheet is on its way.
+ */
+data class ReviewUi(
+    val lines: List<DetailLine>,
+    val choices: List<ReviewChoiceUi>,
+    val reUpload: ReUploadUi?,
+    val clear: ReviewChoiceUi?,
+    val chooser: ChooserUi?,
+    val pending: String?,
+    val answer: String?,
+    val enabled: Boolean,
+    val closing: String,
 )
 
 /** One Transaction Status in "What the statuses mean", with what it means and what to do now. */
@@ -101,26 +141,221 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
     private var openLine: TransactionKey? = null
     private var statusesOpen = false
 
+    // For UC-004: the Review Decision of the open line, read from stored data when the line opens, with what its control shows.
+    private var reviewSheet: ReviewSheet? = null
+    private var unreadableSheet: UnreadableSheet? = null
+    private var reviewNotRead = false
+    private var chooser: List<ResemblingImport>? = null
+    private var reviewPending: String? = null
+    private var reviewAnswer: String? = null
+
     init {
         viewModelScope.launch {
             // NFR-023: when an operation ends, whichever screen started it, the stored statuses it changed are shown again.
-            services.ended.drop(1).collect { if (view != null) reload() }
+            services.ended.drop(1).collect {
+                if (view != null) reload()
+                // The Review Decision of the open line too, unless this sheet's own decision is on its way and reads it itself.
+                openLine?.let { key -> if (reviewPending == null) readReview(key) }
+            }
         }
     }
 
-    /** Opens the Bank Account: its list, never a sheet left open the last time it was shown. */
-    fun load() {
+    /**
+     * Opens the Bank Account: its list, or the line [openKey] when the Operator came to decide on it (UC-005 A9), never a
+     * sheet left open the last time it was shown.
+     */
+    fun load(openKey: TransactionKey? = null) {
         openLine = null
         statusesOpen = false
+        forgetReview()
         publish()
-        viewModelScope.launch { reload() }
+        viewModelScope.launch {
+            reload()
+            openKey?.let(::open)
+        }
     }
 
-    /** Opens the read-only details of the line [key]. */
+    /** Opens the details of the line [key], with its Review Decision (UC-004 step 1). */
     fun open(key: TransactionKey) {
         openLine = key
         statusesOpen = false
+        forgetReview()
         publish()
+        viewModelScope.launch { readReview(key) }
+    }
+
+    private fun forgetReview() {
+        reviewSheet = null
+        unreadableSheet = null
+        reviewNotRead = false
+        chooser = null
+        reviewPending = null
+        reviewAnswer = null
+    }
+
+    /** UC-004 step 2, A6, A7, A9: the Review Decision of the line [key], from stored data only; a read that fails is said in the sheet (NFR-023). */
+    private suspend fun readReview(key: TransactionKey) {
+        try {
+            if (key.unreadable) unreadableSheet = services.review.unreadableSheet(key.id) else reviewSheet = services.review.sheet(key.id)
+            reviewNotRead = false
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            reviewSheet = null
+            unreadableSheet = null
+            reviewNotRead = true
+        }
+        if (openLine == key) publish()
+    }
+
+    // ---- UC-004: the choices of the Review Decision sheet ---------------------------------------------------------------
+
+    /**
+     * Steps 3-5, A1-A4, A9-A11: the Operator chooses [choice]. Already Present first shows the Budget App Transaction it
+     * would name (A3) or the list to name it from (step 4); nothing is stored until the Operator names it.
+     */
+    fun choose(choice: ReviewChoice) {
+        val key = openLine ?: return
+        if (reviewPending != null) return
+        if (key.unreadable) {
+            if (choice == ReviewChoice.Defer) unreadable(key, "Defer") { services.review.deferUnreadable(key.id) }
+            return
+        }
+        val resembling = reviewSheet?.resembling.orEmpty()
+        if (choice == ReviewChoice.AlreadyPresent && resembling.isNotEmpty()) {
+            chooser = resembling
+            reviewAnswer = null
+            publish()
+            return
+        }
+        decide(key, choice.text) { services.review.decide(key.id, choice) }
+    }
+
+    /** Step 5: the Operator names the Budget App Transaction [budgetAppReference] that is the same. */
+    fun chooseTransaction(budgetAppReference: String) {
+        val key = openLine ?: return
+        if (reviewPending != null || key.unreadable) return
+        decide(key, ReviewChoice.AlreadyPresent.text) { services.review.decide(key.id, ReviewChoice.AlreadyPresent, budgetAppReference) }
+    }
+
+    /** Step 5 not taken: nothing is stored. */
+    fun cancelChoosing() {
+        chooser = null
+        publish()
+    }
+
+    /** A5, BR-003: Re-upload switched on stores the decision; switched off clears it. */
+    fun switchReUpload(on: Boolean) {
+        if (on) choose(ReviewChoice.ReUpload) else clearDecision()
+    }
+
+    /** A6, BR-007: the Operator clears the decision. */
+    fun clearDecision() {
+        val key = openLine ?: return
+        if (reviewPending != null) return
+        if (key.unreadable) {
+            unreadable(key, "Clear the decision") { services.review.clearUnreadable(key.id) }
+        } else {
+            decide(key, "Clear the decision") { services.review.clear(key.id) }
+        }
+    }
+
+    /**
+     * One decision: the control shows at once that it stores, or what it waits for (NFR-023, ADR-007 §1), takes no second
+     * tap, then answers in the same place; whatever the call throws is answered there as not stored.
+     */
+    private fun decide(key: TransactionKey, what: String, call: suspend () -> ReviewOutcome) {
+        reviewPending = ReviewDecisionTexts.pending(what, services.running.value)
+        reviewAnswer = null
+        publish()
+        viewModelScope.launch {
+            val outcome = try {
+                call()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                ReviewOutcome.NotStored
+            }
+            chooser = (outcome as? ReviewOutcome.ChooseTransaction)?.resembling
+            reviewAnswer = ReviewDecisionTexts.answer(outcome, view?.budgetAppName.orEmpty())
+            reviewPending = null
+            readReview(key)
+            publish()
+        }
+    }
+
+    private fun unreadable(key: TransactionKey, what: String, call: suspend () -> UnreadableOutcome) {
+        reviewPending = ReviewDecisionTexts.pending(what, services.running.value)
+        reviewAnswer = null
+        publish()
+        viewModelScope.launch {
+            val outcome = try {
+                call()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                UnreadableOutcome.NotStored
+            }
+            reviewAnswer = ReviewDecisionTexts.unreadableAnswer(outcome)
+            reviewPending = null
+            readReview(key)
+            publish()
+        }
+    }
+
+    /** The Review Decision part of the open line's sheet, or null while it offers no choice and has no decision. */
+    private fun reviewUi(key: TransactionKey, budgetAppName: String): ReviewUi? {
+        val formats = services.formats
+        val pending = reviewPending
+        if (key.unreadable) {
+            val sheet = unreadableSheet ?: return null
+            return ReviewUi(
+                lines = ReviewDecisionTexts.unreadableLines(sheet, budgetAppName),
+                choices = listOfNotNull(ReviewChoiceUi(ReviewChoice.Defer, ReviewChoice.Defer.text, ReviewDecisionTexts.unreadableEffect()).takeIf { sheet.canDefer }),
+                reUpload = null,
+                clear = ReviewChoiceUi(null, "Clear the decision", ReviewDecisionTexts.unreadableClearEffect()).takeIf { sheet.canClear },
+                chooser = null,
+                pending = pending,
+                answer = reviewAnswer,
+                enabled = pending == null,
+                closing = ReviewDecisionTexts.CLOSING,
+            )
+        }
+        val sheet = reviewSheet ?: return null
+        val current = sheet.decision?.choice
+        // UC-004 BR-001: a Transaction Status that offers no choice, without a decision and unlocked, shows no Review Decision.
+        if (sheet.choices.isEmpty() && current == null && !sheet.locked && sheet.undecidable == null && reviewAnswer == null) return null
+        val open = !sheet.locked
+        val reUploadShown = open && (ReviewChoice.ReUpload in sheet.choices || current == ReviewChoice.ReUpload)
+        return ReviewUi(
+            lines = ReviewDecisionTexts.lines(sheet, budgetAppName, formats),
+            // A6: the choices of the status without the decision, the current one apart; Re-upload is its own switch.
+            choices = if (open) {
+                sheet.choices.filter { it != ReviewChoice.ReUpload && it != current }.map {
+                    ReviewChoiceUi(it, ReviewDecisionTexts.choiceTitle(it), ReviewDecisionTexts.effect(it, sheet, budgetAppName))
+                }
+            } else {
+                emptyList()
+            },
+            reUpload = if (reUploadShown) {
+                ReUploadUi(current == ReviewChoice.ReUpload, ReviewDecisionTexts.reUpload(current == ReviewChoice.ReUpload, sheet.transfer?.decidesWholeTransfer == true))
+            } else {
+                null
+            },
+            clear = ReviewChoiceUi(null, "Clear the decision", ReviewDecisionTexts.clearEffect(sheet))
+                .takeIf { sheet.canClear && !(reUploadShown && current == ReviewChoice.ReUpload) },
+            chooser = chooser?.let { options ->
+                if (options.size == 1) {
+                    ChooserUi("The only resembling Import:", options.map { ResemblingUi(it.budgetAppReference, ReviewDecisionTexts.resembling(it, formats)) }, "Store Already Present")
+                } else {
+                    ChooserUi("Which Budget App Transaction is the same?", options.map { ResemblingUi(it.budgetAppReference, ReviewDecisionTexts.resembling(it, formats)) }, "This one is the same")
+                }
+            },
+            pending = pending,
+            answer = reviewAnswer,
+            enabled = pending == null,
+            closing = ReviewDecisionTexts.CLOSING,
+        )
     }
 
     /** Opens "What the statuses mean". */
@@ -140,6 +375,7 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
     fun close() {
         openLine = null
         statusesOpen = false
+        forgetReview()
         publish()
     }
 
@@ -214,7 +450,12 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
                 )
             },
             nothingStored = view.nothingStored?.let { BankAccountTexts.nothingStored(it, formats) },
-            sheet = openLine?.let { key -> lines.firstOrNull { it.key == key } }?.let { BankAccountTexts.sheet(it, view, formats, today) },
+            sheet = openLine?.let { key -> lines.firstOrNull { it.key == key } }?.let { line ->
+                BankAccountTexts.sheet(line, view, formats, today).copy(
+                    review = reviewUi(line.key, budgetApp),
+                    reviewNotRead = ReviewDecisionTexts.NOT_READ.takeIf { reviewNotRead },
+                )
+            },
             statusesSheet = if (statusesOpen) BankAccountTexts.statusesSheet(view, statusesAsOf, formats, today) else null,
         )
     }

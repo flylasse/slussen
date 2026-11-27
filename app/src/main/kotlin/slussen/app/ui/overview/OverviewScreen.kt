@@ -102,6 +102,8 @@ fun OverviewScreen(
                     Text(budget.currency, color = SlussenColors.Text2, fontSize = 12.sp)
                 }
                 Muted(budget.counts)
+                // For UC-004, UC-005: the card leads to the Budget's tab, where what waits for a decision is decided.
+                budget.decide?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
                 // A1 step 2 of UC-003: statuses never shown as current when the read since failed.
                 budget.statuses?.let { Muted(it) }
                 budget.readAgainNote?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }

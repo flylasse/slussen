@@ -40,6 +40,8 @@ data class BudgetLine(
     val statuses: String? = null,
     /** UC-003 A1 step 2: the remedy of statuses that are not current, a read of the Budget App; null while they are. */
     val readAgainNote: String? = null,
+    /** UC-004, UC-005: where its transactions waiting for a decision are decided, the Budget's tab; null while none waits. */
+    val decide: String? = null,
 )
 
 /** A notice of the Overview: its [title] and what it means with what comes next, the [detail] (NFR-023). */
@@ -233,6 +235,7 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
                         budget.blocked.any { it.reason == BlockedReason.UploadsWaitForFirstUploadMatching }
                     }?.let { FirstUploadMatchingChip(Texts.UPLOADS_WAIT_FOR_FIRST_UPLOAD_MATCHING, it.tone) },
                     statuses = Texts.statusesAsOf(budget.statusesAsOf, overview.budgetAppName, formats, now),
+                    decide = Texts.decideOnOverview(budget.notYetUploaded.waitingForDecision, budget.name),
                     readAgainNote = Texts.readAgainNote(budget, overview.budgetAppName),
                 )
             },

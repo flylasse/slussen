@@ -55,13 +55,15 @@ object BankAccountTexts {
         is BankAccountPlacement.Retired -> "Retired Account · history kept · not compared or offered for Upload."
     }
 
-    /** UC-005 BR-006, BR-014: the Funded By or the Transfer Partner, read-only, as not set, set, or no longer applying. */
+    // UC-005 BR-006: The Funded By and the Transfer Partner start empty and are set in Manage Account Mappings or kept from a Transfer Decision.
+    /** UC-005 BR-006, BR-014: the Funded By or the Transfer Partner as not set, set, or no longer applying, with where it is changed. */
     fun otherSide(setting: OtherSideSetting): String {
         val name = if (setting.kind == OtherSideKind.FundedBy) "Funded By" else "Transfer Partner"
         return when {
-            setting.budgetAccountName == null -> "$name: not set · set in a later version"
+            setting.budgetAccountName == null -> "$name: not set · set it in Account Mappings"
             setting.applies -> "$name: ${setting.budgetAccountName}"
-            else -> "$name: ${setting.budgetAccountName} · no longer applies, since no Bank Account that Slussen fetches in this Budget's currency is mapped to it"
+            // UC-005 BR-014: one that is set and no longer applies is named, never called missing, with the action that changes or clears it.
+            else -> "$name: ${setting.budgetAccountName} · no longer applies · change or clear it in Account Mappings"
         }
     }
 
@@ -133,9 +135,26 @@ object BankAccountTexts {
                 "Before the ${if (reason.fileUploadWindow) "file upload window" else "Upload Window"}, which starts ${day(reason.windowStartsOn)}"
             StatusReason.InTheFuture -> "Dated after today; the Comparison looks at it again once its date comes"
             is StatusReason.TransferLeg -> transfer(reason.transfer, line, formats, today)
-            is StatusReason.GuessedTransfer -> guessed(reason, line, formats, today)
-            is StatusReason.AsStored -> AS_STORED
+            is StatusReason.GuessedTransfer -> guessed(reason, line, view, formats, today)
+            is StatusReason.AsStored -> decided(reason.status, line, budgetApp)
         }
+    }
+
+    /**
+     * A status that follows from a decision of the Operator (UC-004 BR-006, UC-005 BR-007, BR-013), which the core shows as
+     * the latest Comparison left it: said as what the decision did; any other status the rules no longer explain as stored.
+     */
+    private fun decided(status: TransactionStatus, line: TransactionLine, budgetApp: String): String = when (status) {
+        TransactionStatus.New -> "New by your Review Decision; eligible for a later Upload Plan as a new transaction"
+        TransactionStatus.AlreadyInBudgetApp -> "Already Present by your Review Decision: counted as already in $budgetApp and never sent"
+        TransactionStatus.Deferred -> if (line.transfer != null) {
+            "Held back by your Review Decision on it or on the other side of its Transfer, until you change it"
+        } else {
+            "Held back by your Review Decision until you change it"
+        }
+        TransactionStatus.DecisionNoLongerHolds -> "Your Already Present decision no longer holds; decide on it again"
+        TransactionStatus.HeldTransfer -> "Its Transfer is held back by your Transfer Decision; neither side is uploaded until you change it"
+        else -> AS_STORED
     }
 
     /**
@@ -188,9 +207,15 @@ object BankAccountTexts {
     }
 
     /** UC-005 BR-003, A8: why a Transfer is guessed, and what it proposes. */
-    private fun guessed(reason: StatusReason.GuessedTransfer, line: TransactionLine, formats: Formats, today: LocalDate): String {
+    private fun guessed(reason: StatusReason.GuessedTransfer, line: TransactionLine, view: BankAccountTransactionsView, formats: Formats, today: LocalDate): String {
+        // A8 of UC-005: a Funded By that is set and no longer applies is named, never called missing (S-B-15).
+        val notApplying = view.otherSide.takeIf { it.kind == OtherSideKind.FundedBy && !it.applies }?.budgetAccountName
         val transfer = reason.transfer
-            ?: return "Card Payment; its paying side is not known, since ${reason.cardName ?: "the credit card"} has no Funded By"
+            ?: return if (notApplying != null) {
+                "Card Payment; its paying side is not known, since its Funded By $notApplying no longer applies"
+            } else {
+                "Card Payment; its paying side is not known, since ${reason.cardName ?: "the credit card"} has no Funded By"
+            }
         val other = transfer.otherLeg
         val side = if ((line.amount?.thousandths ?: 0) < 0) "paying side" else "other side"
         return if (other != null) {
@@ -233,19 +258,16 @@ object BankAccountTexts {
                         .ifEmpty { "An Import by another importer at the latest Comparison" },
                 ),
                 DetailLine("Is it the same?", "Maybe. It may be this transaction already in $budgetApp, or a second one of the same amount."),
-                DetailLine("Later", "Review Decisions come in a later version: Already Present, Import Anyway or Defer"),
             )
             is StatusReason.ResemblesUnsupportedSlussenImport -> listOf(
                 DetailLine("Resembles", reason.imports.joinToString(" · ") { "${entryIn(it, formats)}, with Slussen's marker in a form this version does not support" }),
                 DetailLine("Why it waits", "Slussen cannot tell whether that Import is this Bank Transaction, so it never uploads it without your decision."),
-                DetailLine("Later", "Review Decisions come in a later version: Import Anyway or Defer"),
             )
             is StatusReason.Unreadable -> listOfNotNull(
                 DetailLine("Read", listOfNotNull(line.amount?.let { "Amount ${formats.amount(it)}" }, line.payee?.let { "description $it" }).joinToString(" · ").ifEmpty { "Nothing" }),
                 DetailLine("Not read", reason.reason),
                 DetailLine("Fetched", formats.dateTime(line.firstSeenAt)),
                 DetailLine("Uploaded", "Never"),
-                DetailLine("Later", "Review Decisions come in a later version; an Unreadable Transaction can then only be deferred"),
             )
             else -> listOfNotNull(
                 DetailLine("Why", reason(line, view, formats, today)),
@@ -258,11 +280,25 @@ object BankAccountTexts {
             )
         }
         return TransactionSheetUi(
-            title, subtitle, details, "It stays visible with its reason. Nothing is uploaded, and no decision is needed now.",
+            title, subtitle, details, closing(line),
             // Step 1 of UC-005: a Transfer Leg, or a Guessed Transfer without a stored Transfer (O-T-10), leads to its Transfer.
             transferLeg = line.key.id.takeIf { !line.key.unreadable && (line.transfer != null || line.status == TransactionStatus.GuessedTransfer) },
         )
     }
+
+    /** The closing line of a sheet: what waits for the Operator's decision, and where it is taken; nothing is uploaded in this version. */
+    private fun closing(line: TransactionLine): String = when {
+        line.key.unreadable && line.status == TransactionStatus.NeedsReview ->
+            "It stays visible with its reason and waits for your decision below. Nothing is uploaded in this version."
+        line.status in WAITS_FOR_A_REVIEW_DECISION -> "It stays visible with its reason and waits for your Review Decision below. Nothing is uploaded in this version."
+        line.status == TransactionStatus.GuessedTransfer -> "It waits for your Transfer Decision on its Transfer. Nothing is uploaded in this version."
+        else -> "It stays visible with its reason. Nothing is uploaded in this version."
+    }
+
+    private val WAITS_FOR_A_REVIEW_DECISION = setOf(
+        TransactionStatus.PossibleImportByOtherPath, TransactionStatus.NeedsReview, TransactionStatus.DecisionNoLongerHolds,
+        TransactionStatus.TransferCounterpartChanged,
+    )
 
     private fun reasonEntry(reason: StatusReason, formats: Formats): String? = when (reason) {
         is StatusReason.HeldInBudgetApp -> reason.entry?.let { entryIn(it, formats) }
@@ -289,12 +325,16 @@ object BankAccountTexts {
         TransactionStatus.AlreadyInBudgetApp -> "$budgetApp already holds it under Slussen's own Import Identifier; it is never sent again."
         TransactionStatus.PossibleImportByOtherPath ->
             "It resembles an Import by another importer, such as $budgetApp's own bank import. A resemblance, not proof; it is " +
-                "never uploaded without your Review Decision, which comes in a later version."
+                "never uploaded without your Review Decision: Already Present, Import Anyway or Defer."
         TransactionStatus.NeedsReview ->
             "It has no Stable Reference, it resembles a Slussen Import in a form this version does not support, or it is an " +
-                "Unreadable Transaction. It stays visible with its reason; Review Decisions come in a later version."
+                "Unreadable Transaction. It stays visible with its reason and is never uploaded without your Review Decision."
         TransactionStatus.TransferLeg -> "One side of a Transfer between two of your Bank Accounts. Only one side would carry it in an Upload Plan."
-        TransactionStatus.GuessedTransfer -> "A Transfer Slussen proposes but cannot pair for certain. Confirming or correcting it comes in a later version."
+        TransactionStatus.GuessedTransfer -> "A Transfer Slussen proposes but cannot pair for certain. It is in no Upload Plan until you confirm it or choose another Budget Account."
+        TransactionStatus.Deferred -> "Held back by your Review Decision, its own or one on the other side of its Transfer, until you change it."
+        TransactionStatus.DecisionNoLongerHolds ->
+            "Your Already Present decision no longer holds: the Budget App Transaction it named was deleted, merged, moved to another Budget Account or changed its amount. It waits for your decision again."
+        TransactionStatus.HeldTransfer -> "A Transfer Leg of a Transfer you hold back: neither side is in an Upload Plan, as a Transfer or as an ordinary transaction."
         TransactionStatus.DeletedInBudgetApp -> "$budgetApp holds its Import Identifier only as deleted; it is not sent again."
         TransactionStatus.MergedInBudgetApp -> "$budgetApp merged it into a Typed Entry; it is not sent again."
         TransactionStatus.TooOld ->
@@ -307,13 +347,21 @@ object BankAccountTexts {
         else -> "As the latest Comparison left it."
     }
 
-    /** What to do now about [status] while Review Decisions, Transfer Decisions and Uploads are not built. */
+    /** What to do now about [status]; Uploads are not built, so nothing else is needed for them. */
     private fun now(status: TransactionStatus): String = when (status) {
-        TransactionStatus.PossibleImportByOtherPath, TransactionStatus.NeedsReview ->
-            "no decision is needed; Review Decisions come in a later version."
-        TransactionStatus.GuessedTransfer -> "no decision is needed; confirming or correcting it comes in a later version."
+        TransactionStatus.PossibleImportByOtherPath, TransactionStatus.NeedsReview, TransactionStatus.DecisionNoLongerHolds ->
+            "open it and take your Review Decision."
+        TransactionStatus.GuessedTransfer -> "open its Transfer and confirm it or choose another Budget Account."
+        TransactionStatus.Deferred, TransactionStatus.HeldTransfer -> "nothing, unless you want to change your decision."
         else -> "no action is needed."
     }
+
+    /**
+     * The statuses "What the statuses mean" lists: those a Comparison gives without a decision, and those that follow from
+     * the Operator's Review Decisions and Transfer Decisions of this build (UC-004 BR-006, UC-005 A2).
+     */
+    private val SHOWN_STATUSES: List<TransactionStatus> = slussen.core.status.BankAccountTransactions.GIVEN_BY_THIS_BUILD +
+        listOf(TransactionStatus.Deferred, TransactionStatus.DecisionNoLongerHolds, TransactionStatus.HeldTransfer)
 
     /** `#statuses-this-build`: every Transaction Status this build can give, with what it means for this Bank Account. */
     fun statusesSheet(view: BankAccountTransactionsView, statusesAsOf: String?, formats: Formats, today: LocalDate): StatusesSheetUi =
@@ -322,7 +370,7 @@ object BankAccountTexts {
             subtitle = listOfNotNull(view.name, statusesAsOf).joinToString(" · "),
             intro = "The fetch period decides which Bank Transactions are fetched; the Upload Window and the Start Date decide " +
                 "which could be uploaded, so a longer fetch period brings in more Too Old ones, never more Eligible ones.",
-            statuses = slussen.core.status.BankAccountTransactions.GIVEN_BY_THIS_BUILD.map { status ->
+            statuses = SHOWN_STATUSES.map { status ->
                 StatusMeaningUi(status.text, meaning(status, view.boundaries, view.budgetAppName, formats, today), now(status))
             },
             closing = "Nothing is written to ${view.budgetAppName} in this version.",

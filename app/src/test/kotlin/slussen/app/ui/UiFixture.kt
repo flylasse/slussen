@@ -35,12 +35,15 @@ class UiFixture(
         bankAccountTransactions = slice.bankAccountTransactions,
         transfers = slice.budgetTransfers,
         fetch = slice.fetch,
+        review = slice.review,
+        transferDecisions = slice.transferDecisions,
         comparison = slice.comparison,
         formats = Formats(zone),
         clock = slice.clock,
         appVersion = appVersion,
         running = slice.coordinator.running,
         ended = slice.coordinator.ended,
+        budgetAppName = slice.plugins.budgetApp.profile.name,
     )
 }
 
