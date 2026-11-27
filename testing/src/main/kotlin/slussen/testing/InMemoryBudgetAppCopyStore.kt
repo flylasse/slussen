@@ -286,7 +286,9 @@ class InMemoryBudgetAppCopyStore(
         val mapped = connections.bankAccountList.filter { it.mapping?.budgetAccountId in accountIds }
         val mappedIds = mapped.map { it.id }.toSet()
         val ofMapped = transactions.bankTransactions.filter { it.bankAccountId in mappedIds }
-        val transferIds = ofMapped.mapNotNull { it.transferId }.toSet()
+        // A Transfer the Operator decided on is read through its Budget Accounts too, so that it is judged also when no Transfer Leg of it lies in a mapped Bank Account any more (UC-005 BR-015).
+        val decidedHere = transfers.filter { it.decision != TransferDecision.Proposed && (it.inflowBudgetAccountId in accountIds || it.outflowBudgetAccountId in accountIds) }
+        val transferIds = ofMapped.mapNotNull { it.transferId }.toSet() + decidedHere.map { it.id }
         // A Transfer is judged with all its Transfer Legs (UC-005 BR-015), also one whose Bank Account is mapped elsewhere or not at all now.
         val legsElsewhere = transactions.bankTransactions.filter { it.transferId in transferIds && it.bankAccountId !in mappedIds }
         val bankTransactions = ofMapped + legsElsewhere

@@ -22,13 +22,16 @@ import kotlin.math.abs
  * it (Too Old, Before Start Date, Needs Review, the status of its own Review Decision, ...), which it keeps as a Transfer
  * Leg (UC-005 BR-010, BR-013), and null when none did. [givesOtherLegs] is the status its Review Decision gives every
  * other Transfer Leg of its Transfer that has none of its own (UC-005 BR-013): Already In Budget App while its Already
- * Present decision holds, Deferred for Defer, and null otherwise.
+ * Present decision holds, Deferred for Defer, and null otherwise. [withoutReUpload] is the status it has without its
+ * Review Decision Re-upload when that decision makes it a New transaction of its own, which it does not while its
+ * Transfer is held back (UC-005 BR-007), and null otherwise.
  */
 data class TransferCandidate(
     val transaction: StoredBankTransaction,
     val bankAccount: StoredBankAccount,
     val earlier: TransactionStatus?,
     val givesOtherLegs: TransactionStatus? = null,
+    val withoutReUpload: TransactionStatus? = null,
 )
 
 /** Why detection could not settle a Transfer for certain, so that it is a Guessed Transfer (UC-005 BR-002, BR-003, A8). */

@@ -64,10 +64,17 @@ private val DOUBTFUL = setOf(TransactionStatus.NeedsReview, TransactionStatus.Po
 /**
  * What the rules of UC-003 BR-001 conclude for one Bank Transaction by itself, before any Transfer is detected: its
  * [status]; whether a rule that stands before "a Transfer Leg follows its Transfer" gave it ([beforeTransferLeg]), so
- * that it keeps it also as a Transfer Leg (UC-005 BR-010); and the status its Review Decision gives the other Transfer
- * Legs of its Transfer ([givesOtherLegs], UC-005 BR-013), null when it gives none.
+ * that it keeps it also as a Transfer Leg (UC-005 BR-010); the status its Review Decision gives the other Transfer
+ * Legs of its Transfer ([givesOtherLegs], UC-005 BR-013), null when it gives none; and, when a Re-upload decision makes
+ * it a New transaction of its own after it was sent and then deleted or merged, the status it has without that decision
+ * ([withoutReUpload]), which it keeps while its Transfer is held back (UC-005 BR-007).
  */
-data class OwnStatus(val status: TransactionStatus, val beforeTransferLeg: Boolean, val givesOtherLegs: TransactionStatus? = null)
+data class OwnStatus(
+    val status: TransactionStatus,
+    val beforeTransferLeg: Boolean,
+    val givesOtherLegs: TransactionStatus? = null,
+    val withoutReUpload: TransactionStatus? = null,
+)
 
 /**
  * The rules of UC-003 that give a Bank Transaction its Transaction Status, in the order of BR-001: with the Review
@@ -147,7 +154,10 @@ object ComparisonRules {
                     val own = ownStatusOf(transaction, bankAccount, budget, held, windows, decisions[transaction.id], data.budgetAppTransactions)
                     statuses[transaction.id] = own.status
                     // UC-005 BR-002: Whether two Bank Transactions form a Transfer does not depend on the Upload Window or on any other rule that gives a Bank Transaction its Transaction Status.
-                    compared[transaction.id] = TransferCandidate(transaction, bankAccount, earlier = own.status.takeIf { own.beforeTransferLeg }, givesOtherLegs = own.givesOtherLegs)
+                    compared[transaction.id] = TransferCandidate(
+                        transaction, bankAccount, earlier = own.status.takeIf { own.beforeTransferLeg }, givesOtherLegs = own.givesOtherLegs,
+                        withoutReUpload = own.withoutReUpload,
+                    )
                 }
         }
         // UC-005 BR-015: A Transfer that has a Transfer Decision keeps its decision, its Transfer Legs and its two Budget Accounts whenever Slussen detects Transfers again.
@@ -246,7 +256,14 @@ object ComparisonRules {
             // UC-004 BR-006: Import Anyway gives the status New, except that on a Transfer Leg it lets the Transfer Leg rejoin its Transfer.
             ReviewChoice.ImportAnyway -> return OwnStatus(TransactionStatus.New, beforeTransferLeg = false)
             // UC-004 BR-009: A Transfer Leg that Slussen sent and that was deleted or merged in the Budget App is re-uploaded as a new transaction of its own, not as a linked transfer; a Re-upload of one never sent lets it rejoin its Transfer as Import Anyway does.
-            ReviewChoice.ReUpload -> return OwnStatus(TransactionStatus.New, beforeTransferLeg = sentAndGone)
+            ReviewChoice.ReUpload -> return OwnStatus(
+                TransactionStatus.New, beforeTransferLeg = sentAndGone,
+                withoutReUpload = when {
+                    sameIdentifier.any { it.state == BudgetAppTransactionState.Deleted } -> TransactionStatus.DeletedInBudgetApp
+                    sentAndGone -> TransactionStatus.MergedInBudgetApp
+                    else -> null
+                },
+            )
             null -> Unit
         }
         // UC-003 BR-012: A Bank Transaction without a Stable Reference is Needs Review.

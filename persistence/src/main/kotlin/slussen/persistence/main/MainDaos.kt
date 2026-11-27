@@ -663,6 +663,21 @@ abstract class BudgetAppCopyDao {
     )
     abstract suspend fun legsOfTransfersOf(bankAccountId: Long): List<BankTransactionEntity>
 
+    /**
+     * The stored Transfers whose decision is not [proposed] and that name a Budget Account of [budgetId] as a side: a
+     * Transfer the Operator decided on is read also when no Transfer Leg of it lies in a mapped Bank Account (UC-005 BR-015).
+     */
+    @Query(
+        "SELECT * FROM transfer WHERE decision != :proposed AND (" +
+            "inflow_budget_account_id IN (SELECT id FROM budget_account WHERE budget_id = :budgetId) OR " +
+            "outflow_budget_account_id IN (SELECT id FROM budget_account WHERE budget_id = :budgetId)) ORDER BY id",
+    )
+    abstract suspend fun decidedTransfersOf(budgetId: Long, proposed: String): List<TransferEntity>
+
+    /** Every Transfer Leg of the Transfer [transferId]. */
+    @Query("SELECT * FROM bank_transaction WHERE transfer_id = :transferId ORDER BY id")
+    abstract suspend fun legsOf(transferId: Long): List<BankTransactionEntity>
+
     /** The Sent Records of the Bank Transactions of [bankAccountId] (UC-005 BR-008). */
     @Query("SELECT * FROM sent_record WHERE bank_transaction_id IN (SELECT id FROM bank_transaction WHERE bank_account_id = :bankAccountId) ORDER BY id")
     abstract suspend fun sentRecordsOf(bankAccountId: Long): List<SentRecordEntity>

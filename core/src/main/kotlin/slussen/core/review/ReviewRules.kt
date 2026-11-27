@@ -17,6 +17,7 @@ import slussen.core.port.StoredBudgetAppTransaction
 import slussen.core.port.StoredReviewDecision
 import slussen.core.port.StoredTransfer
 import slussen.core.port.TransactionStatus
+import slussen.core.port.TransferDecision
 import java.time.Instant
 
 /**
@@ -145,13 +146,19 @@ object ReviewRules {
         val resembling = ComparisonRules.resembling(transaction, held, windows).filter { it.enteredBy == EnteredBy.OtherImportPath }
         val locked = locked(own)
         val noLongerHolds = decision != null && withDecision == TransactionStatus.DecisionNoLongerHolds
+        val offered = if (locked) emptyList() else choicesOf(own, noLongerHolds, resembling.isNotEmpty(), budgetAppRefusesReusedImportIdentifier)
         return Ruled.Stands(
             Standing(
                 transaction, bankAccount, budget, decision, own, withoutDecision, withDecision, resembling, transfer, locked,
-                choices = if (locked) emptyList() else choicesOf(own, noLongerHolds, resembling.isNotEmpty(), budgetAppRefusesReusedImportIdentifier),
+                choices = offered.filterNot { withheldWhileHeld(it, transfer) },
             ),
         )
     }
+
+    // UC-004 BR-009: While its Transfer is held back, a Transfer Leg offers no Re-upload: the Operator changes the Transfer Decision first (UC-005 BR-007).
+    /** Whether [choice] is not offered for a Transfer Leg of [transfer] because the Operator holds that Transfer back. */
+    private fun withheldWhileHeld(choice: ReviewChoice, transfer: StoredTransfer?): Boolean =
+        choice == ReviewChoice.ReUpload && transfer?.decision == TransferDecision.Held
 
     /** UC-003 BR-009, A4: why the Already Present [decision] does not hold against [copy], or null while it holds. */
     fun whyNoLongerHolds(decision: StoredReviewDecision, copy: List<StoredBudgetAppTransaction>): NoLongerHolds? {

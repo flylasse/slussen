@@ -32,8 +32,15 @@ import slussen.core.port.TransactionStatus
 import slussen.core.port.TransferDecision
 import slussen.core.port.TransferDropReason
 import slussen.core.port.TransferType
+import slussen.core.review.ReviewOutcome
 import slussen.core.status.NotYetUploaded
 import slussen.core.status.TransferEligibility
+import slussen.pluginapi.budgetapp.BudgetAppTransactionRead
+import slussen.pluginapi.budgetapp.ChangeCursor
+import slussen.pluginapi.budgetapp.ChangeSet
+import slussen.pluginapi.budgetapp.EntryKind
+import slussen.pluginapi.budgetapp.ReadResult
+import slussen.pluginapi.budgetapp.ReadState
 import slussen.pluginapi.testfixtures.UseCase
 import slussen.pluginapi.value.Amount
 import slussen.testing.ExampleData
@@ -1169,19 +1176,26 @@ class UC005TransferDecisionsTest {
         return paid to received
     }
 
-    /** What BR-015 asks of a dropped Transfer Decision: the Transfer is gone, its Transfer Legs are released, and the drop is journaled once for each with [reason]. */
+    /** The same Card Payment, confirmed by the Operator. Returns (outflow, inflow). */
+    private suspend fun confirmedPair(): Pair<Long, Long> {
+        val (paid, received) = plainPair()
+        assertEquals(stored(TransferDecision.Confirmed), decide(paid, TransferChoice.Confirm))
+        return paid to received
+    }
+
+    /** What BR-015 asks of a dropped Transfer Decision Confirmed: the Transfer is gone, its Transfer Legs are released, and the drop is journaled once for each with [reason]. */
     private fun assertDropped(journaled: Int, reason: TransferDropReason, vararg legs: Long) {
-        assertTrue(slice.copyStore.transfers.none { it.decision == TransferDecision.Held })
+        assertTrue(slice.copyStore.transfers.none { it.decision == TransferDecision.Confirmed })
         val entries = decisionEntries(journaled)
         assertEquals(legs.map { transaction(it).importIdentifier }.toSet(), entries.map { it.importIdentifier }.toSet())
-        entries.forEach { assertTrue(it.details.startsWith("Slussen dropped the Transfer Decision Held because ${reason.text}; the Transfer was: Card Payment of 250.000"), it.details) }
+        entries.forEach { assertTrue(it.details.startsWith("Slussen dropped the Transfer Decision Confirmed because ${reason.text}; the Transfer was: Card Payment of 250.000"), it.details) }
     }
 
     @Test
     @UseCase(id = "UC-005", scenario = "Main Success Scenario", businessRules = ["BR-011", "BR-015"])
-    @DisplayName("BR-015: when the Bank Account type changes so that a Card Payment has no credit card Bank Account on either side, the Transfer Decision is dropped: the Transfer is dissolved, the drop is journaled with its reason for each Transfer Leg, and its Bank Transactions are detected again as any others, with nothing of the decision carried over")
+    @DisplayName("BR-015: when the Bank Account type changes so that a Card Payment has no credit card Bank Account on either side, the Transfer Decision Confirmed is dropped: the Transfer is dissolved, the drop is journaled with its reason for each Transfer Leg, and its Bank Transactions are detected again as any others, with nothing of the decision carried over")
     fun aDecisionIsDroppedWhenTheTypeNoLongerFits() = runTest {
-        val (paid, received) = heldPair()
+        val (paid, received) = confirmedPair()
         val journaled = slice.journalRecorder.entries.size
 
         change(transaction(received).bankAccountId) { it.copy(type = BankAccountType.Savings, fundedByBudgetAccountId = null) }
@@ -1198,9 +1212,9 @@ class UC005TransferDecisionsTest {
 
     @Test
     @UseCase(id = "UC-005", scenario = "Main Success Scenario", businessRules = ["BR-011", "BR-015"])
-    @DisplayName("BR-015: when the Bank Account of a Transfer Leg is mapped to another Budget Account than the Transfer names for that side, the Transfer Decision is dropped and journaled, and Slussen proposes a new Transfer between the Budget Accounts as they are now, without a Transfer Decision")
+    @DisplayName("BR-015: when the Bank Account of a Transfer Leg is mapped to another Budget Account than the Transfer names for that side, the Transfer Decision Confirmed is dropped and journaled, and Slussen proposes a new Transfer between the Budget Accounts as they are now, without a Transfer Decision")
     fun aDecisionIsDroppedWhenATransferLegIsMappedElsewhere() = runTest {
-        val (paid, received) = heldPair()
+        val (paid, received) = confirmedPair()
         val journaled = slice.journalRecorder.entries.size
         val held = transferOf(paid)!!
 
@@ -1220,9 +1234,9 @@ class UC005TransferDecisionsTest {
 
     @Test
     @UseCase(id = "UC-005", scenario = "Main Success Scenario", businessRules = ["BR-011", "BR-015"])
-    @DisplayName("BR-015: when the Bank Account of a Transfer Leg has no Account Mapping any more, the Transfer Decision is dropped and journaled for both Transfer Legs, also the one that is not compared any more; the other Transfer Leg is detected again")
+    @DisplayName("BR-015: when the Bank Account of a Transfer Leg has no Account Mapping any more, the Transfer Decision Confirmed is dropped and journaled for both Transfer Legs, also the one that is not compared any more; the other Transfer Leg is detected again")
     fun aDecisionIsDroppedWhenATransferLegLosesItsAccountMapping() = runTest {
-        val (paid, received) = heldPair()
+        val (paid, received) = confirmedPair()
         val journaled = slice.journalRecorder.entries.size
 
         change(transaction(paid).bankAccountId) { it.copy(mapping = null) }
@@ -1238,10 +1252,10 @@ class UC005TransferDecisionsTest {
 
     @Test
     @UseCase(id = "UC-005", scenario = "A4: Lonely Transfer", businessRules = ["BR-011", "BR-015"])
-    @DisplayName("BR-015: when the Budget Account of the side of a decided Lonely Transfer that has not arrived receives through no Account Mapping any more, the Transfer Decision is dropped and journaled, and its Transfer Leg is detected again")
+    @DisplayName("BR-015: when the Budget Account of the side of a confirmed Lonely Transfer that has not arrived receives through no Account Mapping any more, the Transfer Decision is dropped and journaled, and its Transfer Leg is detected again")
     fun aDecisionIsDroppedWhenTheSideNotArrivedIsNoLongerFetched() = runTest {
         val (received, checking) = lonelyCardPayment()
-        assertEquals(stored(TransferDecision.Held, lonely = true), decide(received, TransferChoice.Hold))
+        assertEquals(stored(TransferDecision.Confirmed, lonely = true), decide(received, TransferChoice.Confirm))
         val journaled = slice.journalRecorder.entries.size
 
         change(checking) { it.copy(mapping = null) }
@@ -1250,10 +1264,248 @@ class UC005TransferDecisionsTest {
         assertTrue(slice.copyStore.transfers.isEmpty())
         val dropped = decisionEntries(journaled).single()
         assertEquals(transaction(received).importIdentifier, dropped.importIdentifier)
-        assertTrue(dropped.details.startsWith("Slussen dropped the Transfer Decision Held because ${TransferDropReason.OtherSideNotFetched.text}"), dropped.details)
-        // The card's Funded By no longer applies and no other Bank Account could pay: a Guessed Transfer without a proposal (A8), not held back.
+        assertTrue(dropped.details.startsWith("Slussen dropped the Transfer Decision Confirmed because ${TransferDropReason.OtherSideNotFetched.text}"), dropped.details)
+        // The card's Funded By no longer applies and no other Bank Account could pay: a Guessed Transfer without a proposal (A8), which waits for a decision.
         assertEquals(TransactionStatus.GuessedTransfer, status(received))
         assertNull(transaction(received).transferId)
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A4: Lonely Transfer", businessRules = ["BR-011", "BR-015"])
+    @DisplayName("BR-015 (review of B3, item 3): a confirmed Lonely Transfer whose one Transfer Leg's Bank Account loses its Account Mapping is still read: the Transfer Decision is dropped and journaled with that reason, and mapping the Bank Account again does not bring the decision back")
+    fun aConfirmedLonelyTransferWhoseTransferLegLosesItsAccountMappingIsDropped() = runTest {
+        val (received, _) = lonelyCardPayment()
+        assertEquals(stored(TransferDecision.Confirmed, lonely = true), decide(received, TransferChoice.Confirm))
+        val card = transaction(received).bankAccountId
+        val mapping = bankAccountOf(card).mapping
+        val journaled = slice.journalRecorder.entries.size
+
+        change(card) { it.copy(mapping = null) }
+        compare()
+
+        assertTrue(slice.copyStore.transfers.isEmpty())
+        assertNull(transaction(received).transferId)
+        val dropped = decisionEntries(journaled).single()
+        assertEquals("Kestrel Rewards" to transaction(received).importIdentifier, dropped.bankAccountName to dropped.importIdentifier)
+        assertTrue(dropped.details.startsWith("Slussen dropped the Transfer Decision Confirmed because ${TransferDropReason.TransferLegNotMapped.text}"), dropped.details)
+
+        change(card) { it.copy(mapping = mapping) }
+        compare()
+
+        // Detected again as any other Bank Transaction: a Lonely Transfer Slussen proposes, without a Transfer Decision.
+        assertEquals(TransferDecision.Proposed, transferOf(received)!!.decision)
+        assertEquals(1, slice.copyStore.transfers.size)
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A2: Hold the Transfer Back", businessRules = ["BR-007", "BR-015"])
+    @DisplayName("BR-015, BR-007 (S-B-17): a held Transfer is never dissolved by a change of its ground: when the card's type changes, when the Bank Account of a Transfer Leg is mapped to another Budget Account and when it has no Account Mapping, the Transfer stays Held with its Transfer Legs, nothing of it is eligible and nothing is journaled as dropped; the Operator's own decision ends it: confirming is refused with the reason and splitting makes the Transfer Legs ordinary")
+    fun aHeldTransferIsNeverDissolvedWhenItsSidesAreNoLongerValid() = runTest {
+        val (paid, received) = heldPair()
+        val held = transferOf(paid)!!
+        val checking = transaction(paid).bankAccountId
+        val card = transaction(received).bankAccountId
+        val journaled = slice.journalRecorder.entries.size
+        val jointChecking = budgetAccount("Joint Checking")
+        val mapping = bankAccountOf(checking).mapping!!
+
+        suspend fun assertStillHeld(comparedLegs: List<Long>) {
+            compare()
+            assertEquals(listOf(held), slice.copyStore.transfers.toList())
+            assertEquals(setOf(paid, received), legsOf(held))
+            comparedLegs.forEach { assertEquals(TransactionStatus.HeldTransfer, status(it), "$it") }
+            assertEquals(NotYetUploaded(0, 0), counts())
+            assertEquals(0, eligibleOf(checking) + eligibleOf(card))
+            assertTrue(decisionEntries(journaled).isEmpty())
+        }
+
+        // A Card Payment neither of whose sides is a credit card Bank Account.
+        change(card) { it.copy(type = BankAccountType.Savings, fundedByBudgetAccountId = null) }
+        assertStillHeld(listOf(paid, received))
+        change(card) { it.copy(type = BankAccountType.CreditCard) }
+        // The Bank Account of the outflow is mapped to another Budget Account than the Transfer names.
+        change(checking) { it.copy(mapping = mapping.copy(budgetAccountId = jointChecking)) }
+        assertStillHeld(listOf(paid, received))
+        // The Bank Account of the outflow has no Account Mapping: that Transfer Leg is not compared any more.
+        change(checking) { it.copy(mapping = null) }
+        assertStillHeld(listOf(received))
+
+        assertEquals(TransferOutcome.NoLongerValid(TransferDropReason.TransferLegNotMapped), decide(received, TransferChoice.Confirm))
+        assertEquals(TransferDecision.Held, transferOf(received)!!.decision)
+        assertEquals(stored(TransferDecision.Split), decide(received, TransferChoice.Split))
+        assertEquals(TransactionStatus.New, status(received))
+        assertEquals(setOf(paid, received), legsOf(transferOf(received)))
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A2: Hold the Transfer Back", businessRules = ["BR-005", "BR-007", "BR-015"])
+    @DisplayName("BR-015, BR-007 (S-B-17, with a planted Sent Record): a held Lonely Transfer stays Held when its other side was already uploaded as an ordinary transaction, which never joins it, and when the Bank Account of its one Transfer Leg loses its Account Mapping: it is not dissolved and its Transfer Leg is never released as an ordinary Bank Transaction")
+    fun aHeldLonelyTransferIsNeverDissolved() = runTest {
+        val (received, checking) = lonelyCardPayment()
+        assertEquals(stored(TransferDecision.Held, lonely = true), decide(received, TransferChoice.Hold))
+        val held = transferOf(received)!!
+        val journaled = slice.journalRecorder.entries.size
+        val paid = stored(checking, "TX-7", oct14, amount(-120))
+        slice.importStatusStore.bankTransactions.replaceAll { if (it.id == paid) it.copy(status = TransactionStatus.New) else it }
+        sentRecord(paid, SentRecordOutcome.Written, asTransfer = false)
+
+        compare()
+
+        assertEquals(listOf(held), slice.copyStore.transfers.toList())
+        assertEquals(setOf(received), legsOf(held))
+        assertEquals(TransactionStatus.HeldTransfer, status(received))
+        assertEquals(0, eligibleOf(transaction(received).bankAccountId))
+
+        change(transaction(received).bankAccountId) { it.copy(mapping = null) }
+        compare()
+
+        assertEquals(listOf(held), slice.copyStore.transfers.toList())
+        assertEquals(held.id, transaction(received).transferId)
+        assertEquals(TransactionStatus.HeldTransfer, status(received))
+        assertTrue(decisionEntries(journaled).isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A1: Split Into Ordinary Transactions", businessRules = ["BR-010", "BR-015"])
+    @DisplayName("BR-015, BR-010 (S-B-17): a split Transfer is never dissolved by a change of its ground: when the Bank Account of a Transfer Leg is mapped to another Budget Account, the Transfer stays Split with both Transfer Legs, which stay ordinary Bank Transactions and are detected into no other Transfer, and nothing is journaled as dropped")
+    fun aSplitTransferIsNeverDissolvedAndItsTransferLegsJoinNoOtherTransfer() = runTest {
+        val (paid, received) = plainPair()
+        assertEquals(stored(TransferDecision.Split), decide(paid, TransferChoice.Split))
+        val split = transferOf(paid)!!
+        val checking = transaction(paid).bankAccountId
+        val journaled = slice.journalRecorder.entries.size
+        val jointChecking = budgetAccount("Joint Checking")
+
+        change(checking) { it.copy(mapping = it.mapping!!.copy(budgetAccountId = jointChecking)) }
+        // Another inflow to the card that Slussen would pair with the outflow, were it released.
+        val alsoReceived = stored(transaction(received).bankAccountId, "TX-3", oct12, amount(250))
+        compare()
+
+        assertEquals(listOf(split), slice.copyStore.transfers.toList())
+        assertEquals(setOf(paid, received), legsOf(split))
+        assertEquals(TransactionStatus.New, status(paid))
+        assertEquals(TransactionStatus.New, status(received))
+        assertEquals(TransactionStatus.New, status(alsoReceived))
+        assertNull(transaction(alsoReceived).transferId)
+        assertTrue(decisionEntries(journaled).isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A2: Hold the Transfer Back", businessRules = ["BR-007", "BR-010"])
+    @DisplayName("BR-007 (S-B-17): holding never releases one Transfer Leg: a Transfer Leg that Slussen sent and that is Deleted In Budget App offers no Re-upload while its Transfer is held back, and a Re-upload decision it already has gives it no status New and no eligibility: it is Deleted In Budget App, the other is Held Transfer and nothing is in an Upload Plan, until the Operator changes the Transfer Decision; after Split the Re-upload applies again")
+    fun aTransferLegOfAHeldTransferIsNotReUploaded() = runTest {
+        ready()
+        val checking = checking()
+        val card = rewardsCard()
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
+        val paid = stored(checking, "TX-1", oct12, amount(-250))
+        val received = stored(card, "TX-2", oct13, amount(250))
+        // The Budget App holds the outflow under its own Import Identifier, deleted: Slussen sent it and it was deleted there.
+        slice.budgetApp.reader.changesAnswer = { asked ->
+            val deleted = BudgetAppTransactionRead(
+                "ynab-1", "ba-checking", oct12, amount(-250), "Card payment", null, transaction(paid).importIdentifier, EntryKind.Imported, null,
+                ReadState.Deleted, cleared = true, approved = true,
+            )
+            ReadResult.Answered(ChangeSet(if (asked.budgetReference == "budget-household") listOf(deleted) else emptyList(), ChangeCursor("k-${slice.budgetApp.reader.changeReads.size}")))
+        }
+        compare()
+        assertEquals(TransactionStatus.DeletedInBudgetApp, status(paid))
+        // The Operator chose Re-upload while the Transfer had no Transfer Decision (UC-004 A5).
+        assertEquals(ReviewOutcome.Stored(ReviewChoice.ReUpload, TransactionStatus.New), slice.review.decide(paid, ReviewChoice.ReUpload))
+        assertEquals(1, eligibleOf(checking))
+
+        assertEquals(stored(TransferDecision.Held), decide(received, TransferChoice.Hold))
+
+        assertEquals(TransactionStatus.DeletedInBudgetApp, status(paid))
+        assertEquals(TransactionStatus.HeldTransfer, status(received))
+        assertEquals(0, eligibleOf(checking))
+        assertEquals(0, eligibleOf(card))
+        assertEquals(NotYetUploaded(0, 0), counts())
+        val shown = slice.review.sheet(paid)!!
+        assertEquals(ReviewChoice.ReUpload, shown.decision?.choice)
+        assertEquals(emptyList<ReviewChoice>(), shown.choices)
+        assertTrue(shown.canClear)
+        assertEquals(ReviewOutcome.NotOffered(emptyList()), slice.review.decide(paid, ReviewChoice.ReUpload))
+        compare()
+        assertEquals(TransactionStatus.DeletedInBudgetApp, status(paid))
+        assertEquals(0, eligibleOf(checking))
+
+        // The Operator changes the Transfer Decision first: after Split the Transfer Leg is an ordinary Bank Transaction and its Re-upload applies.
+        assertEquals(stored(TransferDecision.Split), decide(received, TransferChoice.Split))
+        assertEquals(TransactionStatus.New, status(paid))
+        assertEquals(TransactionStatus.New, status(received))
+        assertEquals(NotYetUploaded(2, 0), counts())
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A10: Other Side Already Decided or Uploaded", businessRules = ["BR-008", "BR-016"])
+    @DisplayName("A10, BR-016 (review of B3, item 4, with a planted Sent Record): a Bank Transaction that is a Transfer Leg of a Transfer without a Transfer Decision whose other Transfer Leg has been uploaded as an ordinary transaction is not taken either: one of that Transfer's Transfer Legs has been uploaded, so the choice is refused and nothing is stored")
+    fun choosingIsRefusedWhenTheOtherLegOfTheCandidatesTransferWasUploadedAsOrdinary() = runTest {
+        ready()
+        val checking = checking()
+        val card = rewardsCard()
+        val reserve = reserve()
+        slice.connectionStore.link(checking, transferPartner = budgetAccount("Reserve Savings"))
+        val fromReserve = stored(reserve, "TX-1", oct12, amount(-250))
+        val intoChecking = stored(checking, "TX-2", oct12, amount(250), payee = "Online Transfer")
+        val toCard = stored(card, "TX-3", oct13, amount(250), payee = "AUTOPAY")
+        compare()
+        val proposed = transferOf(fromReserve)!!
+        // The Operator holds the first Card Payment back, for which Slussen proposes no paying Budget Account.
+        assertEquals(stored(TransferDecision.Held, lonely = true), decide(toCard, TransferChoice.Hold))
+        val held = transferOf(toCard)!!
+        sentRecord(intoChecking, SentRecordOutcome.Written, asTransfer = false)
+
+        val refused = decide(toCard, TransferChoice.ChooseBudgetAccount(budgetAccount("Reserve Savings"), keep = false))
+
+        assertEquals(
+            TransferOutcome.OtherSideTaken(
+                listOf(
+                    TakenOtherSide(
+                        fromReserve, oct12, amount(-250), uploaded = false,
+                        transfer = TransferNamed("Reserve Savings", "Checking", amount(250), listOf(oct12, oct12), TransferDecision.Proposed, locked = true),
+                    ),
+                ),
+            ),
+            refused,
+        )
+        assertEquals(held, transferOf(toCard))
+        assertEquals(proposed.id, transaction(fromReserve).transferId)
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A4: Lonely Transfer", businessRules = ["BR-005", "BR-008"])
+    @DisplayName("BR-005 (review of B3, item 4, with a planted Sent Record): a Bank Transaction that is a Transfer Leg of a Transfer without a Transfer Decision whose other Transfer Leg has been uploaded as an ordinary transaction does not join a decided Lonely Transfer while it is a Transfer Leg of that Transfer; that Comparison releases it, since a Bank Transaction uploaded as ordinary is no Transfer Leg, and as a Transfer Leg of no Transfer it joins at the next one")
+    fun theOtherSideDoesNotJoinWhileItsTransferHasALegUploadedAsOrdinary() = runTest {
+        ready()
+        val checking = checking()
+        val card = rewardsCard()
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
+        // Two Card Payments of 120.00 into the card and one outflow: Slussen pairs the outflow with the first; the second is a Lonely Transfer.
+        val first = stored(card, "TX-1", oct13, amount(120), payee = "AUTOPAY")
+        val second = stored(card, "TX-2", oct13, amount(120), payee = "AUTOPAY")
+        val paid = stored(checking, "TX-3", oct13, amount(-120))
+        compare()
+        val proposed = transferOf(paid)!!
+        assertEquals(setOf(paid, first), legsOf(proposed))
+        // As stored: the Lonely Transfer is confirmed, and the first Card Payment was uploaded as an ordinary transaction.
+        val lonely = transferOf(second)!!
+        val confirmed = lonely.copy(decision = TransferDecision.Confirmed, decidedAt = now)
+        slice.copyStore.transfers.replaceAll { if (it.id == lonely.id) confirmed else it }
+        sentRecord(first, SentRecordOutcome.Written, asTransfer = false)
+
+        compare()
+
+        assertEquals(setOf(second), legsOf(confirmed))
+        assertNull(transaction(paid).transferId)
+        assertNull(transaction(first).transferId)
+        assertEquals(TransactionStatus.New, status(paid))
+        assertEquals(listOf(confirmed), slice.copyStore.transfers.toList())
+
+        compare()
+
+        assertEquals(setOf(second, paid), legsOf(confirmed))
+        assertEquals(TransferDecision.Confirmed, slice.copyStore.transfers.single().decision)
     }
 
     @Test

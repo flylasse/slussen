@@ -958,6 +958,36 @@ class UC004ReviewDoubtfulTransactionsTest {
     }
 
     @Test
+    @UseCase(id = "UC-004", scenario = "A5: Re-upload a Deleted Transaction", businessRules = ["BR-001", "BR-009"])
+    @DisplayName("BR-009, BR-001 (S-B-17, UC-005 BR-007): a Transfer Leg that Slussen sent and that is Deleted In Budget App offers no Re-upload while its Transfer is held back: the sheet offers no choice, choosing Re-upload stores nothing, and both Transfer Legs stay out of every Upload Plan")
+    fun aTransferLegOfAHeldTransferOffersNoReUpload() = runTest {
+        ready()
+        val checking = checking()
+        val card = rewardsCard()
+        val paid = stored(checking, "TX-1", oct12, amount(-250))
+        val received = stored(card, "TX-2", oct13, amount(250))
+        answerHousehold(sent("ynab-1", "TX-1", oct12, amount(-250), state = ReadState.Deleted))
+        compare()
+        assertEquals(listOf(ReviewChoice.ReUpload), sheet(paid).choices)
+        // The Operator holds the Transfer back (UC-005 A2).
+        slice.copyStore.transfers[0] = slice.copyStore.transfers.single().copy(decision = TransferDecision.Held, decidedAt = now)
+        compare()
+        assertEquals(TransactionStatus.DeletedInBudgetApp, status(paid))
+        assertEquals(TransactionStatus.HeldTransfer, status(received))
+        val version = slice.stateVersion.value
+
+        val shown = sheet(paid)
+        assertFalse(shown.locked)
+        assertEquals(emptyList<ReviewChoice>(), shown.choices)
+        assertEquals(ReviewOutcome.NotOffered(emptyList()), slice.review.decide(paid, ReviewChoice.ReUpload))
+
+        assertNull(decisionOf(paid))
+        assertEquals(version, slice.stateVersion.value)
+        assertEquals(TransactionStatus.DeletedInBudgetApp, status(paid))
+        assertEquals(NotYetUploaded(0, 0), counts())
+    }
+
+    @Test
     @UseCase(id = "UC-004", scenario = "A8: Upload Plan Awaiting Confirmation")
     @DisplayName("ADR-007 §2: a Review Decision is admitted while an Upload Plan awaits confirmation and raises state_version, so that the plan it was prepared before can never be written unchanged, and is refused with the reason while an Upload is written; the replacement of the plan (A8 step 1) comes with the Uploads")
     fun admittedWhileAPlanIsOpenAndRefusedWhileUploading() = runTest {

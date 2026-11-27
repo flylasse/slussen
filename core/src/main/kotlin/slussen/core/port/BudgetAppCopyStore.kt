@@ -129,7 +129,11 @@ data class ComparisonData(
     val bankTransactions: List<StoredBankTransaction>,
     /** The stored copy of the Budget App Transactions of those Budgets' Budget Accounts. */
     val budgetAppTransactions: List<StoredBudgetAppTransaction>,
-    /** The stored Transfers that one of those Bank Transactions is a Transfer Leg of (`bank_transaction.transfer_id`). */
+    /**
+     * The stored Transfers that one of those Bank Transactions is a Transfer Leg of (`bank_transaction.transfer_id`), and
+     * every Transfer the Operator decided on that names a Budget Account of those Budgets as a side, also when none of
+     * its Transfer Legs lies in a mapped Bank Account any more (UC-005 BR-015).
+     */
     val transfers: List<StoredTransfer>,
     /** The Card Payment Descriptions and Bank Transfer Descriptions (`transfer_description`, UC-005 BR-012). */
     val transferDescriptions: List<StoredTransferDescription>,

@@ -222,9 +222,9 @@ object TransferDecisionRules {
     }
 
     /** A candidate for the other side with the stored Transfer it is a Transfer Leg of, if any. */
-    private data class Candidate(val transaction: StoredBankTransaction, val transfer: StoredTransfer?, val uploaded: Boolean, val transferLocked: Boolean) {
+    private data class Candidate(val transaction: StoredBankTransaction, val transfer: StoredTransfer?, val uploaded: Boolean, val transferHasUploadedLeg: Boolean) {
         /** BR-016: it can be paired with: not uploaded, and in no Transfer or in one without a Transfer Decision none of whose Transfer Legs has been uploaded. */
-        val free: Boolean get() = !uploaded && (transfer == null || (transfer.decision == TransferDecision.Proposed && !transferLocked))
+        val free: Boolean get() = !uploaded && (transfer == null || (transfer.decision == TransferDecision.Proposed && !transferHasUploadedLeg))
     }
 
     /** A3 steps 3-4, A10, BR-016: what choosing the Budget Account of [choice] as the other side of [selected] stores. */
@@ -246,7 +246,7 @@ object TransferDecisionRules {
             .map { candidate ->
                 val transfer = data.transfers.firstOrNull { it.id == candidate.transferId }
                 val legs = data.bankTransactions.filter { transfer != null && it.transferId == transfer.id }
-                Candidate(candidate, transfer, TransferRules.uploaded(candidate.id, data.sentRecords), transfer != null && TransferRules.locked(transfer, legs, data.sentRecords))
+                Candidate(candidate, transfer, TransferRules.uploaded(candidate.id, data.sentRecords), TransferRules.hasUploadedLeg(legs, data.sentRecords))
             }
         // UC-005 BR-016: Among several of the same kind Slussen takes the one with the nearest booked date, then the one it received first.
         val nearestFirst = compareBy<Candidate>(
@@ -305,7 +305,7 @@ object TransferDecisionRules {
                     amount = transfer.amount,
                     dates = data.bankTransactions.filter { it.transferId == transfer.id }.map { it.bookedDate }.sorted(),
                     decision = transfer.decision,
-                    locked = candidate.transferLocked,
+                    locked = candidate.transferHasUploadedLeg,
                 )
             },
         )

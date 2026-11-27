@@ -70,6 +70,10 @@ object TransferRules {
     fun uploadedAsOrdinary(storedBankTransaction: Long, sentRecords: List<StoredSentRecord>): Boolean =
         sentRecords.any { counts(it, storedBankTransaction) && !it.sentAsTransfer } && !uploadedAsTransfer(storedBankTransaction, sentRecords)
 
+    // UC-005 BR-008: A Transfer Leg counts as uploaded whether it was sent as a linked transfer or as an ordinary transaction.
+    /** Whether one of [legs], the stored Transfer Legs of one Transfer, has been uploaded (BR-005, BR-016: "one of whose Transfer Legs has been uploaded"). */
+    fun hasUploadedLeg(legs: List<StoredBankTransaction>, sentRecords: List<StoredSentRecord>): Boolean = legs.any { uploaded(it.id, sentRecords) }
+
     // UC-005 BR-008: A Transfer Decision can be changed until a Transfer Leg of the Transfer is uploaded, as a linked transfer or, after Split, as an ordinary transaction; from then on it is locked.
     /** Whether the Transfer Decision of [transfer], with its stored Transfer Legs [legs], is locked. */
     fun locked(transfer: StoredTransfer, legs: List<StoredBankTransaction>, sentRecords: List<StoredSentRecord>): Boolean =
@@ -138,6 +142,16 @@ object TransferRules {
         pairingDays: Int,
     ): Boolean = ofOtherSide.any { couldBeOtherSide(arrived, it, pairingDays) && uploadedAsOrdinary(it.id, sentRecords) }
 
+    // UC-005 BR-007: Holding never releases one Transfer Leg as an ordinary transaction: while the Transfer is held back, a Re-upload decision on a Transfer Leg does not make it New.
+    /**
+     * The status of [leg] while its [transfer] is held back and its Review Decision Re-upload would make it a New
+     * transaction of its own (UC-004 BR-009): the status it has without that decision, Deleted In Budget App or Merged In
+     * Budget App; null in every other case. The decision is kept and applies again once the Operator changes the Transfer
+     * Decision.
+     */
+    private fun heldInsteadOfReUploaded(transfer: StoredTransfer, leg: TransferCandidate): TransactionStatus? =
+        leg.withoutReUpload.takeIf { transfer.decision == TransferDecision.Held }
+
     /** A Bank Transaction that could join [lonely] as its second Transfer Leg (BR-005). */
     private data class Joining(val lonely: KeptTransfer, val arrived: StoredBankTransaction, val candidate: TransferCandidate)
 
@@ -173,21 +187,19 @@ object TransferRules {
                 !split && legs.any { uploadedAsOrdinary(it.id, sentRecords) } -> TransferDropReason.OtherSideUploadedAsOrdinary
                 else -> whyNoLongerValid(transfer, legs, bankAccounts)
             }
+            val keeps = KeptTransfer(transfer, legs)
+            // UC-005 BR-015: A Transfer that the Operator split or holds back is never dissolved by a change of its ground: it stays as decided until the Operator changes the decision.
+            if (neverDissolved(transfer)) {
+                // A held Transfer whose own sides are no longer valid is joined by nothing: it is kept exactly as it is stored.
+                if (reason == null && joinsItsOtherSide(transfer, legs, bankAccounts)) joinable += keeps else kept += keeps
+                return@forEach
+            }
+            // UC-005 BR-015: Slussen drops a Transfer Decision Confirmed or Budget Account Chosen when the Transfer's own sides are no longer valid.
             if (reason != null) {
                 dropped += DroppedTransferDecision(transfer, reason, legs)
                 return@forEach
             }
-            val keeps = KeptTransfer(transfer, legs)
-            // UC-005 BR-005: A Lonely Transfer with the Transfer Decision Confirmed, Held or Budget Account Chosen is joined by its arriving other side; after Split nothing joins.
-            val lonelyAndNotSplit = !split && legs.size == 1
-            // UC-005 BR-015: While the Bank Account of one of its sides is a Retired Account, the Transfer keeps its Transfer Legs as they are.
-            val retiredSide = hasRetiredSide(transfer, legs, bankAccounts)
-            // A Transfer stored without a Budget Account on its paying side names no side a Bank Transaction could join (entity model `TRANSFER`, UC-005 A8).
-            if (lonelyAndNotSplit && !retiredSide && transfer.outflowBudgetAccountId != null) {
-                joinable += keeps
-            } else {
-                kept += keeps
-            }
+            if (joinsItsOtherSide(transfer, legs, bankAccounts)) joinable += keeps else kept += keeps
         }
         val legsOfKept = (kept + joinable).flatMap { it.legs }.map { it.id }.toSet()
         // UC-005 BR-005: The Bank Transaction that joins has the opposite amount, lies in the Bank Account mapped to the Budget Account of the missing side within the transfer pairing days, has not been uploaded and is a Transfer Leg of no Transfer that has a Transfer Decision or an uploaded Transfer Leg.
@@ -197,6 +209,7 @@ object TransferRules {
             compared.values
                 .filter { it.bankAccount.id == otherSide.id && couldBeOtherSide(arrived, it.transaction, pairingDays) }
                 .filter { it.transaction.id !in legsOfKept && !uploaded(it.transaction.id, sentRecords) }
+                .filterNot { candidate -> hasUploadedLeg(legsOfItsTransfer(candidate.transaction, allTransactions), sentRecords) }
                 .map { Joining(lonely, arrived, it) }
         }
         // UC-005 BR-005: Of several Bank Transactions the one with the nearest booked date joins, then the one Slussen received first; a Bank Transaction that could join more than one Lonely Transfer joins the one whose arrived Transfer Leg has the nearest booked date, then the one the Operator decided on first.
@@ -220,6 +233,8 @@ object TransferRules {
             val ofOtherSide = bankAccounts.filter { it.mapping?.budgetAccountId == otherSide }.flatMap { account -> allTransactions.filter { it.bankAccountId == account.id } }
             when {
                 joins != null -> kept += lonely.copy(legs = lonely.legs + joins, joined = joins)
+                // UC-005 BR-007: A Transfer the Operator holds back is never released as an ordinary transaction, also when its other side was written already.
+                neverDissolved(lonely.transfer) -> kept += lonely
                 // UC-005 BR-015: The decision is dropped when the other side of a Lonely Transfer was already uploaded as an ordinary transaction and no Bank Transaction can join.
                 otherSideWrittenAlready(arrived, ofOtherSide, sentRecords, pairingDays) ->
                     dropped += DroppedTransferDecision(lonely.transfer, TransferDropReason.OtherSideUploadedAsOrdinary, lonely.legs)
@@ -236,10 +251,28 @@ object TransferRules {
         return TransfersKept(kept, dropped, statuses)
     }
 
+    /** UC-005 BR-015: whether [transfer] has a Transfer Decision that no change of its ground drops: Split or Held. */
+    private fun neverDissolved(transfer: StoredTransfer): Boolean =
+        transfer.decision == TransferDecision.Split || transfer.decision == TransferDecision.Held
+
+    /** The stored Transfer Legs of the Transfer [transaction] is a Transfer Leg of; none when it is in no Transfer. */
+    private fun legsOfItsTransfer(transaction: StoredBankTransaction, allTransactions: List<StoredBankTransaction>): List<StoredBankTransaction> =
+        transaction.transferId?.let { transferId -> allTransactions.filter { it.transferId == transferId } }.orEmpty()
+
+    // UC-005 BR-005: A Lonely Transfer with the Transfer Decision Confirmed, Held or Budget Account Chosen is joined by its arriving other side; after Split nothing joins.
+    /**
+     * Whether a Bank Transaction can join [transfer], with its stored Transfer Legs [legs], as its second Transfer Leg:
+     * a Lonely Transfer that is not split, that names a Budget Account on its paying side (one stored without it names no
+     * side a Bank Transaction could join: entity model `TRANSFER`, UC-005 A8), and none of whose sides is a Retired
+     * Account, while which it keeps its Transfer Legs as they are (BR-015).
+     */
+    private fun joinsItsOtherSide(transfer: StoredTransfer, legs: List<StoredBankTransaction>, bankAccounts: List<StoredBankAccount>): Boolean =
+        transfer.decision != TransferDecision.Split && legs.size == 1 && transfer.outflowBudgetAccountId != null && !hasRetiredSide(transfer, legs, bankAccounts)
+
     // UC-005 BR-010: For a Transfer that has a Transfer Decision, the first that applies gives each Transfer Leg its status: a status an earlier rule of the Comparison gives it; the status the Review Decision on another Transfer Leg gives it (BR-013); Held Transfer when the Transfer is held back; and otherwise Transfer Leg.
     /** The Transaction Status [leg] follows as a Transfer Leg of the kept [transfer], which is not split, beside its [otherLegs]. */
     fun statusOfLeg(transfer: StoredTransfer, leg: TransferCandidate, otherLegs: List<TransferCandidate>): TransactionStatus =
-        leg.earlier ?: otherLegs.firstNotNullOfOrNull { it.givesOtherLegs } ?: when {
+        heldInsteadOfReUploaded(transfer, leg) ?: leg.earlier ?: otherLegs.firstNotNullOfOrNull { it.givesOtherLegs } ?: when {
             // UC-005 BR-007: A Transfer the Operator holds back keeps both Transfer Legs out of every Upload Plan, with the status Held Transfer.
             transfer.decision == TransferDecision.Held -> TransactionStatus.HeldTransfer
             // UC-005 BR-010: The Transfer Legs of a Guessed Transfer without a Transfer Decision have the status Guessed Transfer.

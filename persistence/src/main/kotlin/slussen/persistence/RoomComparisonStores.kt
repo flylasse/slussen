@@ -241,7 +241,9 @@ class RoomComparisonStore(
         val mappedIds = mapped.map { it.id }.toSet()
         val fetches = db.fetches()
         // A Transfer is judged with all its Transfer Legs (UC-005 BR-015), also one whose Bank Account is mapped elsewhere or not at all now.
-        val legsElsewhere = mapped.flatMap { account -> dao.legsOfTransfersOf(account.id) }
+        // A Transfer the Operator decided on is read through its Budget Accounts too, so that it is judged also when no Transfer Leg of it lies in a mapped Bank Account any more.
+        val decidedHere = budgets.flatMap { budget -> dao.decidedTransfersOf(budget.id, TransferDecision.Proposed.text) }
+        val legsElsewhere = (mapped.flatMap { account -> dao.legsOfTransfersOf(account.id) } + decidedHere.flatMap { dao.legsOf(it.id) })
             .filter { it.bankAccountId !in mappedIds }
             .distinctBy { it.id }
             .map { it.stored() }
@@ -251,7 +253,7 @@ class RoomComparisonStore(
             bankAccounts = mapped + elsewhere,
             bankTransactions = mapped.flatMap { account -> fetches.bankTransactionsOf(account.id).map { it.stored() } } + legsElsewhere,
             budgetAppTransactions = budgets.flatMap { budget -> dao.copyOf(budget.id).map { it.stored() } },
-            transfers = mapped.flatMap { account -> dao.transfersOf(account.id) }.distinctBy { it.id }.map { it.stored() },
+            transfers = (mapped.flatMap { account -> dao.transfersOf(account.id) } + decidedHere).distinctBy { it.id }.map { it.stored() },
             transferDescriptions = dao.transferDescriptions().map { it.stored() },
             reviewDecisions = mapped.flatMap { account -> db.reviewDecisions().ofBankAccount(account.id) }.map { it.stored() },
             sentRecords = mapped.flatMap { account -> dao.sentRecordsOf(account.id) }.map { it.stored() } +

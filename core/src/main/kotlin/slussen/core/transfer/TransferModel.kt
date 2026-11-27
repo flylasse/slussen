@@ -75,7 +75,7 @@ data class TransferNamed(
     val amount: Amount,
     val dates: List<LocalDate>,
     val decision: TransferDecision,
-    /** BR-008: one of its Transfer Legs has been uploaded, so its Transfer Decision cannot be changed. */
+    /** BR-016: one of its Transfer Legs has been uploaded, as a linked transfer or as an ordinary transaction, so no Transfer Leg is taken from it. */
     val locked: Boolean,
 )
 

@@ -601,4 +601,35 @@ class UC005ReviewTransfersPersistenceIT {
         assertEquals(again.id, transaction(storage, household.card, "TX-1").transferId)
         storage.close()
     }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A4: Lonely Transfer", businessRules = ["BR-007", "BR-015"])
+    @DisplayName("BR-015 (O-5, review of B3 item 3; S-B-17): a Transfer the Operator decided on is read through its Budget Accounts when the Bank Account of its one Transfer Leg has no Account Mapping any more: a confirmed Lonely Transfer is removed with its Transfer Leg released and handed over as dropped, and a held one is kept as it is stored")
+    fun aDecidedLonelyTransferIsReadWhenItsBankAccountLosesItsAccountMapping() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        val household = household(storage)
+        execute(storage, "UPDATE bank_account SET funded_by_budget_account_id = ? WHERE id = ?", household.budgetAccounts.getValue("Checking"), household.card)
+        deliver(storage, household, household.card, delivered("TX-1", oct13, 120000, payee = "AUTOPAY"), delivered("TX-2", oct13, 64000, payee = "AUTOPAY"))
+        compare(storage, household)
+        val confirmed = decide(storage, household, transaction(storage, household.card, "TX-1").id, TransferChoice.Confirm).transferId!!
+        compare(storage, household)
+        val held = decide(storage, household, transaction(storage, household.card, "TX-2").id, TransferChoice.Hold).transferId!!
+        compare(storage, household)
+
+        execute(storage, "DELETE FROM account_mapping WHERE bank_account_id = ?", household.card)
+        val read = storage.comparisons.comparisonDataOf(setOf(household.budget))
+        var dropped: List<DroppedTransferDecision> = emptyList()
+        storage.comparisons.applyComparison(setOf(household.budget)) { data -> ComparisonRules.conclude(data, windows()).also { dropped = it.dropped } }
+
+        assertEquals(setOf(confirmed, held), read.transfers.map { it.id }.toSet())
+        assertEquals(2, read.bankTransactions.count { it.transferId != null })
+        assertTrue(read.bankAccounts.any { it.id == household.card && it.mapping == null })
+        assertEquals(listOf(confirmed to TransferDropReason.TransferLegNotMapped), dropped.map { it.transfer.id to it.reason })
+        val kept = transfers(storage).single()
+        assertEquals(held, kept.id)
+        assertEquals(TransferDecision.Held, kept.decision)
+        assertNull(transaction(storage, household.card, "TX-1").transferId)
+        assertEquals(held, transaction(storage, household.card, "TX-2").transferId)
+        storage.close()
+    }
 }
