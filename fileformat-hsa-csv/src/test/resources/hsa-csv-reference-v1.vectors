@@ -1,0 +1,19 @@
+# The test vectors of the HSA CSV export's reference recipe, version 1 (ADR-001 §4.3.1), invented.
+# Never changed once committed (as ADR-008 §3 does for Import Identifiers): a failing vector means the recipe changed,
+# which would bring every earlier transaction in again as a new one.
+# Each vector is three lines, tab-separated: the transaction line of the file, the canonical input, the reference.
+line	11/25/2026,DEBIT CARD PURCHASE HARBOR PHARMACY (Cash),"",No Description,Cash,"",0,"","","","-12.34",1987.66,""
+input	17:hsa-csv-reference1:110:2026-11-256:-1234035:DEBIT CARD PURCHASE HARBOR PHARMACY0:
+reference	3a3874d3bb5b7a579326adf332596a3bc66bb62230da6e56aefe73dd8fa043d8
+line	11/23/2026,PARTIC CONTR CURRENT PARTICIPANT CUR YR (Cash),"",No Description,Cash,"",0,"","","",150,2000,""
+input	17:hsa-csv-reference1:110:2026-11-236:15000039:PARTIC CONTR CURRENT PARTICIPANT CUR YR0:
+reference	7d31efe6e3271c3897da5bafc623363089b84ebeea68f23190987a30e502916c
+line	10/30/2026,DIVIDEND RECEIVED EXAMPLE GOVERNMENT CASH RESERVES (EXMPX) (Cash),EXMPX,EXAMPLE GOVERNMENT CASH RESERVES,Cash,"",0,"","","",4.5,1850,""
+input	17:hsa-csv-reference1:110:2026-10-304:450058:DIVIDEND RECEIVED EXAMPLE GOVERNMENT CASH RESERVES (EXMPX)40:EXAMPLE GOVERNMENT CASH RESERVES (EXMPX)
+reference	e42b53158002d2fab3cfa8d965b197087ac51587bf48f6c4920bf06f492b3e2d
+line	10/02/2026,DISTRIBUTION EXAMPLE CLINIC (Cash),"",Office visit,Cash,"",0,"","","","-25",1825.5,""
+input	17:hsa-csv-reference1:110:2026-10-026:-2500027:DISTRIBUTION EXAMPLE CLINIC12:Office visit
+reference	1cb30abe4c821e4e021a4690d89335cf4c781d2e6946fa8b1437d92c908cf507
+line	09/30/2026,INTEREST EARNED (Cash),EXMPX,No Description,Cash,"",0,"","","",1.2,1850.5,""
+input	17:hsa-csv-reference1:110:2026-09-304:120015:INTEREST EARNED7:(EXMPX)
+reference	5545f3fc35921c80ae682cfcab51ef97d72a7149fad2812d0f1436a94e9cec67

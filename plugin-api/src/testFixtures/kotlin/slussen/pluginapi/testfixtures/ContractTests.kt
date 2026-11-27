@@ -25,6 +25,7 @@ import slussen.pluginapi.credential.CredentialCapability
 import slussen.pluginapi.credential.CredentialCheck
 import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.diagnostic.SlussenLog
+import slussen.pluginapi.fileformat.ConversionResult
 import slussen.pluginapi.fileformat.FilePreprocessor
 import slussen.pluginapi.provider.BankAccountResult
 import slussen.pluginapi.provider.BankAccountSelection
@@ -839,11 +840,28 @@ public abstract class BudgetAppContractTest : CredentialContractTest() {
 }
 
 /**
- * The File Pre-processor contract test of ADR-001 §4.4. This slice holds the declaration check; the conversion checks
- * come with the slice that builds UC-002.
+ * An invented file in the File Pre-processor's format that holds one line it cannot convert, and [valuesOfTheFile]: the
+ * values written in that file (amounts, dates, payees, memos, other text of its lines) that a `Rejected.reason` must
+ * never hold (ADR-001 §4.3, NFR-007).
+ */
+public class RejectedFileScenario(
+    public val file: ByteArray,
+    public val valuesOfTheFile: List<String>,
+)
+
+/**
+ * The File Pre-processor contract test of ADR-001 §4.4: the declarations, a file with one unreadable line rejected
+ * with a reason that holds no value of the file, every reference non-empty, and the same bytes converted twice giving
+ * equal results (pure, B-01). A File Pre-processor declares no number (no Upload Window, §4.3), so no range is checked.
  */
 public abstract class FilePreprocessorContractTest {
     protected abstract fun filePreprocessor(log: SlussenLog): FilePreprocessor
+
+    /** An invented file in the format that converts into at least one transaction. */
+    protected abstract fun convertedFile(): ByteArray
+
+    /** An invented file in the format in which exactly one line cannot be converted. */
+    protected abstract fun fileWithOneUnreadableLine(): RejectedFileScenario
 
     @Test
     @DisplayName("ADR-001 §4.3: the File Pre-processor declares a name and a source key")
@@ -851,6 +869,43 @@ public abstract class FilePreprocessorContractTest {
         val profile = filePreprocessor(NoLog).profile
         assertTrue(profile.name.isNotBlank(), "name")
         assertTrue(profile.sourceKey.isNotBlank(), "source key")
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.4: a file with one unreadable line is Rejected as a whole, with a reason that holds no value of the file")
+    public fun aFileWithOneUnreadableLineIsRejected() {
+        val scenario = fileWithOneUnreadableLine()
+        val result = filePreprocessor(WrittenLog()).convert(scenario.file.copyOf())
+        assertTrue(result is ConversionResult.Rejected, "was ${result::class.simpleName}")
+        val reason = (result as ConversionResult.Rejected).reason
+        assertTrue(reason.isNotBlank(), "the reason is empty")
+        val revealed = scenario.valuesOfTheFile.filter { it.isNotEmpty() && reason.contains(it) }
+        assertTrue(revealed.isEmpty(), "the reason holds ${revealed.size} value(s) of the file")
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.4: every reference of a converted file is non-empty")
+    public fun everyReferenceIsNonEmpty() {
+        val result = filePreprocessor(WrittenLog()).convert(convertedFile())
+        assertTrue(result is ConversionResult.Converted, "was ${result::class.simpleName}")
+        val transactions = (result as ConversionResult.Converted).file.transactions
+        assertTrue(transactions.isNotEmpty(), "the converted file holds no transaction")
+        assertTrue(transactions.all { it.reference.isNotEmpty() }, "a reference is empty")
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.4, B-01: converting the same bytes twice, by one File Pre-processor and by another, gives equal results and leaves the bytes as they were")
+    public fun theSameBytesGiveEqualResults() {
+        listOf(convertedFile(), fileWithOneUnreadableLine().file).forEach { file ->
+            val given = file.copyOf()
+            val preprocessor = filePreprocessor(WrittenLog())
+            val first = preprocessor.convert(given)
+            val second = preprocessor.convert(given)
+            val byAnother = filePreprocessor(WrittenLog()).convert(file.copyOf())
+            assertEquals(first, second)
+            assertEquals(first, byAnother)
+            assertTrue(given.contentEquals(file), "convert changed the bytes it was given")
+        }
     }
 }
 

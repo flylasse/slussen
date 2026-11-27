@@ -50,6 +50,11 @@ class TestSlice(
     identify: (ImportIdentifierInput) -> String = ImportIdentifierProtocol::importIdentifier,
     /** The recorder the core records through; the fake [journalRecorder] unless a test gives the real one of `:persistence`. */
     recorder: DecisionJournalRecorder? = null,
+    /**
+     * The File Pre-processor the slice registers and imports through; the fake [fileFormat] unless a test gives a real
+     * one of a `:fileformat-*` module (UC-002 with a real File Format).
+     */
+    filePreprocessor: slussen.pluginapi.fileformat.FilePreprocessor? = null,
 ) {
     val clock = MutableClock()
     val budgetApp = FakeBudgetApp()
@@ -57,6 +62,7 @@ class TestSlice(
     val openBanking = FakeDataProvider(ExampleData.openBankingProfile)
     val wren = FakeDataProvider(ExampleData.wrenProfile)
     val fileFormat = FakeFilePreprocessor()
+    private val registeredFilePreprocessor: slussen.pluginapi.fileformat.FilePreprocessor = filePreprocessor ?: fileFormat
 
     /** The one `state_version` every fake of the slice raises, as the tables of `slussen.db` share one (ADR-007 §6 step 2). */
     val stateVersion = InMemoryStateVersion()
@@ -76,7 +82,7 @@ class TestSlice(
     val random = Random(20261015L).let { seeded -> RandomSource { bytes -> seeded.nextBytes(bytes) } }
 
     val plugins: RegisteredPlugins = runBlocking {
-        PluginRegistration(registry).register(budgetApp, listOf(feeds, openBanking, wren), listOf(fileFormat))
+        PluginRegistration(registry).register(budgetApp, listOf(feeds, openBanking, wren), listOf(registeredFilePreprocessor))
     }
     val coordinator = OperationCoordinator(coordinatorStore)
     val journal = DecisionJournal(recorder ?: journalRecorder, settings, clock)
@@ -104,9 +110,9 @@ class TestSlice(
         plugins, credentials, connectionStore, offeredStore, importStatusStore, providerRequests, coordinator, settings, journal,
         clock, fetchNotices, comparison,
     )
-    /** UC-002: Import a Transaction File, through the fake File Pre-processor [fileFormat], with its Comparison (step 9). */
+    /** UC-002: Import a Transaction File, through the fake File Pre-processor [fileFormat] or the one given, with its Comparison (step 9). */
     val fileImport = ImportTransactionFile(
-        plugins, listOf(fileFormat), connectionStore, importStatusStore, importStatusStore, coordinator, journal, clock, comparison,
+        plugins, listOf(registeredFilePreprocessor), connectionStore, importStatusStore, importStatusStore, coordinator, journal, clock, comparison,
     )
     val settingsOverview = SettingsOverview(plugins, credentials, connectionStore, offeredStore, importStatusStore, settings, clock)
     val connect = BudgetsAndBankAccounts(
