@@ -26,6 +26,7 @@
 | B2 | e75d3a1 | green at e75d3a1 | `docs/reviews/build_out_reviews/B2.md`: no behaviour changed without a Review Decision; nothing to fix that acts today; 3 items owed to Wave 4 (W4-01..W4-03), 1 to B3, 2 markers | Review Decisions in the core (UC-004), their place in the Comparison, O-13; 41 tests; no existing Comparison or Transfer test changed | 596k + 212k |
 | B3 | daa855b, 5dd87e0 (S-B-17), 819d712, 448a01d | green at 819d712 (448a01d changes an ADR's wording only) | `docs/reviews/build_out_reviews/B3.md`: undecided Transfers unchanged; 4 findings fixed, two of them by S-B-17 (a held or split Transfer is never dissolved; Held wins over Re-upload); 4 to §6 (G-23..G-26) | Transfer Decisions in the core (UC-005 steps 2-6, A1-A4, A8-A10), O-13, the Comparison with decided Transfers; 48 tests | 645k + 259k |
 | B4 | ffac4bc | green at ffac4bc | `docs/reviews/build_out_reviews/B4.md`: no defect; small test and marker items go to B5's builder; 2 hazards owed to Wave 4 (W4-06, W4-07); 1 to §6 (G-27) | Mapping changes in the core (retire, restore, name, Start Date, Funded By and Transfer Partner), the one "status again" engine, A14 step 4; 42 tests | 552k + 245k |
+| B5 | e0337bc, 71c126d | green at 71c126d | `docs/reviews/build_out_reviews/B5.md`: the locks hold; 5 findings fixed (among them the source of a proposed match, which no code produced, and a stricter lock for an identification); W4-01 amended and W4-08 added; 2 to §6 (G-28) | Identification and moves (UC-009 steps 2-7, A1-A3, A6, A8, A10, A11), the locks of BR-003 and BR-007 on the Sent Records, a Fetch that proposes a match; 48 tests. Opus builder | 454k + 315k |
 
 - Paused on 2026-11-26 at the operator's word (the usage limit of the session) after A-4 was built; resumed the same day. The operator watches the limit and says when to pause; the orchestrator's own turns are not in the token column.
 
@@ -43,7 +44,7 @@
 
   The strongest model counts several times more against the limit than Opus; three windows do not pin the ratio. A screen phase costs 0.5 to 0.7M with its review and fixes, a specification phase about 0.6M, a core or storage phase 0.8 to 0.9M.
 - **Pacing rule (from 2026-11-27):** the orchestrator stops only between phases; a window is the five hours from its first call after a reset; it keeps a running count by model and starts no builder or reviewer that does not fit what is left, with a margin; at the stop it schedules the restart for five minutes after the window's end and reports the count, and the operator gives the percentage he sees, to pin the weights.
-- Next: phase B5 (identification and moves), with an Opus builder; then a pause.
+- Next: phase B6 (the screens of the decisions and the mappings), with an Opus builder; its review in the window after.
 
 ## 1. Scope
 
@@ -183,6 +184,7 @@ Smaller choices taken without asking, to be confirmed at the end: the Decision J
 | G-25 | B3 | The lock of a Transfer Decision reads Sent Records only (UC-005 BR-008 as written): a Transfer Leg merely found in the Budget App by its Import Identifier does not lock it. While a Transfer Leg waits for a Review Decision, only Split is taken (A9). O-13 sets `comparison_pending` on every stored Transfer Decision. | One rule each. |
 | G-26 | B2, B3 | Where UC-005 BR-010 and BR-013, or A2 and BR-010, can be read to disagree about a Transfer Leg that has its own Review Decision or an earlier rule's status, the code takes BR-010: the Transfer Leg's own status first. Both readings keep the whole Transfer out of every Upload Plan. Import Anyway gives New also when a Typed Entry matches (UC-004 BR-006 as written). | Text in UC-005; one line and one test. |
 | G-27 | B4 | A change of UC-009 runs in its screen's scope: leaving the screen between the change and the statuses given again leaves `comparison_pending` until the next start, the next change or a Comparison that reaches the Budget App, so an Upload Plan stays blocked longer than needed (ADR-007 §3a allows it). A9 and A13 are allowed on a Retired Account; on a Bank Account without an Account Mapping a Funded By can only be cleared. | Running the conclusion outside the screen's scope. |
+| G-28 | B5 | A rejected proposal (UC-009 A3) stores nothing but a Decision Journal entry; the proposal stays until the next delivery. In what a lock states, "rejected" counts Bank Transactions with a Rejected record and no other in the current Budget Account (to check again with UC-006 BR-020's retry). Identifying, moving and removing are allowed on a Retired Account. Confirming a proposed match asks for the confirmation of BR-007 like any new identification. | Text and one condition each. |
 | G-06 | A-1 | Times show as HH:mm today, MM-dd HH:mm earlier in the year, the full date before that, as the mockups do. | Text only. |
 
 ### Owed to later phases (W-nn)
