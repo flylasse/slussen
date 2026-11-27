@@ -27,6 +27,7 @@
 | B3 | daa855b, 5dd87e0 (S-B-17), 819d712, 448a01d | green at 819d712 (448a01d changes an ADR's wording only) | `docs/reviews/build_out_reviews/B3.md`: undecided Transfers unchanged; 4 findings fixed, two of them by S-B-17 (a held or split Transfer is never dissolved; Held wins over Re-upload); 4 to §6 (G-23..G-26) | Transfer Decisions in the core (UC-005 steps 2-6, A1-A4, A8-A10), O-13, the Comparison with decided Transfers; 48 tests | 645k + 259k |
 | B4 | ffac4bc | green at ffac4bc | `docs/reviews/build_out_reviews/B4.md`: no defect; small test and marker items go to B5's builder; 2 hazards owed to Wave 4 (W4-06, W4-07); 1 to §6 (G-27) | Mapping changes in the core (retire, restore, name, Start Date, Funded By and Transfer Partner), the one "status again" engine, A14 step 4; 42 tests | 552k + 245k |
 | B5 | e0337bc, 71c126d | green at 71c126d | `docs/reviews/build_out_reviews/B5.md`: the locks hold; 5 findings fixed (among them the source of a proposed match, which no code produced, and a stricter lock for an identification); W4-01 amended and W4-08 added; 2 to §6 (G-28) | Identification and moves (UC-009 steps 2-7, A1-A3, A6, A8, A10, A11), the locks of BR-003 and BR-007 on the Sent Records, a Fetch that proposes a match; 48 tests. Opus builder | 454k + 315k |
+| B6 | bb07200 | green at bb07200 | not reviewed yet (next window) | The screens of the Review Decisions, the Transfer Decisions and Manage Account Mappings; the read-only lines of Wave 1 replaced (G-10, G-12, G-14 ended); 36 ViewModel tests, 3 screen ITs. Not built, waiting for Wave 4's Sent Records: `review-decision.html#counterpart-changed`, `#outcome-unknown`, `#outcome-unknown-auto`, `#reupload-unavailable`. Opus builder | 582k + (review) |
 
 - Paused on 2026-11-26 at the operator's word (the usage limit of the session) after A-4 was built; resumed the same day. The operator watches the limit and says when to pause; the orchestrator's own turns are not in the token column.
 
@@ -41,10 +42,12 @@
 | 1 | the five surveys, A-1..A-3, A-4's builder | 1.1M | 2.3M | 0.3M | 90% (operator) |
 | 2 | A-4's review and fixes, A-5, W2-0, W2-1 | 1.2M | 1.0M | 0.04M | 85% before the last review (operator) |
 | 3 | B2, B3, the start of B4 | 1.2M and B4's reading | 0.5M | 0 | the limit |
+| 4 | the rest of B4 with its review, B5 with its review and fixes, B6's builder | 0.87M (B4's builder, part of it in window 3; B5's review) | 1.28M | 0 | paused by the orchestrator at 16:40 UTC of a window that ends 19:28 UTC; the operator's percentage to come |
 
   The strongest model counts several times more against the limit than Opus; three windows do not pin the ratio. A screen phase costs 0.5 to 0.7M with its review and fixes, a specification phase about 0.6M, a core or storage phase 0.8 to 0.9M.
 - **Pacing rule (from 2026-11-27):** the orchestrator stops only between phases; a window is the five hours from its first call after a reset; it keeps a running count by model and starts no builder or reviewer that does not fit what is left, with a margin; at the stop it schedules the restart for five minutes after the window's end and reports the count, and the operator gives the percentage he sees, to pin the weights.
-- Next: phase B6 (the screens of the decisions and the mappings), with an Opus builder; its review in the window after.
+- **Paused on 2026-11-27 at 16:40 UTC by the pacing rule.** Nothing is running and the tree is clean. To resume (scheduled for 19:35 UTC): the review of B6 (range 65da58c..bb07200, the strongest model, since an Opus builder built it), its fixes by the builder, gate, record; that closes Wave 2 (name the commit for the operator's device run). Then Wave 3: its specification phase and A-6..A-9, Opus builders unless the operator says otherwise.
+- Next: the review of phase B6.
 
 ## 1. Scope
 
