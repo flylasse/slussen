@@ -770,5 +770,5 @@ One entry of the Operator's Card Payment Descriptions or Bank Transfer Descripti
 - Within one `kind`, no two entries have the same `text` when compared without regard to case and accents.
 - An entry matches a Bank Transaction when its `text` occurs anywhere in the payee or memo, compared without regard to case and accents, with `*` matching any characters; no other character has a special meaning.
 - The entries start as the default lists that ship with the build (UC-010 BR-007); restoring a default list replaces every entry of that `kind`. Whether an entry was added by the Operator is not stored: it is one that equals no entry of the default list of its `kind` (UC-010 BR-007).
-- `text` has no spaces at its start or end (UC-010 BR-008).
+- `text` has no spaces at its start or end and holds at least one character other than `*` (UC-010 BR-008).
 - Adding, changing, removing or restoring entries changes only Transfers whose `decision` is Proposed and none of whose Transfer Legs has a Sent Record with an `outcome` other than Rejected (UC-005 BR-008, UC-005 BR-015, UC-010 BR-009).

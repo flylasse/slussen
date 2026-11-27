@@ -190,7 +190,7 @@ The default lists ship with the build from the repository.
 
 ### BR-008: Valid Description Entries
 
-An entry is a non-empty text no longer than its stored length (`TRANSFER_DESCRIPTION`). Spaces at its start and end are removed before it is checked and stored, so that an entry of spaces only is empty. Within one list, no two entries are equal when compared without regard to case and accents. A `*` stands for any characters (UC-005 BR-012); no other character has a special meaning. A list may hold no entry.
+An entry is a non-empty text no longer than its stored length (`TRANSFER_DESCRIPTION`). Spaces at its start and end are removed before it is checked and stored, so that an entry of spaces only is empty. Within one list, no two entries are equal when compared without regard to case and accents. A `*` stands for any characters (UC-005 BR-012); no other character has a special meaning. An entry holds at least one character other than `*`, since an entry of stars only would match nothing. A list may hold no entry.
 
 ### BR-009: Description Changes Apply Only Before Upload
 
