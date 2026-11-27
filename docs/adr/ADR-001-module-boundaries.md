@@ -558,7 +558,7 @@ Detailed Logging is on (NFR-007), since another File Pre-processor may break thi
 
 ##### 4.3.1 The HSA CSV export (S-B-29)
 
-`:fileformat-hsa-csv` reads the history export of a health savings account at Fidelity, one file per Bank Account, as
+`:fileformat-hsa-csv` reads the history export of Fidelity for an HSA, one file per Bank Account, as
 the Operator described it from a sample (the build-out plan, Q-01); the sample is not in the repository, and every
 value below is invented. The rules that make a reference (the fields of a transaction and the recipe) are final once a
 file was imported, because an Import Identifier is permanent (ADR-008 §4): changing the recipe, the payee or memo
@@ -568,14 +568,16 @@ now. Where the description leaves a point open, the file is rejected, never gues
 
 **Layout.** Anything else rejects the whole file (UC-002 A2, BR-001):
 
-1. The file is UTF-8, begins with the byte order mark (`EF BB BF`), and ends its lines with LF only; a CR anywhere
-   rejects it.
+1. The file is UTF-8, with or without the byte order mark (`EF BB BF`) at its start. Its lines end with LF or with
+   CRLF, one kind in a file; a CR not followed by LF, or both kinds in one file, rejects it. A line end is never part
+   of a value.
 2. Lines 1 and 2 are empty; line 3 is the header, exactly
    `Run Date,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Cash Balance ($),Settlement Date`.
 3. Every line from line 4 up to the first empty line is a transaction line, newest first. The first empty line may
    follow the header at once; the file then holds no transaction (UC-002 A3).
-4. After that empty line comes the legal text, which is not read. Its last line is
-   `Date downloaded MM/DD/YYYY hh:mm am` (or `pm`), and the file ends there, with or without a final LF.
+4. After that empty line comes text that is not read. Only its presence is required, so that a file cut short is
+   rejected: there is at least one line after the empty line, and the last line that is not empty begins with
+   `Date downloaded`.
 
 **A transaction line** is split into fields at commas as CSV does: a field in double quotes may hold commas, two
 double quotes inside it stand for one, the enclosing quotes are not part of the value, and `""` is an empty value. A
@@ -609,7 +611,7 @@ core leaves out, UC-001 BR-003):
 | `amount` | `Amount ($)`, negative for an outflow |
 | `currency` | USD, as the header's `($)` names it; a Bank Account in another currency rejects every file (UC-002 A2) |
 | `payee` | `Action` without its ending ` (Cash)` |
-| `memo` | from `Description` (taken as empty when it is exactly `No Description`) and `Symbol`: the description, followed by a space and the symbol in parentheses when both are present; the one present alone; absent when neither is |
+| `memo` | from `Description` (taken as empty when it is exactly `No Description`) and `Symbol`: with both, the description, a space and the symbol in parentheses (`EXAMPLE GOVERNMENT CASH RESERVES (EXMPX)`); with the description alone, the description (`Office visit`); with the symbol alone, the symbol in parentheses (`(EXMPX)`); with neither, absent |
 | `booked` | true: the description names no pending line and no column that marks one |
 | `reference`, `referenceKind` | the recipe below, Derived |
 
@@ -635,11 +637,13 @@ reference exactly when they are identical; the core counts a later file against 
 | `11/25/2026,DEBIT CARD PURCHASE HARBOR PHARMACY (Cash),"",No Description,Cash,"",0,"","","","-12.34",1987.66,""` | `17:hsa-csv-reference1:110:2026-11-256:-1234035:DEBIT CARD PURCHASE HARBOR PHARMACY0:` | `3a3874d3bb5b7a579326adf332596a3bc66bb62230da6e56aefe73dd8fa043d8` |
 | `11/23/2026,PARTIC CONTR CURRENT PARTICIPANT CUR YR (Cash),"",No Description,Cash,"",0,"","","",150,2000,""` | `17:hsa-csv-reference1:110:2026-11-236:15000039:PARTIC CONTR CURRENT PARTICIPANT CUR YR0:` | `7d31efe6e3271c3897da5bafc623363089b84ebeea68f23190987a30e502916c` |
 | `10/30/2026,DIVIDEND RECEIVED EXAMPLE GOVERNMENT CASH RESERVES (EXMPX) (Cash),EXMPX,EXAMPLE GOVERNMENT CASH RESERVES,Cash,"",0,"","","",4.5,1850,""` | `17:hsa-csv-reference1:110:2026-10-304:450058:DIVIDEND RECEIVED EXAMPLE GOVERNMENT CASH RESERVES (EXMPX)40:EXAMPLE GOVERNMENT CASH RESERVES (EXMPX)` | `e42b53158002d2fab3cfa8d965b197087ac51587bf48f6c4920bf06f492b3e2d` |
+| `10/02/2026,DISTRIBUTION EXAMPLE CLINIC (Cash),"",Office visit,Cash,"",0,"","","","-25",1825.5,""` (a description alone) | `17:hsa-csv-reference1:110:2026-10-026:-2500027:DISTRIBUTION EXAMPLE CLINIC12:Office visit` | `1cb30abe4c821e4e021a4690d89335cf4c781d2e6946fa8b1437d92c908cf507` |
+| `09/30/2026,INTEREST EARNED (Cash),EXMPX,No Description,Cash,"",0,"","","",1.2,1850.5,""` (a symbol alone) | `17:hsa-csv-reference1:110:2026-09-304:120015:INTEREST EARNED7:(EXMPX)` | `5545f3fc35921c80ae682cfcab51ef97d72a7149fad2812d0f1436a94e9cec67` |
 
-In a file that holds these lines newest first, with the line
+In a file that holds the first three lines newest first, with the line
 `10/30/2026,REINVESTMENT EXAMPLE GOVERNMENT CASH RESERVES (EXMPX) (Cash),EXMPX,EXAMPLE GOVERNMENT CASH RESERVES,Cash,1,4.5,"","","","-4.5",1850,""`
 between the second and the third, that line is left out (its cash balance equals the dividend's below it), and the
-three others are transactions. `:fileformat-hsa-csv` commits the vectors as a test resource that is never changed, as
+three others are transactions. The last two vectors stand alone: each shows one form of the memo. `:fileformat-hsa-csv` commits the vectors as a test resource that is never changed, as
 ADR-008 §3 does for Import Identifiers.
 
 #### 4.4 Contract tests

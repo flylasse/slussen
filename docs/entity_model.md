@@ -454,7 +454,7 @@ A file of transactions that the Operator downloaded from a Bank and imported for
 | file_format_id    | File Format the file was read with                             | Long      | 19               | Not Null, Foreign Key (FILE_FORMAT.id)   |
 | imported_at       | Time the Operator imported the file                            | DateTime  | -                | Not Null                                 |
 | outcome           | Whether the file was taken in as a whole or rejected as a whole | String    | 20               | Not Null, Values: Imported, Rejected     |
-| transaction_count | Number of Bank Transactions the file delivered: its booked transactions with an amount other than zero, those already stored included (UC-002 step 7) | Integer   | 10               | Not Null                                 |
+| transaction_count | Number of Bank Transactions the file delivered: its booked transactions with an amount other than zero, those already stored included (UC-002 step 7); 0 for a rejected file | Integer   | 10               | Not Null                                 |
 | rejection_reason  | Reason shown to the Operator when the file was rejected, its first 200 characters, never a value of the file (ADR-001 §4.3) | String    | 200              | Optional                                 |
 
 #### Constraints

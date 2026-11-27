@@ -83,7 +83,10 @@ plan is being written).
 | Confirm First Upload Matching (UC-008 A9) | admitted | refused | refused |
 
 "Refused" returns a typed reason that the screen shows; nothing is half started. A deferred Scheduled Fetch is
-remembered in `coordinator_state` and started when the mode returns to Normal (UC-006 BR-005), also after a restart.
+remembered in `coordinator_state` (`scheduled_fetch_deferred`) and started, once, when the mode returns to Normal in
+the running process (UC-006 BR-005); a start of Slussen never starts it (UC-008 BR-001), and when no process sees the
+mode return, the next run of the Fetch Schedule fetches. The flag is cleared in the storage transaction that records
+the start of a Scheduled Fetch, so an ended process neither loses the deferral nor runs it twice (UC-001 BR-013).
 
 ### 3. When an Upload Plan may be prepared
 
@@ -303,7 +306,8 @@ coordinator reads `coordinator_state`:
   `coordinator_state` came from older data.
 - **Comparison pending** (§3a): the Comparison is recomputed locally and committed (O-5) before preparation is
   admitted.
-- A deferred Scheduled Fetch is started once the mode is Normal.
+- A deferred Scheduled Fetch is not started by the start: `scheduled_fetch_deferred` stays set until a Scheduled Fetch
+  starts, by the next run of the Fetch Schedule or when the mode returns to Normal in a running process (§2).
 
 ### 9. Tests that prove it
 
