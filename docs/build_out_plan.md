@@ -23,13 +23,14 @@
 | A-5 | f4f70bf (S-B-01), 6b6d085, bb7172a | green at bb7172a | `docs/reviews/build_out_reviews/A-5.md`: 6 findings fixed, 4 to §6 (G-19..G-22); the reviewer found no path that says "not stored" for something stored, or the reverse | Issues #33 and #26 are built; every storage failure on the service pages and the Overview is answered on the screen | 425k + 269k |
 | W2-0 | 5e1793e, f75d028 (S-B-02..S-B-16) | specification checks and architecture tests green | `docs/reviews/build_out_reviews/W2-0.md`: 9 corrections written, among them a transaction that would have been stuck for ever and two ways to a duplicate | The specification of Wave 2; no code | 465k + 148k |
 | W2-1 | d4b9e5b | green at d4b9e5b | `docs/reviews/build_out_reviews/W2-1.md`: no serious finding; the reviewer replayed the Migration on SQLite; one low fix (a fake that raises `state_version` where Room does not) goes to phase B2's builder | `slussen.db` version 6: seven tables, `transfer` rebuilt with an optional outflow side, `state_version` raised by every operation a plan depends on. The Migration's device tests are written, not run | 511k + 190k |
+| B2 | e75d3a1 | green at e75d3a1 | `docs/reviews/build_out_reviews/B2.md`: no behaviour changed without a Review Decision; nothing to fix that acts today; 3 items owed to Wave 4 (W4-01..W4-03), 1 to B3, 2 markers | Review Decisions in the core (UC-004), their place in the Comparison, O-13; 41 tests; no existing Comparison or Transfer test changed | 596k + (review) |
 
 - Paused on 2026-11-26 at the operator's word (the usage limit of the session) after A-4 was built; resumed the same day. The operator watches the limit and says when to pause; the orchestrator's own turns are not in the token column.
 
 - **Wave 1 is done** (A-1..A-5). Ready for the operator's device run and Windows gate, when convenient: commit bb7172a or later on `build-out`. New instrumented tests since `main`: in `UC008CheckImportStatusScreenIT`, `UC005ReviewTransfersScreenIT`, and the UC-013 and UC-014 screen ITs.
 - Wave 2: its specification (W2-0) is written and corrected after its review; storage version 6 (W2-1) is built and green, its review is running. The prompts of B2 to B6 are in `docs/reviews/build_out_prompts/`.
-- **Paused on 2026-11-26** at the operator's word (the usage limit of the session). Nothing is running and the tree is clean. To resume: start phase B2 (`docs/reviews/build_out_prompts/B2.md`, the strongest model), telling its builder to correct the fake of W2-1's review first; then its review, fixes and gate as before.
-- Next: phase B2 (Review Decisions).
+- Paused a second time on 2026-11-26 after W2-1's review, resumed the same evening.
+- Next: phase B3 (Transfer Decisions).
 
 ## 1. Scope
 
@@ -165,6 +166,18 @@ Smaller choices taken without asking, to be confirmed at the end: the Decision J
 | G-21 | A-5 | BR-012 names Budgets, Bank Accounts and Account Mappings to check after a start from the last good copy; Operator Settings and, from Wave 2, decisions made after the copy are back at their earlier state too. The service credentials notice leaves out "grant each Bank Consent again" until Wave 6. | Text in BR-012 and `Texts`. |
 | G-22 | A-5 | The backup-size warning says that no action "is needed". Above the limit a lost phone loses every Account Mapping, setting and decision since the last backup; First Upload Matching only prevents duplicates. The operator should confirm the wording, or ask for a retention rule (a new requirement). | Text; a retention rule is a new requirement with a schema version. |
 | G-06 | A-1 | Times show as HH:mm today, MM-dd HH:mm earlier in the year, the full date before that, as the mockups do. | Text only. |
+
+### Owed to later phases (W-nn)
+
+What a review found that a later phase must build; each is given to that phase's builder in its prompt and checked by its reviewer.
+
+| ID | From | Owed by | What |
+|---|---|---|---|
+| W4-01 | B2 review, A | Wave 4 (the Comparison with Sent Records) | A Re-upload must not apply twice. `ComparisonRules.underItsImportIdentifier` matches only the base Import Identifier: UC-003 BR-003 must hold over every Re-upload identifier and the Budget Account of the Sent Record (BR-021), so that a re-uploaded transaction that is present is Already In Budget App and locked; "used up" (S-B-16) is built from `decided_at` and the Sent Records; choosing Re-upload again must not reset it; Outcome Unknown stands before the Review Decision in the order (UC-004 BR-008). |
+| W4-02 | B2 review, B | Wave 4 | A Transfer Leg that was sent, deleted and re-uploaded must leave its Transfer free: a Bank Transaction uploaded as ordinary is no Transfer Leg (`W2-0.md` item 2, Q-07), and the other side gets Arrived As Transfer Counterpart where that applies. The test at `UC004ReviewDoubtfulTransactionsTest.kt:727` asserts the stuck state and changes with it. |
+| W4-03 | B2 review, C | Wave 4 (coordinator and preparation) | A Review Decision or Transfer Decision taken while an Upload Plan is open replaces the plan (ADR-007 §2, UC-004 A8), or the confirmation refuses on the changed `state_version`. |
+| W4-04 | W2-1 review | Wave 4's specification | The header of `upload_plan_item` holds one `change_cursor` and no `budget_id`: settle that an Upload Plan has one Budget (ADR-007 §6 step 4 says "for each Budget of the plan"), or a version 7 adds the column. |
+| W4-05 | A-5 review (G-19) | Wave 4 (the evidence kit) | Stored data found unreadable while Slussen runs (ADR-002 §8.4) is let through the catches that answer a storage failure, and handled by a restart from the last good copy. |
 
 ### Specification changes (S-B-nn)
 
