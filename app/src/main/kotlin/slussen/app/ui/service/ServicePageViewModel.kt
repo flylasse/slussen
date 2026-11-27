@@ -36,6 +36,8 @@ import slussen.core.port.ServiceKey
 import slussen.core.settings.RequestLimitShown
 import slussen.core.settings.ServicePage
 import slussen.core.settings.SettingOutcome
+import slussen.core.settings.SwitchOutcome
+import slussen.core.port.SwitchSetting
 import slussen.core.settings.ServiceStatus
 import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.credential.FieldKind
@@ -186,7 +188,15 @@ data class ServicePageUi(
     val requestLimitAnswer: AnswerUi? = null,
     /** UC-014 A3 (NFR-023, `connections.html#local-action-states`): the confirmed removal runs; Remove shows "Removing…". */
     val removing: Boolean = false,
+    /** UC-010 A9, BR-010: Upload as Cleared on the Budget App's page when it supports the Cleared marker; null otherwise. */
+    val uploadAsCleared: ClearedSwitchUi? = null,
 )
+
+/**
+ * UC-010 A9 (NFR-023): Upload as Cleared as stored, with what a change means (A9 step 1), "Switching off…" or "Switching
+ * on…" while it is stored ([pending]), and the answer of its last change at the switch.
+ */
+data class ClearedSwitchUi(val on: Boolean, val statement: String, val pending: String? = null, val answer: AnswerUi? = null)
 
 /** UC-001 A16 (`budget.html#request-limit-warning`): the warning, its end and the risk, before the Operator confirms. */
 data class FetchWarningUi(val service: ServiceKey, val title: String, val text: String, val risk: String)
@@ -242,6 +252,10 @@ class ServicePageViewModel(
     /** UC-014 A1: the last check was refused, so the form offers to try again. */
     private var refusedAtCheck = false
 
+    /** UC-010 A9 (NFR-023): Upload as Cleared while it is stored, and the answer of its last change, at its switch. */
+    private var clearedPending: String? = null
+    private var clearedAnswer: AnswerUi? = null
+
     /** NFR-023 (UX-22): the answer of the last change of each setting of this page, at its line. */
     private var fetchCooldownAnswer: AnswerUi? = null
     private var requestLimitAnswer: AnswerUi? = null
@@ -278,6 +292,7 @@ class ServicePageViewModel(
         refusedAtCheck = false
         fetchCooldownAnswer = null
         requestLimitAnswer = null
+        clearedAnswer = null
         viewModelScope.launch { reloadOrSay() }
     }
 
@@ -433,6 +448,7 @@ class ServicePageViewModel(
                 }
             },
             uploadAsClearedShown = page.supportsClearedMarker,
+            uploadAsCleared = page.uploadAsCleared?.let { on -> ClearedSwitchUi(on, clearedStatement(page.name), clearedPending, clearedAnswer) },
             budgets = if (page.isBudgetApp) budgetsWithAnswers() else null,
             offered = if (page.isBudgetApp) null else offeredWithAnswers(),
             snack = snack,
@@ -719,6 +735,50 @@ class ServicePageViewModel(
         val default = shown?.defaultFetchCooldownMinutes
         fetchCooldownAnswer = if (minutes != null && default != null) notChanged(PageSetting.FetchCooldown, minutes, default) else null
         mutableState.value = current.copy(fetchCooldownEditor = null, fetchCooldownAnswer = fetchCooldownAnswer)
+    }
+
+    // ---- UC-010 A9: Upload as Cleared --------------------------------------------------------------------------------
+
+    /** A9 step 1: what a change of Upload as Cleared means, said beside the switch before it is changed. */
+    private fun clearedStatement(budgetAppName: String): String =
+        "A change applies only to Upload Plans prepared from now on and changes nothing already in $budgetAppName. While it is " +
+            "off, Slussen marks nothing Cleared, Transfer Counterparts included, and clearing is left to you in $budgetAppName."
+
+    /** A9, steps 2, 4, 6: the switch shows "Switching off…" or "Switching on…" until the answer is at it. */
+    fun switchUploadAsCleared(on: Boolean) {
+        val shown = page ?: return
+        val stored = shown.uploadAsCleared ?: return
+        if (clearedPending != null || on == stored) return
+        clearedPending = if (on) "Switching on…" else "Switching off…"
+        clearedAnswer = null
+        show(shown)
+        viewModelScope.launch {
+            val outcome = try {
+                services.generalSettings.switch(SwitchSetting.UploadAsCleared, on)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                SwitchOutcome.NotStored
+            }
+            clearedPending = null
+            val still = if (stored) "Still on, the default." else "Still off."
+            clearedAnswer = when (outcome) {
+                is SwitchOutcome.Stored -> AnswerUi(
+                    (if (outcome.on) "Saved: on, the default. " else "Saved: off (on by default). ") +
+                        "Applies to Upload Plans prepared from now on." + if (shown.journalOn) " Recorded in the Decision Journal." else "",
+                    AnswerKind.Done,
+                )
+                SwitchOutcome.NotStored -> AnswerUi("Not saved: Slussen could not store it. $still", AnswerKind.Failed, "Tap the switch to try again.")
+                is SwitchOutcome.Unavailable -> AnswerUi("Not changed: ${Texts.refusal(outcome.reason)} $still", AnswerKind.Failed)
+            }
+            if (outcome is SwitchOutcome.Stored) {
+                reloadOrSay()
+                // A page that could not be read again still shows the value stored.
+                page?.takeIf { it.uploadAsCleared != outcome.on }?.let { show(it.copy(uploadAsCleared = outcome.on), message = PAGE_NOT_READ_AGAIN) }
+            } else {
+                show(shown)
+            }
+        }
     }
 
     /** The Operator Settings of a Data Provider's page, each answering at its own line (NFR-023, UX-22). */

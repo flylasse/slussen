@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import slussen.app.di.CompositionRoot
+import slussen.app.di.DetailedLoggingSwitch
 import slussen.app.platform.log.AndroidLogSink
 import slussen.app.platform.log.LogcatLog
 import slussen.app.ui.UiServices
@@ -15,12 +16,12 @@ import java.time.Clock
 
 /** The app process. It owns the one composition root (ADR-001 §5) and starts it once, off the main thread. */
 class SlussenApplication : Application() {
-    /**
-     * Created on first use. Until the Operator Settings can be changed (UC-010), Detailed Logging is off, its default in
-     * `OPERATOR_SETTINGS.detailed_logging`.
-     */
+    /** What the log reads Detailed Logging from: the stored Operator Setting (UC-010 A5, ADR-006 §3). */
+    private val detailedLogging = DetailedLoggingSwitch()
+
+    /** Created on first use; the log follows the stored Detailed Logging, off until it is read (its default). */
     val compositionRoot: CompositionRoot by lazy {
-        CompositionRoot(LogcatLog(AndroidLogSink, detailedLogging = { false }))
+        CompositionRoot(LogcatLog(AndroidLogSink, detailedLogging = detailedLogging::isOn), detailedLogging)
     }
 
     private val started = MutableStateFlow<UiServices?>(null)

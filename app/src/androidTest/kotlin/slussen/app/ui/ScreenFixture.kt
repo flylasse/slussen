@@ -46,11 +46,7 @@ class ScreenFixture(
 @Composable
 fun Settings(viewModel: slussen.app.ui.settings.SettingsViewModel) {
     viewModel.state.collectAsState().value?.let {
-        slussen.app.ui.settings.SettingsScreen(
-            it, onEntry = {}, onAccountMappings = {}, onRecentFetches = {},
-            onEditFetchPeriod = viewModel::startEditingFetchPeriod, onFetchPeriodValue = viewModel::editFetchPeriod,
-            onSaveFetchPeriod = viewModel::saveFetchPeriod, onCancelFetchPeriod = viewModel::cancelFetchPeriod,
-        )
+        slussen.app.ui.settings.SettingsScreen(it, onEntry = {}, onAccountMappings = {}, onRecentFetches = {}, actions = viewModel.actions())
     }
 }
 
@@ -84,6 +80,7 @@ fun ServicePage(viewModel: ServicePageViewModel, onMap: () -> Unit = {}) {
                 onRequestLimitValue = viewModel::editRequestLimit,
             ),
             onFetch = viewModel::fetch, onConfirmFetch = viewModel::confirmFetch, onCancelFetch = viewModel::cancelFetch,
+            onUploadAsCleared = viewModel::switchUploadAsCleared,
         )
     }
 }

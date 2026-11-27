@@ -12,6 +12,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -97,6 +98,7 @@ fun ServicePageScreen(
     onFetch: () -> Unit,
     onConfirmFetch: () -> Unit,
     onCancelFetch: () -> Unit,
+    onUploadAsCleared: (Boolean) -> Unit = {},
 ) {
     val values = remember { mutableStateMapOf<String, String>() }
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
@@ -167,11 +169,23 @@ fun ServicePageScreen(
             }
             ui.offered?.let { offered -> OfferedSection(offered, connect) }
             ui.budgets?.let { budgets -> BudgetsSection(budgets, connect) }
-            if (ui.uploadAsClearedShown) {
+            ui.uploadAsCleared?.let { cleared ->
                 SectionTitle("Upload")
                 SlussenCard {
-                    Text("Upload as Cleared", fontSize = 13.sp)
-                    Muted("On by default · changing it comes with Adjust Settings")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Upload as Cleared", fontSize = 13.sp)
+                            Muted(cleared.pending ?: "On by default")
+                        }
+                        Switch(
+                            checked = cleared.on,
+                            onCheckedChange = onUploadAsCleared,
+                            enabled = cleared.pending == null,
+                            modifier = Modifier.testTag("upload-as-cleared"),
+                        )
+                    }
+                    Muted(cleared.statement)
+                    cleared.answer?.let { AnswerLine(it) }
                 }
             }
         }

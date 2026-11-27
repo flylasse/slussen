@@ -536,6 +536,20 @@ object Texts {
     }
 
     /**
+     * UC-003 BR-016, UC-006 A14 (`budget.html#period-read-owed`): the Budget owes a read of its read period, so its
+     * statuses stay as the latest Comparison that read it left them; the title and why, with the next action. Null while
+     * it owes none.
+     */
+    fun periodReadOwed(summary: BudgetSummary, budgetAppName: String, formats: Formats, now: Instant): Pair<String, String>? {
+        if (!summary.periodReadOwed) return null
+        val asOf = (summary.statusesAsOf as? StatusesAsOf.LastRead)?.let { " as of ${formats.moment(it.readAt, now)}" }.orEmpty()
+        return "$budgetAppName must be read first" to
+            "The read period is now longer than the days Slussen's copy of $budgetAppName covers: a setting made it longer, or the " +
+            "Budget gained a Budget Account. Until $budgetAppName is read again, the Transaction Statuses stay$asOf and nothing is " +
+            "uploaded from ${summary.name}. Read $budgetAppName again · no Bank Fetch"
+    }
+
+    /**
      * UC-003 step 7, A1 step 2: when a Budget's Transaction Statuses were given; never shown as current when the read since
      * failed (failure postcondition). Null for a Budget with nothing to compare.
      */

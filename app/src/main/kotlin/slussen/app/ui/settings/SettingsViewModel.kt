@@ -11,11 +11,16 @@ import slussen.app.ui.UiServices
 import slussen.app.ui.components.AnswerKind
 import slussen.app.ui.components.AnswerUi
 import slussen.app.ui.components.SettingEditorUi
+import kotlinx.coroutines.CancellationException
+import slussen.core.port.NumberSetting
 import slussen.core.port.OperatorSettings
 import slussen.core.port.ServiceKey
-import slussen.core.settings.FetchPeriodShown
+import slussen.core.port.SettingValue
+import slussen.core.port.SwitchSetting
 import slussen.core.settings.GeneralSettingsShown
+import slussen.core.settings.NumberSettingShown
 import slussen.core.settings.SettingOutcome
+import slussen.core.settings.SwitchOutcome
 import slussen.core.settings.AccountMappingsEntry
 import slussen.core.settings.EntryKind
 import slussen.core.settings.EntryStatus
@@ -36,52 +41,126 @@ data class EntryLine(val page: EntryPage, val name: String, val kind: String, va
 /** The Account Mappings entry: available, or not yet with the reason (UC-013 BR-015). */
 data class MappingsEntryLine(val available: Boolean, val status: String, val isNext: Boolean)
 
-/** One Operator Setting shown with the value that applies; changing it comes in a later version (`settings.html#list-this-build`). */
+/** A value shown on Settings that is not changed here: Transfer detection, and the Decision Journal's own settings. */
 data class ShownSettingUi(val name: String, val hint: String, val value: String)
 
 /**
- * The fetch period on Settings (UC-010 steps 1-4, 6, A1; `settings.html#list-this-build`, `#fetch-period-saved`): its
- * value, its default and range, and the answer of the last change, on its own line (NFR-023).
+ * The fetch period on Settings (UC-010 steps 1-4, 6, A1; `settings.html#fetch-period-saved`): its value, its default and
+ * range, and the answer of the last change, on its own line (NFR-023).
  */
 data class FetchPeriodUi(val value: String, val hint: String, val answer: AnswerUi?)
 
 /**
- * Settings (`settings.html#first-run`, `#list`, `#to-map`, `#list-this-build`): at its top the services and File Formats
- * of this build, each with its status, then the Account Mappings (UC-014 step 1, BR-007, UC-010 BR-010, UC-013 step 1,
- * BR-008, BR-015); the fetch period, which the Operator changes here, and the other Operator Settings with the values
- * that apply (UC-010 steps 1-4, 6, A1); and the version of the app in "This app" (UC-010 step 1, BR-011).
+ * One whole-number Operator Setting on Settings (UC-010 steps 1-4, 6, A1; `settings.html#list`, `#list-2`, `#saved`):
+ * its name, its default and range, its value, and the answer of its last change at its own line (NFR-023). [tag] names
+ * the line for the screen tests.
+ */
+data class SettingLineUi(val setting: NumberSetting, val name: String, val hint: String, val value: String, val answer: AnswerUi?, val tag: String)
+
+/**
+ * An Operator Setting that is on or off (UC-010 A5; `settings.html#list-2`): its state, "Switching on…" or "Switching
+ * off…" while it is stored ([pending]), and the answer of its last change at its line.
+ */
+data class SwitchLineUi(val name: String, val hint: String, val on: Boolean, val pending: String?, val answer: AnswerUi?, val tag: String)
+
+/** One item of a section of Settings. */
+sealed interface SettingItemUi {
+    data class Number(val line: SettingLineUi) : SettingItemUi
+
+    data class Switch(val line: SwitchLineUi) : SettingItemUi
+
+    data class Shown(val line: ShownSettingUi) : SettingItemUi
+}
+
+/** One section of the Operator Settings (`settings.html#list`, `#list-2`), with a line under it, or null. */
+data class SettingSectionUi(val title: String, val items: List<SettingItemUi>, val note: String? = null)
+
+/** Steps 2-4, A1, A6: the dialog that changes [setting]. */
+data class NumberEditorUi(val setting: NumberSetting, val editor: SettingEditorUi)
+
+/** A5 (`settings.html#detailed-logging`): the statement the Operator confirms before Detailed Logging is switched on. */
+data class StatementUi(val title: String, val text: String, val confirm: String, val saving: Boolean = false)
+
+/**
+ * Settings (`settings.html#first-run`, `#list`, `#list-2`, `#to-map`): at its top the services and File Formats of this
+ * build, each with its status, then the Account Mappings (UC-014 step 1, BR-007, UC-010 BR-010, UC-013 step 1, BR-008,
+ * BR-015); the Operator Settings that apply to everything in the sections of the mockup, each changed at its own line
+ * (UC-010 steps 1-6, A1, A5, A6); and the version of the app in "This app" (UC-010 step 1, BR-011).
  */
 data class SettingsUi(
     val entries: List<EntryLine>,
     val accountMappings: MappingsEntryLine,
     val version: String,
-    val fetchPeriod: FetchPeriodUi? = null,
-    /** Steps 2-4, A1: the dialog that changes the fetch period, or null. */
-    val fetchPeriodEditor: SettingEditorUi? = null,
-    val shownSettings: List<ShownSettingUi> = emptyList(),
-    /** The line that says changing the other Operator Settings comes later and that no action is needed now (NFR-023). */
-    val shownSettingsNote: String? = null,
-)
+    val sections: List<SettingSectionUi> = emptyList(),
+    /** Steps 2-4, A1, A6: the dialog that changes one whole-number Operator Setting, or null. */
+    val numberEditor: NumberEditorUi? = null,
+    /** A5: the statement before Detailed Logging is switched on, or null. */
+    val detailedLoggingStatement: StatementUi? = null,
+    /** NFR-023: the settings could not be read again after a change; what is shown is what was read before. */
+    val notReadAgain: String? = null,
+) {
+    /** The line of [setting]. */
+    fun line(setting: NumberSetting): SettingLineUi? =
+        sections.flatMap { it.items }.filterIsInstance<SettingItemUi.Number>().map { it.line }.firstOrNull { it.setting == setting }
 
-/** The top of Settings, generated from the plug-ins' declarations (ADR-001 §4.6). */
+    /** The fetch period's line (`#fetch-period-saved`). */
+    val fetchPeriod: FetchPeriodUi? get() = line(NumberSetting.FetchPeriod)?.let { FetchPeriodUi(it.value, it.hint, it.answer) }
+
+    /** The fetch period's dialog, while it is open. */
+    val fetchPeriodEditor: SettingEditorUi? get() = numberEditor?.takeIf { it.setting == NumberSetting.FetchPeriod }?.editor
+
+    /** Detailed Logging's line (A5). */
+    val detailedLogging: SwitchLineUi?
+        get() = sections.flatMap { it.items }.filterIsInstance<SettingItemUi.Switch>().map { it.line }.firstOrNull()
+}
+
+/**
+ * Settings, generated from the plug-ins' declarations (ADR-001 §4.6) and the stored Operator Settings (UC-010). Every
+ * change shows its state at its own control before anything is stored, and its answer at the same line; what a call
+ * throws is answered there, never a crash (NFR-023).
+ */
 class SettingsViewModel(private val services: UiServices) : ViewModel() {
     private val mutableState = MutableStateFlow<SettingsUi?>(null)
     val state: StateFlow<SettingsUi?> = mutableState
 
+    /** NFR-023: why Settings could not be shown, with the next action, while its stored data cannot be read. */
+    private val mutableNotOpened = MutableStateFlow<String?>(null)
+    val notOpened: StateFlow<String?> = mutableNotOpened
+
+    /** The Operator Settings as last read or stored (step 1). */
+    private var shown: GeneralSettingsShown? = null
+
+    /** NFR-023: the answer of the last change of each setting, at its line, until Settings is opened again. */
+    private val answers = mutableMapOf<NumberSetting, AnswerUi>()
+
+    /** A value that could not be stored, offered again when the Operator taps its line (failure postconditions). */
+    private val retries = mutableMapOf<NumberSetting, String>()
+
+    private var detailedLoggingAnswer: AnswerUi? = null
+    private var detailedLoggingPending: String? = null
+
     fun load() {
-        fetchPeriodAnswer = null
+        answers.clear()
+        detailedLoggingAnswer = null
         viewModelScope.launch {
-            val top = services.settingsOverview.entries()
-            val budgetAppName = top.entries.first { it.kind == EntryKind.BudgetApp }.name
-            val general = services.generalSettings.shown().also { shown = it }
-            mutableState.value = SettingsUi(
-                entries = top.entries.map { entry -> line(entry, top.next) },
-                accountMappings = mappingsLine(top.accountMappings, budgetAppName),
-                version = versionLine(services.appVersion),
-                fetchPeriod = fetchPeriodLine(general.fetchPeriod),
-                shownSettings = shownSettings(general.values),
-                shownSettingsNote = "Changing these Operator Settings comes in a later version; the values shown apply. No action is needed now.",
-            )
+            try {
+                val top = services.settingsOverview.entries()
+                val budgetAppName = top.entries.first { it.kind == EntryKind.BudgetApp }.name
+                val general = services.generalSettings.shown().also { shown = it }
+                mutableState.value = SettingsUi(
+                    entries = top.entries.map { entry -> line(entry, top.next) },
+                    accountMappings = mappingsLine(top.accountMappings, budgetAppName),
+                    version = versionLine(services.appVersion),
+                    sections = sections(general),
+                    numberEditor = mutableState.value?.numberEditor,
+                    detailedLoggingStatement = mutableState.value?.detailedLoggingStatement,
+                )
+                mutableNotOpened.value = null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (mutableState.value == null) mutableNotOpened.value = SETTINGS_NOT_OPENED else publish(notReadAgain = SETTINGS_NOT_READ_AGAIN)
+            }
         }
     }
 
@@ -138,145 +217,326 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
     private fun versionLine(version: AppVersion): String =
         if (version.debugBuild) "${version.versionName} · debug build" else version.versionName
 
-    // ---- The fetch period (UC-010 steps 1-4, 6, A1; O-T-07) --------------------------------------------------------
+    // ---- The Operator Settings that apply to everything (UC-010 steps 1-6, A1, A5, A6) ----------------------------
 
-    /** The fetch period and the other Operator Settings as last read (step 1). */
-    private var shown: GeneralSettingsShown? = null
-
-    /** NFR-023: the answer of the last change of the fetch period, at its line. */
-    private var fetchPeriodAnswer: AnswerUi? = null
-
-    /** A value that could not be stored, offered again when the Operator taps the fetch period (failure postconditions). */
-    private var fetchPeriodRetry: String? = null
-
-    private fun days(value: Int) = "$value days"
-
-    private fun still(period: FetchPeriodShown): String =
-        "Still ${days(period.days)}" + if (period.days == period.defaultDays) ", the default." else "."
-
-    private fun fetchPeriodLine(period: FetchPeriodShown) = FetchPeriodUi(
-        value = days(period.days),
-        hint = "Days back a Fetch asks for · default ${period.defaultDays} · ${period.range.first} to ${period.range.last}",
-        answer = fetchPeriodAnswer,
-    )
-
-    /**
-     * Step 1 (`settings.html#list-this-build`): the Operator Settings this build does not let the Operator change yet,
-     * with the values that apply.
-     */
-    private fun shownSettings(values: OperatorSettings): List<ShownSettingUi> {
+    /** Step 1 (`settings.html#list`, `#list-2`): the sections of the mockup, each Operator Setting with its value, default and range. */
+    private fun sections(general: GeneralSettingsShown): List<SettingSectionUi> {
+        fun number(setting: NumberSetting): SettingItemUi {
+            val shown = general.number(setting)
+            return SettingItemUi.Number(
+                SettingLineUi(
+                    setting, SettingTexts.name(setting), SettingTexts.hint(shown), SettingTexts.shortValue(setting, shown.value),
+                    answers[setting], SettingTexts.tag(setting),
+                ),
+            )
+        }
+        val values = general.values
         val defaults = OperatorSettings.DEFAULT
         return listOf(
-            ShownSettingUi(
-                "Fetch Schedule",
-                "Scheduled Fetches come in a later version; until then Slussen fetches only when you start a Fetch. No action is needed now.",
-                "none yet",
+            SettingSectionUi(
+                "Fetching",
+                listOf(
+                    NumberSetting.FetchSchedule, NumberSetting.FetchPeriod, NumberSetting.DefaultWait, NumberSetting.RequestLimitWarningPause,
+                    NumberSetting.RequestTimeout, NumberSetting.RecentFetchesKept,
+                ).map(::number),
             ),
-            ShownSettingUi("Default wait", "Hours · default ${defaults.defaultWaitHours}", "${values.defaultWaitHours} h"),
-            ShownSettingUi("Request timeout", "Seconds · default ${defaults.requestTimeoutSeconds}", "${values.requestTimeoutSeconds} s"),
-            ShownSettingUi("Number of recent Fetches kept", "Default ${defaults.fetchHistorySize}", "${values.fetchHistorySize}"),
-            ShownSettingUi("Upload Window", "Days back that could be uploaded · default ${defaults.uploadWindowDays}", days(values.uploadWindowDays)),
-            ShownSettingUi("Transfer pairing days", "Default ${defaults.transferPairingDays}", "${values.transferPairingDays}"),
-            ShownSettingUi("Lonely Transfer grace period", "Days · default ${defaults.lonelyTransferGraceDays}", days(values.lonelyTransferGraceDays)),
+            SettingSectionUi("Upload", listOf(NumberSetting.UploadWindow, NumberSetting.FileUploadWindow, NumberSetting.UploadPlanLifetime).map(::number)),
+            SettingSectionUi(
+                "Transfers",
+                // UC-005 BR-001: Transfer detection is always on; it is not an Operator Setting.
+                listOf(SettingItemUi.Shown(ShownSettingUi("Transfer detection", "Not an Operator Setting", "Always on"))) +
+                    listOf(NumberSetting.TransferPairingDays, NumberSetting.LonelyTransferGracePeriod).map(::number),
+            ),
+            SettingSectionUi(
+                "Status and warnings",
+                listOf(
+                    NumberSetting.OutdatedBalanceLimit, NumberSetting.ConsentWarningLeadTime, NumberSetting.ConsentRequestLifetime,
+                    NumberSetting.BackupWarningThreshold,
+                ).map(::number),
+            ),
+            SettingSectionUi(
+                "Decision Journal and logs",
+                listOf(
+                    SettingItemUi.Shown(ShownSettingUi("Decision Journal", "On by default", if (values.journalOn) "On" else "Off")),
+                    SettingItemUi.Shown(
+                        ShownSettingUi("Size limit", "MB · default ${defaults.journalSizeLimitMb} · 10 to 500", "${values.journalSizeLimitMb} MB"),
+                    ),
+                    SettingItemUi.Shown(
+                        ShownSettingUi(
+                            "Warning threshold", "Share of the size limit · default ${defaults.journalWarningPercent}% · 50% to 95%",
+                            "${values.journalWarningPercent}%",
+                        ),
+                    ),
+                    SettingItemUi.Switch(
+                        SwitchLineUi(
+                            "Detailed Logging", "Off by default", values.detailedLogging, detailedLoggingPending, detailedLoggingAnswer,
+                            "detailed-logging",
+                        ),
+                    ),
+                ),
+                note = "The Decision Journal's switch, size limit and warning threshold are not changed on this screen yet; the " +
+                    "values shown apply. No action is needed now.",
+            ),
         )
     }
 
-    /** Step 2 (`#fetch-period-edit`): the dialog with the current value, the default and the range, and what the change does. */
-    fun startEditingFetchPeriod() {
+    /** Shows the sections again from [shown] and the answers, keeping the open dialogs unless told otherwise. */
+    private fun publish(
+        numberEditor: NumberEditorUi? = mutableState.value?.numberEditor,
+        statement: StatementUi? = mutableState.value?.detailedLoggingStatement,
+        notReadAgain: String? = null,
+    ) {
         val current = mutableState.value ?: return
-        val period = shown?.fetchPeriod ?: return
+        val general = shown ?: return
         mutableState.value = current.copy(
-            fetchPeriodEditor = SettingEditorUi(
-                title = "Fetch period",
-                fieldName = "New value · days · default ${period.defaultDays}",
-                value = fetchPeriodRetry ?: period.days.toString(),
-                explanation = "How many days back a Fetch asks each Data Provider for Bank Transactions, an Operator Setting: " +
-                    "${period.defaultDays} days by default, ${period.range.first} to ${period.range.last}. The new value is asked for " +
-                    "from the next Fetch that contacts a Data Provider. Bank Transactions already stored stay. Start Dates and the " +
-                    "Upload Window do not change, so which Bank Transactions could be uploaded stays the same.",
+            sections = sections(general),
+            numberEditor = numberEditor,
+            detailedLoggingStatement = statement,
+            notReadAgain = notReadAgain,
+        )
+    }
+
+    /** Step 2 (`#fetch-period-edit`): the fetch period's dialog. */
+    fun startEditingFetchPeriod() = startEditing(NumberSetting.FetchPeriod)
+
+    fun editFetchPeriod(text: String) = edit(text)
+
+    fun saveFetchPeriod(text: String) = save(text)
+
+    fun cancelFetchPeriod() = cancel()
+
+    /** Step 2: the dialog of [setting] with its value, the default and the range, and what the change does. */
+    fun startEditing(setting: NumberSetting) {
+        val current = mutableState.value ?: return
+        val general = shown ?: return
+        if (current.numberEditor != null || current.detailedLoggingStatement != null) return
+        val number = general.number(setting)
+        val value = retries[setting] ?: number.value.toString()
+        mutableState.value = current.copy(
+            numberEditor = NumberEditorUi(
+                setting,
+                SettingEditorUi(
+                    title = SettingTexts.name(setting),
+                    fieldName = SettingTexts.fieldName(number),
+                    value = value,
+                    explanation = explanationFor(number, value),
+                ),
             ),
         )
     }
 
-    /** The Operator types a new fetch period; a refusal at the field goes until Save is tapped again. */
-    fun editFetchPeriod(text: String) {
+    /** A6 step 1: the Fetch Schedule's dialog says what the value typed means; every other dialog says what its setting is. */
+    private fun explanationFor(number: NumberSettingShown, typed: String): String =
+        if (number.setting == NumberSetting.FetchSchedule) {
+            SettingTexts.fetchSchedule(typed.trim().toIntOrNull()?.takeIf { it in number.range }, number.defaultValue)
+        } else {
+            SettingTexts.explanation(number)
+        }
+
+    /** The Operator types a new value; a refusal at the field goes until Save is tapped again. */
+    fun edit(text: String) {
         val current = mutableState.value ?: return
-        val editor = current.fetchPeriodEditor ?: return
-        if (editor.saving) return
-        mutableState.value = current.copy(fetchPeriodEditor = editor.copy(value = text, error = null))
+        val open = current.numberEditor ?: return
+        if (open.editor.saving) return
+        val number = shown?.number(open.setting) ?: return
+        mutableState.value = current.copy(
+            numberEditor = open.copy(editor = open.editor.copy(value = text, error = null, explanation = explanationFor(number, text))),
+        )
     }
 
     /** Steps 3-4, 6, A1 (`#fetch-period-saving`): Save shows Saving… before anything is stored; the answer follows at the line. */
-    fun saveFetchPeriod(text: String) {
+    fun save(text: String) {
         val current = mutableState.value ?: return
-        val editor = current.fetchPeriodEditor ?: return
-        val period = shown?.fetchPeriod ?: return
-        if (editor.saving) return
-        val days = text.trim().toIntOrNull()
-        if (days == null) {
-            mutableState.value = current.copy(
-                fetchPeriodEditor = editor.copy(
-                    value = text,
-                    error = "Enter a whole number of days, ${period.range.first} to ${period.range.last}. ${still(period)}",
-                ),
-            )
+        val open = current.numberEditor ?: return
+        val general = shown ?: return
+        if (open.editor.saving) return
+        val setting = open.setting
+        val before = general.number(setting)
+        val value = text.trim().toIntOrNull()
+        if (value == null) {
+            mutableState.value = current.copy(numberEditor = open.copy(editor = open.editor.copy(value = text, error = SettingTexts.notANumber(before))))
             return
         }
-        mutableState.value = current.copy(fetchPeriodEditor = editor.copy(value = text, error = null, saving = true))
+        mutableState.value = current.copy(numberEditor = open.copy(editor = open.editor.copy(value = text, error = null, saving = true)))
         viewModelScope.launch {
-            val outcome = services.generalSettings.changeFetchPeriod(days)
-            fun refusedAtTheField(error: String) {
-                mutableState.value = mutableState.value?.let { ui -> ui.copy(fetchPeriodEditor = ui.fetchPeriodEditor?.copy(error = error, saving = false)) }
+            val outcome = try {
+                services.generalSettings.change(setting, value)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                SettingOutcome.NotStored
             }
             when (outcome) {
-                // Steps 4, 6 (`#fetch-period-saved`): the line shows the new value and the result; no Transaction Status changes (step 5).
+                // Steps 4-6 (`#saved`, `#saved-read-owed`, `#fetch-period-saved`): the line shows the new value and what followed.
                 is SettingOutcome.Stored -> {
-                    val now = services.generalSettings.shown()
-                    shown = now
-                    fetchPeriodRetry = null
-                    fetchPeriodAnswer = AnswerUi(
-                        "Saved: ${days(outcome.value)}" +
-                            (if (outcome.value == now.fetchPeriod.defaultDays) ", the default." else " (${now.fetchPeriod.defaultDays} by default).") +
-                            " Asked for from the next Fetch that contacts a Data Provider; stored Bank Transactions stay; no Transaction " +
-                            "Status changes." + if (now.journalOn) " Recorded in the Decision Journal." else "",
+                    retries.remove(setting)
+                    val notReadAgain = readAgain(stored = SettingValue.Number(setting, outcome.value))
+                    val now = shown ?: return@launch
+                    answers[setting] = AnswerUi(
+                        SettingTexts.saved(now.number(setting), outcome.effect, now.journalOn, services.budgetAppName),
                         AnswerKind.Done,
                     )
-                    closeFetchPeriodEditor(now)
+                    publish(numberEditor = null, notReadAgain = notReadAgain)
                 }
-                // A1 (`#fetch-period-out-of-range`): refused in the dialog, at the field, with the range and the value that stays.
-                is SettingOutcome.OutsideRange -> refusedAtTheField(
-                    "${days(days)} is too ${if (days > outcome.range.last) "many" else "few"}. " +
-                        "Enter ${outcome.range.first} to ${outcome.range.last} days. ${still(period)}",
-                )
+                // A1 (`#out-of-range`): refused in the dialog, at the field, with the range and the value that stays.
+                is SettingOutcome.OutsideRange -> refusedAtTheField(setting, SettingTexts.outsideRange(before, value, outcome.range))
+                // Precondition (UC-006 BR-005): unavailable, said in the dialog; nothing is stored.
+                is SettingOutcome.Unavailable -> refusedAtTheField(setting, Texts.refusal(outcome.reason))
                 // Failure postconditions (`#fetch-period-failed`): the line keeps the previous value and says so.
-                SettingOutcome.NotStored -> {
-                    fetchPeriodRetry = days.toString()
-                    fetchPeriodAnswer = AnswerUi(
-                        "Not saved: Slussen could not store ${days(days)}. ${still(period)}",
+                SettingOutcome.NotStored, SettingOutcome.NotAnOperatorSetting -> {
+                    retries[setting] = value.toString()
+                    val notReadAgain = readAgain(stored = null)
+                    answers[setting] = AnswerUi(
+                        "Not saved: Slussen could not store ${SettingTexts.value(setting, value)}. ${SettingTexts.still(before)}",
                         AnswerKind.Failed,
-                        "Tap the fetch period to try again.",
+                        "Tap the ${SettingTexts.inText(setting)} to try again.",
                     )
-                    closeFetchPeriodEditor(services.generalSettings.shown().also { shown = it })
+                    publish(numberEditor = null, notReadAgain = notReadAgain)
                 }
-                SettingOutcome.NotAnOperatorSetting -> closeFetchPeriodEditor(services.generalSettings.shown().also { shown = it })
-                is SettingOutcome.Unavailable -> refusedAtTheField(Texts.refusal(outcome.reason))
             }
         }
     }
 
-    /** Step 2 (`#fetch-period-cancelled`): nothing is stored or recorded; the line says the value is unchanged. */
-    fun cancelFetchPeriod() {
+    /** The dialog of [setting], if it is still the one open, says [error] at its field and can be used again. */
+    private fun refusedAtTheField(setting: NumberSetting, error: String) {
         val current = mutableState.value ?: return
-        val period = shown?.fetchPeriod ?: return
-        if (current.fetchPeriodEditor?.saving == true) return
-        fetchPeriodAnswer = AnswerUi(
-            "Not changed: still ${days(period.days)}" + if (period.days == period.defaultDays) ", the default." else ".",
-            AnswerKind.Unchanged,
-        )
-        closeFetchPeriodEditor(shown ?: return)
+        val open = current.numberEditor?.takeIf { it.setting == setting } ?: return
+        mutableState.value = current.copy(numberEditor = open.copy(editor = open.editor.copy(error = error, saving = false)))
     }
 
-    private fun closeFetchPeriodEditor(now: GeneralSettingsShown) {
-        mutableState.value = mutableState.value?.copy(fetchPeriodEditor = null, fetchPeriod = fetchPeriodLine(now.fetchPeriod))
+    /**
+     * Reads the Operator Settings again after a change; when they cannot be read, the value [stored] (if any) is shown
+     * as stored, and the line under the settings says that they could not be read again. Returns that line, or null.
+     */
+    private suspend fun readAgain(stored: SettingValue?): String? =
+        try {
+            shown = services.generalSettings.shown()
+            null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            val before = shown
+            if (before != null && stored != null) {
+                val values = stored.appliedTo(before.values)
+                shown = before.copy(
+                    values = values,
+                    fetchPeriod = before.fetchPeriod.copy(days = values.fetchPeriodDays),
+                    numbers = before.numbers.map { it.copy(value = it.setting.valueIn(values)) },
+                )
+            }
+            SETTINGS_NOT_READ_AGAIN
+        }
+
+    /** Step 2 (`#fetch-period-cancelled`): nothing is stored or recorded; the line says the value is unchanged. */
+    fun cancel() {
+        val current = mutableState.value ?: return
+        val open = current.numberEditor ?: return
+        if (open.editor.saving) return
+        val number = shown?.number(open.setting) ?: return
+        answers[open.setting] = AnswerUi(
+            "Not changed: still ${SettingTexts.value(number.setting, number.value)}" + if (number.value == number.defaultValue) ", the default." else ".",
+            AnswerKind.Unchanged,
+        )
+        publish(numberEditor = null)
+    }
+
+    /** Every action of the Operator Settings on Settings, as the screen wires them. */
+    fun actions(): SettingsActions = SettingsActions(
+        onEdit = ::startEditing,
+        onValue = ::edit,
+        onSave = ::save,
+        onCancel = ::cancel,
+        onTapDetailedLogging = ::tapDetailedLogging,
+        onConfirmDetailedLogging = ::confirmDetailedLogging,
+        onCancelDetailedLogging = ::cancelDetailedLogging,
+    )
+
+    // ---- A5: Detailed Logging ---------------------------------------------------------------------------------------
+
+    /** A5: a tap on Detailed Logging: switching it on first states what it means; switching it off needs no statement. */
+    fun tapDetailedLogging() {
+        val current = mutableState.value ?: return
+        val on = shown?.values?.detailedLogging ?: return
+        if (detailedLoggingPending != null || current.numberEditor != null || current.detailedLoggingStatement != null) return
+        if (on) {
+            switchDetailedLogging(false)
+        } else {
+            publish(
+                statement = StatementUi(
+                    title = "Switch on Detailed Logging?",
+                    text = "Device logs will then contain transaction data and Bank Account numbers, for troubleshooting. They stay " +
+                        "on this device and are never in a device backup. Credentials, Bank Consent data and Bank Sessions are never " +
+                        "logged, even then.",
+                    confirm = "Switch on",
+                ),
+            )
+        }
+    }
+
+    /** A5 step 2: the Operator confirms; "Switching on…" shows in the statement until the answer is at the line. */
+    fun confirmDetailedLogging() {
+        val statement = mutableState.value?.detailedLoggingStatement ?: return
+        if (statement.saving) return
+        switchDetailedLogging(true)
+    }
+
+    /** A5: the Operator cancels the statement; nothing is stored and the line says so. */
+    fun cancelDetailedLogging() {
+        val statement = mutableState.value?.detailedLoggingStatement ?: return
+        if (statement.saving) return
+        detailedLoggingAnswer = AnswerUi("Not changed: still off, the default.", AnswerKind.Unchanged)
+        publish(statement = null)
+    }
+
+    private fun switchDetailedLogging(on: Boolean) {
+        detailedLoggingPending = if (on) "Switching on…" else "Switching off…"
+        publish(statement = mutableState.value?.detailedLoggingStatement?.copy(saving = true, confirm = "Switching on…"))
+        viewModelScope.launch {
+            val outcome = try {
+                services.generalSettings.switch(SwitchSetting.DetailedLogging, on)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                SwitchOutcome.NotStored
+            }
+            detailedLoggingPending = null
+            val wasOn = shown?.values?.detailedLogging ?: !on
+            val notReadAgain = readAgain(stored = if (outcome is SwitchOutcome.Stored) SettingValue.Switch(SwitchSetting.DetailedLogging, on) else null)
+            val journal = if (shown?.journalOn == true) " Recorded in the Decision Journal." else ""
+            detailedLoggingAnswer = when (outcome) {
+                is SwitchOutcome.Stored -> if (outcome.on) {
+                    AnswerUi(
+                        "Saved: on (off by default). Device logs now contain transaction data and Bank Account numbers, on this device " +
+                            "only; never credentials or Bank Consent data.$journal",
+                        AnswerKind.Done,
+                    )
+                } else {
+                    AnswerUi(
+                        "Saved: off, the default. From now on device logs contain no transaction amounts, payees, memos or Bank " +
+                            "Account numbers.$journal",
+                        AnswerKind.Done,
+                    )
+                }
+                SwitchOutcome.NotStored -> AnswerUi(
+                    "Not saved: Slussen could not store it. Still ${if (wasOn) "on" else "off, the default"}.",
+                    AnswerKind.Failed,
+                    "Tap Detailed Logging to try again.",
+                )
+                is SwitchOutcome.Unavailable -> AnswerUi(
+                    "Not changed: ${Texts.refusal(outcome.reason)} Still ${if (wasOn) "on" else "off, the default"}.",
+                    AnswerKind.Failed,
+                )
+            }
+            publish(statement = null, notReadAgain = notReadAgain)
+        }
+    }
+
+    private companion object {
+        /** NFR-023: Settings could not be read; nothing was changed, and Try again reads it again. */
+        const val SETTINGS_NOT_OPENED = "Settings could not be read from this device; nothing was changed. Try again."
+
+        /** NFR-023: after a change, the stored settings could not be read again; the values shown are those last read or stored. */
+        const val SETTINGS_NOT_READ_AGAIN =
+            "The Operator Settings could not be read again from this device; the values shown are the last ones read or stored. Open Settings again to see them."
     }
 }

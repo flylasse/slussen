@@ -42,6 +42,10 @@ import slussen.core.port.NewProviderRequest
 import slussen.core.port.OfferedBankAccountStore
 import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
+import slussen.core.port.NumberSetting
+import slussen.core.port.SettingChange
+import slussen.core.port.SettingFollowUp
+import slussen.core.port.SettingValue
 import slussen.core.port.OtherSideKind
 import slussen.core.port.OtherSideStored
 import slussen.core.port.PluginRegistryStore
@@ -94,11 +98,14 @@ class InMemoryStateVersion {
 /**
  * In-memory fake of [OperatorSettingsStore]; starts with every default. A test holds a change with [beforeStore], to see
  * it while it is being stored, makes it fail with [failsToStore], as a storage that cannot be written would, and makes
- * the read fail with [failsToRead].
+ * the read fail with [failsToRead]. Like O-13 in `slussen.db` it writes what follows a change with it, all or nothing:
+ * the Comparison marker of [connections], or `period_read_owed` in [copies] for each served Budget that has a cursor.
  */
 class InMemoryOperatorSettingsStore(
     var settings: OperatorSettings = OperatorSettings.DEFAULT,
     val stateVersion: InMemoryStateVersion = InMemoryStateVersion(),
+    private val connections: InMemoryConnectionStore? = null,
+    private val copies: InMemoryBudgetAppCopyStore? = null,
 ) : OperatorSettingsStore {
     var beforeStore: suspend () -> Unit = {}
     var failsToStore: Boolean = false
@@ -111,12 +118,25 @@ class InMemoryOperatorSettingsStore(
         return settings
     }
 
-    override suspend fun storeFetchPeriod(days: Int) {
+    override suspend fun store(change: SettingChange) {
         beforeStore()
         if (failsToStore) throw IllegalStateException("The invented storage of this test cannot be written.")
-        settings = settings.copy(fetchPeriodDays = days)
+        when (change.followUp) {
+            SettingFollowUp.None -> Unit
+            SettingFollowUp.StatusesAgain -> checkNotNull(connections) { "This fake was made without the Comparison marker." }.comparisonPending = true
+            SettingFollowUp.PeriodReadOwed -> {
+                val copy = checkNotNull(copies) { "This fake was made without the stored copy." }
+                checkNotNull(connections) { "This fake was made without the Budgets." }.budgetList
+                    .filter { it.served && it.id in copy.cursors }
+                    .forEach { copy.periodOwed += it.id }
+            }
+        }
+        settings = change.value.appliedTo(settings)
         stateVersion.raise()
     }
+
+    /** The fetch period stored as Settings stores it when it is not longer than the read period (O-13). */
+    suspend fun storeFetchPeriod(days: Int) = store(SettingChange(SettingValue.Number(NumberSetting.FetchPeriod, days), SettingFollowUp.None))
 }
 
 /** In-memory fake of [CoordinatorStore]; a test sets the mode, and makes its read fail with [failsToRead]. */

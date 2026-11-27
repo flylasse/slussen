@@ -64,6 +64,8 @@ class ImportStatus(
     private val fetchNotices: FetchNotices = FetchNotices(),
     /** UC-003 A1 step 2: the read of each Budget that failed since its last successful read. */
     private val comparisonNotices: ComparisonNotices = ComparisonNotices(),
+    /** UC-003 BR-016: whether a Budget owes a read of its read period (`budget_read_state.period_read_owed`). */
+    private val periodReadOwed: suspend (Long) -> Boolean = { false },
 ) {
     private val dataProviders: List<StoredDataProvider> get() = currentDataProviders()
 
@@ -83,16 +85,18 @@ class ImportStatus(
         val requests: List<StoredProviderRequest>,
         val firstUploadMatching: FirstUploadMatchingNotice?,
         val credentials: Map<ServiceKey, CredentialStatus>,
+        val periodReadOwed: Set<Long>,
     )
 
     // UC-008 BR-001: Opening Slussen shows only stored data; it never contacts a Source, a Bank or the Budget App.
     private suspend fun snapshot(): Snapshot {
         val now = clock.instant()
         val services = listOf(ServiceKey.budgetApp) + dataProviders.map { ServiceKey.dataProvider(it.id) }
+        val budgets = connections.budgets().filter { it.served }
         return Snapshot(
             now = now,
             settings = settings.current(),
-            budgets = connections.budgets().filter { it.served },
+            budgets = budgets,
             banks = connections.banks().associateBy { it.id },
             bankAccounts = connections.bankAccounts().filter { !it.retired && it.mapping != null },
             fetches = stored.recentFetches().sortedByDescending { it.startedAt },
@@ -104,6 +108,7 @@ class ImportStatus(
             requests = providerRequests.sentSince(now.minus(LIMIT_WINDOW)),
             firstUploadMatching = firstUploadMatching.notice(),
             credentials = services.associateWith { credentials.status(it) },
+            periodReadOwed = budgets.filter { periodReadOwed(it.id) }.map { it.id }.toSet(),
         )
     }
 
@@ -237,6 +242,7 @@ class ImportStatus(
             statusesAsOf = statusesAsOf(budget, accounts),
             notComparedYet = accounts.sumOf { snapshot.counts[it.id]?.notComparedYet ?: 0 },
             budgetAppCredentials = credentialBlocked(snapshot.credentials.getValue(ServiceKey.budgetApp), budgetAppName)?.reason,
+            periodReadOwed = budget.id in snapshot.periodReadOwed,
         )
     }
 

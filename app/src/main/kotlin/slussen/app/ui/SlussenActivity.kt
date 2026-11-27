@@ -250,7 +250,11 @@ fun SlussenScreens(services: UiServices) {
                 Screen.Settings -> {
                     val vm: SettingsViewModel = viewModel(key = "settings") { SettingsViewModel(services) }
                     LaunchedEffect(current) { vm.load() }
-                    vm.state.collectAsState().value?.let { ui ->
+                    val notOpened = vm.notOpened.collectAsState().value
+                    val settingsUi = vm.state.collectAsState().value
+                    // NFR-023: Settings whose stored data cannot be read says so, with Try again.
+                    if (settingsUi == null && notOpened != null) NotShown(notOpened, onTryAgain = vm::load)
+                    settingsUi?.let { ui ->
                         SettingsScreen(
                             ui = ui,
                             onEntry = { page ->
@@ -261,10 +265,7 @@ fun SlussenScreens(services: UiServices) {
                             },
                             onAccountMappings = { go(Screen.AccountMappings) },
                             onRecentFetches = { go(Screen.RecentFetches) },
-                            onEditFetchPeriod = vm::startEditingFetchPeriod,
-                            onFetchPeriodValue = vm::editFetchPeriod,
-                            onSaveFetchPeriod = vm::saveFetchPeriod,
-                            onCancelFetchPeriod = vm::cancelFetchPeriod,
+                            actions = vm.actions(),
                         )
                     }
                 }
@@ -313,6 +314,7 @@ fun SlussenScreens(services: UiServices) {
                             onFetch = vm::fetch,
                             onConfirmFetch = vm::confirmFetch,
                             onCancelFetch = vm::cancelFetch,
+                            onUploadAsCleared = vm::switchUploadAsCleared,
                         )
                     }
                 }

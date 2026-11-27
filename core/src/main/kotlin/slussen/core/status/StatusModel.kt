@@ -185,6 +185,12 @@ data class BudgetSummary(
      * credentials, so that entering them is the next action before a read; null while they are accepted.
      */
     val budgetAppCredentials: BlockedReason? = null,
+    /**
+     * UC-003 BR-016, UC-010 step 5: the Budget owes a read of its read period, because the read period became longer or
+     * the Budget gained a Budget Account, so Slussen's copy of the Budget App lacks transactions of it: its statuses stay
+     * as the latest Comparison that read it left them, and that read gives them again (`budget.html#period-read-owed`).
+     */
+    val periodReadOwed: Boolean = false,
 )
 
 /** When the Transaction Statuses of one Budget were given (UC-003 step 7, A1 step 2). */

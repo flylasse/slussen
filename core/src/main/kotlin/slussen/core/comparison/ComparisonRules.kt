@@ -86,10 +86,14 @@ object ComparisonRules {
 
     // UC-003 BR-016: The first read covers today back by the longest of the fetch period, the Upload Window and the file upload window, plus the Matching Date Window.
     /** The first day of the first read of a Budget (BR-016); every later read takes all changes since the previous one. */
-    fun readFrom(settings: OperatorSettings, matchingDateWindowDays: Int, today: LocalDate): LocalDate {
-        val longest = maxOf(settings.fetchPeriodDays, settings.uploadWindowDays, settings.fileUploadWindowDays)
-        return today.minusDays((longest + matchingDateWindowDays).toLong())
-    }
+    fun readFrom(settings: OperatorSettings, matchingDateWindowDays: Int, today: LocalDate): LocalDate =
+        today.minusDays((readPeriodDays(settings) + matchingDateWindowDays).toLong())
+
+    /**
+     * The longest of the fetch period, the Upload Window and the file upload window (BR-016): the Operator Settings part
+     * of the read period, which a change of one of them makes longer or shorter (UC-010 step 5).
+     */
+    fun readPeriodDays(settings: OperatorSettings): Int = maxOf(settings.fetchPeriodDays, settings.uploadWindowDays, settings.fileUploadWindowDays)
 
     /**
      * Steps 2-4: the Transaction Status of each stored Bank Transaction of a Bank Account that is not a Retired Account

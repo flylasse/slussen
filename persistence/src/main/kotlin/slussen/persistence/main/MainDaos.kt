@@ -16,6 +16,9 @@ import slussen.core.port.StoredRequestLimit
 import slussen.core.port.IdentificationStored
 import slussen.core.port.MappingStored
 import slussen.core.port.NewIdentification
+import slussen.core.port.OperatorSettings
+import slussen.core.port.SettingChange
+import slussen.core.port.SettingFollowUp
 import slussen.core.port.SentRecordOutcome
 import slussen.core.port.SentThrough
 import slussen.core.port.StoredSentRecord
@@ -35,18 +38,83 @@ abstract class OperatorSettingsDao : StateVersionDao {
     @Insert
     abstract suspend fun insert(settings: OperatorSettingsEntity)
 
-    @Query("UPDATE operator_settings SET fetch_period_days = :days")
-    protected abstract suspend fun updateFetchPeriod(days: Int): Int
+    @Update
+    protected abstract suspend fun update(settings: OperatorSettingsEntity): Int
+
+    @Query("UPDATE coordinator_state SET comparison_pending = 1 WHERE id = 1")
+    protected abstract suspend fun markComparisonPending()
+
+    @Query("UPDATE budget_read_state SET period_read_owed = 1 WHERE budget_id IN (SELECT id FROM budget WHERE served = 1)")
+    protected abstract suspend fun owePeriodReadOfServedBudgets()
 
     /**
-     * The fetch period, an Operator Setting (UC-010 steps 2-4; O-13): one update of the one record, which raises
-     * `state_version` in the same transaction, as every change of an Operator Setting does (ADR-007 §6 step 2).
+     * O-13 `SettingsStore.*` (UC-010 steps 4-5, ADR-002 §3): one Operator Setting in one transaction, all or nothing: the
+     * one record with [change]'s value and every other value as stored, `state_version` raised (ADR-007 §6 step 2), and
+     * what follows it: `comparison_pending` for the statuses given again from stored data (ADR-007 §3a), or
+     * `period_read_owed` on the existing `budget_read_state` row of every served Budget, so that a Budget without a
+     * `change_cursor` gets no row (UC-003 BR-016). Throws, and stores nothing, when there is no record.
      */
     @Transaction
-    open suspend fun storeFetchPeriod(days: Int) {
-        if (updateFetchPeriod(days) > 0) raiseStateVersion()
+    open suspend fun store(change: SettingChange) {
+        val stored = checkNotNull(current()) { "The one record of the Operator Settings is stored at the first start." }
+        check(update(change.value.appliedTo(stored.settings()).entity(stored.id)) == 1) { "The one record of the Operator Settings is updated." }
+        raiseStateVersion()
+        when (change.followUp) {
+            SettingFollowUp.None -> Unit
+            SettingFollowUp.StatusesAgain -> markComparisonPending()
+            SettingFollowUp.PeriodReadOwed -> owePeriodReadOfServedBudgets()
+        }
     }
 }
+
+/** The stored record as the core reads it. */
+internal fun OperatorSettingsEntity.settings(): OperatorSettings = OperatorSettings(
+    uploadWindowDays = uploadWindowDays,
+    fileUploadWindowDays = fileUploadWindowDays,
+    fetchPeriodDays = fetchPeriodDays,
+    defaultWaitHours = defaultWaitHours,
+    requestLimitWarningHours = requestLimitWarningHours,
+    requestTimeoutSeconds = requestTimeoutSeconds,
+    uploadPlanMinutes = uploadPlanMinutes,
+    consentRequestMinutes = consentRequestMinutes,
+    fetchHistorySize = fetchHistorySize,
+    scheduledFetchesPerDay = scheduledFetchesPerDay,
+    transferPairingDays = transferPairingDays,
+    lonelyTransferGraceDays = lonelyTransferGraceDays,
+    outdatedBalanceHours = outdatedBalanceHours,
+    consentWarningDays = consentWarningDays,
+    journalOn = journalOn,
+    journalSizeLimitMb = journalSizeLimitMb,
+    journalWarningPercent = journalWarningPercent,
+    backupWarningPercent = backupWarningPercent,
+    detailedLogging = detailedLogging,
+    uploadAsCleared = uploadAsCleared,
+)
+
+/** [this] as the one record stores it, with the record's [id]. */
+internal fun OperatorSettings.entity(id: Long = 0): OperatorSettingsEntity = OperatorSettingsEntity(
+    id = id,
+    uploadWindowDays = uploadWindowDays,
+    fileUploadWindowDays = fileUploadWindowDays,
+    fetchPeriodDays = fetchPeriodDays,
+    defaultWaitHours = defaultWaitHours,
+    requestLimitWarningHours = requestLimitWarningHours,
+    requestTimeoutSeconds = requestTimeoutSeconds,
+    uploadPlanMinutes = uploadPlanMinutes,
+    consentRequestMinutes = consentRequestMinutes,
+    fetchHistorySize = fetchHistorySize,
+    scheduledFetchesPerDay = scheduledFetchesPerDay,
+    transferPairingDays = transferPairingDays,
+    lonelyTransferGraceDays = lonelyTransferGraceDays,
+    outdatedBalanceHours = outdatedBalanceHours,
+    consentWarningDays = consentWarningDays,
+    journalOn = journalOn,
+    journalSizeLimitMb = journalSizeLimitMb,
+    journalWarningPercent = journalWarningPercent,
+    backupWarningPercent = backupWarningPercent,
+    detailedLogging = detailedLogging,
+    uploadAsCleared = uploadAsCleared,
+)
 
 @Dao
 abstract class PluginRegistryDao : StateVersionDao {

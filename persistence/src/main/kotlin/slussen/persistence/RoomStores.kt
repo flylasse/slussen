@@ -37,6 +37,12 @@ import slussen.core.port.NewProviderRequest
 import slussen.core.port.OfferedBankAccountStore
 import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
+import slussen.core.port.NumberSetting
+import slussen.core.port.SettingChange
+import slussen.core.port.SettingFollowUp
+import slussen.core.port.SettingValue
+import slussen.persistence.main.entity
+import slussen.persistence.main.settings
 import slussen.core.port.OtherSideKind
 import slussen.core.port.OtherSideStored
 import slussen.core.port.PluginRegistryStore
@@ -104,62 +110,19 @@ private fun currencyOf(text: String, part: String): CurrencyCode =
 
 /** `OPERATOR_SETTINGS` in `slussen.db`; the one record starts with every default (entity model constraints). */
 class RoomOperatorSettingsStore(private val dao: OperatorSettingsDao) : OperatorSettingsStore {
-    override suspend fun current(): OperatorSettings = dao.current()?.let(::toSettings) ?: OperatorSettings.DEFAULT
+    override suspend fun current(): OperatorSettings = dao.current()?.settings() ?: OperatorSettings.DEFAULT
 
-    override suspend fun storeFetchPeriod(days: Int) {
-        dao.storeFetchPeriod(days)
+    override suspend fun store(change: SettingChange) {
+        dao.store(change)
     }
+
+    /** The fetch period stored with nothing following it, as Settings stores a value no longer than the read period (O-13). */
+    suspend fun storeFetchPeriod(days: Int) = store(SettingChange(SettingValue.Number(NumberSetting.FetchPeriod, days), SettingFollowUp.None))
 
     /** The default content of ADR-002 §8 step 3: one record with every default, when there is none. */
     suspend fun ensureDefault() {
-        if (dao.count() == 0) dao.insert(toEntity(OperatorSettings.DEFAULT))
+        if (dao.count() == 0) dao.insert(OperatorSettings.DEFAULT.entity())
     }
-
-    private fun toSettings(e: OperatorSettingsEntity) = OperatorSettings(
-        uploadWindowDays = e.uploadWindowDays,
-        fileUploadWindowDays = e.fileUploadWindowDays,
-        fetchPeriodDays = e.fetchPeriodDays,
-        defaultWaitHours = e.defaultWaitHours,
-        requestLimitWarningHours = e.requestLimitWarningHours,
-        requestTimeoutSeconds = e.requestTimeoutSeconds,
-        uploadPlanMinutes = e.uploadPlanMinutes,
-        consentRequestMinutes = e.consentRequestMinutes,
-        fetchHistorySize = e.fetchHistorySize,
-        scheduledFetchesPerDay = e.scheduledFetchesPerDay,
-        transferPairingDays = e.transferPairingDays,
-        lonelyTransferGraceDays = e.lonelyTransferGraceDays,
-        outdatedBalanceHours = e.outdatedBalanceHours,
-        consentWarningDays = e.consentWarningDays,
-        journalOn = e.journalOn,
-        journalSizeLimitMb = e.journalSizeLimitMb,
-        journalWarningPercent = e.journalWarningPercent,
-        backupWarningPercent = e.backupWarningPercent,
-        detailedLogging = e.detailedLogging,
-        uploadAsCleared = e.uploadAsCleared,
-    )
-
-    private fun toEntity(s: OperatorSettings) = OperatorSettingsEntity(
-        uploadWindowDays = s.uploadWindowDays,
-        fileUploadWindowDays = s.fileUploadWindowDays,
-        fetchPeriodDays = s.fetchPeriodDays,
-        defaultWaitHours = s.defaultWaitHours,
-        requestLimitWarningHours = s.requestLimitWarningHours,
-        requestTimeoutSeconds = s.requestTimeoutSeconds,
-        uploadPlanMinutes = s.uploadPlanMinutes,
-        consentRequestMinutes = s.consentRequestMinutes,
-        fetchHistorySize = s.fetchHistorySize,
-        scheduledFetchesPerDay = s.scheduledFetchesPerDay,
-        transferPairingDays = s.transferPairingDays,
-        lonelyTransferGraceDays = s.lonelyTransferGraceDays,
-        outdatedBalanceHours = s.outdatedBalanceHours,
-        consentWarningDays = s.consentWarningDays,
-        journalOn = s.journalOn,
-        journalSizeLimitMb = s.journalSizeLimitMb,
-        journalWarningPercent = s.journalWarningPercent,
-        backupWarningPercent = s.backupWarningPercent,
-        detailedLogging = s.detailedLogging,
-        uploadAsCleared = s.uploadAsCleared,
-    )
 }
 
 /** O-11 and the Operator Settings kept per Data Provider (O-13 `SettingsStore`) in `slussen.db`. */

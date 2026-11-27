@@ -44,7 +44,7 @@ import java.util.Locale
  * plug-in receives only the diagnostic [SlussenLog] at construction. It creates the one [OperationCoordinator]
  * (ADR-007 §1) and wires the core's services to the storage of `:persistence`.
  */
-class CompositionRoot(log: SlussenLog) {
+class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLoggingSwitch = DetailedLoggingSwitch()) {
     val plugins: Plugins = Plugins(
         dataProviders = listOf(SimpleFinDataProvider(log), EnableBankingDataProvider(log)),
         budgetApp = YnabBudgetApp(log),
@@ -77,6 +77,8 @@ class CompositionRoot(log: SlussenLog) {
         )
         // ADR-007 §3a, §8: a Comparison left between storing its read and its conclusions is concluded from the stored data before any other operation.
         comparison.recomputePending()
+        // ADR-006 §3, UC-010 A5: the app's log follows the stored Detailed Logging, read at the start and after every change.
+        detailedLogging.readFrom(storage.settings)
         val settingsOverview = SettingsOverview(
             registered, credentials, storage.connections, storage.offered, storage.importStatus, storage.settings, clock,
         )
@@ -97,6 +99,7 @@ class CompositionRoot(log: SlussenLog) {
             firstRunNext = { settingsOverview.next() },
             fetchNotices = fetchNotices,
             comparisonNotices = comparisonNotices,
+            periodReadOwed = { storage.comparisons.periodReadOwed(it) },
         )
         return UiServices(
             credentials = credentials,
@@ -106,7 +109,10 @@ class CompositionRoot(log: SlussenLog) {
                 RandomSource { random.nextBytes(it) }, clock,
             ),
             providerSettings = DataProviderSettings(registered, storage.registry, coordinator, journal),
-            generalSettings = GeneralSettings(storage.settings, coordinator, journal),
+            generalSettings = GeneralSettings(
+                storage.settings, comparison, storage.connections, storage.comparisons, journal,
+                applied = { detailedLogging.set(it.detailedLogging) },
+            ),
             mappings = AccountMappings(registered, storage.connections, storage.mappings, storage.offered, coordinator, journal, comparison, clock),
             status = status,
             // Step 5 of UC-008: the weeks of a Bank Account's list start on the device locale's first day (survey §5 guess 6).
@@ -148,3 +154,29 @@ class Plugins(
     val budgetApp: BudgetApp,
     val filePreprocessors: List<FilePreprocessor>,
 )
+
+/**
+ * What the app's log reads Detailed Logging from (UC-010 A5, BR-005, ADR-006 §3): the stored Operator Setting, read at
+ * the start and set again by every change of it. Off until the stored value is read, its default
+ * (`OPERATOR_SETTINGS.detailed_logging`), and off when it cannot be read, so that no transaction data reaches a device
+ * log by mistake.
+ */
+class DetailedLoggingSwitch {
+    private val on = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    fun isOn(): Boolean = on.get()
+
+    fun set(value: Boolean) = on.set(value)
+
+    suspend fun readFrom(settings: slussen.core.port.OperatorSettingsStore) {
+        on.set(
+            try {
+                settings.current().detailedLogging
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                false
+            },
+        )
+    }
+}

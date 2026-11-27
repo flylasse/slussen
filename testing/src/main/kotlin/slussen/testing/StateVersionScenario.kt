@@ -30,6 +30,10 @@ import slussen.core.port.NewFetch
 import slussen.core.port.NewLeftOutBankAccount
 import slussen.core.port.NewUnreadableTransaction
 import slussen.core.port.OperatorSettingsStore
+import slussen.core.port.NumberSetting
+import slussen.core.port.SettingChange
+import slussen.core.port.SettingFollowUp
+import slussen.core.port.SettingValue
 import slussen.core.port.OtherSideKind
 import slussen.core.port.OtherSideStored
 import slussen.core.port.PluginRegistryStore
@@ -284,7 +288,7 @@ class StateVersionScenario(
             } == IdentificationStored.NotFound,
         )
 
-        stored("change the fetch period") { settings.storeFetchPeriod(45) }
+        stored("change the fetch period") { settings.store(SettingChange(SettingValue.Number(NumberSetting.FetchPeriod, 45), SettingFollowUp.None)) }
         stored("change the Request Limit of a Data Provider that publishes none") { providerSettings.storeRequestLimit(dataProviderId, 30) }
         // UC-001 BR-007: A Request Limit the Data Provider publishes is never changed by the Operator's setting.
         refused("change the Request Limit of a Data Provider that publishes its Request Limit") { providerSettings.storeRequestLimit(publishingId, 30) }

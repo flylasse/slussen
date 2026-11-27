@@ -89,6 +89,8 @@ data class BudgetUi(
     val notComparedYet: String? = null,
     /** UC-003 A1 step 2: the remedy of statuses that are not current, a read of the Budget App; null while they are. */
     val readAgainNote: String? = null,
+    /** UC-003 BR-016 (`budget.html#period-read-owed`): a read of the read period is owed, with why and the next action; null otherwise. */
+    val periodReadOwed: Pair<String, String>? = null,
     /**
      * UC-005 step 1, UX-27 (`budget.html` → `transfers.html#list`): the counts of the entry that leads to the Transfers,
      * from the same read model as the list, or that they could not be read.
@@ -241,6 +243,7 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                 statuses = Texts.statusesAsOf(workspace.summary.statusesAsOf, workspace.budgetAppName, formats, now),
                 notComparedYet = Texts.notComparedYet(workspace.summary.notComparedYet, workspace.budgetAppName),
                 readAgainNote = Texts.readAgainNote(workspace.summary, workspace.budgetAppName),
+                periodReadOwed = Texts.periodReadOwed(workspace.summary, workspace.budgetAppName, formats, now),
                 transfers = transfers,
                 decide = Texts.decideOnBudget(workspace.summary.notYetUploaded.waitingForDecision, guessedLegs),
             )

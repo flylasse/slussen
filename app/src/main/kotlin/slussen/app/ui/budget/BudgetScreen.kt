@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import slussen.app.ui.components.BlockedReasonLine
 import slussen.app.ui.components.BudgetAppLine
+import slussen.app.ui.components.Banner
 import slussen.app.ui.components.FirstUploadMatchingBanner
 import slussen.app.ui.components.Muted
 import slussen.app.ui.components.NavigationLine
@@ -41,6 +42,8 @@ fun BudgetScreen(
             ScreenTitle(ui.title, ui.subtitle)
             // UC-008 BR-009: First Upload Matching is shown as information or a caution, never in an error colour (`budget.html#recovery-blocked`).
             ui.firstUploadMatching?.let { FirstUploadMatchingBanner(it, onStartFirstUploadMatching) }
+            // UC-003 BR-016: Until that read of the Budget, its Transaction Statuses stay as the latest Comparison that read it left them, and the Budget shows that a read of the Budget App is owed and why (`budget.html#period-read-owed`).
+            ui.periodReadOwed?.let { (title, detail) -> Banner(title, detail) }
             // FR-040, NFR-023 (`budget.html`, the states of Read again): the line of the Budget App, whose Read again answers on it.
             BudgetAppLine(ui.budgetAppLine, onReadAgain, onRemedy)
             Muted(ui.counts)

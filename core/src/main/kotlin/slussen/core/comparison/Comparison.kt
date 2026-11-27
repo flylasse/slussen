@@ -255,12 +255,26 @@ class Comparison(
     /**
      * Steps 2-4 and 6 (O-5): the Transaction Statuses and the Transfers from the stored data alone, and the Decision
      * Journal of each changed status, also that of a Transfer Leg (UC-011 BR-001), and of each Transfer Decision the
-     * conclusions dropped (UC-005 BR-015).
+     * conclusions dropped (UC-005 BR-015). Every conclusion of a Comparison, of [recomputePending] and of
+     * [statusesAgainAfter] runs here, so this is the one place that leaves a Budget that owes a read of its read period
+     * as it is (BR-016, ADR-007 §3a): the marker is still cleared, and the read of that Budget, which clears what it owes
+     * in O-4 before this runs, gives it its statuses.
      */
     private suspend fun conclude(budgetIds: Set<Long>): List<StatusChange> {
         val windows = ComparisonWindows.of(settings.current(), plugins.budgetApp.profile.matchingDateWindowDays, today())
+        // UC-003 BR-016: Until the read of its read period, no conclusion from stored data changes the Transaction Statuses of a Budget that owes it; they stay as the latest Comparison that read it left them.
+        val owing = connections.budgets().filter { copies.periodReadOwed(it.id) }
+        val owingAccounts = owing.flatMap { it.budgetAccounts }.map { it.id }.toSet()
         var dropped = emptyList<DroppedTransferDecision>()
-        val changes = comparisons.applyComparison(budgetIds) { data -> ComparisonRules.conclude(data, windows).also { dropped = it.dropped } }
+        val changes = comparisons.applyComparison(budgetIds - owing.map { it.id }.toSet()) { data ->
+            // A Transfer Leg judged with a Transfer of another Budget keeps its status while its own Budget owes the read.
+            val keptAsTheyAre = data.bankTransactions.filter { transaction ->
+                data.bankAccounts.firstOrNull { it.id == transaction.bankAccountId }?.mapping?.budgetAccountId in owingAccounts
+            }.map { it.id }.toSet()
+            ComparisonRules.conclude(data, windows)
+                .let { it.copy(statuses = it.statuses - keptAsTheyAre) }
+                .also { dropped = it.dropped }
+        }
         journalChanges(changes, dropped)
         return changes
     }

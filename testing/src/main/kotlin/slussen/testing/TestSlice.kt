@@ -56,12 +56,12 @@ class TestSlice(
     val vault = InMemoryCredentialVault()
     val coordinatorStore = InMemoryCoordinatorStore()
     val journalRecorder = InMemoryDecisionJournal()
-    val settings = InMemoryOperatorSettingsStore(stateVersion = stateVersion)
     val providerRequests = InMemoryProviderRequestStore()
     val connectionStore = InMemoryConnectionStore(stateVersion)
     val offeredStore = InMemoryOfferedBankAccountStore()
     val importStatusStore = InMemoryImportStatusStore(identify, connectionStore)
     val copyStore = InMemoryBudgetAppCopyStore(connectionStore, importStatusStore)
+    val settings = InMemoryOperatorSettingsStore(stateVersion = stateVersion, connections = connectionStore, copies = copyStore)
     val firstUploadMatchingStore = InMemoryFirstUploadMatchingStore()
     val startState = FixedStartState(startKind, unreadableParts)
     val backupSize = FixedBackupSizeMonitor()
@@ -90,7 +90,9 @@ class TestSlice(
         plugins, credentials, connectionStore, offeredStore, copyStore, coordinator, journal, random, clock,
     )
     val providerSettings = DataProviderSettings(plugins, registry, coordinator, journal)
-    val generalSettings = GeneralSettings(settings, coordinator, journal)
+    /** What the app's log reads Detailed Logging from (ADR-006): the value the last change stored, from the stored record. */
+    var detailedLoggingApplied: Boolean = settings.settings.detailedLogging
+    val generalSettings = GeneralSettings(settings, comparison, connectionStore, copyStore, journal, applied = { detailedLoggingApplied = it.detailedLogging })
     /** UC-004: the Review Decisions, on the stored data the Comparison concludes from. */
     val review = ReviewDecisions(
         connectionStore, copyStore, copyStore, coordinator, settings, journal, clock,
@@ -118,6 +120,7 @@ class TestSlice(
         firstRunNext = { settingsOverview.next() },
         fetchNotices = fetchNotices,
         comparisonNotices = comparisonNotices,
+        periodReadOwed = { copyStore.periodReadOwed(it) },
     )
 
     /** UC-008 step 5: the transactions of one Bank Account with their statuses and reasons, weeks from Monday. */

@@ -153,6 +153,8 @@ data class ServicePage(
     val credentialsRefusedAt: Instant? = null,
     /** Whether a change on this page is recorded in the Decision Journal (UC-010 step 6, postconditions). */
     val journalOn: Boolean = true,
+    /** UC-010 A9, BR-010: Upload as Cleared as stored, on the Budget App's page when it supports the Cleared marker; null otherwise. */
+    val uploadAsCleared: Boolean? = null,
 )
 
 /**
@@ -313,6 +315,8 @@ class SettingsOverview(
                 budgetsInUse = served.map { BudgetInUse(it.id, it.name, it.currency) },
                 supportsClearedMarker = plugins.budgetApp.profile.supportsClearedMarker,
                 journalOn = settings.current().journalOn,
+                // UC-010 BR-010: Upload as Cleared is shown with the Budget App, only when it supports the Cleared marker.
+                uploadAsCleared = if (plugins.budgetApp.profile.supportsClearedMarker) settings.current().uploadAsCleared else null,
             )
         }
         val provider = plugins.dataProvider(service)
