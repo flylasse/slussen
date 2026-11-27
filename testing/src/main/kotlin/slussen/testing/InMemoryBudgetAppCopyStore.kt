@@ -84,6 +84,7 @@ class InMemoryBudgetAppCopyStore(
         cursors[read.budgetId] = read.next
         periodOwed -= read.budgetId
         pending = true
+        connections.stateVersion.raise()
         return ChangeSetApplied.Stored(records.size)
     }
 
@@ -136,6 +137,7 @@ class InMemoryBudgetAppCopyStore(
         transactions.bankTransactions.replaceAll { if (it.transferId in released) it.copy(transferId = null) else it }
         transfers.removeAll { it.id in released }
         pending = false
+        connections.stateVersion.raise()
         return changes
     }
 

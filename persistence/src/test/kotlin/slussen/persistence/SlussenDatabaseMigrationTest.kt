@@ -519,17 +519,53 @@ class SlussenDatabaseMigrationTest {
     }
 
     @Test
+    @DisplayName("NFR-017: a version 5 slussen.db whose Transfers were all removed again, and one that never held a Transfer, migrate as well: the next Transfer gets an identifier above every one a Transfer ever had, and the first one where there never was any (ADR-002 §7)")
+    fun theNextTransferIdentifierIsKeptAlsoWithoutAStoredTransfer() {
+        create(SlussenDatabase::class.java, 5)
+        inventedVersion3Data()
+        val neverATransfer = BundledSQLiteDriver().open(":memory:")
+        val newTransfer = "INSERT INTO transfer (outflow_budget_account_id, inflow_budget_account_id, amount, transfer_type, guessed, decision, decided_at) " +
+            "VALUES (1, 2, 150000, 'Bank Transfer', 0, 'Proposed', NULL)"
+        try {
+            create(SlussenDatabase::class.java, 5, into = neverATransfer)
+            listOf(
+                "INSERT INTO budget VALUES (1, 'budget-household', 'Household', 'USD', NULL, 1)",
+                "INSERT INTO budget_account VALUES (1, 1, 'ba-checking', 'Checking', 0, NULL, NULL)",
+                "INSERT INTO budget_account VALUES (2, 1, 'ba-reserve', 'Reserve Savings', 0, NULL, NULL)",
+            ).forEach { neverATransfer.execSQL(it) }
+            connection.execSQL("INSERT INTO transfer VALUES (4, 1, 2, 150000, 'Bank Transfer', 0, 'Proposed', NULL)")
+            connection.execSQL("DELETE FROM transfer")
+
+            migrateAsRoomDoes(from = 5)
+            migrationFrom(5).migrate(neverATransfer)
+            connection.execSQL(newTransfer)
+            neverATransfer.execSQL(newTransfer)
+
+            assertEquals(listOf(listOf("5")), query("SELECT id FROM transfer"))
+            assertEquals(listOf(listOf("1")), RoomSchemas.rows(neverATransfer, "SELECT id FROM transfer"))
+            assertEquals(listOf(listOf("transfer")), query("SELECT name FROM sqlite_sequence WHERE name LIKE '%transfer'"))
+        } finally {
+            neverATransfer.close()
+        }
+    }
+
+    @Test
     @DisplayName("NFR-017: a Migration 5 to 6 that fails changes nothing: with foreign keys planted on, SQLite refuses to drop the Transfers their Transfer Legs name, Room rolls the Migration back, and every table, row and value of version 5 is as before (ADR-002 §7)")
     fun aMigrationThatFailsLeavesVersion5AsItWas() {
         version5WithInventedData()
         val before = everything()
         val schemaBefore = schema()
 
+        val migration = migrationFrom(5) as SlussenMigrations.Statements
         connection.execSQL("PRAGMA foreign_keys = ON")
         connection.execSQL("BEGIN EXCLUSIVE TRANSACTION")
-        val migrated = runCatching { migrationFrom(5).migrate(connection) }
+        val refused = migration.statements.firstOrNull { sql -> runCatching { connection.execSQL(sql) }.isFailure }
+        connection.execSQL("ROLLBACK TRANSACTION")
+        connection.execSQL("BEGIN EXCLUSIVE TRANSACTION")
+        val migrated = runCatching { migration.migrate(connection) }
         connection.execSQL("ROLLBACK TRANSACTION")
 
+        assertEquals("DROP TABLE `transfer`", refused, "the statement the planted foreign keys refuse")
         assertTrue(migrated.isFailure, "the planted foreign keys must stop the Migration")
         assertEquals(before, everything())
         assertEquals(schemaBefore, schema())

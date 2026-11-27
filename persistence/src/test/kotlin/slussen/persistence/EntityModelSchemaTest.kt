@@ -49,7 +49,7 @@ class EntityModelSchemaTest {
                 line.startsWith("|") && entity != null -> {
                     val cells = line.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim() }
                     assertEquals(5, cells.size, "an attribute line of $entity has five cells: $line")
-                    if (cells[0] != "Attribute" && !cells[0].startsWith("---")) entities.getValue(entity!!) += Attribute(cells[0], cells[2], cells[4])
+                    if (cells[0] != "Attribute" && !cells[0].startsWith("---")) entities.getValue(entity) += Attribute(cells[0], cells[2], cells[4])
                 }
             }
         }
@@ -201,9 +201,10 @@ class EntityModelSchemaTest {
             ValueColumn("upload_plan_item", "write_kind", listOf("Header", "Create", "LinkedTransfer", "ClearCounterpart")),
             ValueColumn("upload_plan_item", "reused_outcome", sentRecordOutcomes),
         )
-        fun sorted(columns: List<ValueColumn>) = columns.sortedWith(compareBy({ it.table }, { it.column }))
+        fun sorted(columns: List<ValueColumn>) = columns.sortedWith(compareBy({ it.table }, { it.column })).map { Triple(it.table, it.column, it.allowed.toSortedSet()) }
 
         assertEquals(sorted(ofTheEntityModel + technical), sorted(SlussenStorage.MAIN_VALUES))
+        SlussenStorage.MAIN_VALUES.forEach { column -> assertEquals(column.allowed.distinct(), column.allowed, "$column") }
         SlussenStorage.MAIN_VALUES.forEach { column -> assertTrue(columnsOf(column.table).any { it[0] == column.column && it[1] == "TEXT" }, "$column") }
     }
 }

@@ -66,11 +66,29 @@ import slussen.core.port.UnreadablePart
 import java.time.Instant
 
 /**
+ * In-memory stand-in for `coordinator_state.state_version` (ADR-002 §2): the version of everything an Upload Plan was
+ * prepared from, which every storage operation that changes one of those things raises (ADR-007 §6 step 2). The fakes of
+ * one test share one, as the tables of `slussen.db` share the one record; `StateVersionScenario` holds the fakes and the
+ * real storage to the same operations.
+ */
+class InMemoryStateVersion {
+    var value: Long = 0
+        private set
+
+    fun raise() {
+        value++
+    }
+}
+
+/**
  * In-memory fake of [OperatorSettingsStore]; starts with every default. A test holds a change with [beforeStore], to see
  * it while it is being stored, makes it fail with [failsToStore], as a storage that cannot be written would, and makes
  * the read fail with [failsToRead].
  */
-class InMemoryOperatorSettingsStore(var settings: OperatorSettings = OperatorSettings.DEFAULT) : OperatorSettingsStore {
+class InMemoryOperatorSettingsStore(
+    var settings: OperatorSettings = OperatorSettings.DEFAULT,
+    val stateVersion: InMemoryStateVersion = InMemoryStateVersion(),
+) : OperatorSettingsStore {
     var beforeStore: suspend () -> Unit = {}
     var failsToStore: Boolean = false
 
@@ -86,6 +104,7 @@ class InMemoryOperatorSettingsStore(var settings: OperatorSettings = OperatorSet
         beforeStore()
         if (failsToStore) throw IllegalStateException("The invented storage of this test cannot be written.")
         settings = settings.copy(fetchPeriodDays = days)
+        stateVersion.raise()
     }
 }
 
@@ -114,7 +133,7 @@ class InMemoryDecisionJournal : DecisionJournalRecorder {
  * In-memory fake of [PluginRegistryStore] with the matching rules of O-11, and of [DataProviderSettingsStore]. A test
  * holds a change of a setting with [beforeStore] and makes it fail with [failsToStore].
  */
-class InMemoryPluginRegistryStore : PluginRegistryStore, DataProviderSettingsStore {
+class InMemoryPluginRegistryStore(val stateVersion: InMemoryStateVersion = InMemoryStateVersion()) : PluginRegistryStore, DataProviderSettingsStore {
     val dataProviders = mutableListOf<StoredDataProvider>()
     val fileFormats = mutableListOf<StoredFileFormat>()
     var beforeStore: suspend () -> Unit = {}
@@ -165,13 +184,17 @@ class InMemoryPluginRegistryStore : PluginRegistryStore, DataProviderSettingsSto
     override suspend fun storeRequestLimit(dataProviderId: Long, requests: Int) {
         beforeStore()
         if (failsToStore) throw IllegalStateException("The invented storage of this test cannot be written.")
+        val changes = dataProviders.any { it.id == dataProviderId }
         dataProviders.replaceAll { if (it.id == dataProviderId) it.copy(requestLimit = requests) else it }
+        if (changes) stateVersion.raise()
     }
 
     override suspend fun storeFetchCooldown(dataProviderId: Long, minutes: Int) {
         beforeStore()
         if (failsToStore) throw IllegalStateException("The invented storage of this test cannot be written.")
+        val changes = dataProviders.any { it.id == dataProviderId }
         dataProviders.replaceAll { if (it.id == dataProviderId) it.copy(fetchCooldownMinutes = minutes) else it }
+        if (changes) stateVersion.raise()
     }
 }
 
@@ -233,7 +256,7 @@ class InMemoryOfferedBankAccountStore : OfferedBankAccountStore {
  * Bank Account or a Manually Kept Account with [beforeStore], to see it while it is being stored, and makes it fail
  * with [failsToStore], as a storage that cannot be written would.
  */
-class InMemoryConnectionStore : ConnectionStore, MappingStore {
+class InMemoryConnectionStore(val stateVersion: InMemoryStateVersion = InMemoryStateVersion()) : ConnectionStore, MappingStore {
     var beforeStore: suspend () -> Unit = {}
     var failsToStore: Boolean = false
 
@@ -294,6 +317,7 @@ class InMemoryConnectionStore : ConnectionStore, MappingStore {
             )
             if (index < 0) budgetList += budget else budgetList[index] = budget
         }
+        stateVersion.raise()
         return ServeOutcome.Served
     }
 
@@ -329,6 +353,7 @@ class InMemoryConnectionStore : ConnectionStore, MappingStore {
             transferPartnerBudgetAccountId = null,
             mapping = StoredAccountMapping(nextId++, id, bankAccount.budgetAccountId, firstSentAt = null),
         )
+        stateVersion.raise()
         return AddOutcome.Added(id)
     }
 
@@ -357,6 +382,7 @@ class InMemoryConnectionStore : ConnectionStore, MappingStore {
                 )
             }
         }
+        stateVersion.raise()
     }
 
     /** Sets a Funded By or Transfer Partner as UC-009 BR-008 will, for the tests of UC-009 A14. */
@@ -385,12 +411,16 @@ class InMemoryConnectionStore : ConnectionStore, MappingStore {
         val asked = leftOut.map { it.dataProviderId to it.providerReference }
         if (asked.any { it in taken } || asked.distinct().size != asked.size) return false
         leftOut.forEach { leftOutList += StoredLeftOutBankAccount(nextId++, it.dataProviderId, it.providerReference, it.name, it.leftOutAt) }
+        stateVersion.raise()
         return true
     }
 
     override suspend fun bringBack(leftOutBankAccountId: Long): StoredLeftOutBankAccount? {
         storing()
-        return leftOutList.firstOrNull { it.id == leftOutBankAccountId }?.also { leftOutList.remove(it) }
+        return leftOutList.firstOrNull { it.id == leftOutBankAccountId }?.also {
+            leftOutList.remove(it)
+            stateVersion.raise()
+        }
     }
 
     override suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome {
@@ -401,6 +431,7 @@ class InMemoryConnectionStore : ConnectionStore, MappingStore {
         budgetList.replaceAll { budget ->
             budget.copy(budgetAccounts = budget.budgetAccounts.map { if (it.id == budgetAccountId) it.copy(manuallyKept = manuallyKept) else it })
         }
+        stateVersion.raise()
         return KeptOutcome.Stored
     }
 }
@@ -440,6 +471,8 @@ class InMemoryImportStatusStore(
     private val identify: (ImportIdentifierInput) -> String = ImportIdentifierProtocol::importIdentifier,
     /** The Bank Accounts and Budgets the counts of the stored Bank Transactions are judged by (UC-003 BR-014). */
     private val connections: ConnectionStore? = null,
+    /** The version O-1 raises when it stores a new or changed Bank Transaction: the one of [connections] when it is a fake. */
+    val stateVersion: InMemoryStateVersion = (connections as? InMemoryConnectionStore)?.stateVersion ?: InMemoryStateVersion(),
 ) : ImportStatusStore, FetchStore {
     val bankTransactions = mutableListOf<StoredBankTransaction>()
     val unreadableTransactions = mutableListOf<StoredUnreadableTransaction>()
@@ -523,6 +556,7 @@ class InMemoryImportStatusStore(
             balances += StoredAccountBalance(delivery.bankAccountId, balance.amount, balance.currency, balance.reportedAt)
         }
         if (plan == null) return DeliveryStored()
+        if (plan.inserts.isNotEmpty() || plan.changed.isNotEmpty()) stateVersion.raise()
         plan.changed.forEach { changed -> bankTransactions.replaceAll { if (it.id == changed.id) changed else it } }
         plan.inserts.forEach {
             bankTransactions += StoredBankTransaction(

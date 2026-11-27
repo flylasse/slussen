@@ -30,7 +30,12 @@ enum class TransferDescriptionKind(val text: String) {
  */
 data class StoredTransfer(
     val id: Long,
-    val outflowBudgetAccountId: Long,
+    /**
+     * The Budget Account of the outflow side; empty only for a Guessed Transfer for which Slussen proposes no paying
+     * Budget Account (entity model `TRANSFER`, UC-005 A8). No Transfer is stored without it yet: a Comparison stores
+     * every Transfer with both sides ([TransferToStore]).
+     */
+    val outflowBudgetAccountId: Long?,
     val inflowBudgetAccountId: Long,
     /** The amount moved, positive, in the Budget's currency. */
     val amount: Amount,

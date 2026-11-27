@@ -43,6 +43,18 @@ class StoredPartsTest {
     }
 
     @Test
+    @UseCase(id = "UC-006", businessRules = ["BR-014"], requirements = ["NFR-010", "NFR-017"])
+    @DisplayName("BR-014: the Sent Record with the Upload Plans and Transfer Counterparts, the stored Bank Transactions, the Review Decisions and the Transfers with their Transfer Decisions are in the backed-up slussen.db, not in device.db")
+    fun theSentRecordAndTheDecisionsAreKeptWithTheBankTransactions() {
+        val kept = listOf(
+            "sent_record", "upload_plan", "eligible_transaction", "upload_plan_item", "transfer_counterpart", "bank_transaction", "review_decision",
+            "transfer", "transaction_file",
+        )
+        assertTrue(main.containsAll(kept), "$main")
+        assertTrue(device.none { it in kept }, "$device")
+    }
+
+    @Test
     @UseCase(id = "UC-014", businessRules = ["BR-003", "BR-004"], requirements = ["NFR-009", "NFR-021"])
     @DisplayName("BR-003, BR-004: service credentials and Offered Bank Accounts are only in device.db, which is never backed up or restored")
     fun credentialsAndOfferedBankAccountsStayOnTheDevice() {

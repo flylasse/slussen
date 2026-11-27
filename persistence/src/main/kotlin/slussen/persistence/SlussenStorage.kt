@@ -19,13 +19,19 @@ import slussen.core.port.FetchResultOutcome
 import slussen.core.port.JournalEntry
 import slussen.core.port.ProviderRequestKind
 import slussen.core.port.FirstUploadMatchingCause
+import slussen.core.port.ReviewChoice
+import slussen.core.port.SentRecordOutcome
 import slussen.core.port.StableReferenceKind
 import slussen.core.port.StartKind
+import slussen.core.port.TransactionFileOutcome
 import slussen.core.port.TransactionStatus
+import slussen.core.port.TransferCounterpartState
 import slussen.core.port.TransferDecision
 import slussen.core.port.TransferDescriptionKind
 import slussen.core.port.TransferType
 import slussen.core.port.UnreadableTransactionStatus
+import slussen.core.port.UploadKind
+import slussen.core.port.UploadPlanState
 import slussen.core.port.StartedBy
 import slussen.core.port.StartState
 import slussen.core.port.UnreadablePart
@@ -38,6 +44,7 @@ import slussen.persistence.journal.JournalEventType
 import slussen.persistence.main.CoordinatorStateEntity
 import slussen.persistence.main.FirstUploadMatchingEntity
 import slussen.persistence.main.SlussenDatabase
+import slussen.persistence.main.UploadPlanItemKind
 import slussen.persistence.start.SqliteDatabaseCheck
 import slussen.persistence.start.SqliteDatabaseCheck.ValueColumn
 import slussen.persistence.start.StartFiles
@@ -145,6 +152,15 @@ class SlussenStorage private constructor(
             ValueColumn("transfer", "transfer_type", TransferType.entries.map { it.text }),
             ValueColumn("transfer", "decision", TransferDecision.entries.map { it.text }),
             ValueColumn("transfer_description", "kind", TransferDescriptionKind.entries.map { it.text }),
+            // Schema version 6 (build-out plan §3): the value columns of the tables it adds; an empty one passes the check.
+            ValueColumn("review_decision", "choice", ReviewChoice.entries.map { it.text }),
+            ValueColumn("upload_plan", "state", UploadPlanState.entries.map { it.text }),
+            ValueColumn("eligible_transaction", "upload_kind", UploadKind.entries.map { it.text }),
+            ValueColumn("sent_record", "outcome", SentRecordOutcome.entries.map { it.text }),
+            ValueColumn("transfer_counterpart", "state", TransferCounterpartState.entries.map { it.text }),
+            ValueColumn("upload_plan_item", "write_kind", UploadPlanItemKind.entries.map { it.text }),
+            ValueColumn("upload_plan_item", "reused_outcome", SentRecordOutcome.entries.map { it.text }),
+            ValueColumn("transaction_file", "outcome", TransactionFileOutcome.entries.map { it.text }),
         )
 
         val JOURNAL_VALUES: List<ValueColumn> = listOf(

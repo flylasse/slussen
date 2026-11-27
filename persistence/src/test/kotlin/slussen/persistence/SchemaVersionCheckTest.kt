@@ -85,7 +85,8 @@ class SchemaVersionCheckTest {
         /**
          * The SHA-256 of the committed schema file of every version older than the current one, line endings read as LF
          * (`.gitattributes` checks text out with CRLF on Windows), taken from the file as committed: version 1 at the
-         * baseline `96712aa`, versions 2, 3 and 4 as committed with their Migrations (ADR-002 §7, S-39).
+         * baseline `96712aa`, versions 2, 3, 4 and 5 as committed with their Migrations (ADR-002 §7, S-39). Version 5 is
+         * final since version 6 was added (build-out plan §3).
          */
         val FINAL_VERSIONS: Map<String, Map<Int, String>> = mapOf(
             "slussen.persistence.main.SlussenDatabase" to mapOf(
@@ -93,6 +94,7 @@ class SchemaVersionCheckTest {
                 2 to "4d4103016f183cca23a08edb31f2cb9db38009f3ed05bed19768c00fe78e4f3c",
                 3 to "6d66b0b9ec8bc333eda57a05f393213a7e9dc62e37b748ca16fd06057a150e4d",
                 4 to "fc49c92ba11a33a377f521f0ca8670b8d4738bd5cd3c95bf024e9fab5852f247",
+                5 to "ea41deba3498682d329e4cc2d4880d676048155c95ece84132a39b1a9aa44213",
             ),
         )
     }

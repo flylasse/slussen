@@ -15,7 +15,7 @@ import slussen.core.port.StoredRequestLimit
 import java.time.Instant
 
 @Dao
-abstract class OperatorSettingsDao {
+abstract class OperatorSettingsDao : StateVersionDao {
     @Query("SELECT * FROM operator_settings ORDER BY id LIMIT 1")
     abstract suspend fun current(): OperatorSettingsEntity?
 
@@ -25,13 +25,21 @@ abstract class OperatorSettingsDao {
     @Insert
     abstract suspend fun insert(settings: OperatorSettingsEntity)
 
-    /** The fetch period, an Operator Setting (UC-010 steps 2-4; O-13): one update of the one record. */
     @Query("UPDATE operator_settings SET fetch_period_days = :days")
-    abstract suspend fun storeFetchPeriod(days: Int)
+    protected abstract suspend fun updateFetchPeriod(days: Int): Int
+
+    /**
+     * The fetch period, an Operator Setting (UC-010 steps 2-4; O-13): one update of the one record, which raises
+     * `state_version` in the same transaction, as every change of an Operator Setting does (ADR-007 §6 step 2).
+     */
+    @Transaction
+    open suspend fun storeFetchPeriod(days: Int) {
+        if (updateFetchPeriod(days) > 0) raiseStateVersion()
+    }
 }
 
 @Dao
-abstract class PluginRegistryDao {
+abstract class PluginRegistryDao : StateVersionDao {
     @Query("SELECT * FROM data_provider ORDER BY id")
     abstract suspend fun dataProviders(): List<DataProviderEntity>
 
@@ -56,19 +64,37 @@ abstract class PluginRegistryDao {
     @Update
     abstract suspend fun update(fileFormat: FileFormatEntity)
 
-    /** The Request Limit of a Data Provider that publishes none, an Operator Setting (UC-010 BR-002, A11; O-13). */
     // UC-001 BR-007: A Request Limit the Data Provider publishes is never changed by the Operator's setting.
     @Query("UPDATE data_provider SET request_limit = :requests WHERE id = :id AND request_limit_published = 0")
-    abstract suspend fun storeRequestLimit(id: Long, requests: Int)
+    protected abstract suspend fun updateRequestLimit(id: Long, requests: Int): Int
 
-    /** The Fetch Cooldown of a Data Provider, an Operator Setting (UC-010 BR-002, A10; O-13). */
     @Query("UPDATE data_provider SET fetch_cooldown_minutes = :minutes WHERE id = :id")
-    abstract suspend fun storeFetchCooldown(id: Long, minutes: Int)
+    protected abstract suspend fun updateFetchCooldown(id: Long, minutes: Int): Int
+
+    /**
+     * The Request Limit of a Data Provider that publishes none, an Operator Setting (UC-010 BR-002, A11; O-13); a stored
+     * change raises `state_version` in the same transaction (ADR-007 §6 step 2), a published limit is left as it is.
+     */
+    @Transaction
+    open suspend fun storeRequestLimit(id: Long, requests: Int) {
+        if (updateRequestLimit(id, requests) > 0) raiseStateVersion()
+    }
+
+    /**
+     * The Fetch Cooldown of a Data Provider, an Operator Setting (UC-010 BR-002, A10; O-13); a stored change raises
+     * `state_version` in the same transaction (ADR-007 §6 step 2).
+     */
+    @Transaction
+    open suspend fun storeFetchCooldown(id: Long, minutes: Int) {
+        if (updateFetchCooldown(id, minutes) > 0) raiseStateVersion()
+    }
 
     /**
      * O-11 (ADR-002 §2, §3): every Data Provider and File Format of the build, matched by `source_key`, in one
      * transaction. A new Data Provider gets its declared default Fetch Cooldown, an existing one keeps the Operator's;
-     * the Request Limit follows `DataProviderRegistration.requestLimitAtStart` (S-31). Nothing is deleted.
+     * the Request Limit follows `DataProviderRegistration.requestLimitAtStart` (S-31). Nothing is deleted. It runs at a
+     * start only, before any operation is admitted and with no Upload Plan open (ADR-007 §8), so it leaves
+     * `state_version` as it is.
      */
     @Transaction
     open suspend fun reconcile(
@@ -110,7 +136,7 @@ abstract class PluginRegistryDao {
 data class MappingEntry(val bankAccountId: Long, val bankAccountName: String, val budgetId: Long)
 
 @Dao
-abstract class ConnectionDao {
+abstract class ConnectionDao : StateVersionDao {
     @Query("SELECT * FROM budget ORDER BY id")
     abstract suspend fun budgets(): List<BudgetEntity>
 
@@ -188,11 +214,13 @@ abstract class ConnectionDao {
 
     /**
      * O-13 (ADR-002 §3), UC-009 A14: the Bank Account type and the Bank, a new Bank stored first, clearing a Funded By or
-     * Transfer Partner as asked, in one transaction. No Account Mapping, identification or Sent Record is touched.
+     * Transfer Partner as asked, in one transaction, which raises `state_version` (ADR-007 §6 step 2). No Account
+     * Mapping, identification or Sent Record is touched.
      */
     @Transaction
     open suspend fun changeTypeAndBank(id: Long, type: String, bank: BankChoice, clearFundedBy: Boolean, clearTransferPartner: Boolean) {
         typeAndBank(id, type, bankIdOf(bank), clearFundedBy, clearTransferPartner)
+        raiseStateVersion()
     }
 
     private suspend fun bankIdOf(bank: BankChoice): Long = when (bank) {
@@ -206,7 +234,8 @@ abstract class ConnectionDao {
     /**
      * O-15 Serve (ADR-002 §3): every chosen Budget stored and served with its Budget Accounts and balances, every other
      * one not served, in one transaction; refused, changing nothing, when a Budget that stops being served has a mapped
-     * Bank Account. Returns the name of that Budget and its mapped Bank Accounts, or null when stored.
+     * Bank Account. Returns the name of that Budget and its mapped Bank Accounts, or null when stored. What is stored
+     * raises `state_version` in the same transaction (ADR-007 §6 step 2); a refusal does not.
      */
     @Transaction
     open suspend fun serve(listed: List<ListedBudget>, chosen: Set<String>, readAt: Instant): Pair<String, List<String>>? {
@@ -234,6 +263,7 @@ abstract class ConnectionDao {
                 }
             }
         }
+        raiseStateVersion()
         return null
     }
 
@@ -255,7 +285,8 @@ abstract class ConnectionDao {
      * `account_mapping`, in one transaction, deleting the `left_out_bank_account` of the Offered Bank Account chosen for
      * its balance; refused, storing nothing, when the Budget Account already receives through an Account Mapping, is a
      * Manually Kept Account or its Budget has another currency, and when the Bank Account's own reference is left out.
-     * [bankAccount]'s `bank_id` is replaced by the one of [bank].
+     * [bankAccount]'s `bank_id` is replaced by the one of [bank]. What is stored raises `state_version` in the same
+     * transaction (ADR-007 §6 step 2); a refusal does not.
      */
     @Transaction
     open suspend fun add(bankAccount: BankAccountEntity, bank: BankChoice, budgetAccountId: Long): Added {
@@ -279,6 +310,7 @@ abstract class ConnectionDao {
         val balanceReference = bankAccount.balanceProviderReference
         // UC-013 BR-006: Choosing a Left-Out Bank Account for a File Format's balance brings it back.
         if (balanceProvider != null && balanceReference != null) deleteLeftOut(balanceProvider, balanceReference)
+        raiseStateVersion()
         return Added.Stored(id)
     }
 
@@ -312,6 +344,7 @@ abstract class ConnectionDao {
     /**
      * O-15 Leave out (ADR-002 §3): one `left_out_bank_account` for each of [rows], all or none, in one transaction;
      * refused, storing nothing, when one is already left out or is the reference or balance reference of a Bank Account.
+     * What is stored raises `state_version` in the same transaction (ADR-007 §6 step 2).
      */
     @Transaction
     open suspend fun leaveOut(rows: List<LeftOutBankAccountEntity>): Boolean {
@@ -321,12 +354,19 @@ abstract class ConnectionDao {
             return false
         }
         insertLeftOut(rows)
+        raiseStateVersion()
         return true
     }
 
-    /** O-15 Bring back (UC-013 A10; UC-009 A15 leads there): deletes one `left_out_bank_account` and returns it. */
+    /**
+     * O-15 Bring back (UC-013 A10; UC-009 A15 leads there): deletes one `left_out_bank_account` and returns it, raising
+     * `state_version` in the same transaction (ADR-007 §6 step 2); null, with nothing changed, when there is none.
+     */
     @Transaction
-    open suspend fun bringBack(id: Long): LeftOutBankAccountEntity? = leftOut(id)?.also { deleteLeftOut(id) }
+    open suspend fun bringBack(id: Long): LeftOutBankAccountEntity? = leftOut(id)?.also {
+        deleteLeftOut(id)
+        raiseStateVersion()
+    }
 
     /** The outcome of [setManuallyKept]. */
     sealed interface Kept {
@@ -339,7 +379,8 @@ abstract class ConnectionDao {
 
     /**
      * O-15 Mark (UC-013 A9; UC-009 A16 leads there): sets or clears `budget_account.manually_kept` in one transaction;
-     * setting it is refused while the Budget Account receives through an Account Mapping.
+     * setting it is refused while the Budget Account receives through an Account Mapping. What is stored raises
+     * `state_version` in the same transaction (ADR-007 §6 step 2).
      */
     @Transaction
     open suspend fun setManuallyKept(id: Long, manuallyKept: Boolean): Kept {
@@ -347,6 +388,7 @@ abstract class ConnectionDao {
         // UC-009 BR-001: A Manually Kept Account has no Account Mapping.
         if (manuallyKept) mappingInto(id)?.let { return Kept.StillReceives(bankAccount(it.bankAccountId)?.name.orEmpty()) }
         storeManuallyKept(id, manuallyKept)
+        raiseStateVersion()
         return Kept.Stored
     }
 
@@ -378,7 +420,7 @@ abstract class ProviderRequestDao {
 }
 
 @Dao
-abstract class FetchDao {
+abstract class FetchDao : StateVersionDao {
     @Query("SELECT * FROM fetch ORDER BY started_at DESC, id DESC")
     abstract suspend fun recent(): List<FetchEntity>
 
@@ -443,10 +485,6 @@ abstract class FetchDao {
     @Insert
     protected abstract suspend fun insertUnreadableTransactions(transactions: List<UnreadableTransactionEntity>)
 
-    /** ADR-002 §3, ADR-007 §6: a change of the Bank Transactions raises the version an Upload Plan depends on. */
-    @Query("UPDATE coordinator_state SET state_version = state_version + 1 WHERE id = 1")
-    protected abstract suspend fun raiseStateVersion()
-
     /**
      * O-1 (ADR-002 §3): for one identified Bank Account, all or nothing, its Fetch Result, its Account Balance in place
      * of the stored one when one is given, and, when [delivered] holds its transactions, the Bank Transactions and
@@ -477,6 +515,7 @@ abstract class FetchDao {
         updateBankTransactions(plan.changed.map { it.entity() })
         insertBankTransactions(plan.inserts.map { it.entity(bankAccountId) })
         insertUnreadableTransactions(plan.unreadable.map { it.entity(bankAccountId, delivered.receivedAt) })
+        // ADR-002 §3, ADR-007 §6: a change of the Bank Transactions raises the version an Upload Plan depends on.
         if (plan.inserts.isNotEmpty() || plan.changed.isNotEmpty()) raiseStateVersion()
         return plan.stored
     }
@@ -501,7 +540,7 @@ abstract class FirstUploadMatchingDao {
 }
 
 @Dao
-abstract class CoordinatorDao {
+abstract class CoordinatorDao : StateVersionDao {
     @Query("SELECT * FROM coordinator_state WHERE id = 1")
     abstract suspend fun state(): CoordinatorStateEntity?
 
@@ -510,6 +549,10 @@ abstract class CoordinatorDao {
 
     @Query("UPDATE coordinator_state SET mode = :mode, upload_plan_id = NULL WHERE id = 1")
     abstract suspend fun resetMode(mode: String)
+
+    /** The version of everything an Upload Plan was prepared from (ADR-007 §6 step 2), null before the first start. */
+    @Query("SELECT state_version FROM coordinator_state WHERE id = 1")
+    abstract suspend fun stateVersion(): Long?
 }
 
 /**

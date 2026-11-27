@@ -21,8 +21,12 @@ import java.time.LocalDate
  * `bank_transaction`, `unreadable_transaction` and `transfer_description` (transactions plan Phase 5) with
  * [SlussenMigrations.MIGRATION_3_4], which fills the default Description lists; version 5 adds the technical table
  * `budget_read_state` with the Budget App read cursor (ADR-002 §2; transactions plan Phase 7a) with
- * [SlussenMigrations.MIGRATION_4_5]. Every later schema change, also a table a
- * later slice adds, raises the version by one, commits its schema file and adds a Migration from the version before.
+ * [SlussenMigrations.MIGRATION_4_5]; version 6 adds every remaining table of the entity model and of ADR-002 §2
+ * (`review_decision`, `upload_plan`, `eligible_transaction`, `sent_record`, `transfer_counterpart`, `upload_plan_item`,
+ * `transaction_file`) and lets `transfer.outflow_budget_account_id` be empty (S-B-05; build-out plan §3) with
+ * [SlussenMigrations.MIGRATION_5_6], which rebuilds `transfer` and keeps every Transfer and Transfer Leg. Every later
+ * schema change, also a table a later slice adds, raises the version by one, commits its schema file and adds a Migration
+ * from the version before.
  */
 @Database(
     entities = [
@@ -48,8 +52,15 @@ import java.time.LocalDate
         FirstUploadMatchingEntity::class,
         CoordinatorStateEntity::class,
         BudgetReadStateEntity::class,
+        ReviewDecisionEntity::class,
+        UploadPlanEntity::class,
+        EligibleTransactionEntity::class,
+        SentRecordEntity::class,
+        TransferCounterpartEntity::class,
+        UploadPlanItemEntity::class,
+        TransactionFileEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 @TypeConverters(StorageConverters::class)
@@ -69,6 +80,12 @@ abstract class SlussenDatabase : RoomDatabase() {
     abstract fun coordinator(): CoordinatorDao
 
     abstract fun budgetAppCopy(): BudgetAppCopyDao
+
+    abstract fun reviewDecisions(): ReviewDecisionDao
+
+    abstract fun uploads(): UploadDao
+
+    abstract fun transactionFiles(): TransactionFileDao
 }
 
 /** `OPERATOR_SETTINGS` (entity model): exactly one record. Ranges and defaults are rules of the core. */
@@ -341,8 +358,9 @@ data class BudgetAppTransactionEntity(
 
 /**
  * `TRANSFER` (entity model): a movement of money between two Budget Accounts of one Budget, with its Transfer Legs in
- * `bank_transaction.transfer_id`; `amount` in thousandths of the currency unit. That both sides differ and lie in one
- * Budget is a rule of the core (ADR-002 §2).
+ * `bank_transaction.transfer_id`; `amount` in thousandths of the currency unit. Since schema version 6 the outflow side
+ * may be empty: only for a Guessed Transfer for which Slussen proposes no paying Budget Account (S-B-05, UC-005 A8). When
+ * it may be empty, and that both sides differ and lie in one Budget, are rules of the core (ADR-002 §2).
  */
 @Entity(
     tableName = "transfer",
@@ -354,7 +372,7 @@ data class BudgetAppTransactionEntity(
 )
 data class TransferEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    @ColumnInfo(name = "outflow_budget_account_id") val outflowBudgetAccountId: Long,
+    @ColumnInfo(name = "outflow_budget_account_id") val outflowBudgetAccountId: Long?,
     @ColumnInfo(name = "inflow_budget_account_id") val inflowBudgetAccountId: Long,
     @ColumnInfo(name = "amount") val amount: Long,
     @ColumnInfo(name = "transfer_type") val transferType: String,

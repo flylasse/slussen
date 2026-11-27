@@ -48,13 +48,15 @@ class TestSlice(
     val wren = FakeDataProvider(ExampleData.wrenProfile)
     val fileFormat = FakeFilePreprocessor()
 
-    val registry = InMemoryPluginRegistryStore()
+    /** The one `state_version` every fake of the slice raises, as the tables of `slussen.db` share one (ADR-007 §6 step 2). */
+    val stateVersion = InMemoryStateVersion()
+    val registry = InMemoryPluginRegistryStore(stateVersion)
     val vault = InMemoryCredentialVault()
     val coordinatorStore = InMemoryCoordinatorStore()
     val journalRecorder = InMemoryDecisionJournal()
-    val settings = InMemoryOperatorSettingsStore()
+    val settings = InMemoryOperatorSettingsStore(stateVersion = stateVersion)
     val providerRequests = InMemoryProviderRequestStore()
-    val connectionStore = InMemoryConnectionStore()
+    val connectionStore = InMemoryConnectionStore(stateVersion)
     val offeredStore = InMemoryOfferedBankAccountStore()
     val importStatusStore = InMemoryImportStatusStore(identify, connectionStore)
     val copyStore = InMemoryBudgetAppCopyStore(connectionStore, importStatusStore)
