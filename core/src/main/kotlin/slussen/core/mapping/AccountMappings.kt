@@ -455,7 +455,7 @@ class AccountMappings(
             sourceName = reads.sourceNameOf(bankAccount),
             proposed = proposed?.let { offeredView(it, bankAccount, snapshot) },
             others = offers.filter { it.id != proposed?.id }.map { offeredView(it, bankAccount, snapshot) },
-            sentThrough = store.sentThrough(bankAccountId),
+            sentThrough = store.sentForIdentification(bankAccountId),
         )
     }
 
@@ -477,7 +477,7 @@ class AccountMappings(
                 }
                 val identification = NewIdentification(offer.providerReference, offer.bankAccountFingerprint, offer.bankId, clock.instant())
                 // The numbers as the storage checks them: no Upload runs while the coordinator holds this operation (ADR-007 §2).
-                val through = store.sentThrough(bankAccountId)
+                val through = store.sentForIdentification(bankAccountId)
                 // UC-009 BR-007: Once a transaction sent through its Account Mapping was written, already present, not yet known or unknown, the Bank Account is identified again only after the Operator confirms their number; until then the current identification stays in use.
                 when (val stored = store.identify(bankAccountId, identification, confirmed)) {
                     is IdentificationStored.ToConfirm -> IdentifyOutcome.ToConfirm(stored.sentThrough)

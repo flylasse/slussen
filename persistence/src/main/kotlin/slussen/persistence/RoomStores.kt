@@ -372,6 +372,8 @@ class RoomMappingStore(private val dao: ConnectionDao) : MappingStore {
 
     override suspend fun sentThrough(bankAccountId: Long): SentThrough = dao.sentThrough(bankAccountId)
 
+    override suspend fun sentForIdentification(bankAccountId: Long): SentThrough = dao.sentForIdentification(bankAccountId)
+
     override suspend fun identify(bankAccountId: Long, identification: NewIdentification, confirmed: SentThrough?): IdentificationStored =
         dao.identify(bankAccountId, identification, confirmed)
 

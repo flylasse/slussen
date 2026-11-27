@@ -233,9 +233,10 @@ data class SentThrough(val sent: Int, val rejected: Int) {
         // UC-009 BR-003: A transaction counts as sent through the Account Mapping when it was sent from the Bank Account to the Budget Account the Account Mapping now names, also through an earlier Account Mapping of the Bank Account to that Budget Account; a rejected one is counted apart.
         /**
          * The count for one Bank Account from [records], the Sent Records of its own Bank Transactions, for the Budget
-         * Account [budgetAccountId] its Account Mapping names. A Bank Account without an Account Mapping (null) counts
-         * every Budget Account it sent to: a new identification of it is never stored without the confirmation while
-         * something it sent was written anywhere (an assumption of build-out phase B5, the conservative reading).
+         * Account [budgetAccountId] its Account Mapping names, as a move or a removal states it. With null, every Budget
+         * Account it sent to counts: what a new identification states, mapped or not, so that it is never stored
+         * without the confirmation while something the Bank Account sent was written anywhere (the conservative reading
+         * of BR-007 the orchestrator chose after the review of build-out phase B5).
          */
         fun of(records: List<StoredSentRecord>, budgetAccountId: Long?): SentThrough {
             val byTransaction = records.groupBy { it.storedBankTransaction }
@@ -368,16 +369,23 @@ interface MappingStore {
      */
     suspend fun setOtherSide(bankAccountId: Long, kind: OtherSideKind, budgetAccountId: Long?): OtherSideStored
 
-    /** BR-003, BR-007: what was sent through the Account Mapping of [bankAccountId] ([SentThrough.of]); none when there is no such Bank Account. */
+    /** BR-003: what was sent through the Account Mapping of [bankAccountId] ([SentThrough.of] for its Budget Account); none when there is no such Bank Account. */
     suspend fun sentThrough(bankAccountId: Long): SentThrough
+
+    /**
+     * BR-007: what a new identification of [bankAccountId] states: its written sends to any Budget Account, mapped or
+     * not ([SentThrough.of] with no Budget Account); none when there is no such Bank Account.
+     */
+    suspend fun sentForIdentification(bankAccountId: Long): SentThrough
 
     /**
      * UC-009 steps 4-6, A1, A6, A7: records [identification] as how the Source identifies [bankAccountId], with
      * `identified_at`, in one transaction that raises `state_version`; no Transaction Status depends on it, so the
      * Comparison marker is left as it is (BR-015 names no identification). Refused, storing nothing, when another Bank
      * Account of the same Data Provider has that reference or fingerprint, or reports its balance (A2, BR-004), when the
-     * reference is left out (BR-004), and, when the reference or the fingerprint changes, while [SentThrough.needsConfirmation]
-     * holds and [confirmed] is not the count as it is now (BR-007, entity model `ACCOUNT_MAPPING`). The Account Mapping,
+     * reference is left out (BR-004), and, when the reference or the fingerprint changes, while
+     * [SentThrough.needsConfirmation] holds for [sentForIdentification] and [confirmed] is not that count as it is now
+     * (BR-007, entity model `ACCOUNT_MAPPING`). The Account Mapping,
      * `first_sent_at` and every Sent Record stay.
      */
     suspend fun identify(bankAccountId: Long, identification: NewIdentification, confirmed: SentThrough?): IdentificationStored

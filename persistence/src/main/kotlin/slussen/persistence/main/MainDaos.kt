@@ -19,6 +19,7 @@ import slussen.core.port.NewIdentification
 import slussen.core.port.SentRecordOutcome
 import slussen.core.port.SentThrough
 import slussen.core.port.StoredSentRecord
+import slussen.core.port.TransferDecision
 import slussen.persistence.valueOfText
 import java.time.Instant
 import java.time.LocalDate
@@ -368,6 +369,13 @@ abstract class ConnectionDao : StateVersionDao {
         return SentThrough.of(sentRecordsOfBankAccount(bankAccountId).map { it.stored() }, mappingOf(bankAccountId)?.budgetAccountId)
     }
 
+    /** UC-009 BR-007: what a new identification of [bankAccountId] states: its written sends to any Budget Account, mapped or not. */
+    @Transaction
+    open suspend fun sentForIdentification(bankAccountId: Long): SentThrough {
+        if (bankAccount(bankAccountId) == null) return SentThrough.NONE
+        return SentThrough.of(sentRecordsOfBankAccount(bankAccountId).map { it.stored() }, budgetAccountId = null)
+    }
+
     /**
      * Entity model `ACCOUNT_MAPPING`: what blocks a move, a removal or a new identification of [bankAccountId] inside the
      * caller's transaction: the count as it is now, while something sent through the Account Mapping was written and
@@ -404,8 +412,8 @@ abstract class ConnectionDao : StateVersionDao {
         // UC-009 BR-004: A Left-Out Bank Account is never identified as a Bank Account until the Operator brings it back.
         if (leftOutOf(provider, reference) != null) return IdentificationStored.LeftOut
         val changes = account.providerReference != reference || account.bankAccountFingerprint != fingerprint
-        // UC-009 BR-007: Once a transaction sent through its Account Mapping was written, already present, not yet known or unknown, the Bank Account is identified again only with the Operator's confirmation of their number.
-        if (changes) unconfirmed(id, confirmed)?.let { return IdentificationStored.ToConfirm(it) }
+        // UC-009 BR-007: Once a transaction sent through its Account Mapping was written, already present, not yet known or unknown, the Bank Account is identified again only with the Operator's confirmation of their number; every written send of the Bank Account counts, to any Budget Account (the conservative reading).
+        if (changes) sentForIdentification(id).takeIf { it.needsConfirmation && it != confirmed }?.let { return IdentificationStored.ToConfirm(it) }
         updateIdentification(id, reference, fingerprint, identification.providerBankId, identification.identifiedAt)
         raiseStateVersion()
         return IdentificationStored.Stored
@@ -426,7 +434,41 @@ abstract class ConnectionDao : StateVersionDao {
     protected abstract suspend fun deleteMapping(bankAccountId: Long)
 
     @Query("UPDATE bank_transaction SET status = NULL WHERE bank_account_id = :bankAccountId")
-    protected abstract suspend fun notComparedYet(bankAccountId: Long)
+    protected abstract suspend fun emptyStatuses(bankAccountId: Long)
+
+    /** The Transfers without a Transfer Decision with a Transfer Leg of [bankAccountId], none of whose Transfer Legs was uploaded. */
+    @Query(
+        "SELECT t.id FROM transfer t WHERE t.decision = :proposed " +
+            "AND EXISTS (SELECT 1 FROM bank_transaction bt WHERE bt.transfer_id = t.id AND bt.bank_account_id = :bankAccountId) " +
+            "AND NOT EXISTS (SELECT 1 FROM bank_transaction bt JOIN sent_record sr ON sr.bank_transaction_id = bt.id " +
+            "WHERE bt.transfer_id = t.id AND sr.outcome != :rejected)",
+    )
+    protected abstract suspend fun undecidedTransfersOf(bankAccountId: Long, proposed: String, rejected: String): List<Long>
+
+    @Query("UPDATE bank_transaction SET transfer_id = NULL WHERE transfer_id IN (:transferIds)")
+    protected abstract suspend fun releaseLegsOf(transferIds: List<Long>)
+
+    @Query("DELETE FROM transfer WHERE id IN (:transferIds) AND decision = :proposed")
+    protected abstract suspend fun deleteUndecided(transferIds: List<Long>, proposed: String)
+
+    /**
+     * Inside the caller's transaction: every Transfer without a Transfer Decision with a Transfer Leg of [bankAccountId]
+     * and no uploaded Transfer Leg is removed, with its Transfer Legs released; one the Operator decided on is left to
+     * O-5 (UC-005 BR-015).
+     */
+    private suspend fun releaseUndecided(bankAccountId: Long) {
+        // UC-009 BR-015: A Bank Account that lost its Account Mapping, or is not compared yet in the Budget it is mapped into now, is in no Transfer that Slussen proposes; a Transfer the Operator decided on is kept or dropped as UC-005 BR-015 says.
+        val ids = undecidedTransfersOf(bankAccountId, TransferDecision.Proposed.text, SentRecordOutcome.Rejected.text)
+        if (ids.isEmpty()) return
+        releaseLegsOf(ids)
+        deleteUndecided(ids, TransferDecision.Proposed.text)
+    }
+
+    /** The Bank Transactions of [bankAccountId] not compared yet, and the Transfers it proposed among them released. */
+    private suspend fun notComparedYet(bankAccountId: Long) {
+        emptyStatuses(bankAccountId)
+        releaseUndecided(bankAccountId)
+    }
 
     /**
      * O-13, UC-009 A8: the Account Mapping moved to [budgetAccountId] with `first_sent_at` emptied, in one transaction
@@ -476,6 +518,7 @@ abstract class ConnectionDao : StateVersionDao {
         if (mappingOf(bankAccountId) == null) return MappingStored.NotAllowed
         // UC-009 BR-003: Once a transaction sent through the Account Mapping was written, already present, not yet known or unknown, it is removed only by the Operator's confirmed action, which states their number.
         unconfirmed(bankAccountId, confirmed)?.let { return MappingStored.ToConfirm(it) }
+        releaseUndecided(bankAccountId)
         deleteMapping(bankAccountId)
         storedWithStatusesToGive()
         return MappingStored.Stored

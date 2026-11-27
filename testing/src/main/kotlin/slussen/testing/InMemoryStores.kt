@@ -28,7 +28,9 @@ import slussen.core.port.IdentificationStored
 import slussen.core.port.KeptOutcome
 import slussen.core.port.MappingStored
 import slussen.core.port.NewIdentification
+import slussen.core.port.SentRecordOutcome
 import slussen.core.port.SentThrough
+import slussen.core.port.TransferDecision
 import slussen.core.port.StoredSentRecord
 import slussen.core.port.MappingStore
 import slussen.core.port.NewBackOff
@@ -484,9 +486,16 @@ class InMemoryConnectionStore(val stateVersion: InMemoryStateVersion = InMemoryS
     override suspend fun sentThrough(bankAccountId: Long): SentThrough =
         bankAccountList.firstOrNull { it.id == bankAccountId }?.let(::sentThroughNow) ?: SentThrough.NONE
 
+    override suspend fun sentForIdentification(bankAccountId: Long): SentThrough =
+        if (bankAccountList.any { it.id == bankAccountId }) SentThrough.of(sentRecordsOf(bankAccountId), budgetAccountId = null) else SentThrough.NONE
+
     /** Entity model `ACCOUNT_MAPPING`: while something sent through it was written, only with the Operator's confirmation of the numbers as they are now. */
     private fun unconfirmed(bankAccount: StoredBankAccount, confirmed: SentThrough?): SentThrough? =
         sentThroughNow(bankAccount).takeIf { it.needsConfirmation && it != confirmed }
+
+    /** A new identification counts the written sends of the Bank Account to any Budget Account (UC-009 BR-007). */
+    private fun unconfirmedIdentification(bankAccount: StoredBankAccount, confirmed: SentThrough?): SentThrough? =
+        SentThrough.of(sentRecordsOf(bankAccount.id), budgetAccountId = null).takeIf { it.needsConfirmation && it != confirmed }
 
     override suspend fun identify(bankAccountId: Long, identification: NewIdentification, confirmed: SentThrough?): IdentificationStored {
         storing()
@@ -502,7 +511,7 @@ class InMemoryConnectionStore(val stateVersion: InMemoryStateVersion = InMemoryS
         if (usedBy != null) return IdentificationStored.AlreadyUsed(usedBy.name)
         if (leftOutList.any { it.dataProviderId == provider && it.providerReference == reference }) return IdentificationStored.LeftOut
         val changes = bankAccount.providerReference != reference || bankAccount.bankAccountFingerprint != fingerprint
-        if (changes) unconfirmed(bankAccount, confirmed)?.let { return IdentificationStored.ToConfirm(it) }
+        if (changes) unconfirmedIdentification(bankAccount, confirmed)?.let { return IdentificationStored.ToConfirm(it) }
         bankAccountList.replaceAll {
             if (it.id != bankAccountId) {
                 it
@@ -533,6 +542,26 @@ class InMemoryConnectionStore(val stateVersion: InMemoryStateVersion = InMemoryS
     /** As O-13 does: a Bank Account mapped into another Budget is not compared there yet, so no status the old one gave it stays. */
     private fun notComparedYet(bankAccountId: Long) {
         transactionStore?.bankTransactions?.replaceAll { if (it.bankAccountId == bankAccountId) it.copy(status = null) else it }
+        released(bankAccountId)
+    }
+
+    /**
+     * As O-13 does: every Transfer without a Transfer Decision with a Transfer Leg of [bankAccountId], none of whose
+     * Transfer Legs was uploaded, is removed and its Transfer Legs are in no Transfer; one the Operator decided on is
+     * left to O-5 (UC-005 BR-015).
+     */
+    private fun released(bankAccountId: Long) {
+        val store = transactionStore ?: return
+        val uploaded = sentRecords.filter { it.outcome != SentRecordOutcome.Rejected }.map { it.storedBankTransaction }.toSet()
+        val legsOf = store.bankTransactions.filter { it.transferId != null }.groupBy { it.transferId }
+        val releasedIds = store.transfers
+            .filter { it.decision == TransferDecision.Proposed }
+            .filter { transfer -> legsOf[transfer.id].orEmpty().let { legs -> legs.any { it.bankAccountId == bankAccountId } && legs.none { it.id in uploaded } } }
+            .map { it.id }
+            .toSet()
+        if (releasedIds.isEmpty()) return
+        store.bankTransactions.replaceAll { if (it.transferId in releasedIds) it.copy(transferId = null) else it }
+        store.transfers.removeAll { it.id in releasedIds }
     }
 
     override suspend fun move(bankAccountId: Long, budgetAccountId: Long, confirmed: SentThrough?): MappingStored {
@@ -562,6 +591,7 @@ class InMemoryConnectionStore(val stateVersion: InMemoryStateVersion = InMemoryS
         val bankAccount = bankAccountList.firstOrNull { it.id == bankAccountId } ?: return MappingStored.NotFound
         if (bankAccount.mapping == null) return MappingStored.NotAllowed
         unconfirmed(bankAccount, confirmed)?.let { return MappingStored.ToConfirm(it) }
+        released(bankAccountId)
         bankAccountList.replaceAll { if (it.id == bankAccountId) it.copy(mapping = null) else it }
         storedWithStatusesToGive()
         return MappingStored.Stored

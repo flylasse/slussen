@@ -565,4 +565,83 @@ class UC009ManageAccountMappingsPersistenceIT {
         assertFalse(pending())
         assertTrue(connections.bankAccounts().single { it.id == other }.providerReference == "acct-7781")
     }
+
+    // ---- Build-out phase B5, after its review ---------------------------------------------------------------------------
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A8: Move an Account Mapping or Map a Bank Account Again", businessRules = ["BR-003"])
+    @DisplayName("BR-003 (O-13, with a planted Sent Record): a written send of another Bank Account's Bank Transaction to the same Budget Account does not count for this one: its move is stored without a confirmation")
+    fun aSendOfAnotherBankAccountDoesNotCount() = runBlocking {
+        val mapped = mapped()
+        val mappings = RoomMappingStore(main.connections())
+        transactionOf(1, mapped.card, TransactionStatus.New.text)
+        sent(1, mapped.budgetAccounts.getValue("Checking"), mapped.householdId, SentRecordOutcome.Written)
+
+        assertEquals(SentThrough.NONE, mappings.sentThrough(mapped.checking))
+        assertEquals(SentThrough.NONE, mappings.sentForIdentification(mapped.checking))
+        assertEquals(MappingStored.Stored, mappings.move(mapped.checking, mapped.budgetAccounts.getValue("Travel Card"), confirmed = null))
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A7: Identify Again After Transactions Were Sent", businessRules = ["BR-007"])
+    @DisplayName("BR-007 (O-13, with a planted Sent Record, the conservative reading): an identification counts the Bank Account's written sends to any Budget Account: sent to Checking through an earlier Account Mapping, a Bank Account now mapped to Travel Card is not identified again unconfirmed, though its move asks nothing")
+    fun anIdentificationCountsWrittenSendsToAnyBudgetAccount() = runBlocking {
+        val feeds = RoomPluginRegistryStore(main.registry()).reconcile(
+            listOf(DataProviderRegistration("Kestrel Feeds", "example-feeds", true, false, 60, RequestLimitDeclaration.Published(20, "an invented source"))),
+            emptyList(),
+        ).dataProviders.single().id
+        val mapped = mapped()
+        val mappings = RoomMappingStore(main.connections())
+        val accounts = mapped.budgetAccounts
+        val provided = (
+            connections.addBankAccount(
+                newBankAccount(accounts.getValue("Travel Card")).copy(
+                    generatedIdentifier = "f6e8c0a2-5b7d-4e9f-9a31-4d5e6f7a8b92", name = "Kestrel Travel", dataProviderId = feeds, providerReference = "acct-4410",
+                ),
+            ) as AddOutcome.Added
+            ).bankAccountId
+        transactionOf(1, provided, TransactionStatus.New.text)
+        sent(1, accounts.getValue("Checking"), mapped.householdId, SentRecordOutcome.Written)
+        val identification = NewIdentification("acct-5512", null, null, now)
+
+        assertEquals(SentThrough.NONE, mappings.sentThrough(provided))
+        assertEquals(SentThrough(1, 0), mappings.sentForIdentification(provided))
+        assertEquals(IdentificationStored.ToConfirm(SentThrough(1, 0)), mappings.identify(provided, identification, confirmed = null))
+        assertEquals("acct-4410", stored(provided).providerReference)
+        assertEquals(IdentificationStored.Stored, mappings.identify(provided, identification, confirmed = SentThrough(1, 0)))
+
+        assertTrue(mappings.remove(provided, confirmed = null) == MappingStored.Stored)
+        assertEquals(SentThrough(1, 0), mappings.sentForIdentification(provided))
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A11: Remove an Account Mapping", businessRules = ["BR-015"])
+    @DisplayName("A11, A8, BR-015 (O-13): a Transfer without a Transfer Decision with a Transfer Leg in the Bank Account whose Account Mapping is removed, or that is moved into another Budget, is removed with its Transfer Legs released in the same transaction; a Transfer the Operator decided on is left as it is for O-5")
+    fun aRemovalAndAMoveIntoAnotherBudgetReleaseAnUndecidedTransfer() = runBlocking {
+        val mapped = mapped()
+        val mappings = RoomMappingStore(main.connections())
+        val accounts = mapped.budgetAccounts
+        transactionOf(1, mapped.card, TransactionStatus.TransferLeg.text)
+        transactionOf(2, mapped.saver, TransactionStatus.TransferLeg.text)
+        transactionOf(3, mapped.checking, TransactionStatus.TransferLeg.text)
+        val copy = main.budgetAppCopy()
+        fun transfer(decision: TransferDecision) = TransferEntity(
+            outflowBudgetAccountId = accounts.getValue("Checking"), inflowBudgetAccountId = accounts.getValue("Rewards Card"), amount = 18_000,
+            transferType = TransferType.CardPayment.text, guessed = false, decision = decision.text, decidedAt = if (decision == TransferDecision.Proposed) null else now,
+        )
+        val proposed = copy.insertTransfer(transfer(TransferDecision.Proposed))
+        val confirmed = copy.insertTransfer(transfer(TransferDecision.Confirmed))
+        val ofChecking = copy.insertTransfer(transfer(TransferDecision.Proposed))
+        copy.storeTransferOf(listOf(1), proposed)
+        copy.storeTransferOf(listOf(2), confirmed)
+        copy.storeTransferOf(listOf(3), ofChecking)
+
+        assertEquals(MappingStored.Stored, mappings.remove(mapped.card, confirmed = null))
+        assertEquals(MappingStored.Stored, mappings.remove(mapped.saver, confirmed = null))
+        assertEquals(MappingStored.Stored, mappings.move(mapped.checking, accounts.getValue("Health Savings"), confirmed = null))
+
+        assertEquals(setOf(confirmed), copy.transfers().map { it.id }.toSet())
+        val transferIds = main.fetches().let { fetches -> listOf(mapped.card, mapped.saver, mapped.checking).map { fetches.bankTransactionsOf(it).single().transferId } }
+        assertEquals(listOf(null, confirmed, null), transferIds)
+    }
 }

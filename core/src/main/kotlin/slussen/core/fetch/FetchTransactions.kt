@@ -330,7 +330,9 @@ class FetchTransactions(
         val offeredAt = clock.instant()
         val leftOut = connections.leftOutBankAccounts().filter { it.dataProviderId == stored.id }.map { it.providerReference }.toSet()
         // UC-009 BR-009: The Offered Bank Accounts of a Data Provider are replaced by those of its latest delivery, of the number only the last four digits and the fingerprint.
-        offered.replaceOffered(stored.id, null, delivered.map { offeredOf(stored, it, offeredAt, it.providerReference in leftOut) })
+        val kept = delivered.map { offeredOf(stored, it, offeredAt, it.providerReference in leftOut) }
+        val proposals = proposedMatches(stored, kept, leftOut)
+        offered.replaceOffered(stored.id, null, kept.map { it.copy(proposedBankAccountId = proposals[it.providerReference]) })
         val references = delivered.map { it.providerReference }.toSet()
         // UC-001 BR-011: A Bank Account is identified with certainty by the identifier its Data Provider gives it, a file-imported one by the identifier its balance Data Provider gives it.
         val identified = toRead.filter { it.read.providerReference in references }.map { it.bankAccount.name }
@@ -566,6 +568,27 @@ class FetchTransactions(
             proposedBankAccountId = null,
             offeredAt = offeredAt,
         )
+    }
+
+    // UC-009 BR-004: Slussen only proposes a likely Bank Account, for the Operator to confirm, and never when two Bank Accounts are possible or the Bank Account is still identified by its own reference; a Left-Out Bank Account is never proposed.
+    /**
+     * UC-013 A6, UC-009 steps 2-4: the added Bank Account each of [kept], one delivery of the Data Provider [stored], is
+     * proposed as a likely match of, by its reference: an Offered Bank Account that is not left out and whose Bank
+     * Account Fingerprint (ADR-008 §8) equals that of exactly one added Bank Account of the Data Provider, when it is
+     * the only one of the delivery with that fingerprint and that Bank Account's own reference is not delivered. Nothing
+     * is identified here: the Operator confirms or rejects the proposal in Manage Account Mappings.
+     */
+    private suspend fun proposedMatches(stored: StoredDataProvider, kept: List<NewOfferedBankAccount>, leftOut: Set<String>): Map<String, Long> {
+        val added = connections.bankAccounts().filter { it.dataProviderId == stored.id }
+        val delivered = kept.map { it.providerReference }.toSet()
+        return kept.mapNotNull { offer ->
+            val fingerprint = offer.bankAccountFingerprint ?: return@mapNotNull null
+            if (offer.providerReference in leftOut || kept.count { it.bankAccountFingerprint == fingerprint } != 1) return@mapNotNull null
+            if (added.any { it.providerReference == offer.providerReference }) return@mapNotNull null
+            val match = added.filter { it.bankAccountFingerprint == fingerprint }.singleOrNull() ?: return@mapNotNull null
+            if (match.providerReference in delivered) return@mapNotNull null
+            offer.providerReference to match.id
+        }.toMap()
     }
 
     /**

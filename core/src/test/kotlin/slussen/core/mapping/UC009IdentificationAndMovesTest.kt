@@ -14,7 +14,14 @@ import slussen.core.connection.OtherSideShown
 import slussen.core.identity.ImportIdentifierInput
 import slussen.core.identity.ImportIdentifierProtocol
 import slussen.core.operation.OperationRefusal
+import slussen.core.identity.BankAccountFingerprint
 import slussen.core.port.BankAccountType
+import slussen.pluginapi.provider.BankAccountResult
+import slussen.pluginapi.provider.DeliveredBankAccount
+import slussen.pluginapi.provider.FetchResponse
+import slussen.pluginapi.provider.NotReadCause
+import slussen.pluginapi.provider.SourceOutcome
+import slussen.pluginapi.value.BankAccountNumber
 import slussen.core.port.BudgetAccountToStore
 import slussen.core.port.BudgetToServe
 import slussen.core.port.CoordinatorMode
@@ -736,18 +743,177 @@ class UC009IdentificationAndMovesTest {
 
     @Test
     @UseCase(id = "UC-009", scenario = "Main Success Scenario", businessRules = ["BR-003"])
-    @DisplayName("Step 1, BR-003: whether transactions were sent through the Account Mapping is read from the Sent Records of the Bank Account's own Bank Transactions to its current Budget Account, a rejected one included, and not from the time of a first send alone")
+    @DisplayName("Step 1, BR-003: whether transactions were sent through the Account Mapping is read from the Sent Records of the Bank Account's own Bank Transactions to its current Budget Account, a rejected one included, also while the time of the first send is empty; a Bank Account whose only Sent Record went to another Budget Account is not shown as sent through, and one with the time of a first send recorded is (that time is set at the first send, whatever its outcome)")
     fun stepOneShowsSentThroughFromTheSentRecords() = runTest {
         val (checking, bought) = checkingWithOne()
         val card = rewardsCard()
         val joint = joint()
+        val reserve = bankAccount("Reserve Saver", "Reserve Savings", BankAccountType.Savings)
         val ofCard = stored(card, "TX-3", oct13, amount(40))
         val ofJoint = stored(joint, "TX-4", oct13, amount(-12))
         sent(bought, budgetAccount("Checking"))
         sent(ofCard, budgetAccount("Rewards Card"), SentRecordOutcome.Rejected)
         sent(ofJoint, budgetAccount("Travel Card"))
+        slice.connectionStore.bankAccountList.replaceAll { if (it.id == reserve) it.copy(mapping = it.mapping!!.copy(firstSentAt = now.minus(Duration.ofDays(1)))) else it }
 
-        assertEquals(listOf(true, true, false), listOf(checking, card, joint).map { shown(it).sentThrough })
+        assertTrue(listOf(checking, card, joint).all { bankAccountOf(it).mapping!!.firstSentAt == null })
+        assertEquals(listOf(true, true, false, true), listOf(checking, card, joint, reserve).map { shown(it).sentThrough })
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A7: Identify Again After Transactions Were Sent", businessRules = ["BR-007"])
+    @DisplayName("A7, BR-007 (the conservative reading): an identification counts every written send of the Bank Account's own Bank Transactions, to any Budget Account: after a confirmed move from Checking to Travel Card, identifying again still asks first with the send that stays in Checking")
+    fun anIdentificationOfAMappedBankAccountCountsWrittenSendsToAnyBudgetAccount() = runTest {
+        val (checking, bought) = checkingWithOne()
+        val offered = offered(proposedFor = checking)
+        sent(bought, budgetAccount("Checking"))
+        assertEquals(storedNow, slice.mappings.move(checking, budgetAccount("Travel Card"), confirmed = one(sent = 1)))
+        val unchanged = Unchanged()
+
+        assertEquals(SentThrough.NONE, slice.mappings.moveSheet(checking)!!.sentThrough)
+        assertEquals(one(sent = 1), slice.mappings.identification(checking)!!.sentThrough)
+        assertEquals(IdentifyOutcome.ToConfirm(one(sent = 1)), slice.mappings.identify(checking, offered.getValue("acct-new-4410")))
+
+        unchanged.check()
+        assertEquals(IdentifyOutcome.Identified, slice.mappings.identify(checking, offered.getValue("acct-new-4410"), confirmed = one(sent = 1)))
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A7: Identify Again After Transactions Were Sent", businessRules = ["BR-007"])
+    @DisplayName("A7, BR-007 (the conservative reading): a Bank Account without an Account Mapping counts its written sends to any Budget Account before a new identification: removed after a written send to Checking, identifying it again asks first")
+    fun anIdentificationOfABankAccountWithoutAnAccountMappingCountsItsWrittenSends() = runTest {
+        val (checking, bought) = checkingWithOne()
+        val offered = offered(proposedFor = checking)
+        sent(bought, budgetAccount("Checking"))
+        assertEquals(storedNow, slice.mappings.remove(checking, confirmed = one(sent = 1)))
+        val unchanged = Unchanged()
+
+        assertEquals(one(sent = 1), slice.connectionStore.sentThrough(checking))
+        assertEquals(IdentifyOutcome.ToConfirm(one(sent = 1)), slice.mappings.identify(checking, offered.getValue("acct-new-4410")))
+
+        unchanged.check()
+    }
+
+    // ---- UC-013 A6, UC-009 steps 2-4: the proposal a Fetch stores ------------------------------------------------------------
+
+    /** Kestrel Feeds lists [delivered] in a Fetch; none of them is read (UC-001 step 6). */
+    private fun delivers(vararg delivered: Triple<String, String, String?>) {
+        slice.feeds.fetchAnswer = {
+            FetchResponse(
+                SourceOutcome.Completed,
+                emptyList(),
+                delivered.map { (reference, name, number) ->
+                    DeliveredBankAccount(reference, "Kestrel Bank", name, "checking", USD, number?.let(::BankAccountNumber), BankAccountResult.NotRead(NotReadCause.NotSelected, null))
+                },
+            )
+        }
+    }
+
+    private fun fingerprintOf(number: String) = BankAccountFingerprint.of("example-feeds", "Kestrel Bank", BankAccountNumber(number))
+
+    private suspend fun proposals(): Map<String, Long?> = slice.offeredStore.offered().associate { it.providerReference to it.proposedBankAccountId }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "Main Success Scenario", businessRules = ["BR-004", "BR-009"])
+    @DisplayName("UC-013 A6, steps 2-7: a Fetch that delivers, under a new reference, the Bank Account Fingerprint of an added Bank Account stores that Offered Bank Account as its proposed match; the Bank Account waits for confirmation, the Operator confirms the proposal shown, and its new identification is recorded")
+    fun aFetchStoresTheProposedMatchAndTheOperatorConfirmsIt() = runTest {
+        ready()
+        val checking = checking()
+        slice.connectionStore.bankAccountList.replaceAll { if (it.id == checking) it.copy(bankAccountFingerprint = fingerprintOf("4410-2290-0001")) else it }
+        delivers(Triple("acct-new-4410", "Kestrel Everyday", "4410 2290 0001"), Triple("acct-other-7781", "Kestrel Household", "7781-0000-0002"))
+
+        slice.fetch.fetch(slice.feedsKey)
+
+        assertEquals(mapOf("acct-new-4410" to checking, "acct-other-7781" to null), proposals())
+        assertTrue(shown(checking).waitsForConfirmation)
+        val proposed = slice.mappings.identification(checking)!!.proposed!!
+        assertEquals("Kestrel Everyday", proposed.name)
+        assertEquals("0001", proposed.lastFourDigits)
+
+        assertEquals(IdentifyOutcome.Identified, slice.mappings.identify(checking, proposed.offeredBankAccountId))
+
+        assertEquals("acct-new-4410", bankAccountOf(checking).providerReference)
+        assertFalse(shown(checking).waitsForConfirmation)
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "Main Success Scenario", businessRules = ["BR-004"])
+    @DisplayName("BR-004, UC-013 A6: a Fetch proposes no match when two delivered Bank Accounts have the fingerprint, while the Bank Account's own reference is still delivered, for a Left-Out Bank Account, and for a fingerprint no added Bank Account has")
+    fun aFetchProposesNoMatchWhereItWouldGuess() = runTest {
+        ready()
+        val checking = checking()
+        val fingerprint = fingerprintOf("4410-2290-0001")
+        slice.connectionStore.bankAccountList.replaceAll { if (it.id == checking) it.copy(bankAccountFingerprint = fingerprint) else it }
+
+        delivers(Triple("acct-new-4410", "Kestrel Everyday", "4410 2290 0001"), Triple("acct-twin-4411", "Kestrel Twin", "4410229 00001"))
+        slice.fetch.fetch(slice.feedsKey)
+        assertEquals(mapOf("acct-new-4410" to null, "acct-twin-4411" to null), proposals())
+
+        delivers(Triple("acct-$checking", "Kestrel Checking", "4410 2290 0001"), Triple("acct-new-4410", "Kestrel Everyday", "4410 2290 0001"))
+        slice.fetch.fetch(slice.feedsKey)
+        assertTrue(proposals().values.all { it == null })
+
+        slice.connectionStore.leaveOut(listOf(NewLeftOutBankAccount(slice.feedsId, "acct-new-4410", "Kestrel Everyday", now)))
+        delivers(Triple("acct-new-4410", "Kestrel Everyday", "4410 2290 0001"), Triple("acct-other-7781", "Kestrel Household", "7781-0000-0002"))
+        slice.fetch.fetch(slice.feedsKey)
+        assertTrue(proposals().values.all { it == null })
+        assertFalse(shown(checking).waitsForConfirmation)
+    }
+
+    @Test
+    @UseCase(id = "UC-009", businessRules = ["BR-003"])
+    @DisplayName("C-005, NFR-012: no Decision Journal entry of an identification, a move, a removal or the statuses given again after them names the payee of a Bank Transaction")
+    fun noJournalEntryOfTheseChangesNamesAPayee() = runTest {
+        val (paid, received) = plainPair()
+        val checking = transaction(paid).bankAccountId
+        val offered = offered(proposedFor = checking)
+        val journaled = slice.journalRecorder.entries.size
+
+        assertEquals(IdentifyOutcome.Identified, slice.mappings.identify(checking, offered.getValue("acct-new-4410")))
+        assertEquals(storedNow, slice.mappings.move(checking, budgetAccount("Joint Checking")))
+        assertEquals(storedNow, slice.mappings.remove(transaction(received).bankAccountId))
+
+        val recorded = slice.journalRecorder.entries.drop(journaled)
+        assertTrue(recorded.any { it.eventKind == JournalEventKind.StatusChanged })
+        assertTrue(recorded.none { it.details.contains("PLANTED-PAYEE") }, recorded.joinToString { it.details })
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A11: Remove an Account Mapping", businessRules = ["BR-015"])
+    @DisplayName("A11, BR-015: a Transfer without a Transfer Decision whose only Transfer Leg lies in the Bank Account whose Account Mapping is removed is released: the Transfer is no longer stored and its Bank Transaction is in no Transfer")
+    fun aRemovalReleasesALonelyTransferWithoutADecision() = runTest {
+        ready()
+        checking()
+        val card = rewardsCard()
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
+        val received = stored(card, "TX-1", oct13, amount(120), payee = "AUTOPAY")
+        compare()
+        val lonely = transferOf(received)!!
+        assertEquals(TransferDecision.Proposed, lonely.decision)
+
+        assertEquals(storedNow, slice.mappings.remove(card))
+
+        assertTrue(slice.copyStore.transfers.none { it.id == lonely.id })
+        assertNull(transaction(received).transferId)
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A8: Move an Account Mapping or Map a Bank Account Again", businessRules = ["BR-015"])
+    @DisplayName("A8, BR-015: a Transfer without a Transfer Decision whose only Transfer Leg lies in a Bank Account moved into a Budget not read yet is released, while a Lonely Transfer the Operator confirmed is judged as UC-005 BR-015 says and never released this way")
+    fun aMoveIntoABudgetNotReadYetReleasesALonelyTransferWithoutADecision() = runTest {
+        ready()
+        checking()
+        val card = rewardsCard()
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
+        val received = stored(card, "TX-1", oct13, amount(120), payee = "AUTOPAY")
+        compare()
+        val lonely = transferOf(received)!!
+
+        assertEquals(storedNow, slice.mappings.move(card, budgetAccount("Health Savings")))
+
+        assertTrue(slice.copyStore.transfers.none { it.id == lonely.id })
+        assertNull(transaction(received).transferId)
+        assertNull(status(received))
     }
 
     // ---- UC-005 BR-015, S-B-17: what a move or a removal does to a Transfer the Operator decided on ------------------------
