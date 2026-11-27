@@ -63,8 +63,12 @@ sealed interface FileImportOutcome {
     /** Step 1: no Bank Account of this build whose transactions come from Transaction Files has this id. */
     data object NotAFileImportedBankAccount : FileImportOutcome
 
-    /** NFR-023: the stored data could not be read or written; nothing of the file is taken in. */
-    data object NotStored : FileImportOutcome
+    /**
+     * NFR-023: the stored data could not be read or written; nothing of the file is taken in. [recordedAsRejected] says
+     * whether the file was then recorded as rejected (ADR-002 §3 O-3), so that the screen can say whether the Source
+     * Health shows the failure; false also when nothing was written because the stored data could not be read.
+     */
+    data class NotStored(val recordedAsRejected: Boolean) : FileImportOutcome
 
     /** Precondition (UC-006 BR-005): an Upload Plan awaits confirmation or an Upload is written; nothing is started. */
     data class Unavailable(val reason: OperationRefusal) : FileImportOutcome

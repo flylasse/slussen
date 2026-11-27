@@ -552,7 +552,7 @@ class UC002ImportATransactionFileTest {
 
         val outcome = import(harbor, line(oct10, -12_340), line(oct12, -5_000), line(oct14, -7_000))
 
-        assertEquals(FileImportOutcome.NotStored, outcome)
+        assertEquals(FileImportOutcome.NotStored(recordedAsRejected = true), outcome)
         assertEquals(before, identities())
         assertEquals(versionBefore, slice.stateVersion.value)
         assertEquals(listOf(TransactionFileOutcome.Imported, TransactionFileOutcome.Rejected), filesOf(harbor).map { it.outcome })
@@ -565,6 +565,22 @@ class UC002ImportATransactionFileTest {
         val notRecorded = rejected(slice.fileImport.import(harbor, ByteArray(0)))
         assertFalse(notRecorded.recorded)
         assertEquals(2, filesOf(harbor).size)
+    }
+
+    @Test
+    @UseCase(id = "UC-002", scenario = "Main Success Scenario", businessRules = ["BR-001"])
+    @DisplayName("BR-001 (review of D2): when the import fails part-way and recording the file as rejected fails too, the result says that it was not recorded; nothing of the file is stored")
+    fun aFailedStoreSaysWhetherTheRejectionWasRecorded() = runTest {
+        ready()
+        val harbor = fileBankAccount()
+        slice.importStatusStore.importWholeFailsPartWay = true
+        slice.importStatusStore.recordRejectedFails = true
+
+        val outcome = import(harbor, line(oct10, -12_340), line(oct12, -5_000))
+
+        assertEquals(FileImportOutcome.NotStored(recordedAsRejected = false), outcome)
+        assertTrue(slice.importStatusStore.bankTransactions.isEmpty())
+        assertTrue(filesOf(harbor).isEmpty())
     }
 
     // ---- BR-003 and A4: counting a file against the stored Bank Transactions (survey D risk R1) -------------------
@@ -818,6 +834,77 @@ class UC002ImportATransactionFileTest {
                 ),
                 identities().drop(2),
             )
+        }
+
+        @Test
+        @UseCase(id = "UC-002", scenario = "A4: Transactions That Cannot Be Told Apart", businessRules = ["BR-002", "BR-003"])
+        @DisplayName("BR-003 step 2 (review of D2): a file with two identical lines of one Supplied reference imported three times brings both in at the first import, without a Stable Reference, and nothing new ever after")
+        fun twoLinesOfOneSuppliedReferenceImportedThreeTimes() = runTest {
+            ready()
+            val harbor = fileBankAccount()
+            val wire = line(oct12, -800, payee = "WIRE FEE", reference = "BANK-10", kind = ReferenceKind.Supplied)
+
+            imported(import(harbor, wire, wire))
+            val first = identities()
+            val second = imported(import(harbor, wire, wire))
+            val third = imported(import(harbor, wire, wire))
+
+            assertEquals(
+                listOf(
+                    Identity(1, harbor, f(wire, 1), null, StableReferenceKind.None, 1),
+                    Identity(2, harbor, f(wire, 2), null, StableReferenceKind.None, 2),
+                ),
+                first,
+            )
+            assertEquals(first, identities())
+            assertTrue(second.takenIn.isEmpty() && third.takenIn.isEmpty())
+            assertEquals(listOf(2, 2, 2), filesOf(harbor).map { it.transactionCount })
+        }
+
+        @Test
+        @UseCase(id = "UC-002", scenario = "A4: Transactions That Cannot Be Told Apart", businessRules = ["BR-002", "BR-003"])
+        @DisplayName("BR-003 steps 1-3 (review of D2): with one Bank Transaction stored with the Stable Reference BANK-9, a later file that holds BANK-9 twice, imported three times, brings one more at its first import, without a Stable Reference, and then nothing; the stored one keeps its Stable Reference")
+        fun aStoredSuppliedReferenceTwiceInALaterFile() = runTest {
+            ready()
+            val harbor = fileBankAccount()
+            val fee = line(oct10, -500, payee = "MONTHLY FEE", reference = "BANK-9", kind = ReferenceKind.Supplied)
+            imported(import(harbor, fee))
+            val stored = identities()
+            assertEquals(listOf(Identity(1, harbor, r("BANK-9"), "BANK-9", StableReferenceKind.Supplied, 1)), stored)
+
+            val first = imported(import(harbor, fee, fee))
+            val afterFirst = identities()
+            val second = imported(import(harbor, fee, fee))
+            val third = imported(import(harbor, fee, fee))
+
+            assertEquals(stored + Identity(2, harbor, f(fee, 1), null, StableReferenceKind.None, 1), afterFirst)
+            assertEquals(1, first.takenIn.size)
+            assertEquals(afterFirst, identities())
+            assertTrue(second.takenIn.isEmpty() && third.takenIn.isEmpty())
+        }
+
+        @Test
+        @UseCase(id = "UC-002", scenario = "A4: Transactions That Cannot Be Told Apart", businessRules = ["BR-002", "BR-003"])
+        @DisplayName("BR-003 step 2 (review of D2): two lines of one Supplied reference whose content differs are two Bank Transactions without a Stable Reference, each the first of its identical ones; the same file again brings neither in")
+        fun twoLinesOfOneSuppliedReferenceWithDifferentContent() = runTest {
+            ready()
+            val harbor = fileBankAccount()
+            val small = line(oct12, -800, payee = "WIRE FEE", reference = "BANK-11", kind = ReferenceKind.Supplied)
+            val large = line(oct12, -900, payee = "WIRE FEE", reference = "BANK-11", kind = ReferenceKind.Supplied)
+
+            imported(import(harbor, small, large))
+            val first = identities()
+            val again = imported(import(harbor, small, large))
+
+            assertEquals(
+                listOf(
+                    Identity(1, harbor, f(small, 1), null, StableReferenceKind.None, 1),
+                    Identity(2, harbor, f(large, 1), null, StableReferenceKind.None, 1),
+                ),
+                first,
+            )
+            assertEquals(first, identities())
+            assertTrue(again.takenIn.isEmpty())
         }
     }
 }

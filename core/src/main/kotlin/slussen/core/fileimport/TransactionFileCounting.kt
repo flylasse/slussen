@@ -60,11 +60,14 @@ object TransactionFileCounting {
             if (transaction.reference in storedReferences && claimed.add(transaction.reference)) counted[index] = true
         }
 
-        // UC-002 BR-003: Step 2: every other transaction with a Derived reference is counted, in the order of the file, against the stored Bank Transactions without a Stable Reference identical to it; each stored one is counted once. One with a Supplied reference is not counted here.
+        val sharedInFile = transactions.groupingBy { it.reference }.eachCount()
+
+        // UC-002 BR-003: Step 2: every other transaction is counted, in the order of the file, against the stored Bank Transactions without a Stable Reference identical to it; each stored one is counted once. Only one with a Supplied reference that no other transaction of the file shares is not counted here: it is new.
         val notCountedYet = stored.filter { it.stableReference == null }
             .groupingBy { identicalOf(it.bookedDate, it.amount, it.payee, it.memo) }.eachCount().toMutableMap()
         transactions.forEachIndexed { index, transaction ->
-            if (counted[index] || transaction.referenceKind != StableReferenceKind.Derived) return@forEachIndexed
+            if (counted[index]) return@forEachIndexed
+            if (transaction.referenceKind == StableReferenceKind.Supplied && sharedInFile.getValue(transaction.reference) == 1) return@forEachIndexed
             val identical = identicalOf(transaction)
             val left = notCountedYet[identical] ?: 0
             if (left > 0) {
@@ -73,9 +76,8 @@ object TransactionFileCounting {
             }
         }
 
-        // UC-002 BR-003: Step 3: every transaction left is new; it has its reference as its Stable Reference only when no other transaction of the file has that reference, otherwise none, and then the next occurrence_number after the stored identical ones.
-        val sharedInFile = transactions.groupingBy { it.reference }.eachCount()
         // ADR-008 §5: the number of identical transactions without a Stable Reference of the Bank Account, the new ones of this file included.
+        // UC-002 BR-003: Step 3: every transaction left is new; it has its reference as its Stable Reference only when no other transaction of the file has that reference, otherwise none, and then the next occurrence_number after the stored identical ones.
         val identicalWithoutReference = stored.filter { it.stableReference == null }
             .groupingBy { identicalOf(it.bookedDate, it.amount, it.payee, it.memo) }.eachCount().toMutableMap()
         // ADR-008 §5: every Import Identifier held in the Bank Account, the stored ones and the new ones of this file.

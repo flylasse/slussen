@@ -72,7 +72,7 @@ class ImportTransactionFile(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            return FileImportOutcome.NotStored
+            return FileImportOutcome.NotStored(recordedAsRejected = false)
         }
         val fileFormat = bankAccount?.fileFormatId?.let { id -> plugins.fileFormats.firstOrNull { it.id == id } }
             ?: return FileImportOutcome.NotAFileImportedBankAccount
@@ -111,8 +111,8 @@ class ImportTransactionFile(
             throw cancelled
         } catch (failure: Exception) {
             // ADR-002 §3 O-3: a failure stores none of it, and the core records the file as rejected in a separate step.
-            record(RejectedTransactionFile(bankAccount.id, fileFormat.id, importedAt, NOT_STORED))
-            return FileImportOutcome.NotStored
+            val recorded = record(RejectedTransactionFile(bankAccount.id, fileFormat.id, importedAt, NOT_STORED))
+            return FileImportOutcome.NotStored(recordedAsRejected = recorded)
         }
         val takenIn = when (stored) {
             is WholeImport.Imported -> stored.takenIn
