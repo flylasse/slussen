@@ -70,6 +70,13 @@ import slussen.core.port.StoredProviderRequest
 import slussen.core.port.StoredFirstUploadMatching
 import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.StoredTransactionFile
+import slussen.core.port.FileImportStore
+import slussen.core.port.RejectedTransactionFile
+import slussen.core.port.TransactionFileOutcome
+import slussen.core.port.TransactionFileToImport
+import slussen.core.port.WholeImport
+import slussen.persistence.main.TransactionFileDao
+import slussen.persistence.main.TransactionFileEntity
 import slussen.persistence.device.OfferedBankAccountDao
 import slussen.persistence.device.OfferedBankAccountEntity
 import slussen.persistence.main.AccountBalanceEntity
@@ -534,13 +541,49 @@ class RoomFetchStore(
 }
 
 /**
+ * `transaction_file` and the Bank Transactions of Import a Transaction File (UC-002) in `slussen.db` (ADR-002 §1, O-3).
+ * [identify] computes the Import Identifiers O-3 stores: the protocol of ADR-008, which a test replaces with a test-only
+ * digest to plant a collision (ADR-008 §5).
+ */
+class RoomFileImportStore(
+    private val dao: TransactionFileDao,
+    private val identify: (ImportIdentifierInput) -> String = ImportIdentifierProtocol::importIdentifier,
+) : FileImportStore {
+    override suspend fun importWhole(file: TransactionFileToImport): WholeImport = dao.importWhole(file, identify)
+
+    override suspend fun recordRejected(file: RejectedTransactionFile) {
+        // Entity model TRANSACTION_FILE: rejection_reason is filled exactly when the outcome is Rejected, at most 200 characters.
+        require(file.reason.isNotEmpty() && file.reason.length <= REJECTION_REASON_MAX_LENGTH) { "A rejection reason is filled and at most 200 characters." }
+        dao.insert(
+            TransactionFileEntity(
+                bankAccountId = file.bankAccountId,
+                fileFormatId = file.fileFormatId,
+                importedAt = file.importedAt,
+                outcome = TransactionFileOutcome.Rejected.text,
+                transactionCount = 0,
+                rejectionReason = file.reason,
+            ),
+        )
+    }
+
+    private companion object {
+        /** `TRANSACTION_FILE.rejection_reason` holds at most 200 characters (entity model). */
+        const val REJECTION_REASON_MAX_LENGTH = 200
+    }
+}
+
+/**
  * The import status data of UC-001, UC-002, UC-003 and UC-007. The Fetches with their Fetch Results, the Account
  * Balances and the Back-offs of UC-001 are read from `fetch`, `fetch_result`, `account_balance` and `back_off`, the
- * counts of UC-003 from the Transaction Statuses in `bank_transaction` and `unreadable_transaction`; the other tables
- * (`transaction_file`, `bank_consent`) come with the slices that build those use cases (ADR-002 §1), and until then each
- * of their reads is empty.
+ * Transaction Files of UC-002 from `transaction_file`, the counts of UC-003 from the Transaction Statuses in
+ * `bank_transaction` and `unreadable_transaction`; `bank_consent` comes with the slice that builds UC-007 (ADR-002 §1),
+ * and until then its read is empty.
  */
-class RoomImportStatusStore(private val fetches: FetchDao, private val connections: RoomConnectionStore) : ImportStatusStore {
+class RoomImportStatusStore(
+    private val fetches: FetchDao,
+    private val connections: RoomConnectionStore,
+    private val files: TransactionFileDao,
+) : ImportStatusStore {
     override suspend fun recentFetches(): List<StoredFetch> = withResults(fetches.recent(), fetches.results())
 
     override suspend fun accountBalances(): List<StoredAccountBalance> = fetches.balances().map {
@@ -551,7 +594,15 @@ class RoomImportStatusStore(private val fetches: FetchDao, private val connectio
 
     override suspend fun backOffs(): List<StoredBackOff> = fetches.backOffs().map { it.stored() }
 
-    override suspend fun latestTransactionFiles(): List<StoredTransactionFile> = emptyList()
+    override suspend fun latestTransactionFiles(): List<StoredTransactionFile> = files.latest().map {
+        StoredTransactionFile(
+            bankAccountId = it.bankAccountId,
+            importedAt = it.importedAt,
+            outcome = valueOfText<TransactionFileOutcome>(it.outcome, MAIN_PART) { outcome -> outcome.text },
+            transactionCount = it.transactionCount,
+            rejectionReason = it.rejectionReason,
+        )
+    }
 
     /** UC-003 BR-014, UC-008 BR-003: the counts the core's rules give each Bank Account's stored transactions. */
     override suspend fun transactionCounts(): List<StoredTransactionCounts> {

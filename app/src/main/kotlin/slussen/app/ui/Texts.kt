@@ -493,6 +493,7 @@ object Texts {
     fun operation(running: RunningOperation): String = when (running.kind) {
         OperationKind.Fetch -> "Fetching ${running.subject ?: "a Data Provider"}"
         OperationKind.Comparison -> "Reading ${running.subject ?: "the Budget App"}"
+        OperationKind.FileImport -> "Importing a Transaction File for ${running.subject ?: "a Bank Account"}"
         OperationKind.ServiceCredentialChange -> "a change of service credentials"
         OperationKind.BudgetAndBankAccountChange -> "a change of Budgets and Bank Accounts"
         OperationKind.FirstUploadMatchingConfirmation -> "the confirmation of First Upload Matching"

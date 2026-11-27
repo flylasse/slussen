@@ -32,6 +32,9 @@ enum class OperationKind {
     /** Reading the Budget App again and comparing (UC-003), or concluding a Comparison left pending (ADR-007 §3a). */
     Comparison,
 
+    /** Importing a Transaction File for one Bank Account (UC-002), with its Comparison (step 9); admitted only in Normal. */
+    FileImport,
+
     /** A Review Decision, its change or its clearing, and deferring an Unreadable Transaction (UC-004). */
     ReviewDecision,
 

@@ -88,6 +88,10 @@ data class StoredTransactionFile(
     val bankAccountId: Long,
     val importedAt: Instant,
     val outcome: TransactionFileOutcome,
+    /** The booked transactions with an amount other than zero the file delivered, those already stored included; 0 when rejected. */
+    val transactionCount: Int = 0,
+    /** Filled exactly when [outcome] is Rejected (`TRANSACTION_FILE.rejection_reason`). */
+    val rejectionReason: String? = null,
 )
 
 /**
@@ -117,7 +121,11 @@ interface ImportStatusStore {
 
     suspend fun backOffs(): List<StoredBackOff>
 
-    /** The latest Transaction File import of each file-imported Bank Account. */
+    /**
+     * For each file-imported Bank Account, its latest Transaction File, and, when that one was rejected, also its latest
+     * imported one, latest first: the Source Health is the outcome of the last import and the Freshness is measured from
+     * the last imported file (UC-002 BR-006).
+     */
     suspend fun latestTransactionFiles(): List<StoredTransactionFile>
 
     suspend fun transactionCounts(): List<StoredTransactionCounts>

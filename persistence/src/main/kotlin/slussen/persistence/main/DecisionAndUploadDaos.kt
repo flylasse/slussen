@@ -5,6 +5,14 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import slussen.core.fileimport.FileCounting
+import slussen.core.fileimport.TransactionFileCounting
+import slussen.core.identity.ImportIdentifierInput
+import slussen.core.port.ReceivedBankTransaction
+import slussen.core.port.Reception
+import slussen.core.port.TransactionFileOutcome
+import slussen.core.port.TransactionFileToImport
+import slussen.core.port.WholeImport
 
 /**
  * Raises `coordinator_state.state_version`, the version of everything an Upload Plan was prepared from (ADR-002 §3,
@@ -182,9 +190,12 @@ abstract class UploadDao : StateVersionDao {
     }
 }
 
-/** `transaction_file`: the plain reads and writes the import of Transaction Files is built on (UC-002; O-3 comes with its phase). */
+/**
+ * `transaction_file` and the Bank Transactions a Transaction File brings (UC-002): the plain reads and writes, and O-3
+ * `FileImportStore.importWhole` (ADR-002 §3), all or nothing in one transaction of `slussen.db`.
+ */
 @Dao
-abstract class TransactionFileDao {
+abstract class TransactionFileDao : StateVersionDao {
     @Insert
     abstract suspend fun insert(file: TransactionFileEntity): Long
 
@@ -194,4 +205,55 @@ abstract class TransactionFileDao {
     /** The Transaction Files of one Bank Account, the latest import first. */
     @Query("SELECT * FROM transaction_file WHERE bank_account_id = :bankAccountId ORDER BY imported_at DESC, id DESC")
     abstract suspend fun of(bankAccountId: Long): List<TransactionFileEntity>
+
+    /**
+     * For each Bank Account, its latest Transaction File, and, when that one was rejected, also its latest imported one
+     * (UC-002 BR-006), latest first within each Bank Account.
+     */
+    @Query(
+        "SELECT * FROM transaction_file AS f WHERE f.id = (SELECT l.id FROM transaction_file AS l WHERE l.bank_account_id = f.bank_account_id " +
+            "ORDER BY l.imported_at DESC, l.id DESC LIMIT 1) OR f.id = (SELECT i.id FROM transaction_file AS i WHERE i.bank_account_id = " +
+            "f.bank_account_id AND i.outcome = 'Imported' ORDER BY i.imported_at DESC, i.id DESC LIMIT 1) " +
+            "ORDER BY f.bank_account_id, f.imported_at DESC, f.id DESC",
+    )
+    abstract suspend fun latest(): List<TransactionFileEntity>
+
+    @Query("SELECT * FROM bank_transaction WHERE bank_account_id = :bankAccountId ORDER BY id")
+    abstract suspend fun bankTransactionsOf(bankAccountId: Long): List<BankTransactionEntity>
+
+    @Insert
+    protected abstract suspend fun insertBankTransactions(transactions: List<BankTransactionEntity>)
+
+    /**
+     * O-3 (ADR-002 §3; UC-002 BR-001, BR-003, A6): reads the Bank Transactions of the file's Bank Account as stored now,
+     * counts the file against them by the core's rule ([TransactionFileCounting], the one the fake of `:testing` applies)
+     * with [identify] for the Import Identifiers, and, unless that finds a collision, inserts every new Bank Transaction,
+     * raises `state_version` when one is new (ADR-007 §6) and inserts the `transaction_file` record Imported last, all in
+     * this one transaction. A collision writes nothing; any failure rolls all of it back. No stored Bank Transaction is
+     * changed.
+     */
+    @Transaction
+    open suspend fun importWhole(file: TransactionFileToImport, identify: (ImportIdentifierInput) -> String): WholeImport {
+        val stored = bankTransactionsOf(file.bankAccountId).map { it.stored() }
+        val counting = TransactionFileCounting.count(stored, file, identify)
+        if (counting is FileCounting.Collision) return WholeImport.Collision(counting.importIdentifier)
+        val inserts = (counting as FileCounting.Counted).inserts
+        if (inserts.isNotEmpty()) {
+            insertBankTransactions(inserts.map { it.entity(file.bankAccountId) })
+            raiseStateVersion()
+        }
+        insert(
+            TransactionFileEntity(
+                bankAccountId = file.bankAccountId,
+                fileFormatId = file.fileFormatId,
+                importedAt = file.importedAt,
+                outcome = TransactionFileOutcome.Imported.text,
+                transactionCount = file.transactions.size,
+                rejectionReason = null,
+            ),
+        )
+        return WholeImport.Imported(
+            inserts.map { ReceivedBankTransaction(it.importIdentifier, Reception.FirstTime, it.bookedDate, it.amount, it.currency) },
+        )
+    }
 }

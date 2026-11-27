@@ -207,11 +207,21 @@ class FakeDataProvider(
     }
 }
 
-/** A fake File Pre-processor with invented declarations; Phase 7 converts no file (UC-002). */
+/**
+ * A fake File Pre-processor with invented declarations (UC-002). A test fills [answer] with what it converts a file to;
+ * one that fills nothing fails when a file is converted. Every file it was given is kept for assertions.
+ */
 class FakeFilePreprocessor : slussen.pluginapi.fileformat.FilePreprocessor {
     override val profile: slussen.pluginapi.fileformat.FileFormatProfile =
         slussen.pluginapi.fileformat.FileFormatProfile(name = "Harbor Health statement", sourceKey = "example-format")
 
-    override fun convert(file: ByteArray): slussen.pluginapi.fileformat.ConversionResult =
-        error("No Transaction File is imported in this slice (UC-002).")
+    /** What [convert] answers for the file it is given. */
+    var answer: (ByteArray) -> slussen.pluginapi.fileformat.ConversionResult = { error("No conversion scripted (UC-002).") }
+
+    val files = mutableListOf<ByteArray>()
+
+    override fun convert(file: ByteArray): slussen.pluginapi.fileformat.ConversionResult {
+        files += file
+        return answer(file)
+    }
 }

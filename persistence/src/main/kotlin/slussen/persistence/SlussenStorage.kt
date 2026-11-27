@@ -97,7 +97,10 @@ class SlussenStorage private constructor(
     /** The Decision Journal read for the Journal Export only (UC-011, Konsist K-07), on the same thread. */
     val journalReader: DecisionJournalReader = journalDatabase
     val fetches = RoomFetchStore(main.fetches())
-    val importStatus = RoomImportStatusStore(main.fetches(), connections)
+    val importStatus = RoomImportStatusStore(main.fetches(), connections, main.transactionFiles())
+
+    /** O-3 of Import a Transaction File (UC-002). */
+    val fileImports = RoomFileImportStore(main.transactionFiles())
     val comparisons = RoomComparisonStore(main, connections)
     val reviews = RoomReviewStore(main, comparisons)
     val transfers = RoomTransferStore(main, comparisons)

@@ -329,7 +329,7 @@ class UC009ManageAccountMappingsPersistenceIT {
         val mapped = mapped()
         val mappings = RoomMappingStore(main.connections())
         val comparisons = RoomComparisonStore(main, connections)
-        val counts = RoomImportStatusStore(main.fetches(), connections)
+        val counts = RoomImportStatusStore(main.fetches(), connections, main.transactionFiles())
         val checkingAccount = mapped.budgetAccounts.getValue("Checking")
         val cardAccount = mapped.budgetAccounts.getValue("Rewards Card")
         comparisons.applyChangeSet(BudgetReadToStore(mapped.householdId, null, emptyList(), ChangeCursor("1"), emptyMap(), now))

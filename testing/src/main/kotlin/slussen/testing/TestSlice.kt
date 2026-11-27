@@ -10,6 +10,7 @@ import slussen.core.fetch.FetchNotices
 import slussen.core.identity.ImportIdentifierInput
 import slussen.core.identity.ImportIdentifierProtocol
 import slussen.core.fetch.FetchTransactions
+import slussen.core.fileimport.ImportTransactionFile
 import slussen.core.firstupload.FirstUploadMatching
 import slussen.core.journal.DecisionJournal
 import slussen.core.journal.JournalControl
@@ -102,6 +103,10 @@ class TestSlice(
     val fetch = FetchTransactions(
         plugins, credentials, connectionStore, offeredStore, importStatusStore, providerRequests, coordinator, settings, journal,
         clock, fetchNotices, comparison,
+    )
+    /** UC-002: Import a Transaction File, through the fake File Pre-processor [fileFormat], with its Comparison (step 9). */
+    val fileImport = ImportTransactionFile(
+        plugins, listOf(fileFormat), connectionStore, importStatusStore, importStatusStore, coordinator, journal, clock, comparison,
     )
     val settingsOverview = SettingsOverview(plugins, credentials, connectionStore, offeredStore, importStatusStore, settings, clock)
     val connect = BudgetsAndBankAccounts(

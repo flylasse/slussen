@@ -87,6 +87,15 @@ import slussen.core.port.StoredRequestLimit
 import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.StoredTransfer
 import slussen.core.port.StoredTransactionFile
+import slussen.core.port.FileImportStore
+import slussen.core.port.RejectedTransactionFile
+import slussen.core.port.TransactionFileOutcome
+import slussen.core.port.TransactionFileToImport
+import slussen.core.port.WholeImport
+import slussen.core.port.Reception
+import slussen.core.port.ReceivedBankTransaction
+import slussen.core.fileimport.FileCounting
+import slussen.core.fileimport.TransactionFileCounting
 import slussen.core.port.UnreadablePart
 import java.time.Instant
 import java.time.LocalDate
@@ -936,8 +945,10 @@ class FixedBackupSizeMonitor(
 /**
  * In-memory fake of [ImportStatusStore], the data the slices of UC-001, UC-002, UC-003 and UC-007 store, and of the
  * [FetchStore] of UC-001, which writes the same Fetches, Fetch Results, Account Balances and Back-offs the import status
- * reads, and the Bank Transactions and Unreadable Transactions, all or nothing like the real one (O-1). [identify]
- * computes the Import Identifiers; a test passes one with a test-only digest to plant a collision (ADR-008 §5).
+ * reads, and the Bank Transactions and Unreadable Transactions, all or nothing like the real one (O-1), and of the
+ * [FileImportStore] of UC-002, which writes the same Bank Transactions and the Transaction Files the import status reads
+ * (O-3). [identify] computes the Import Identifiers; a test passes one with a test-only digest to plant a collision
+ * (ADR-008 §5).
  */
 class InMemoryImportStatusStore(
     private val identify: (ImportIdentifierInput) -> String = ImportIdentifierProtocol::importIdentifier,
@@ -945,7 +956,7 @@ class InMemoryImportStatusStore(
     private val connections: ConnectionStore? = null,
     /** The version O-1 raises when it stores a new or changed Bank Transaction: the one of [connections] when it is a fake. */
     val stateVersion: InMemoryStateVersion = (connections as? InMemoryConnectionStore)?.stateVersion ?: InMemoryStateVersion(),
-) : ImportStatusStore, FetchStore {
+) : ImportStatusStore, FetchStore, FileImportStore {
     val bankTransactions = mutableListOf<StoredBankTransaction>()
     val unreadableTransactions = mutableListOf<StoredUnreadableTransaction>()
 
@@ -977,7 +988,79 @@ class InMemoryImportStatusStore(
 
     override suspend fun backOffs(): List<StoredBackOff> = backOffList.toList()
 
-    override suspend fun latestTransactionFiles(): List<StoredTransactionFile> = files.toList()
+    /**
+     * Of [files], for each Bank Account the latest, by `imported_at` and then the order stored, and, when it was rejected,
+     * also the latest imported one, latest first (UC-002 BR-006).
+     */
+    override suspend fun latestTransactionFiles(): List<StoredTransactionFile> =
+        files.withIndex().groupBy { it.value.bankAccountId }.values.flatMap { ofOne ->
+            val order = compareBy<IndexedValue<StoredTransactionFile>> { it.value.importedAt }.thenBy { it.index }
+            val latest = ofOne.maxWith(order)
+            val imported = ofOne.filter { it.value.outcome == TransactionFileOutcome.Imported }.maxWithOrNull(order)
+            listOfNotNull(latest, imported.takeIf { it != latest }).map { it.value }
+        }
+
+    /**
+     * Makes the next [importWhole] fail part-way, as a storage that stops in the middle of its transaction would: after
+     * the counting and the first new Bank Transaction are written to its working copy, before anything is committed.
+     */
+    var importWholeFailsPartWay: Boolean = false
+
+    /** Makes [recordRejected] fail, as a storage that cannot be written would (NFR-023). */
+    var recordRejectedFails: Boolean = false
+
+    /**
+     * O-3: the file counted against the stored Bank Transactions of its Bank Account by the core's one rule
+     * ([TransactionFileCounting]), its new Bank Transactions and its Transaction File Imported committed together, with
+     * `state_version` raised when a Bank Transaction is new; nothing of it on a collision or a failure.
+     */
+    override suspend fun importWhole(file: TransactionFileToImport): WholeImport {
+        val counting = TransactionFileCounting.count(bankTransactionsOf(file.bankAccountId), file, identify)
+        if (counting is FileCounting.Collision) return WholeImport.Collision(counting.importIdentifier)
+        val inserts = (counting as FileCounting.Counted).inserts
+        val working = bankTransactions.toMutableList()
+        var nextId = nextStoredId
+        inserts.forEach { new ->
+            working += StoredBankTransaction(
+                id = nextId++,
+                bankAccountId = file.bankAccountId,
+                stableReference = new.stableReference,
+                referenceKind = new.referenceKind,
+                occurrenceNumber = new.occurrenceNumber,
+                importIdentifier = new.importIdentifier,
+                bookedDate = new.bookedDate,
+                amount = new.amount,
+                currency = new.currency,
+                payee = new.payee,
+                memo = new.memo,
+                firstSeenAt = new.firstSeenAt,
+                status = null,
+                transferId = null,
+            )
+            if (importWholeFailsPartWay) {
+                importWholeFailsPartWay = false
+                throw IllegalStateException("The invented storage of this test stops in the middle of its transaction.")
+            }
+        }
+        check(working.groupBy { it.bankAccountId to it.importIdentifier }.all { it.value.size == 1 }) { "BANK_TRANSACTION: one Import Identifier per Bank Account" }
+        check(working.filter { it.stableReference != null }.groupBy { it.bankAccountId to it.stableReference }.all { it.value.size == 1 }) {
+            "BANK_TRANSACTION: one Stable Reference per Bank Account"
+        }
+        bankTransactions.clear()
+        bankTransactions += working
+        nextStoredId = nextId
+        files += StoredTransactionFile(file.bankAccountId, file.importedAt, TransactionFileOutcome.Imported, transactionCount = file.transactions.size)
+        if (inserts.isNotEmpty()) stateVersion.raise()
+        return WholeImport.Imported(
+            inserts.map { ReceivedBankTransaction(it.importIdentifier, Reception.FirstTime, it.bookedDate, it.amount, it.currency) },
+        )
+    }
+
+    override suspend fun recordRejected(file: RejectedTransactionFile) {
+        if (recordRejectedFails) throw IllegalStateException("The invented storage of this test cannot be written.")
+        require(file.reason.isNotEmpty() && file.reason.length <= 200) { "TRANSACTION_FILE.rejection_reason: filled, at most 200 characters" }
+        files += StoredTransactionFile(file.bankAccountId, file.importedAt, TransactionFileOutcome.Rejected, transactionCount = 0, rejectionReason = file.reason)
+    }
 
     /**
      * The [counts] a test set, and for every other Bank Account with stored Bank Transactions or Unreadable Transactions
