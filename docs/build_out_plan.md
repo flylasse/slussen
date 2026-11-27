@@ -30,6 +30,7 @@
 | B6 | bb07200, 0f184f5 | green at 0f184f5 | `docs/reviews/build_out_reviews/B6.md` (Opus, fresh context): 8 findings fixed, the most serious an answer that landed on another Bank Transaction's sheet | The screens of the Review Decisions, the Transfer Decisions and Manage Account Mappings; the read-only lines of Wave 1 replaced (G-10, G-12, G-14 ended); 36 ViewModel tests, 3 screen ITs. Not built, waiting for Wave 4's Sent Records: `review-decision.html#counterpart-changed`, `#outcome-unknown`, `#outcome-unknown-auto`, `#reupload-unavailable`. Opus builder | 654k + 222k |
 | W3-0 | 57b0a7a, 18677e4 (S-B-18..S-B-25) | specification checks and architecture tests green | `docs/reviews/build_out_reviews/W3-0.md` (Opus, fresh context): 9 corrections written; the review confirmed the duplicate that S-B-21 closes and found that Wave 4 was not told (W4-09) | The specification of Wave 3; no code. Opus writer | 249k and its corrections + 159k |
 | A-6 | 8cf43a8, 39d3b00 (S-B-26), 5f8eb44 | green at 5f8eb44 | `docs/reviews/build_out_reviews/A-6.md` (Opus, fresh context): the guard correct on the paths it was built for; 6 findings fixed, the most serious a Review Decision that concluded a Budget that owes a read (now refused, S-B-26) | An editor for each of the 15 whole-number settings, two switches, the log reading the stored Detailed Logging, the period-read-owed flag and its guard; about 120 tests. Opus builder | 513k + 211k |
+| A-7 | 3eda4c1, 8883806 (S-B-27), 3b6c5a5 | green at 3b6c5a5 | `docs/reviews/build_out_reviews/A-7.md` (Opus, fresh context): nothing that could duplicate, lose a decided Transfer or break all or nothing; 5 small findings fixed; 4 to §6 (G-32) | The two description lists with add, change, remove and restore, stored in one transaction and followed by the statuses given again; about 45 tests. Opus builder | 391k + 177k |
 
 - Paused on 2026-11-26 at the operator's word (the usage limit of the session) after A-4 was built; resumed the same day. The operator watches the limit and says when to pause; the orchestrator's own turns are not in the token column.
 
@@ -56,7 +57,7 @@
   3. The orchestrator's own turns draw on the same weekly limit; the operator may switch this session's model.
 - **Wave 2 is done** (W2-0, W2-1, B2..B6). Ready for the operator's device run and Windows gate, when convenient: commit 0f184f5 or later on `build-out`. To watch there: the Migration from an installed version 5 to 6 (`SlussenDatabaseMigrationIT`), `StateVersionPersistenceIT`, the UC-004, UC-005 and UC-009 persistence ITs, and the new screen ITs of the decisions and the mappings.
 - Wave 3: its specification (W3-0) is written and corrected after its review. The prompts of A-6 to A-9 are in `docs/reviews/build_out_prompts/`.
-- Next: phase A-7 (the description lists), Opus.
+- Next: phase A-8 (the Decision Journal's control), Opus.
 
 ## 1. Scope
 
@@ -201,6 +202,7 @@ Smaller choices taken without asking, to be confirmed at the end: the Decision J
 | G-29 | B6 | A sheet cannot be left while its change is on its way (Close, back and Cancel are refused and the sheet says why), so that an answer never lands on another item. The Review Decision is part of the Bank Transaction's sheet, not a screen of its own; Re-upload is a switch. Four states of `review-decision.html` wait for Wave 4's Sent Records (`#counterpart-changed`, `#outcome-unknown`, `#outcome-unknown-auto`, `#reupload-unavailable`). | Layout and navigation only; the four states come with Wave 4. |
 | G-30 | W3-0 | A later build whose Budget App part declares a longer Matching Date Window lengthens the read period without owing the Budgets a period read. | A stored copy of the window the last read used (a schema column), compared at the start. |
 | G-31 | A-6 | While a Budget owes a read of its read period, a Review Decision or Transfer Decision in it is refused and the read offered (S-B-26); the banner names both possible causes of the owed read (a longer setting, a gained Budget Account), since one stored flag cannot tell them apart; the settings answer points to "Read YNAB again" where it exists, not a button of its own; `settings.html#upload-running` waits for Wave 4. | Text and navigation; naming the cause needs a stored field. |
+| G-32 | A-7 | Two descriptions can match exactly the same texts (AUTOPAY beside `*AUTOPAY`), which UC-010 BR-008 allows as written. A restore records the list before the store, so a stop in between leaves that entry with no "not restored" after it. A payee typed whole as a description appears uncoded in a coded export, since descriptions are Operator Settings. An entry changed only in its case is stored and journaled. Removing an entry asks no confirmation. | A stricter duplicate check; text. |
 | G-06 | A-1 | Times show as HH:mm today, MM-dd HH:mm earlier in the year, the full date before that, as the mockups do. | Text only. |
 
 ### Owed to later phases (W-nn)
