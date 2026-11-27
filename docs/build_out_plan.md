@@ -25,6 +25,7 @@
 | W2-1 | d4b9e5b | green at d4b9e5b | `docs/reviews/build_out_reviews/W2-1.md`: no serious finding; the reviewer replayed the Migration on SQLite; one low fix (a fake that raises `state_version` where Room does not) goes to phase B2's builder | `slussen.db` version 6: seven tables, `transfer` rebuilt with an optional outflow side, `state_version` raised by every operation a plan depends on. The Migration's device tests are written, not run | 511k + 190k |
 | B2 | e75d3a1 | green at e75d3a1 | `docs/reviews/build_out_reviews/B2.md`: no behaviour changed without a Review Decision; nothing to fix that acts today; 3 items owed to Wave 4 (W4-01..W4-03), 1 to B3, 2 markers | Review Decisions in the core (UC-004), their place in the Comparison, O-13; 41 tests; no existing Comparison or Transfer test changed | 596k + 212k |
 | B3 | daa855b, 5dd87e0 (S-B-17), 819d712, 448a01d | green at 819d712 (448a01d changes an ADR's wording only) | `docs/reviews/build_out_reviews/B3.md`: undecided Transfers unchanged; 4 findings fixed, two of them by S-B-17 (a held or split Transfer is never dissolved; Held wins over Re-upload); 4 to §6 (G-23..G-26) | Transfer Decisions in the core (UC-005 steps 2-6, A1-A4, A8-A10), O-13, the Comparison with decided Transfers; 48 tests | 645k + 259k |
+| B4 | ffac4bc | green at ffac4bc | `docs/reviews/build_out_reviews/B4.md`: no defect; small test and marker items go to B5's builder; 2 hazards owed to Wave 4 (W4-06, W4-07); 1 to §6 (G-27) | Mapping changes in the core (retire, restore, name, Start Date, Funded By and Transfer Partner), the one "status again" engine, A14 step 4; 42 tests | 552k + (review) |
 
 - Paused on 2026-11-26 at the operator's word (the usage limit of the session) after A-4 was built; resumed the same day. The operator watches the limit and says when to pause; the orchestrator's own turns are not in the token column.
 
@@ -42,7 +43,7 @@
 
   The strongest model counts several times more against the limit than Opus; three windows do not pin the ratio. A screen phase costs 0.5 to 0.7M with its review and fixes, a specification phase about 0.6M, a core or storage phase 0.8 to 0.9M.
 - **Pacing rule (from 2026-11-27):** the orchestrator stops only between phases; a window is the five hours from its first call after a reset; it keeps a running count by model and starts no builder or reviewer that does not fit what is left, with a margin; at the stop it schedules the restart for five minutes after the window's end and reports the count, and the operator gives the percentage he sees, to pin the weights.
-- Next: phase B4 (mapping changes), resumed; then B5 with an Opus builder; then a pause.
+- Next: phase B5 (identification and moves), with an Opus builder; then a pause.
 
 ## 1. Scope
 
@@ -181,6 +182,7 @@ Smaller choices taken without asking, to be confirmed at the end: the Decision J
 | G-24 | B3 | Confirming or holding a Lonely Transfer can take its other side from a pair Slussen had only proposed (UC-005 BR-005 as written); that pair is dissolved and its other Transfer Leg detected again. Phase B6 says on the sheet that a Lonely Transfer can become a pair. | One condition in the join. |
 | G-25 | B3 | The lock of a Transfer Decision reads Sent Records only (UC-005 BR-008 as written): a Transfer Leg merely found in the Budget App by its Import Identifier does not lock it. While a Transfer Leg waits for a Review Decision, only Split is taken (A9). O-13 sets `comparison_pending` on every stored Transfer Decision. | One rule each. |
 | G-26 | B2, B3 | Where UC-005 BR-010 and BR-013, or A2 and BR-010, can be read to disagree about a Transfer Leg that has its own Review Decision or an earlier rule's status, the code takes BR-010: the Transfer Leg's own status first. Both readings keep the whole Transfer out of every Upload Plan. Import Anyway gives New also when a Typed Entry matches (UC-004 BR-006 as written). | Text in UC-005; one line and one test. |
+| G-27 | B4 | A change of UC-009 runs in its screen's scope: leaving the screen between the change and the statuses given again leaves `comparison_pending` until the next start, the next change or a Comparison that reaches the Budget App, so an Upload Plan stays blocked longer than needed (ADR-007 §3a allows it). A9 and A13 are allowed on a Retired Account; on a Bank Account without an Account Mapping a Funded By can only be cleared. | Running the conclusion outside the screen's scope. |
 | G-06 | A-1 | Times show as HH:mm today, MM-dd HH:mm earlier in the year, the full date before that, as the mockups do. | Text only. |
 
 ### Owed to later phases (W-nn)
@@ -193,6 +195,8 @@ What a review found that a later phase must build; each is given to that phase's
 | W4-02 | B2 review, B | Wave 4 | A Transfer Leg that was sent, deleted and re-uploaded must leave its Transfer free: a Bank Transaction uploaded as ordinary is no Transfer Leg (`W2-0.md` item 2, Q-07), and the other side gets Arrived As Transfer Counterpart where that applies. The test at `UC004ReviewDoubtfulTransactionsTest.kt:727` asserts the stuck state and changes with it. |
 | W4-03 | B2 review, C | Wave 4 (coordinator and preparation) | A Review Decision or Transfer Decision taken while an Upload Plan is open replaces the plan (ADR-007 §2, UC-004 A8), or the confirmation refuses on the changed `state_version`. |
 | W4-04 | W2-1 review | Wave 4's specification | The header of `upload_plan_item` holds one `change_cursor` and no `budget_id`: settle that an Upload Plan has one Budget (ADR-007 §6 step 4 says "for each Budget of the plan"), or a version 7 adds the column. |
+| W4-06 | B4 review | Wave 4 (coordinator and preparation) | `recomputePending` is refused while an Upload Plan is open: a Transfer Decision or Review Decision taken with a plan open, followed by a stop, leaves `comparison_pending` unconcluded at the next start. Replacing or confirming a plan concludes or checks the marker first. |
+| W4-07 | B4 review | Wave 4 (the Comparison with Sent Records) | A status-again commits through the same `applyComparison` as a Comparison that read the Budget App: when O-5 fills `recovery_check.compared_at` (UC-003 BR-019), a status-again must not fill it. |
 | W4-05 | A-5 review (G-19) | Wave 4 (the evidence kit) | Stored data found unreadable while Slussen runs (ADR-002 §8.4) is let through the catches that answer a storage failure, and handled by a restart from the last good copy. |
 
 ### Specification changes (S-B-nn)
