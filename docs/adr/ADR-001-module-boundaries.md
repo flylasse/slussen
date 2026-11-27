@@ -569,8 +569,8 @@ now. Where the description leaves a point open, the file is rejected, never gues
 **Layout.** Anything else rejects the whole file (UC-002 A2, BR-001):
 
 1. The file is UTF-8, with or without the byte order mark (`EF BB BF`) at its start. Its lines end with LF or with
-   CRLF, one kind in a file; a CR not followed by LF, or both kinds in one file, rejects it. A line end is never part
-   of a value.
+   CRLF, one kind in a file; a CR not followed by LF, or both kinds in one file, rejects it. The last line of the file
+   may lack its line end. A line end is never part of a value.
 2. Lines 1 and 2 are empty; line 3 is the header, exactly
    `Run Date,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Cash Balance ($),Settlement Date`.
 3. Every line from line 4 up to the first empty line is a transaction line, newest first. The first empty line may
