@@ -46,8 +46,13 @@
 
   The strongest model counts several times more against the limit than Opus; three windows do not pin the ratio. A screen phase costs 0.5 to 0.7M with its review and fixes, a specification phase about 0.6M, a core or storage phase 0.8 to 0.9M.
 - **Pacing rule (from 2026-11-27):** the orchestrator stops only between phases; a window is the five hours from its first call after a reset; it keeps a running count by model and starts no builder or reviewer that does not fit what is left, with a margin; at the stop it schedules the restart for five minutes after the window's end and reports the count, and the operator gives the percentage he sees, to pin the weights.
-- **Paused on 2026-11-27 at 16:40 UTC by the pacing rule.** Nothing is running and the tree is clean. To resume (scheduled for 19:35 UTC): the review of B6 (range 65da58c..bb07200, the strongest model, since an Opus builder built it), its fixes by the builder, gate, record; that closes Wave 2 (name the commit for the operator's device run). Then Wave 3: its specification phase and A-6..A-9, Opus builders unless the operator says otherwise.
-- Next: the review of phase B6.
+- Paused on 2026-11-27 at 16:40 UTC by the pacing rule; resumed at 18:26 UTC at the operator's word.
+- **What the operator's usage figures showed (2026-11-27, 17:48 UTC):** the five-hour limit at 65% in window 4; the weekly limit of all models at 35%; **the weekly limit of the strongest model at 60%**, 21 hours after its reset (Thursday 21:00 UTC). The weekly limit of the strongest model is the one that would stop the run, not the five-hour limit.
+- **The operator's decisions of 2026-11-27, until the weekly reset of Thursday 2026-12-03 21:00 UTC:**
+  1. No sub-agent runs on the strongest model. Opus builds, and Opus reviews in a fresh context with the same brief: a deviation from "the reviewer is never the builder's model" (§2, §5 row 3).
+  2. The waves are reordered so that Uploads come after the reset: Wave 3, then Wave 5 (Transaction Files, Scheduled Fetch), then Wave 6 (Enable Banking), then Wave 4 with the strongest model on its three phases where a rule error means a duplicate (the Comparison with Sent Records, and the two phases of the coordinator and the writing), then Wave 7. E6 (Unattended Access) follows Wave 5's Scheduled Fetch as before; B7 and A-10 stay with Wave 4.
+  3. The orchestrator's own turns draw on the same weekly limit; the operator may switch this session's model.
+- Next: the review of phase B6 (Opus), its fixes, gate, record: that closes Wave 2. Then Wave 3.
 
 ## 1. Scope
 
@@ -106,6 +111,7 @@ Written by the orchestrator when a phase is dispatched, from the survey of its a
 | # | Phase | AIUP step | What happened | Deviation? |
 |---|---|---|---|---|
 | 1 | Draft | Initiative intake (AGENTS.md §6) | The operator chose an autonomous run: one questionnaire, no stops, one PR, specification changes proposed with their code and approved together at the end, best guesses recorded (§2). | Yes: AGENTS.md §1 ("change the specification first"), §6 (Initiative: approved before any code phase) |
+| 3 | From B6's review on | Review (Centaur cross-model rule) | The operator's weekly limit of the strongest model stood at 60% a day after its reset. Until the next reset no sub-agent runs on it: Opus builds and Opus reviews, in a fresh context with the adversarial brief of `_review.md`. The waves are reordered so that the Upload phases get the strongest model after the reset. | Yes: the reviewer is the builder's model, not the builder |
 | 2 | Draft | none (surveys) | Five read-only sub-agents surveyed the unbuilt specification against the code before any phase, to find the questions early. | No AIUP step covers it |
 
 ## 6. Questions, specification changes and guesses
