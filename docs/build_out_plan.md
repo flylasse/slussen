@@ -24,13 +24,14 @@
 | W2-0 | 5e1793e, f75d028 (S-B-02..S-B-16) | specification checks and architecture tests green | `docs/reviews/build_out_reviews/W2-0.md`: 9 corrections written, among them a transaction that would have been stuck for ever and two ways to a duplicate | The specification of Wave 2; no code | 465k + 148k |
 | W2-1 | d4b9e5b | green at d4b9e5b | `docs/reviews/build_out_reviews/W2-1.md`: no serious finding; the reviewer replayed the Migration on SQLite; one low fix (a fake that raises `state_version` where Room does not) goes to phase B2's builder | `slussen.db` version 6: seven tables, `transfer` rebuilt with an optional outflow side, `state_version` raised by every operation a plan depends on. The Migration's device tests are written, not run | 511k + 190k |
 | B2 | e75d3a1 | green at e75d3a1 | `docs/reviews/build_out_reviews/B2.md`: no behaviour changed without a Review Decision; nothing to fix that acts today; 3 items owed to Wave 4 (W4-01..W4-03), 1 to B3, 2 markers | Review Decisions in the core (UC-004), their place in the Comparison, O-13; 41 tests; no existing Comparison or Transfer test changed | 596k + 212k |
+| B3 | daa855b, 5dd87e0 (S-B-17), 819d712, 448a01d | green at 819d712 (448a01d changes an ADR's wording only) | `docs/reviews/build_out_reviews/B3.md`: undecided Transfers unchanged; 4 findings fixed, two of them by S-B-17 (a held or split Transfer is never dissolved; Held wins over Re-upload); 4 to §6 (G-23..G-26) | Transfer Decisions in the core (UC-005 steps 2-6, A1-A4, A8-A10), O-13, the Comparison with decided Transfers; 48 tests | 645k + 259k |
 
 - Paused on 2026-11-26 at the operator's word (the usage limit of the session) after A-4 was built; resumed the same day. The operator watches the limit and says when to pause; the orchestrator's own turns are not in the token column.
 
 - **Wave 1 is done** (A-1..A-5). Ready for the operator's device run and Windows gate, when convenient: commit bb7172a or later on `build-out`. New instrumented tests since `main`: in `UC008CheckImportStatusScreenIT`, `UC005ReviewTransfersScreenIT`, and the UC-013 and UC-014 screen ITs.
 - Wave 2: its specification (W2-0) is written and corrected after its review; storage version 6 (W2-1) is built and green, its review is running. The prompts of B2 to B6 are in `docs/reviews/build_out_prompts/`.
 - Paused a second time on 2026-11-26 after W2-1's review, resumed the same evening.
-- Next: phase B3 (Transfer Decisions).
+- Next: phase B4 (mapping changes).
 
 ## 1. Scope
 
@@ -165,6 +166,10 @@ Smaller choices taken without asking, to be confirmed at the end: the Decision J
 | G-20 | A-5 | The notice of stored data that could not be read lives in the process that found it; once a Scheduled Fetch can start Slussen in the background (Wave 5), the Operator may never see it. | A stored flag (a schema column) or a notification, with Wave 5. |
 | G-21 | A-5 | BR-012 names Budgets, Bank Accounts and Account Mappings to check after a start from the last good copy; Operator Settings and, from Wave 2, decisions made after the copy are back at their earlier state too. The service credentials notice leaves out "grant each Bank Consent again" until Wave 6. | Text in BR-012 and `Texts`. |
 | G-22 | A-5 | The backup-size warning says that no action "is needed". Above the limit a lost phone loses every Account Mapping, setting and decision since the last backup; First Upload Matching only prevents duplicates. The operator should confirm the wording, or ask for a retention rule (a new requirement). | Text; a retention rule is a new requirement with a schema version. |
+| G-23 | B3 | A Confirmed or Budget Account Chosen Transfer whose own sides are no longer valid is dissolved and detected again (Q-11): it can come back as a Transfer Slussen proposes, eligible without a new decision; only the Decision Journal says that a decision was dropped. A held or split one is never dissolved (S-B-17). | A notice on the screen is a new requirement; making the detected-again Transfer a Guessed Transfer needs a stored mark (a schema version). |
+| G-24 | B3 | Confirming or holding a Lonely Transfer can take its other side from a pair Slussen had only proposed (UC-005 BR-005 as written); that pair is dissolved and its other Transfer Leg detected again. Phase B6 says on the sheet that a Lonely Transfer can become a pair. | One condition in the join. |
+| G-25 | B3 | The lock of a Transfer Decision reads Sent Records only (UC-005 BR-008 as written): a Transfer Leg merely found in the Budget App by its Import Identifier does not lock it. While a Transfer Leg waits for a Review Decision, only Split is taken (A9). O-13 sets `comparison_pending` on every stored Transfer Decision. | One rule each. |
+| G-26 | B2, B3 | Where UC-005 BR-010 and BR-013, or A2 and BR-010, can be read to disagree about a Transfer Leg that has its own Review Decision or an earlier rule's status, the code takes BR-010: the Transfer Leg's own status first. Both readings keep the whole Transfer out of every Upload Plan. Import Anyway gives New also when a Typed Entry matches (UC-004 BR-006 as written). | Text in UC-005; one line and one test. |
 | G-06 | A-1 | Times show as HH:mm today, MM-dd HH:mm earlier in the year, the full date before that, as the mockups do. | Text only. |
 
 ### Owed to later phases (W-nn)
