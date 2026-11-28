@@ -134,7 +134,7 @@ internal class ConsentedSelection(
                         val earlier = waiting[consent.bankId]
                         waiting[consent.bankId] = BankWaiting(bankName, until, earlier?.bankAccounts.orEmpty() + bankAccount.name)
                     }
-                    // UC-007 A6 (E2 review item 4): a Bank Account its Bank's Bank Consent does not cover is not read.
+                    // A6 of UC-007 (E2 review item 4): a Bank Account its Bank's Bank Consent does not cover is not read.
                     notCoveredBy(consent, dataProviderId, read.providerReference, kept) -> notRecognised += bankAccount
                     else -> readable += ConsentedRead(bankAccount, read, bankName, session.session)
                 }

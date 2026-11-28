@@ -257,7 +257,7 @@ object Texts {
             notices.joinToString(" · ") { "${it.bankAccountName}: ${balanceInOtherCurrency(it)}, not stored" }
         },
         report.waitingUntil?.let { "Blocked: waiting for the provider · until ${formats.dateTime(it)}" },
-        // BR-007: the gate stopped the rest after part was read; the rest keeps its stored data.
+        // UC-001 BR-007: the gate stopped the rest after part was read; the rest keeps its stored data.
         report.stoppedByGate?.let { reason ->
             "${gateRefusal(reason)}: the other Bank Accounts were not read, stored data unchanged" +
                 (report.requestLimitFreesUpAt?.let { " · frees up from ${formats.dateTime(it)}" } ?: "")

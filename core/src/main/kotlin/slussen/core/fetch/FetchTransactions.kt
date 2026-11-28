@@ -465,7 +465,7 @@ class FetchTransactions(
                     waiting += BankWaiting(answer.bankReference, endsAt, ofBank)
                 }
                 is BankOutcome.ConsentRefused -> {
-                    // UC-001 A9: treated as expired from now on, and no Back-off starts for that Bank.
+                    // A9 of UC-001: treated as expired from now on, and no Back-off starts for that Bank.
                     consents?.markRefused(bankId, stored.id, now)
                     refused += answer.bankReference
                 }

@@ -439,7 +439,7 @@ class UC007EnableBankingConsentTest {
     }
 
     @Test
-    @UseCase(id = "UC-001", scenario = "Main Success Scenario", requirements = ["NFR-008"])
+    @UseCase(id = "UC-007", scenario = "Main Success Scenario", businessRules = ["BR-009"], requirements = ["NFR-008"])
     @DisplayName("Phase E5 (ADR-001 §4.1.1 \"The balance\"): the Bank Session keeps the currency a Fetch chooses each readable Bank Account's balance in, none for a card or an unknown currency")
     fun sessionKeepsTheCurrencyOfEachBalance() {
         server.answer("POST", "/sessions", ConsentServer.session)

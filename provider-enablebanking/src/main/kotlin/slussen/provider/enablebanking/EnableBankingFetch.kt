@@ -89,7 +89,7 @@ internal class EnableBankingFetch(
         val selected = (request.bankAccounts as? BankAccountSelection.Selected)?.bankAccounts.orEmpty()
         if (selected.isEmpty()) return FetchResponse(SourceOutcome.Completed, emptyList(), emptyList())
         val signer = RequestSigner.of(context.credential) ?: return FetchResponse(SourceOutcome.CredentialsRefused, emptyList(), emptyList())
-        // UC-001 A4, BR-008: only the Bank Sessions the core handed over, each of the Bank it names.
+        // UC-001 BR-008: only the Bank Sessions the core handed over, each of the Bank it names.
         val sessions = request.sessions.mapNotNull { (bank, session) -> BankSessionValue.read(session)?.takeIf { it.bankReference == bank } }
         val planned = selected.distinctBy { it.providerReference }.map { read ->
             Planned(read, sessions.filter { read.providerReference in it.uids }.singleOrNull())
@@ -112,7 +112,7 @@ internal class EnableBankingFetch(
     private suspend fun readBank(ofBank: List<Planned>, request: FetchRequest, context: RequestContext, signer: RequestSigner, progress: Progress) {
         val session = ofBank.first().session!!
         val bank = session.bankReference
-        // UC-001 BR-012 (S-B-46): the headers of the Operator's presence go all or none; a request without them is unattended.
+        // UC-001 BR-012: (S-B-46) the headers of the Operator's presence go all or none; a request without them is unattended.
         val presence = presenceOf(request.presence, session)
         var bankStopped = false
         for (planned in ofBank) {
@@ -214,7 +214,7 @@ internal class EnableBankingFetch(
         val used = mutableSetOf<String>()
         var key: String? = null
         while (true) {
-            // UC-001 BR-012 (S-B-46): one read of a Bank Account's transactions is one access: its first page has its kind, each further page kind Other.
+            // UC-001 BR-012: (S-B-46) one read of a Bank Account's transactions is one access: its first page has its kind, each further page kind Other.
             val kind = if (key == null) RequestKind.Transactions else RequestKind.Other
             val address = accountAddress(uid, "transactions").newBuilder()
                 .addQueryParameter("date_from", from.toString())
@@ -231,7 +231,7 @@ internal class EnableBankingFetch(
                 null, JsonNull -> null
                 else -> given.text() ?: return Pages.Stopped(AccountOutcome.Done(failed(FailureKind.UnreadableAnswer)))
             }?.takeIf { it.isNotEmpty() } ?: return Pages.Read(items)
-            // UC-001 A8 (W6-0 item 5): a continuation key already used in the same read ends it as incomplete.
+            // A8 of UC-001 (W6-0 item 5): a continuation key already used in the same read ends it as incomplete.
             if (!used.add(next)) return Pages.Stopped(AccountOutcome.Done(failed(FailureKind.Incomplete)))
             key = next
         }
@@ -339,7 +339,7 @@ internal class EnableBankingFetch(
                     answer.status in 200..299 -> body?.let { Step.Ok(it) } ?: Step.Stop(Stopping.Account(FailureKind.UnreadableAnswer))
                     // ADR-001 §4.1.1: another answer 429 asks the whole Data Provider to wait, with no end.
                     answer.status == 429 -> Step.Stop(Stopping.Source(SourceOutcome.AskedToWait(null)))
-                    // UC-001 A6: Enable Banking itself cannot serve now; no Back-off (BR-005).
+                    // A6 of UC-001: Enable Banking itself cannot serve now; no Back-off (BR-005).
                     answer.status >= 500 -> Step.Stop(Stopping.Source(SourceOutcome.TransientFailure(FailureKind.ServiceUnavailable)))
                     // A redirect, which is not followed, and any other answer without a code: unreadable for this Bank Account.
                     else -> Step.Stop(Stopping.Account(FailureKind.UnreadableAnswer))
@@ -349,16 +349,16 @@ internal class EnableBankingFetch(
     }
 
     private fun stoppingFor(code: String): Stopping = when (code) {
-        // UC-001 A5: the Bank's rate limit is a request to wait of that Bank, with no end: the default wait applies (BR-004).
+        // A5 of UC-001: the Bank's rate limit is a request to wait of that Bank, with no end: the default wait applies (BR-004).
         "ASPSP_RATE_LIMIT_EXCEEDED" -> Stopping.Bank { BankOutcome.AskedToWait(it, null) }
-        // UC-001 A9: the Bank no longer accepts its Bank Consent.
+        // A9 of UC-001: the Bank no longer accepts its Bank Consent.
         "EXPIRED_SESSION", "REVOKED_SESSION", "CLOSED_SESSION", "SESSION_DOES_NOT_EXIST" -> Stopping.Bank { BankOutcome.ConsentRefused(it) }
-        // UC-001 A7: the application's credentials are refused.
+        // A7 of UC-001: the application's credentials are refused.
         "UNAUTHORIZED_ACCESS", "AUTHORIZATION_NOT_PROVIDED" -> Stopping.Source(SourceOutcome.CredentialsRefused)
-        // UC-001 A8, BR-005: the Bank failed for this Bank Account; no Back-off and no retry.
+        // UC-001 BR-005: (A8) the Bank failed for this Bank Account; no Back-off and no retry.
         "ASPSP_ERROR", "ASPSP_TIMEOUT" -> Stopping.Account(FailureKind.ServiceUnavailable)
         "WRONG_CONTINUATION_KEY" -> Stopping.Account(FailureKind.Incomplete)
-        // UC-001 A8: any other code, the PSU header codes included.
+        // A8 of UC-001: any other code, the PSU header codes included.
         else -> Stopping.Account(FailureKind.UnreadableAnswer)
     }
 
@@ -408,7 +408,7 @@ internal class EnableBankingFetch(
         val money = entry["transaction_amount"].asObject()
         val indicator = entry["credit_debit_indicator"].text()
         val given = money?.get("amount")
-        // UC-001 BR-016 (W6-0 item 6): the amount without a sign, signed by its indicator; a minus sign, no indicator, more decimals than thousandths or no number is unreadable.
+        // UC-001 BR-016: (W6-0 item 6) the amount without a sign, signed by its indicator; a minus sign, no indicator, more decimals than thousandths or no number is unreadable.
         val amount = given.text()?.let { unsignedAmount(it, indicator) }
         val amountReason = when {
             given == null || given is JsonNull -> UnreadableReason.MissingAmount
