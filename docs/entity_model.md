@@ -17,7 +17,6 @@ erDiagram
     BUDGET_ACCOUNT ||--o| ACCOUNT_MAPPING : "receives through"
     BANK ||--o{ BANK_CONSENT : "grants"
     DATA_PROVIDER ||--o{ BANK_CONSENT : "reads with"
-    BANK ||--o{ CONSENT_REQUEST : "is asked by"
     DATA_PROVIDER ||--o{ CONSENT_REQUEST : "starts"
     BANK_CONSENT ||--o| BANK_SESSION : "opens"
     DATA_PROVIDER |o--o| SERVICE_CREDENTIAL : "is reached with"
@@ -297,7 +296,7 @@ The Bank's permission, granted by the Operator through Strong Customer Authentic
 #### Constraints
 
 - `expires_at` is after `granted_at`; Slussen assumes no fixed consent length.
-- A Bank Consent is valid while `refused_at` is empty and `expires_at` lies in the future; once `refused_at` is filled it counts as expired from that time, covers no Bank Account in a Fetch (UC-001 A4) and is shown as expired with that time, until a grant or renewal replaces it; `expires_at` is kept as reported.
+- A Bank Consent is valid while `refused_at` is empty and `expires_at` lies in the future; once `refused_at` is filled it counts as expired from that time, covers no Bank Account in a Fetch (UC-001 A4) and is shown as an expired Bank Consent, with that time and that the Bank refused it, until a grant or renewal replaces it (UC-008 BR-006); `expires_at` is kept as reported.
 - A Bank has at most one Bank Consent per Data Provider; renewing replaces it.
 - A Bank Consent covers each `BANK_ACCOUNT` whose `provider_bank_id` is its `bank_id` and whose `data_provider_id` or `balance_data_provider_id` is its `data_provider_id`, whatever the Bank Account's `bank_id` (UC-007 BR-009).
 - Revoking a Bank Consent removes it together with its Bank Session (`BANK_SESSION`), also when the Data Provider does not confirm the end of the consent.
@@ -344,7 +343,7 @@ One attempt to grant or renew the Bank Consent of a Bank, started with a Data Pr
 | Attribute        | Description                                                    | Data Type | Length/Precision | Validation Rules                         |
 |------------------|----------------------------------------------------------------|-----------|------------------|------------------------------------------|
 | id               | Unique identifier                                              | Long      | 19               | Primary Key, Sequence                    |
-| bank_id          | Bank whose Bank Consent is requested                           | Long      | 19               | Not Null, Foreign Key (BANK.id)          |
+| bank_reference   | Reference the Data Provider gives the Bank whose Bank Consent is requested, its name and country (ADR-001 §4.1) | String    | 100              | Not Null                                 |
 | data_provider_id | Data Provider with which the request was started               | Long      | 19               | Not Null, Foreign Key (DATA_PROVIDER.id) |
 | started_at       | Time Slussen started the request                               | DateTime  | -                | Not Null                                 |
 | expires_at       | Time after which an answer to the request is rejected          | DateTime  | -                | Not Null                                 |
@@ -354,6 +353,7 @@ One attempt to grant or renew the Bank Consent of a Bank, started with a Data Pr
 
 - `expires_at` is `OPERATOR_SETTINGS.consent_request_minutes` after `started_at`.
 - Only the most recent Consent Request of a Bank and Data Provider can be answered; starting a new one makes the earlier ones unanswerable.
+- It names its Bank by `bank_reference` and refers to no `BANK`: the `BANK` whose `name` is that reference is found or created only when the Bank Consent is granted, right before it is stored (ADR-002 §3 O-10), so that a refused or abandoned attempt leaves no Bank behind; a renewal takes the reference from the `BANK.name` of the Bank Consent it renews.
 - A Consent Request is never included in device backups and is not restored after a reinstall.
 
 ### FETCH

@@ -118,7 +118,7 @@
 
 1. Slussen treats the Bank Consent as expired from now on, by storing the time of the refusal with it (`BANK_CONSENT.refused_at`), and starts no Back-off for that Bank.
 2. Slussen keeps the previously stored data of that Bank's Bank Accounts unchanged and records the outcome Not Consented for them.
-3. Slussen shows the Blocked Reason "missing consent" with the action that grants it again (UC-007).
+3. Slussen shows the Bank Consent as expired, with the time and that the Bank refused it, and the action that renews it (UC-007).
 4. Use case continues at step 6 for the other Bank Accounts.
 
 ### A10: Bank Account Not Identified With Certainty
@@ -153,7 +153,7 @@
 
 ### A13: Unattended Access Limit Reached
 
-**Trigger:** In a Scheduled Fetch, or in a Fetch the Operator started whose requests to that Bank cannot show that the Operator is present (BR-012), a Bank Account read through a Data Provider that needs a Bank Consent has had 4 Unattended Accesses of its transactions or of its balance in the preceding 24 hours, the limit PSD2 sets (C-006) (step 3)  
+**Trigger:** In a Scheduled Fetch, a Bank Account read through a Data Provider that needs a Bank Consent has had 4 Unattended Accesses of its transactions or of its balance in the preceding 24 hours, the limit PSD2 sets (C-006), counted as BR-012 says, when the request gate is asked to admit that read (step 4)  
 **Flow:**
 
 1. Slussen leaves that Bank Account out without contacting its Bank.
@@ -233,6 +233,15 @@
 2. Slussen shows on the Bank Account that its balance was reported in the other currency, naming both currencies, for example "balance reported in EUR, expected USD", and that nothing is needed now; if it happens again, the Operator checks the Bank Account's currency at the Data Provider. No amount is converted. After a Scheduled Fetch whose process has ended this is not shown, since nothing of it is stored (BR-013).
 3. Use case continues at step 7 for the transactions of that Bank Account and for the other Bank Accounts.
 
+### A22: Fetch at a Bank That Counts It as Unattended
+
+**Trigger:** The Operator starts a Fetch that would read a Bank Account at a Bank whose requests cannot show that the Operator is present (BR-012) (step 2)  
+**Flow:**
+
+1. Slussen shows, as for a Request Limit warning (A16), that this Bank counts the Fetch as unattended, with how many of the 4 Unattended Accesses PSD2 allows (C-006) each of that Bank's Bank Accounts has used of its transactions and of its balance in the preceding 24 hours, and that the Bank may refuse, which is then a request to wait (A5); and asks the Operator to confirm the Fetch.
+2. Operator confirms, or cancels and the use case ends.
+3. Use case continues at step 3.
+
 ## Postconditions
 
 ### Success Postconditions
@@ -250,7 +259,7 @@
 - Nothing is written to the Budget App, and no Upload Plan is prepared.
 - The stored Bank Transactions and Account Balances of every Bank Account that was not read successfully are unchanged.
 - No Bank is contacted without a valid Bank Consent, and no Data Provider is contacted during a Back-off it asked for.
-- No Data Provider receives more requests than its Request Limit, and no Bank Account more Unattended Accesses than the PSD2 limit (C-006), in any 24 hours.
+- No Data Provider receives more requests than its Request Limit, and no Bank Account more Unattended Accesses than the PSD2 limit (C-006) from Scheduled Fetches, in any 24 hours; a Fetch the Operator started adds one only after the Operator confirmed it (A22).
 - No transaction of one Bank Account is stored as a transaction of another Bank Account.
 
 ## Business Rules
@@ -277,7 +286,7 @@ A timeout, an outage or an unreadable answer starts no Back-off. Slussen shows t
 
 ### BR-006: Fetch Cooldown
 
-Each Data Provider has its own Fetch Cooldown, whose default comes with the Data Provider's part and which the Operator can change, reset to that default or set to 0 to switch off on the Data Provider's page in Settings (UC-010 A10, BR-010). During it, a new Fetch of that Data Provider, started by the Operator or as a Scheduled Fetch, is answered from the stored data without contacting it, and the Comparison still reads the Budget App (UC-003). A Fetch that delivered no Bank Account does not start a Fetch Cooldown. Whether it delivered one is not stored with the Fetch: Slussen takes it from the Offered Bank Accounts the Fetch kept (UC-009 BR-009), which are not restored after a reinstall, so the first Fetch after a restore starts no Fetch Cooldown and can cost one request more than needed. A Bank Account that has not been read since the Operator added it or confirmed or changed its identification (UC-009), that is, that has no Fetch Result with the outcome Fetched since then, is not served from the Fetch Cooldown, because nothing of it under that identification is stored yet: a Fetch within the Fetch Cooldown reads it from the Data Provider (A2). Once a Fetch has read it, the Fetch Cooldown serves it like every other Bank Account. That read is kept as a Provider Request and counts against the Request Limit (BR-007), and in a Scheduled Fetch against the Unattended Access limit (BR-012), like any other request; it neither starts nor extends the Fetch Cooldown.
+Each Data Provider has its own Fetch Cooldown, whose default comes with the Data Provider's part and which the Operator can change, reset to that default or set to 0 to switch off on the Data Provider's page in Settings (UC-010 A10, BR-010). During it, a new Fetch of that Data Provider, started by the Operator or as a Scheduled Fetch, is answered from the stored data without contacting it, and the Comparison still reads the Budget App (UC-003). A Fetch that delivered no Bank Account does not start a Fetch Cooldown; through a Data Provider that needs a Bank Consent, a Fetch delivered one when it read at least one Bank Account. Whether it delivered one is not stored with the Fetch: Slussen takes it from the Offered Bank Accounts the Fetch kept (UC-009 BR-009), which are not restored after a reinstall, so the first Fetch after a restore starts no Fetch Cooldown and can cost one request more than needed. A Bank Account that has not been read since the Operator added it or confirmed or changed its identification (UC-009), that is, that has no Fetch Result with the outcome Fetched since then, is not served from the Fetch Cooldown, because nothing of it under that identification is stored yet: a Fetch within the Fetch Cooldown reads it from the Data Provider (A2). Once a Fetch has read it, the Fetch Cooldown serves it like every other Bank Account. That read is kept as a Provider Request and counts against the Request Limit (BR-007), and in a Scheduled Fetch against the Unattended Access limit (BR-012), like any other request; it neither starts nor extends the Fetch Cooldown.
 
 ### BR-007: Request Limit
 
@@ -301,7 +310,7 @@ For a Bank Account whose transactions come from Transaction Files, the Account B
 
 ### BR-012: Operator Present or Unattended
 
-A Fetch the Operator starts is made with the Operator present and is not counted against the Unattended Access limit, as far as its requests show the Bank that the Operator is present. A Scheduled Fetch is unattended: through a Data Provider that needs a Bank Consent, it reads the transactions of a Bank Account at most 4 times and its balance at most 4 times in any 24 hours (C-006), counted from the Provider Requests of the preceding 24 hours. A request that cannot show the Bank the Operator's presence counts as unattended whoever started it: for a Bank that requires a sign of presence the device cannot truly give, such as its address on the internet, which Slussen never asks a third party for, the request is sent without any and is an Unattended Access (ADR-001 §4.1.1). Slussen counts each unattended request of kind Transactions or Balance of one Bank Account, each page of a paged read as one, so that its count is never below that of a Bank that counts each request; a Bank that counts otherwise, for example per Bank Consent, answers that its limit is reached, which is a request to wait for that Bank (BR-004, A5).
+A Scheduled Fetch is unattended: through a Data Provider that needs a Bank Consent, it reads the transactions of a Bank Account at most 4 times and its balance at most 4 times in any 24 hours (C-006), counted from the Provider Requests of the preceding 24 hours. A Fetch the Operator starts is made with the Operator present and is never refused by this count. One Unattended Access is one read of a Bank Account's transactions in one Fetch, however many pages it takes, or one read of its balance. Slussen counts truthfully: a read sent without a sign of the Operator's presence is an Unattended Access whoever started it. A Bank that requires a sign the device cannot truly give, such as its address on the internet, gets none, since Slussen asks no third party for that address, which would tell a third party each time the Operator fetches; every read at that Bank is then an Unattended Access (ADR-001 §4.1.1). Before a Fetch the Operator starts reads such a Bank, Slussen says so and asks for the Operator's confirmation (A22). The Bank's own answer decides whether it serves such a read: a refusal that its limit is reached is a request to wait for that Bank (BR-004, A5), also when the Bank counts otherwise than Slussen, for example per Bank Consent.
 
 ### BR-013: Fetch Schedule
 

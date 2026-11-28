@@ -235,12 +235,15 @@ enum class RefusalScope { BankAccount, Bank, Source }  // Source = the whole Dat
 - For a Data Provider, the core's gate stores the Provider Request (`PROVIDER_REQUEST`, UC-001 BR-007) durably before
   it answers `Allowed`, so a crash after admission counts the request rather than losing it. It refuses with scope
   Source for a reached Request Limit or a Back-off of the Data Provider, scope Bank for a Back-off of one Bank, and
-  scope BankAccount for a reached Unattended Access limit (C-006, UC-001 BR-004, BR-012). Requests of Bank Consent
+  scope BankAccount for a reached Unattended Access limit, in a Scheduled Fetch only (C-006, UC-001 BR-004, BR-012). Requests of Bank Consent
   operations are counted as `request_kind` Other, with the Operator present. The gate stores `unattended` and the Bank
   Account of `bankAccountReference` with the Provider Request, and counts an unattended request against the
   Unattended Access limit whatever started it (UC-001 BR-012). A plug-in sends `unattended` true for every request of
   an `Unattended` Fetch, and also for a request of a Fetch the Operator started when the request carries nothing that
-  tells the Bank the Operator is present (§4.1.1).
+  tells the Bank the Operator is present (§4.1.1). One read of a Bank Account's transactions, however many pages it
+  takes, and one read of its balance are each one access: the first request of a read has its kind, each further page
+  of the same read has kind Other, so that the count of Unattended Accesses counts reads while the Request Limit counts
+  every request (S-B-46).
 - For the Budget App, the gate counts nothing (the specification sets no limit), but refuses every request once the
   operation that admitted it (ADR-007 §1) has ended or been cancelled, so that no request leaves after its operation.
 - **Timeout and cancellation.** The plug-in gives each request a call timeout equal to `timeout` (OkHttp
@@ -399,6 +402,8 @@ interface BankConsentCapability {
         // | NotConfirmed(kind) | TransientFailure(kind) | StoppedByGate(reason)
     suspend fun revoke(session: ConsentSession, context: RequestContext): RevokeResult
         // Ended | EndedAtDataProvider | NotConfirmed | StoppedByGate(reason)
+    fun showsPresence(session: ConsentSession): Boolean                       // S-B-46; sends nothing
+    fun registeredReturnAddress(credential: Secret?): String?                  // S-B-51; sends nothing
 }
 ```
 
@@ -411,6 +416,11 @@ interface BankConsentCapability {
   and finds the Consent Request by that digest only. `NotCompleted` is the answer of a Strong Customer Authentication
   the Operator cancelled or the Bank refused (UC-007 A1); the plug-in tells it from an unreadable answer, which is
   `NotConfirmed(AnswerNotUnderstood)` (A2).
+- **Presence and the return address (S-B-46, S-B-51).** `showsPresence` says whether a request of a Fetch the
+  Operator starts can show this Bank that the Operator is present, from what the plug-in keeps in the Bank Session; the
+  core asks it before such a Fetch (UC-001 A22). `registeredReturnAddress` gives the return address the Operator
+  entered with the Data Provider's credentials (§4.5), or null when he entered none; the core then uses the
+  application's own (UC-007 BR-011) and passes the address it uses as `returnAddress`.
 - **Validity (S-B-42; C-007, UC-007 BR-004).** The plug-in asks for the longest Bank Consent the Data Provider declares
   for that Bank, never a length of Slussen's own, and `expiresAt` is the expiry the Data Provider reports with the
   completion.
@@ -454,11 +464,12 @@ Bank's `maximum_consent_validity` (seconds, declared per ASPSP) counted from the
 request timeout (NFR-016), so that it never exceeds the maximum when the request arrives. The `handle` holds the
 `authorization_id` and the Bank's `required_psu_headers`. `consentAddress` is the answer's `url`; it carries a value
 of the session and is never logged (UC-007 BR-006). A Bank missing from the list is `Refused(RefusedByDataProvider)`;
-`REDIRECT_URI_NOT_ALLOWED` is `Refused(ReturnAddressRefused)`; `WRONG_ASPSP_PROVIDED` and `WRONG_REQUEST_PARAMETERS`
+`REDIRECT_URI_NOT_ALLOWED` is `Refused(ReturnAddressRefused)`, which the core shows with the address it sent (UC-007 BR-011); `WRONG_ASPSP_PROVIDED` and `WRONG_REQUEST_PARAMETERS`
 are `Refused(RefusedByDataProvider)`; `UNAUTHORIZED_ACCESS` and `AUTHORIZATION_NOT_PROVIDED` are
 `Refused(CredentialsRefused)`. How long the `url` stays usable is not documented: the Consent Request lifetime
 decides (UC-007 BR-002). Whether a custom-scheme `redirect_url` is accepted is not documented; the application must
-list the address among its redirect URLs (Control Panel, "URLs whitelisted").
+list the address among its redirect URLs (Control Panel, "URLs whitelisted"); where it refuses the
+application's own address, the Operator registers an https address there and enters it with the credentials (§4.5).
 
 **The answer.** Enable Banking adds `code` and `state`, or `error` and `error_description`, to the query of the return
 address (reference, its first flow diagram). `stateOf` reads `state`. An answer with `error` is `NotCompleted`:
@@ -482,6 +493,10 @@ BR-004). No balance is asked for at completion. A restricted production applicat
 to it in Enable Banking's Control Panel (FAQ): a completion may cover no Bank Account. The `ConsentSession` holds the
 `session_id`, the Bank's required PSU headers from the `handle` and, for each delivered Bank Account, its `uid` by its
 `providerReference` (`BANK_SESSION.session_reference`, ADR-002 §2), so that a Fetch sends no request to learn them.
+An entry without `uid` (Enable Banking leaves it out when the
+entry cannot be read, for example a closed one) is
+delivered to be offered and identified, never as a Bank Account that can be read: the session holds no `uid` for it,
+so a Fetch that selects it gives `Failed(UnreadableAnswer)`.
 
 **Revoking.** `revoke` sends `DELETE /sessions/{session_id}`. Its success is `EndedAtDataProvider`: Enable Banking
 closes the Bank's consent "automatically if possible" (reference, "Delete session"). Any error, also for a session
@@ -492,11 +507,13 @@ present only when it carries a PSU header, and a Bank that declares `required_ps
 or none (FAQ, "What are the PSU headers … used for?", `PSU_HEADER_NOT_PROVIDED`). The headers Slussen can give truly
 are `Psu-User-Agent` (the application id and version name) and `Psu-Accept-Language` (the device's language). It
 never sends `Psu-Ip-Address`: the device does not know the address the Bank would see without asking a third party,
-which Slussen does not do (the Operator's decision of 2026-11-26), and the address it has on its own network is not that one.
+which Slussen does not do, since that would tell a third party each time the Operator fetches, and the address it
+has on its own network is not that one.
 It never sends `Psu-Geo-Location` (no such permission, NFR-022). So a request of a Fetch the Operator started carries
 those two headers when the Bank requires none or only those; otherwise it carries none and its `RequestSummary` is
-`unattended`. A request of an `Unattended` Fetch carries no PSU header, as the FAQ asks for data fetching the
-application starts itself.
+`unattended`: such a request is an Unattended Access at the Bank whoever started it, Slussen counts it so, and
+`showsPresence` is false for that Bank. A request of an `Unattended` Fetch carries no PSU header, as the FAQ asks for
+data fetching the application starts itself.
 
 **Fetching (S-B-47).** `FetchRequest.sessions` holds the Bank Session of each Bank with a Bank Consent that is valid
 (UC-001 A4); the plug-in reads only the selected Bank Accounts of those Banks and sends nothing for a Bank without a
@@ -507,8 +524,9 @@ and no `transaction_status` filter, when the transactions are to be read. A sele
 session does not hold is `Failed(UnreadableAnswer)`. It sends no `GET /sessions/{session_id}` and no request for an entry's details:
 whether those contact the Bank is not documented. Each page of the transactions is a request through the gate:
 while the answer has a `continuation_key`, also with an empty page, it asks again with that key and the same other
-parameters (FAQ, continuation key); a page the gate refuses, or a `WRONG_CONTINUATION_KEY`, ends that Bank Account as
-`Failed(Incomplete)` (§4.1).
+parameters (FAQ, continuation key), as kind Other (§4.0); a page the gate refuses, a `WRONG_CONTINUATION_KEY`, or a
+`continuation_key` already used in the same read ends that Bank Account as `Failed(Incomplete)` (§4.1), and the
+Request Limit bounds the rest.
 
 **The balance (S-B-47; risk R5 of the survey).** Of the `balances` given, the Account Balance is the one with
 `balance_type` `ITBD` (interim booked), else `CLBD` (closing booked), each a booked balance as the booked transactions
@@ -525,10 +543,10 @@ exactly as follows; nothing missing is taken from another field:
   (BR-002); for `OTHR` or no `status` the entry is `Uninterpretable` with `booked` null and `UnreadableStructure`.
 - `bookedDate`: `booking_date`, never `value_date` or `transaction_date`; missing is `MissingDate`, not a date is
   `UnreadableDate`.
-- `amount`: `transaction_amount.amount` with the sign of `credit_debit_indicator`, `CRDT` an inflow and `DBIT` an
-  outflow. Whether the amount carries a sign of its own is not documented: a leading minus is taken only with `DBIT`
-  and is then the same outflow; a minus with `CRDT`, no indicator, more decimals than thousandths or no number is
-  `UnreadableAmount`, and a missing amount `MissingAmount`.
+- `amount`: `transaction_amount.amount` without a sign, with the sign of `credit_debit_indicator`: with `CRDT` an
+  inflow, with `DBIT` an outflow. Whether the amount carries a sign of its own is not documented, so an amount with a
+  minus sign is `UnreadableAmount` whatever the indicator (UC-001 BR-016); so are an amount without an indicator, one
+  with more decimals than thousandths and one that is not a number; a missing amount is `MissingAmount`.
 - `currency`: `transaction_amount.currency`; missing is `MissingCurrency`.
 - `payee`: for `DBIT` `creditor.name`, for `CRDT` `debtor.name`, exactly as delivered; none when it is missing.
 - `memo`: the lines of `remittance_information` in their order, joined by one space, each exactly as delivered; none
@@ -838,7 +856,7 @@ interface CredentialCapability {
     suspend fun check(input: CredentialInput, context: RequestContext): CredentialCheck
 }
 data class CredentialForm(val fields: List<CredentialField>)
-data class CredentialField(val key: String, val kind: FieldKind, val description: String)  // kind: Text, Secret, File (chosen with the device's file picker)
+data class CredentialField(val key: String, val kind: FieldKind, val description: String, val optional: Boolean = false)  // kind: Text, Secret, File (chosen with the device's file picker); optional: may be left empty (S-B-51)
 sealed interface CredentialCheck {
     data class Accepted(val credential: Secret) : CredentialCheck  // what the core stores, encrypted
     data object Refused : CredentialCheck                         // UC-014 A1
@@ -852,7 +870,9 @@ sealed interface CredentialCheck {
   and returns the credential Slussen keeps, which need not be what the Operator typed. This build: YNAB, a personal
   access token, checked by listing the Budgets; SimpleFIN, a setup token, which `check` exchanges once for the access
   credential, returns that credential and discards the setup token; Enable Banking, the application id and the private
-  key file of the household's own registered application, checked with a signed request (UC-014 BR-002, C-008).
+  key file of the household's own registered application, checked with a signed request (UC-014 BR-002, C-008), and,
+  optional, the return address registered with that application, a Text field kept in the credential although it is
+  not secret, empty meaning the application's own address (UC-007 BR-011; S-B-51).
 - Before it calls the gate, `check` tests what it can test without the service: an input that cannot be valid, such
   as a malformed setup token or a key file that holds no private key, is answered `Refused` without calling the gate,
   so nothing is sent, no Provider Request is counted and nothing is stored (UC-014 A1, BR-002).
