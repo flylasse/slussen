@@ -239,8 +239,8 @@ enum class RefusalScope { BankAccount, Bank, Source }  // Source = the whole Dat
   operations are counted as `request_kind` Other, with the Operator present. The gate stores `unattended` and the Bank
   Account of `bankAccountReference` with the Provider Request, and counts an unattended request against the
   Unattended Access limit whatever started it (UC-001 BR-012). A plug-in sends `unattended` true for every request of
-  an `Unattended` Fetch, and also for a request of a Fetch the Operator started when the request carries nothing that
-  tells the Bank the Operator is present (§4.1.1). One read of a Bank Account's transactions, however many pages it
+  an `Unattended` Fetch, and also, for a Data Provider that needs a Bank Consent (S-B-53), for a request of a Fetch
+  the Operator started when the request carries nothing that tells the Bank the Operator is present (§4.1.1). One read of a Bank Account's transactions, however many pages it
   takes, and one read of its balance are each one access: the first request of a read has its kind, each further page
   of the same read has kind Other, so that the count of Unattended Accesses counts reads while the Request Limit counts
   every request (S-B-46).
@@ -474,16 +474,18 @@ list the address among its redirect URLs (Control Panel, "URLs whitelisted"); wh
 application's own address, the Operator registers an https address there and enters it with the credentials (§4.5).
 
 **The answer.** Enable Banking adds `code` and `state`, or `error` and `error_description`, to the query of the return
-address (reference, its first flow diagram). `stateOf` reads `state`. An answer with `error` is `NotCompleted`:
-a cancellation (`access_denied`) and a refusal by the Bank are not told apart, both are UC-007 A1. An answer with
-neither `code` nor `error` is `NotConfirmed(AnswerNotUnderstood)`.
+address (reference, its first flow diagram). `stateOf` reads `state`. An answer with `error` and no `code` is
+`NotCompleted`: a cancellation (`access_denied`) and a refusal by the Bank are not told apart, both are UC-007 A1. An
+answer with neither `code` nor `error`, or with both, is `NotConfirmed(AnswerNotUnderstood)`, and nothing is sent (S-B-53).
 
 **Completing.** `completeConsent` sends `POST /sessions` with the `code`. `expiresAt` is the answer's
 `access.valid_until`: Enable Banking keeps the session exactly as long as asked, also when the Bank adjusts its own
 consent (reference, `Access.valid_until`), and the session may still end earlier (FAQ, `EXPIRED_SESSION`), which
 UC-001 A9 handles. `EXPIRED_AUTHORIZATION_CODE`, `WRONG_AUTHORIZATION_CODE` and `ALREADY_AUTHORIZED` are
 `NotConfirmed(AnswerNotUnderstood)` (UC-007 A2); `UNAUTHORIZED_ACCESS` and `AUTHORIZATION_NOT_PROVIDED` are
-`NotConfirmed(CredentialsRefused)`; another refusal is `NotConfirmed(RefusedByDataProvider)` (A4). How
+`NotConfirmed(CredentialsRefused)`; another refusal is `NotConfirmed(RefusedByDataProvider)` (A4). A completion
+Enable Banking accepted whose validity, Bank or `accounts` cannot be used is a failure in transit (A8), and its session
+is ended at the Data Provider, once and through the gate, when its `session_id` is known (S-B-53). How
 long a `code` is valid is not documented. Each delivered Bank Account comes from one entry of `accounts`:
 `providerReference` is its `identification_hash`, which Enable Banking gives for matching an entry across sessions (reference, `AccountResource`; FAQ "How should re-authorisation be performed"), never its `uid`, which is
 valid only while the session is authorised; `name` its `details`, else its `product`, never `name`, which is the
