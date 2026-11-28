@@ -194,7 +194,12 @@ Which send each Eligible Transaction becomes (this is what makes a retry possibl
 A retry of a Sent Record whose outcome is Not Yet Known or Unknown uses the Budget Account recorded in its Sent Record,
 also when the Operator has moved the Account Mapping since (UC-009 BR-003: a Sent Record whose outcome is unknown at
 the move keeps its Budget Account, and any later send of it goes there), because the Budget App may already hold it
-there and only that Budget Account refuses its reused Import Identifier. A retry of a Rejected Sent Record goes to the
+there and only that Budget Account refuses its reused Import Identifier. Such a retry is an item only of a plan of
+that Budget Account's Budget, also when its Bank Account is now mapped into another Budget, into none, or the plan is
+of the whole Budget while its Bank Account lies elsewhere; every other plan holds no item for it, whichever row of the
+table applies, and the Bank Transaction stays Outcome Unknown (UC-006 BR-007). A plan of a Budget that is not served
+holds none, so such a send then waits for the read of UC-003 step 1 to settle it, or for the Operator to serve that
+Budget again. A retry of a Rejected Sent Record goes to the
 Budget Account of the Bank Account's current Account Mapping, also after a move (UC-006 BR-020, O-P2-34 (1)): the
 Budget App refused it, so it holds it nowhere (a refusal because the Import Identifier is already held is
 `AlreadyPresent`, never `Rejected`, ADR-001 §4.2.1 F-2), and moving the mapping is often the Operator's fix for the
@@ -265,11 +270,12 @@ Confirmation runs as one operation in this order; any failure before step 6 writ
 3. **Configuration unchanged.** Since S-23/S-24 the configuration is stored data covered by step 2; nothing else is
    compared here. (Service credentials cannot change during Plan Open, §2.)
 4. **Budget App unchanged.** For the plan's one Budget, the reader is asked for the changes since the plan's
-   captured `ChangeCursor`. Any changed transaction in that Budget, in any of its Budget Accounts, makes the plan
-   Changed Before Writing; an answer with no changed transaction means unchanged, also when the Budget App's cursor
-   moved for another reason, and nothing of it is stored then; the change set is then
-   stored (O-4, which marks the Comparison pending) and the Comparison is recomputed and committed (O-5, §3a) before
-   the Operator returns to review, so the statuses shown are current (A5). A failed read is A6.
+   captured `ChangeCursor`. When the answer holds no changed transaction, the Budget App is unchanged, also when its
+   cursor moved for another reason, nothing of the answer is stored, and confirmation goes on at step 5. When it holds
+   at least one changed transaction, in any Budget Account of that Budget, the plan becomes Changed Before Writing,
+   the answer is stored with its cursor (O-4, which marks the Comparison pending) and the Comparison is recomputed and
+   committed (O-5, §3a) before the Operator returns to review, so the statuses shown are current (A5). A failed read is
+   A6.
 5. **Expiry at the transition to writing (UC-006 step 5, BR-003, A5; NFR-003; B-07).** After the read of step 4, the
    coordinator takes the current time once from `Clock` as `now` and checks that it is before `expires_at`; otherwise
    the plan becomes Expired and nothing is written. The same `now` is passed to O-7, which repeats the expiry check
@@ -478,3 +484,5 @@ is listed in ADR-005 §7.
   nothing more sent); S-B-68: §4 and §6 step 4 (one Budget per plan; an answer with no changed transaction is
   unchanged); S-B-69: §2 (every way a pause ends starts a deferred Scheduled Fetch), §5 (a replacing plan prepared from
   stored data after the decision's conclusions), §8 (the mode handled before a pending Comparison).
+- Build-out, the review of phase W4-0 (2026-11-28): §4 (a send that is not settled is retried only by a plan of its
+  Budget Account's Budget, UC-006 BR-007), §6 step 4 (what is stored with and without a change, in two sentences).

@@ -702,7 +702,9 @@ data class BudgetAppTransactionRead(
   Decision Journal or a log in the default mode, nor stored. `Rejected` is answered only for an item the Budget App
   refused by itself; an item of a list the Budget App refused as a whole is never `Rejected` because of that list's
   answer, since the plug-in cannot know from it what was stored (§4.2.5 says how the YNAB part settles it), and an item
-  the plug-in cannot settle is `Unknown`. `CredentialsRefused` and `StoppedByGate` are answered only when nothing of
+  the plug-in cannot settle is `Unknown`. An item refused because its Budget Account is not in the Budget the call names
+  is `Unknown`, never `Rejected`, so that it never follows a moved Account Mapping into another Budget; the core plans
+  no such item (UC-006 BR-007), so the case cannot arise from a plan. `CredentialsRefused` and `StoppedByGate` are answered only when nothing of
   the call was written; once one item of the call was sent, a later refusal makes every item not answered yet
   `Unknown`. The plug-in never sends an item again after an answer that leaves it `Unknown`.
 - **Shortening (UC-006 BR-015).** The core shortens a payee or memo longer than `payeeMaxLength` or `memoMaxLength`
@@ -727,17 +729,28 @@ ADR-005 §7, E-10, must prove them before the first real Upload. Every request g
 with kind `BudgetAppRead` and a write with kind `BudgetAppWrite`, with the access token as a bearer token. A Budget is
 a YNAB plan, a Budget Account a YNAB `Account` (OpenAPI); amounts are YNAB's milliunits, the thousandths of `Amount`.
 
-- **Paths.** Requests use the documented paths under `https://api.ynab.com/v1/plans/{plan_id}`. The reads built
-  before this section use `/budgets/...`, which YNAB still answers but no longer documents (Changelog v1.79.0); the
-  slice that builds this writer moves them to `/plans/...`, whose answers name `plans` and `plan` where the old ones
-  named `budgets` and `budget`.
+- **Paths.** The writer uses the paths the part's reads use today, under `https://api.ynab.com/v1/budgets/{budget_id}`.
+  YNAB still answers them, though since v1.79.0 its documentation names the same resources `/plans/{plan_id}`
+  (Changelog v1.79.0: the earlier `/budgets/{budget_id}` paths "continue to work"); the paths and answers below are written in
+  the documented form, and each `/plans/{plan_id}` stands for `/budgets/{budget_id}`. The reads are not moved in this
+  wave; moving them is the Operator's question (`docs/build_out_plan.md` §6, G-44), with a live test that the two paths
+  name the same thing.
+- **Refusals.** Only an answer that means the access token is not accepted is refused credentials: `401` (a token
+  missing, invalid, revoked or expired) and `403` with YNAB's code `403.3` (`unauthorized_scope`). They are
+  `CredentialsRefused` for a read, for a `create` call when nothing of it was written, and `NotCleared` for
+  `markCleared`. Every other documented `403` is the Budget App's refusal with its reason, not of the credentials:
+  `403.1` (`subscription_lapsed`), `403.2` (`trial_expired`), `403.4` (`data_limit_reached`) and `403.5`
+  (`email_unconfirmed`), and a `403` whose code cannot be read, are `TransientFailure(ServiceUnavailable)` for a read
+  (the service answered that it cannot serve the request now), are answered for a write as a refused list or a refused
+  single send below, and are `NotCleared` for `markCleared`. The rules below follow this one wherever they name `401`
+  or `403`; it holds for the reads built before this section too.
 - **The transfer payee.** YNAB links a transfer when the sent transaction's `payee_id` is the `transfer_payee_id` of
   the other Budget Account (OpenAPI, `payee_id`, `Account.transfer_payee_id`). When the items of a `create` call hold a linked
   transfer, the part first sends one `GET /plans/{plan_id}/accounts`. An item whose other Budget Account is missing
   from the answer, `deleted`, `closed` or without a `transfer_payee_id` is `Rejected` with that reason and not sent,
   as §4.2.2 says of a Budget App that cannot link it; when that read gets no usable answer, every linked item of the
-  call is `Unknown` and not sent, and the other items are sent. `401` or `403` to that read is `CredentialsRefused`,
-  with nothing written.
+  call is `Unknown` and not sent, and the other items are sent. A refusal of the token to that read is
+  `CredentialsRefused`, with nothing written.
 - **Creating a list.** The items of one Budget Account are sent in one `POST /plans/{plan_id}/transactions` with a
   `transactions` array, each with `account_id`, `date`, `amount`, `memo` (or null), `cleared` `cleared` or
   `uncleared` as the item says, `approved` false (YNAB's default too: "If not supplied, transaction will be
@@ -748,18 +761,20 @@ a YNAB plan, a Budget Account a YNAB `Account` (OpenAPI); amounts are YNAB's mil
   that of a saved transaction in the item's Budget Account is `Created` with that transaction's `id`; one among the duplicates
   is `AlreadyPresent(null)`, its reference filled by the next Comparison (UC-003 BR-017); any other item, and every item
   of an answer that cannot be read, is `Unknown`.
-- **A refused list, sent again one by one (Q-08).** To an answer `400`, `404` or `409` to the list, the part sends
+- **A refused list, sent again one by one (Q-08).** To an answer `400`, `404`, `409` or a `403` that is not a refusal
+  of the token to the list, the part sends
   each item of that list alone, in the order of the items, in one `POST` with a `transaction` object, so that only an
   item YNAB refuses by itself is `Rejected`. Whether a refused list stored part of its items is not documented; the
   single sends settle it, since an item already stored is refused by its `import_id`. To a single send, `201` is
-  `Created` with `data.transaction.id`; `409` (the OpenAPI description: the Budget Account already holds a transaction with the same `import_id`) is
-  `AlreadyPresent(null)`; `400` and `404` are `Rejected` with the answer's `error.detail`. The first
-  answer of any other kind (`401`, `403`, `429`, a status of the 500s, an answer that cannot be read, a timeout, a lost
+  `Created` with `data.transaction.id` when `data.transaction.import_id` is the item's, and `Unknown` otherwise; `409` (the OpenAPI description: the Budget Account already holds a transaction with the same `import_id`) is
+  `AlreadyPresent(null)`; `400` and a `403` that is not a refusal of the token are `Rejected` with the answer's
+  `error.detail`; `404` is `Unknown`, since it can mean that the Budget Account is not in the Budget the request names
+  (§4.2.4). The first answer of any other kind (a refusal of the token, `429`, a status of the 500s, an answer that cannot be read, a timeout, a lost
   connection or a cancellation) or a refusal by the gate ends the sending: that item and every item not sent yet are
   `Unknown`. The sending is bounded by the items: at most one list request and one single request per item of the
   call, never a second request for the same item.
-- **Every other answer to a list.** `401` and `403` (every one of YNAB's codes 403.1 to 403.5) are
-  `CredentialsRefused` when nothing of the call was written, `429` ("too many requests"), a status of the 500s, a
+- **Every other answer to a list.** A refusal of the token is `CredentialsRefused` when nothing of the call was
+  written, `429` ("too many requests"), a status of the 500s, a
   timeout, a lost connection and a cancellation make every item of the request `Unknown` (§4.0), and the part sends
   none of them again.
 - **Dates.** YNAB refuses a future date ("Future dates (scheduled transactions) are not permitted") and gives every
@@ -782,13 +797,13 @@ a YNAB plan, a Budget Account a YNAB `Account` (OpenAPI); amounts are YNAB's mil
   transfer deletes the other; that a closed Budget Account refuses a new transaction; that a server knowledge stays usable.
 - **Marking Cleared.** `markCleared` sends one `PATCH /plans/{plan_id}/transactions` with one transaction holding only
   `id` and `cleared` `cleared`. `200` with that transaction `cleared` or `reconciled` is `Cleared`; `200` without it,
-  `400` and `404` are `NotCleared`; `401` and `403` are `NotCleared` too, and the next read meets the refusal; every
+  `400`, `404` and every `403` are `NotCleared`, and the next read meets a refusal of the token; every
   other answer, a timeout, a lost connection and a cancellation are `Unknown`. That such a request changes nothing
   else of the transaction is not documented (E-10).
 - **Reading one transaction.** `readTransaction` sends `GET /plans/{plan_id}/transactions/{transaction_id}` and reads
   the answer as `readChanges` reads a transaction; `transfer_transaction_id` and `transfer_account_id` give the
-  `transferLink` from which ADR-007 §6 step 8 resolves the Transfer Counterpart. `404` is `NotFound`; `401` and `403`
-  are `CredentialsRefused`; every other failure is `TransientFailure` of its kind.
+  `transferLink` from which ADR-007 §6 step 8 resolves the Transfer Counterpart. `404` is `NotFound`; a refusal of the token
+  is `CredentialsRefused`, another `403` as **Refusals** says; every other failure is `TransientFailure` of its kind.
 - **Rate limit.** YNAB lets an access token make up to 200 requests per hour, in a rolling window, and answers a
   request beyond it with `429`. The gate counts nothing for the Budget App (§4.0); a `429` is `Unknown` for a write,
   `Unknown` for a clearing and a failed read (UC-003 A1) for a read, and nothing is retried. One Upload costs, for
@@ -1383,3 +1398,7 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
   means, the resend one by one after a refused list and its bound, the transfer payee, never approved, dates, lengths,
   rate limit, each from YNAB's documentation read on 2026-11-28 or marked not documented for E-10); S-B-75: §4.2.4
   (shortening at a code point boundary).
+- Build-out, the review of phase W4-0 (2026-11-28): §4.2.4 (a refusal because the Budget Account is not in the Budget
+  named is `Unknown`), §4.2.5 (the writer on the paths the reads use; only a refusal of the token is refused
+  credentials, the other `403` kinds with their reason; a single send's `import_id` checked; `404` to a single send
+  `Unknown`).
