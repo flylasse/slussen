@@ -49,7 +49,13 @@ class InMemoryConsentStore(val consents: MutableList<StoredBankConsent> = mutabl
         if (fails) throw IllegalStateException("The invented storage of this test cannot be written.")
     }
 
-    override suspend fun bankConsents(): List<StoredBankConsent> = lock.withLock { consents.sortedBy { it.id } }
+    /** Makes reading the Bank Consents fail, as a `device.db` that cannot be read would (UC-010 A12). */
+    var failsToRead: Boolean = false
+
+    override suspend fun bankConsents(): List<StoredBankConsent> = lock.withLock {
+        if (failsToRead) throw IllegalStateException("The invented storage of this test cannot be read.")
+        consents.sortedBy { it.id }
+    }
 
     override suspend fun bankSessions(): List<StoredBankSession> = lock.withLock { sessions.toList() }
 

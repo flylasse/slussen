@@ -13,6 +13,7 @@ import slussen.app.platform.log.AndroidLogSink
 import slussen.app.platform.log.LogcatLog
 import slussen.app.ui.UiServices
 import slussen.app.ui.consent.ConsentAnswers
+import slussen.app.ui.settings.StartedOverNotice
 import java.time.Clock
 
 /**
@@ -45,10 +46,18 @@ class SlussenApplication : Application() {
      */
     val consentAnswers: ConsentAnswers = ConsentAnswers(started, scope, clock)
 
+    /**
+     * UC-010 A12 step 4: the card of a new installation after Start Over, in this process's memory only; the names it
+     * shows reach it in the intent that started the app (ADR-002 §3 O-17 step 3) and are never stored.
+     */
+    val startedOver: StartedOverNotice = StartedOverNotice()
+
     override fun onCreate() {
         super.onCreate()
         scope.launch {
-            started.value = compositionRoot.start(this@SlussenApplication, clock, scope)
+            val services = compositionRoot.start(this@SlussenApplication, clock, scope)
+            startedOver.servicesStarted(services.startedOver)
+            started.value = services
             // UC-008 BR-001: the Consent Requests that wait, and one whose lifetime ended meanwhile, are read from stored data only.
             consentAnswers.atStart()
         }

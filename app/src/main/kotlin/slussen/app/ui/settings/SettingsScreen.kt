@@ -67,10 +67,17 @@ fun SettingsScreen(
     actions: SettingsActions = SettingsActions(),
     onTransferDescriptions: () -> Unit = {},
     onJournalExport: () -> Unit = {},
+    /** UC-010 A12 (`#started-over`): the card of a new installation after Start Over, at the top. */
+    startedOver: StartedOverCardUi? = null,
+    onCloseStartedOver: () -> Unit = {},
+    /** UC-010 A12 (`#list-2`, `#start-over`): the row of Start Over at the end, with its state, answer and dialog. */
+    startOver: StartOverUi? = null,
+    startOverActions: StartOverActions = StartOverActions(),
 ) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
             ScreenTitle("Settings", "Operator Settings · stored on this device and in its backups")
+            startedOver?.let { StartedOverCard(it, onCloseStartedOver) }
             // A4 of UC-010 (`#journal-near`): the Decision Journal nearly full, with its size and its limit, at the top.
             ui.journalNearLimit?.let { Banner(it.title, it.text) }
             SectionTitle("Services and Account Mappings")
@@ -144,9 +151,11 @@ fun SettingsScreen(
                     }
                     Text(ui.version, color = SlussenColors.Text)
                 }
+                startOver?.let { StartOverControl(it, startOverActions) }
             }
         }
     }
+    startOver?.dialog?.let { StartOverDialog(it, startOverActions) }
     val open = ui.numberEditor
     if (open != null) {
         SettingDialog(

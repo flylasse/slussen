@@ -36,6 +36,10 @@ import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.settings.GeneralSettings
 import slussen.core.settings.DescriptionLists
+import slussen.core.settings.StartOver
+import slussen.core.settings.StartOverResult
+import slussen.app.platform.restart.ProcessRestart
+import slussen.app.ui.settings.StartOverHandOver
 import slussen.core.status.BankAccountTransactions
 import slussen.core.status.BudgetTransfers
 import slussen.core.status.ImportStatus
@@ -121,8 +125,13 @@ class CompositionRoot(private val log: SlussenLog, private val detailedLogging: 
         )
         // UC-001 BR-013: Scheduled Fetches follow the Fetch Schedule, set by the first start of Slussen while the stored value is above 0, kept by a later start; the first run falls due a whole period later, so opening Slussen never fetches (BR-001).
         val fetchSchedule = FetchSchedule(WorkManagerFetchSchedule(context)) { storage.settings.current().scheduledFetchesPerDay }
-        fetchSchedule.atStart()
         val notificationDevice = AndroidNotificationDevice(context)
+        // A12 of UC-010, ADR-002 §3 O-17 step 5: a start that finished Start Over cancels the work and the notification the old data left, then sets the Fetch Schedule as a new installation's first start does.
+        if (storage.startState.startedOver) {
+            fetchSchedule.startedOver()
+            removeQuietly(notificationDevice)
+        }
+        fetchSchedule.atStart()
         val notification = NewTransactionNotification(notificationDevice) { status.newTransactionNumber() }
         // UC-001 BR-014: Slussen works the number out from stored data at every start and after every operation of the coordinator.
         scope.launch { notification.follow(coordinator.ended) }
@@ -133,6 +142,19 @@ class CompositionRoot(private val log: SlussenLog, private val detailedLogging: 
             registered, credentials, storage.consents, storage.connections, storage.offered, storage.fetches, storage.providerRequests,
             coordinator, storage.settings, clock, RandomSource { random.nextBytes(it) }, returnAddress, log,
         )
+        // For UC-011: the Journal Export, the one reader of journal.db's entries (Konsist K-07), written off the main thread.
+        val journalExport = JournalExport(
+            registered, credentials, storage.connections, storage.comparisons, storage.settings, coordinator, storage.journalReader,
+            clock, versionName = appVersion.versionName,
+        )
+        // A12 of UC-010: Start Over, alone on the lane (ADR-007 §2), recorded in the start intent and finished by the next start (ADR-002 §3 O-17).
+        val startOver = StartOver(storage.connections, storage.fetches, bankConsents, coordinator, storage.startOver) { journalExport.underWay }
+        // ADR-002 §3 O-17 step 3: the Fetch Schedule's work and the notification are removed, and the app is started again with the Banks to name.
+        val restartForStartOver: suspend (StartOverResult) -> Nothing = { result ->
+            fetchSchedule.startedOver()
+            removeQuietly(notificationDevice)
+            ProcessRestart(context.applicationContext).restart(StartOverHandOver.EXTRA, StartOverHandOver.encode(result))
+        }
         return UiServices(
             credentials = credentials,
             settingsOverview = settingsOverview,
@@ -148,11 +170,7 @@ class CompositionRoot(private val log: SlussenLog, private val detailedLogging: 
             descriptionLists = DescriptionLists(storage.settings, comparison, storage.connections, storage.comparisons, journal),
             // The Decision Journal's own control (UC-010 A2-A4), on journal.db through its own thread (ADR-002 §9).
             journalControl = JournalControl(storage.settings, journal, storage.journalControl, coordinator),
-            // For UC-011: the Journal Export, the one reader of journal.db's entries (Konsist K-07), written off the main thread.
-            journalExport = JournalExport(
-                registered, credentials, storage.connections, storage.comparisons, storage.settings, coordinator, storage.journalReader,
-                clock, versionName = appVersion.versionName,
-            ),
+            journalExport = journalExport,
             mappings = AccountMappings(registered, storage.connections, storage.mappings, storage.offered, coordinator, journal, comparison, clock),
             status = status,
             // Step 5 of UC-008: the weeks of a Bank Account's list start on the device locale's first day (survey §5 guess 6).
@@ -193,7 +211,20 @@ class CompositionRoot(private val log: SlussenLog, private val detailedLogging: 
             bankConsents = bankConsents,
             consentProviders = registered.dataProviders.filter { it.stored.needsBankConsent }.map { ConsentProvider(it.key, it.stored.name) },
             applicationReturnAddress = returnAddress,
+            startOver = startOver,
+            processScope = scope,
+            restartForStartOver = restartForStartOver,
+            startedOver = storage.startState.startedOver,
         )
+    }
+
+    /** UC-010 A12: the New Transaction Notification removed; a device that refuses changes nothing else. */
+    private fun removeQuietly(device: AndroidNotificationDevice) {
+        try {
+            device.remove()
+        } catch (failure: Exception) {
+            Unit
+        }
     }
 
 }

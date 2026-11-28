@@ -76,6 +76,10 @@ import slussen.app.ui.settings.SettingsViewModel
 import slussen.app.ui.settings.TransferDescriptionsScreen
 import slussen.app.ui.settings.TransferDescriptionsViewModel
 import slussen.app.ui.settings.descriptionActionsOf
+import slussen.app.ui.settings.StartOverActions
+import slussen.app.ui.settings.StartOverHandOver
+import slussen.app.ui.settings.StartOverViewModel
+import slussen.app.ui.settings.StartedOverNotice
 import slussen.app.ui.theme.SlussenColors
 import slussen.app.ui.transfers.TransfersScreen
 import slussen.app.ui.transfers.TransfersViewModel
@@ -97,12 +101,15 @@ class SlussenActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val application = application as SlussenApplication
+        // A12 step 4 of UC-010: the Banks handed over by the process Start Over ended are read once, held in memory and never stored.
+        if (savedInstanceState == null) application.startedOver.receive(StartOverHandOver.decode(intent?.getStringArrayListExtra(StartOverHandOver.EXTRA)))
+        intent?.removeExtra(StartOverHandOver.EXTRA)
         setContent {
             SlussenTheme {
                 val services by application.services.collectAsState()
                 Box(Modifier.fillMaxSize().background(SlussenColors.Background).safeDrawingPadding()) {
                     val started = services
-                    if (started == null) Muted("Opening Slussen…") else SlussenScreens(started, application.consentAnswers)
+                    if (started == null) Muted("Opening Slussen…") else SlussenScreens(started, application.consentAnswers, application.startedOver)
                 }
             }
         }
@@ -150,8 +157,10 @@ sealed interface Screen {
  * Settings, whose entries open the service pages, the File Format pages and the Account Mappings (UC-013 BR-008, S-40).
  */
 @Composable
-fun SlussenScreens(services: UiServices, consentAnswers: ConsentAnswers) {
-    val stack = remember { mutableStateListOf<Screen>(Screen.Overview) }
+fun SlussenScreens(services: UiServices, consentAnswers: ConsentAnswers, startedOver: StartedOverNotice = StartedOverNotice()) {
+    // A12 step 4 of UC-010 (`settings.html#started-over`): after Start Over, Slussen opens on Settings with the card naming the Banks.
+    val stack = remember { mutableStateListOf<Screen>(if (startedOver.card.value != null) Screen.Settings else Screen.Overview) }
+    val startedOverCard by startedOver.card.collectAsState()
     val current = stack.last()
     // Review B6 F7: the screen that back returned to, so that it shows again what was open on it; null after go and tab.
     var returnedTo by remember { mutableStateOf<Screen?>(null) }
@@ -363,6 +372,9 @@ fun SlussenScreens(services: UiServices, consentAnswers: ConsentAnswers) {
                 }
                 Screen.Settings -> {
                     val vm: SettingsViewModel = viewModel(key = "settings") { SettingsViewModel(services) }
+                    // A12 of UC-010: Start Over at the end of Settings, run in the process's own scope.
+                    val startOverVm: StartOverViewModel = viewModel(key = "start-over") { StartOverViewModel(services) }
+                    val startOverUi by startOverVm.state.collectAsState()
                     LaunchedEffect(current) { vm.load() }
                     val notOpened = vm.notOpened.collectAsState().value
                     val settingsUi = vm.state.collectAsState().value
@@ -382,6 +394,10 @@ fun SlussenScreens(services: UiServices, consentAnswers: ConsentAnswers) {
                             actions = vm.actions(),
                             onTransferDescriptions = { go(Screen.TransferDescriptions) },
                             onJournalExport = { go(Screen.JournalExport) },
+                            startedOver = startedOverCard,
+                            onCloseStartedOver = startedOver::close,
+                            startOver = startOverUi.takeIf { services.startOver != null },
+                            startOverActions = StartOverActions(startOverVm::open, startOverVm::cancel, startOverVm::confirm),
                         )
                     }
                 }

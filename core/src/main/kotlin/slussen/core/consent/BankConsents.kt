@@ -572,6 +572,65 @@ class BankConsents(
         }
     }
 
+    // ---- Start Over -------------------------------------------------------------------------------------------------
+
+    /** UC-010 A12 step 1: each stored Bank Consent, with its Bank and Data Provider, that Start Over asks to end first. From stored data only. */
+    suspend fun toEnd(): List<ConsentToEnd> {
+        val banks = connections.banks().associateBy { it.id }
+        return consents.bankConsents().map { consent ->
+            ConsentToEnd(banks[consent.bankId]?.name.orEmpty(), plugins.dataProviders.firstOrNull { it.stored.id == consent.dataProviderId }?.stored?.name.orEmpty())
+        }
+    }
+
+    /** UC-010 A12 step 3: the Consent Requests that wait for the Bank's result within their lifetime. From stored data only. */
+    suspend fun waiting(): List<WaitingRequest> = waitingAt(clock.instant()).map { WaitingRequest(it.id, it.bankReference, it.expiresAt) }
+
+    /**
+     * UC-010 A12 step 4, ADR-002 §3 O-17 step 1, on the lane Start Over holds with [permit]: asks the Data Provider of each
+     * stored Bank Consent to end it, as A7 step 3 does, through the gate with the Operator present, and deletes nothing;
+     * [asking] is told each one before it is asked. A Data Provider that cannot be reached, refuses, fails, has no
+     * accepted credentials or whose gate holds the request back does not stop it: each Bank whose consent was not
+     * confirmed as ended at the Bank is returned with why. Throws only when the stored Bank Consents cannot be read.
+     */
+    suspend fun endEveryBankConsent(permit: OperationPermit, asking: (ConsentToEnd) -> Unit = {}): List<ConsentNotEnded> {
+        val banks = connections.banks().associateBy { it.id }
+        val stored = consents.bankConsents()
+        val sessions = consents.bankSessions()
+        return stored.mapNotNull { consent ->
+            val provider = plugins.dataProviders.firstOrNull { it.stored.id == consent.dataProviderId && it.stored.needsBankConsent }
+            val bankName = banks[consent.bankId]?.name.orEmpty()
+            val toEnd = ConsentToEnd(bankName, provider?.stored?.name.orEmpty())
+            fun notEnded(because: NotEndedBecause) = ConsentNotEnded(toEnd.bankName, toEnd.dataProviderName, because)
+            val session = sessions.firstOrNull { it.bankConsentId == consent.id }?.session
+            val capability = provider?.plugin?.bankConsent
+            // A12 step 4 of UC-010: a Bank Consent Slussen cannot ask to end is named, so that the Operator can end it at the Bank.
+            if (provider == null || capability == null || session == null) return@mapNotNull notEnded(NotEndedBecause.NotContactable)
+            when (unavailable(provider)) {
+                ConsentUnavailable.CredentialsMissing -> return@mapNotNull notEnded(NotEndedBecause.CredentialsMissing)
+                ConsentUnavailable.CredentialsRefused -> return@mapNotNull notEnded(NotEndedBecause.CredentialsRefused)
+                else -> Unit
+            }
+            asking(toEnd)
+            permit.workingOn(provider.stored.name)
+            val ended = try {
+                capability.revoke(session, context(provider, permit, consent.bankId))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                // A8 step 3 of UC-007: a plug-in that throws (ADR-001 §4.0 forbids it) is an end the Data Provider did not confirm.
+                RevokeResult.NotConfirmed
+            }
+            logged(BankConsentEvent.BankConsentRevoked)
+            // A12 step 4 of UC-010: each Bank whose Bank Consent the Data Provider did not confirm as ended at the Bank is named, also one it could not contact.
+            when (ended) {
+                RevokeResult.Ended -> null
+                RevokeResult.EndedAtDataProvider -> notEnded(NotEndedBecause.EndedAtDataProviderOnly)
+                RevokeResult.NotConfirmed -> notEnded(NotEndedBecause.NotConfirmed)
+                is RevokeResult.StoppedByGate -> notEnded(NotEndedBecause.HeldBackByGate)
+            }
+        }
+    }
+
     // ---- Reads ------------------------------------------------------------------------------------------------------
 
     /**

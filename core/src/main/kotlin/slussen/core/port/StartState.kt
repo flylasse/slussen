@@ -24,6 +24,9 @@ data class UnreadablePart(val part: StoredPart, val startedFromLastGoodCopy: Boo
 interface StartState {
     val startKind: StartKind
     val unreadableParts: List<UnreadablePart>
+
+    /** This start finished a Start Over (UC-010 A12, ADR-002 §3 O-17): the start of a new installation. */
+    val startedOver: Boolean get() = false
 }
 
 /** The size of the data Slussen includes in device backups, and the limit Android sets (ADR-002 §5, C-015). */

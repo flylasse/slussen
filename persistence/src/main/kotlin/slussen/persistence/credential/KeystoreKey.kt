@@ -30,4 +30,10 @@ object KeystoreKey {
         )
         return generator.generateKey()
     }
+
+    /** Start Over (ADR-002 §3 O-17 step 4): deletes the key, so that a later credential is encrypted with a new one. */
+    fun delete() {
+        val keyStore = KeyStore.getInstance(PROVIDER).apply { load(null) }
+        if (keyStore.containsAlias(ALIAS)) keyStore.deleteEntry(ALIAS)
+    }
 }

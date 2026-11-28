@@ -41,6 +41,12 @@ class WorkManagerFetchSchedule(context: Context, private val name: String = UNIQ
         withContext(Dispatchers.IO) { manager.cancelUniqueWork(name).result.get() }
     }
 
+    /** Start Over: the work cancelled, then WorkManager's records of ended work removed from its own database. */
+    override suspend fun forget() {
+        cancel()
+        withContext(Dispatchers.IO) { manager.pruneWork().result.get() }
+    }
+
     companion object {
         /** The one name of the Fetch Schedule's work. */
         const val UNIQUE_NAME: String = "slussen-scheduled-fetch"

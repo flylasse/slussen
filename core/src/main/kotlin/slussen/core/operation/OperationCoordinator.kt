@@ -54,6 +54,12 @@ enum class OperationKind {
      * requests and storage: never while the Operator is at the Bank's Strong Customer Authentication.
      */
     BankConsent,
+
+    /**
+     * Start Over (UC-010 A12): admitted only while nothing else runs or waits (ADR-007 §2); it ends each Bank Consent,
+     * records that the next start deletes everything (ADR-002 §3 O-17) and holds the lane until its process ends.
+     */
+    StartOver,
 }
 
 /** Why the coordinator refused an operation (ADR-007 §2): a typed reason the screen shows. */
@@ -84,6 +90,19 @@ sealed interface ScheduledAdmission<out T> {
 
     /** Asked when a pause ended, and no Scheduled Fetch is deferred: nothing runs. */
     data object NoneDeferred : ScheduledAdmission<Nothing>
+}
+
+/**
+ * The result of asking the coordinator for an operation that runs only alone (Start Over, ADR-007 §2): it ran, it was
+ * refused by the mode, or another operation held the lane, which it never waits for.
+ */
+sealed interface AloneAdmission<out T> {
+    data class Ran<T>(val value: T) : AloneAdmission<T>
+
+    data class Refused(val reason: OperationRefusal) : AloneAdmission<Nothing>
+
+    /** Another operation held the lane, or waited for it: [running] is the one on the lane when asked, if any. */
+    data class Busy(val running: RunningOperation?) : AloneAdmission<Nothing>
 }
 
 /**
@@ -153,6 +172,26 @@ class OperationCoordinator(private val store: CoordinatorStore) {
         // ADR-007 §3: origin Schedule is admitted only as a Scheduled Fetch (runScheduledFetch); it never prepares an Upload Plan.
         check(startedBy == StartedBy.Operator) { "Only the Operator starts the operations of $kind (ADR-007 §2)." }
         OperationResult.Ran(onLane(kind, StartedBy.Operator, block))
+    }
+
+    /**
+     * An operation that runs only alone, Start Over (UC-010 A12, ADR-007 §2): it takes the lane without waiting, so it is
+     * [AloneAdmission.Busy] while another operation holds the lane or waits for it, and refused unless the mode is Normal.
+     * While [block] runs every other operation waits for the lane.
+     */
+    suspend fun <T> runAlone(kind: OperationKind, block: suspend (OperationPermit) -> T): AloneAdmission<T> {
+        // ADR-007 §2: Start Over is admitted only while no other operation runs or waits; it never waits for the lane.
+        if (!lane.tryLock()) return AloneAdmission.Busy(runningNow.value)
+        try {
+            when (store.mode()) {
+                CoordinatorMode.PlanOpen -> return AloneAdmission.Refused(OperationRefusal.UploadPlanAwaitingConfirmation)
+                CoordinatorMode.Uploading -> return AloneAdmission.Refused(OperationRefusal.UploadBeingWritten)
+                CoordinatorMode.Normal -> Unit
+            }
+            return AloneAdmission.Ran(onLane(kind, StartedBy.Operator, block))
+        } finally {
+            lane.unlock()
+        }
     }
 
     /**

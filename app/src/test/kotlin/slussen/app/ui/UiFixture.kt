@@ -30,6 +30,12 @@ class UiFixture(
     /** The device's periodic work of the Fetch Schedule, replaced for the JVM (UC-001 BR-013). */
     val scheduleWork = slussen.app.schedule.FakeFetchScheduleWork(slice.clock)
 
+    /** What each restart of the process for Start Over was handed (UC-010 A12, ADR-002 §3 O-17 step 3). */
+    val restarted = mutableListOf<slussen.core.settings.StartOverResult>()
+
+    /** Makes the restart for Start Over fail, as an app that cannot be started again would. */
+    var restartFails: Boolean = false
+
     /** Whether the device allows Slussen's notifications (UC-001 BR-014); a test switches it. */
     var notificationsAllowed: Boolean = true
 
@@ -63,6 +69,13 @@ class UiFixture(
         consentProviders = slice.plugins.dataProviders.filter { it.stored.needsBankConsent }
             .map { slussen.app.ui.consent.ConsentProvider(it.key, it.stored.name) },
         applicationReturnAddress = slussen.testing.ExampleData.CONSENT_RETURN_ADDRESS,
+        startOver = slice.startOver,
+        processScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
+        restartForStartOver = { result ->
+            if (restartFails) error("invented: the app could not be started again")
+            restarted += result
+            kotlinx.coroutines.awaitCancellation()
+        },
     )
 }
 

@@ -21,6 +21,12 @@ interface FetchScheduleWork {
     /** Removes the work. */
     suspend fun cancel()
 
+    /**
+     * Start Over (ADR-002 §3 O-17 steps 3, 5): removes the work and what the device keeps of it once it has ended, so that
+     * a new installation's schedule starts from its own first start.
+     */
+    suspend fun forget() = cancel()
+
     /** No device work: nothing is scheduled (a screen test's services). */
     object None : FetchScheduleWork {
         override suspend fun scheduled(): ScheduledFetchWork? = null
@@ -93,6 +99,12 @@ class FetchSchedule(private val work: FetchScheduleWork, private val stored: sus
     /** At a start of Slussen (BR-013); false when the stored value or the device's work could not be reached. */
     suspend fun atStart(): Boolean =
         answered { apply(FetchScheduleRules.atStart(stored(), work.scheduled())) }.also { if (it) notSet = false }
+
+    /**
+     * UC-010 A12, ADR-002 §3 O-17 steps 3, 5: Start Over cancels the Scheduled Fetches the Fetch Schedule had set; false
+     * when the device's work could not be reached. A later [atStart] sets them again as a new installation's first start.
+     */
+    suspend fun startedOver(): Boolean = answered { work.forget() }
 
     /** After the Operator stored the Fetch Schedule [perDay] (UC-010 A6); false when the device's work could not be set. */
     suspend fun set(perDay: Int): Boolean = answered { apply(FetchScheduleRules.changed(perDay)) }.also { notSet = !it }

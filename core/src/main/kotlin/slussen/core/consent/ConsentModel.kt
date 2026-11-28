@@ -292,3 +292,30 @@ data class BankConsentsPage(
     val waiting: List<WaitingRequest>,
     val withoutConsent: List<BankWithoutConsent> = emptyList(),
 )
+
+/** A stored Bank Consent that Start Over asks its Data Provider to end first (UC-010 A12 steps 1, 4). */
+data class ConsentToEnd(val bankName: String, val dataProviderName: String)
+
+/** Why Start Over names a Bank: its Bank Consent was not confirmed as ended at the Bank (UC-010 A12 step 4). */
+enum class NotEndedBecause {
+    /** The Data Provider ended its session and ends the consent at the Bank only where the Bank allows it. */
+    EndedAtDataProviderOnly,
+
+    /** The Data Provider did not confirm the end, could not be reached, or its part failed (UC-007 A8). */
+    NotConfirmed,
+
+    /** Not contacted: the Data Provider's credentials are missing (UC-014 BR-005). */
+    CredentialsMissing,
+
+    /** Not contacted: the Data Provider's credentials were refused (UC-014 BR-005). */
+    CredentialsRefused,
+
+    /** Not contacted: the gate held the request back, for a Back-off or the Request Limit (UC-007 A9). */
+    HeldBackByGate,
+
+    /** Not contacted: no Bank Session is stored for it, or its Data Provider is not part of this build. */
+    NotContactable,
+}
+
+/** A Bank whose Bank Consent the Data Provider did not confirm as ended at the Bank, also one not contacted (UC-010 A12 step 4). */
+data class ConsentNotEnded(val bankName: String, val dataProviderName: String, val because: NotEndedBecause)

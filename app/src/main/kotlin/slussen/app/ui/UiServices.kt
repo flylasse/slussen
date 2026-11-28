@@ -75,4 +75,15 @@ class UiServices(
     val consentProviders: List<ConsentProvider> = emptyList(),
     /** Slussen's own return address, `<application id>://consent` (UC-007 BR-011), the one the credentials' form names for an empty field. */
     val applicationReturnAddress: String = "",
+    /** Start Over (UC-010 A12), at the end of Settings; null in a screen test that does not show it. */
+    val startOver: slussen.core.settings.StartOver? = null,
+    /**
+     * The process's own scope, in which Start Over runs so that leaving the screen never cancels it and the lane stays
+     * held until the process ends (ADR-002 §3 O-17 step 3).
+     */
+    val processScope: kotlinx.coroutines.CoroutineScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default),
+    /** O-17 step 3: cancels the Fetch Schedule's work, removes the notification and starts the app again, handing it [StartOverResult]. */
+    val restartForStartOver: suspend (slussen.core.settings.StartOverResult) -> Nothing = { kotlinx.coroutines.awaitCancellation() },
+    /** This start finished a Start Over (ADR-002 §3 O-17 step 5): the start of a new installation. */
+    val startedOver: Boolean = false,
 )

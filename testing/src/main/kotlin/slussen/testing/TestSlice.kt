@@ -31,6 +31,7 @@ import slussen.core.settings.SettingsOverview
 import slussen.core.settings.DataProviderSettings
 import slussen.core.settings.GeneralSettings
 import slussen.core.settings.DescriptionLists
+import slussen.core.settings.StartOver
 import slussen.core.status.BankAccountTransactions
 import slussen.core.status.BudgetTransfers
 import slussen.core.status.ImportStatus
@@ -148,6 +149,16 @@ class TestSlice(
         plugins, credentials, consentStore, connectionStore, offeredStore, importStatusStore, providerRequests, coordinator,
         settings, clock, random, ExampleData.CONSENT_RETURN_ADDRESS, consentLog,
     )
+
+    /** O-17 step 2 of Start Over (UC-010 A12): the start intent it records, in memory. */
+    val startOverStore = InMemoryStartOverStore()
+
+    /** UC-010 A12: Start Over, refused while the slice's Journal Export is under way. */
+    val startOver = startOverWith { journalExport.underWay }
+
+    /** Start Over with another answer to whether a Journal Export is being written (ADR-007 §2). */
+    fun startOverWith(exportUnderWay: () -> Boolean): StartOver =
+        StartOver(connectionStore, importStatusStore, bankConsents, coordinator, startOverStore, exportUnderWay)
 
     /** The removal at a start of the Banks an attempt to grant a Bank Consent left behind (ADR-002 §3 O-10). */
     val leftBehindBanks = LeftBehindBanks(connectionStore, consentStore, offeredStore)

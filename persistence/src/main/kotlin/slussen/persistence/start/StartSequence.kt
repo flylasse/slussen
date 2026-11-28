@@ -1,7 +1,10 @@
 package slussen.persistence.start
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import slussen.core.port.FirstUploadMatchingCause
 import slussen.core.port.StartKind
+import slussen.core.port.StartOverStore
 import slussen.core.port.StoredPart
 import slussen.core.port.UnreadablePart
 import java.io.File
@@ -35,7 +38,40 @@ data class StartOutcome(
     /** The cause of First Upload Matching to open, or null for a normal start. */
     val firstUploadMatchingCause: FirstUploadMatchingCause?,
     val unreadableParts: List<UnreadablePart>,
+    /** This start finished a Start Over (ADR-002 §3 O-17): everything stored before it was deleted. */
+    val startedOver: Boolean = false,
 )
+
+/** The second line of a start intent that Start Over recorded (ADR-002 §3 O-17 step 2). */
+internal const val START_OVER_LINE = "Start Over"
+
+/** A start intent as read: its cause, and whether Start Over recorded it. */
+private class StartIntent(val cause: FirstUploadMatchingCause, val startOver: Boolean)
+
+/** Writes [text] to [file], flushed to the device before it returns. */
+internal fun writeDurably(file: File, text: String) {
+    FileOutputStream(file).use { out ->
+        out.write(text.toByteArray(Charsets.UTF_8))
+        out.fd.sync()
+    }
+}
+
+/** ADR-002 §6 step 3: the start intent written to a temporary file, flushed, then renamed over the intent. */
+internal fun writeIntentDurably(files: StartFiles, text: String) {
+    writeDurably(files.intentTemporary, text)
+    check(files.intentTemporary.renameTo(files.intent)) { "Could not record the start intent." }
+}
+
+/**
+ * Start Over's one step in the running process (ADR-002 §3 O-17 step 2): the start intent with the cause New
+ * Installation and the line `Start Over`, written as every start intent is. It deletes nothing; the next start does.
+ */
+class FileStartOverStore(private val files: StartFiles) : StartOverStore {
+    // UC-006 BR-017: From the record of Start Over on, every start opens a First Upload Matching with cause New Installation.
+    override suspend fun recordStartOver() = withContext(Dispatchers.IO) {
+        writeIntentDurably(files, FirstUploadMatchingCause.NewInstallation.text + "\n" + START_OVER_LINE)
+    }
+}
 
 /**
  * The start sequence of ADR-002 §6 and the last good copy of ADR-002 §8, on plain files, before Room opens a database.
@@ -49,12 +85,19 @@ class StartSequence(
     private val journalCheck: DatabaseCheck,
     private val clock: Clock,
     private val random: SecureRandom = SecureRandom(),
+    /** Deletes one file of Start Over (O-17 step 4); true when it is gone. A test makes it fail at any one. */
+    private val deleteFile: (File) -> Boolean = File::delete,
+    /** Deletes the Keystore key of the service credentials (ADR-002 §2a), at Start Over only. */
+    private val deleteCredentialKey: () -> Unit = {},
 ) {
     fun run(): StartOutcome {
         files.lastGoodTemporary.delete()
         files.intentTemporary.delete()
         // Step 1: resume an interrupted start from its intent.
-        val resumed = readIntent()
+        val intent = readIntent()
+        // A12 of UC-010: a start that resumes from Start Over's intent deletes everything Slussen stores before any database is opened (ADR-002 §3 O-17 step 4).
+        if (intent?.startOver == true) deleteEverything()
+        val resumed = intent?.cause
         val cause = resumed ?: classify()
         // UC-006 BR-017: The obligation to open a First Upload Matching is stored before anything is changed.
         if (resumed == null && cause != null) writeIntent(cause)
@@ -80,7 +123,45 @@ class StartSequence(
             FirstUploadMatchingCause.RestoredBackup -> StartKind.RestoredBackup
             FirstUploadMatchingCause.LastGoodCopy -> StartKind.LastGoodCopy
         }
-        return StartOutcome(kind, cause, unreadable)
+        return StartOutcome(kind, cause, unreadable, startedOver = intent?.startOver == true)
+    }
+
+    /**
+     * ADR-002 §3 O-17 step 4, in its order: the last good copy first, so that no start can bring the old data back, then
+     * `slussen.db`, `device.db` with the Keystore key, `journal.db`, each with every file SQLite keeps beside it and every
+     * original set aside as unreadable, then `installation.id`. A file still there after its deletion stops the start
+     * with the intent kept, and the next start deletes again from the beginning.
+     */
+    private fun deleteEverything() {
+        delete(files.lastGood)
+        delete(files.lastGoodTemporary)
+        deleteDatabase(files.main)
+        deleteDatabase(files.device)
+        // ADR-002 §2a: with device.db gone the key encrypts nothing; one the Keystore does not delete does not stop the start.
+        try {
+            deleteCredentialKey()
+        } catch (failure: Exception) {
+            Unit
+        }
+        deleteDatabase(files.journal)
+        delete(files.installationId)
+    }
+
+    /** [database], its rollback journal, `-wal` and `-shm`, and each of them set aside as unreadable (§8 step 3). */
+    private fun deleteDatabase(database: File) {
+        val directory = database.parentFile ?: return
+        val stem = database.name
+        listOf(database, File(database.path + "-journal"), File(database.path + "-wal"), File(database.path + "-shm")).forEach(::delete)
+        directory.listFiles().orEmpty()
+            .filter { it.name.startsWith("$stem.unreadable-") || it.name.matches(Regex(Regex.escape(stem) + "-(journal|wal|shm)\\.unreadable-.*")) }
+            .sortedBy { it.name }
+            .forEach(::delete)
+    }
+
+    private fun delete(file: File) {
+        if (!file.exists()) return
+        deleteFile(file)
+        check(!file.exists()) { "Could not delete ${file.name} at Start Over; the next start deletes it again." }
     }
 
     /** Step 6: deletes the start intent, only after First Upload Matching and the coordinator reset are committed. */
@@ -139,23 +220,14 @@ class StartSequence(
         beside.filter { it.exists() }.forEach { it.renameTo(File(it.path + suffix)) }
     }
 
-    private fun readIntent(): FirstUploadMatchingCause? {
+    private fun readIntent(): StartIntent? {
         if (!files.intent.exists()) return null
-        val text = files.intent.readText(Charsets.UTF_8).trim()
-        return FirstUploadMatchingCause.entries.firstOrNull { it.text == text } ?: FirstUploadMatchingCause.LastGoodCopy
+        val lines = files.intent.readText(Charsets.UTF_8).trim().lines().map { it.trim() }
+        val cause = FirstUploadMatchingCause.entries.firstOrNull { it.text == lines.first() } ?: FirstUploadMatchingCause.LastGoodCopy
+        return StartIntent(cause, startOver = lines.drop(1).contains(START_OVER_LINE))
     }
 
-    private fun writeIntent(cause: FirstUploadMatchingCause) {
-        writeDurably(files.intentTemporary, cause.text)
-        check(files.intentTemporary.renameTo(files.intent)) { "Could not record the start intent." }
-    }
-
-    private fun writeDurably(file: File, text: String) {
-        FileOutputStream(file).use { out ->
-            out.write(text.toByteArray(Charsets.UTF_8))
-            out.fd.sync()
-        }
-    }
+    private fun writeIntent(cause: FirstUploadMatchingCause) = writeIntentDurably(files, cause.text)
 
     private fun copyDurably(from: File, to: File) {
         from.inputStream().use { input ->

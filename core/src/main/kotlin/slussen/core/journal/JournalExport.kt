@@ -100,6 +100,28 @@ class JournalExport(
         waiting: (RunningOperation) -> Unit = {},
         reading: () -> Unit = {},
     ): JournalExportOutcome {
+        exports.incrementAndGet()
+        try {
+            return exportCounted(codes, document, waiting, reading)
+        } finally {
+            exports.decrementAndGet()
+        }
+    }
+
+    private val exports = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
+     * Whether an export is under way, from its start to its answer, its file written with the lane free included, so that
+     * Start Over waits for it (ADR-007 §2, UC-010 A12 step 3).
+     */
+    val underWay: Boolean get() = exports.get() > 0
+
+    private suspend fun exportCounted(
+        codes: Boolean,
+        document: JournalExportDocument,
+        waiting: (RunningOperation) -> Unit,
+        reading: () -> Unit,
+    ): JournalExportOutcome {
         val outcome = try {
             exportTo(codes, document, waiting, reading)
         } catch (cancelled: CancellationException) {

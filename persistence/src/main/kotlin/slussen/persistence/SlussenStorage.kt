@@ -34,6 +34,9 @@ import slussen.core.port.StartedBy
 import slussen.core.port.StartState
 import slussen.core.port.UnreadablePart
 import slussen.persistence.credential.KeystoreCredentialVault
+import slussen.persistence.credential.KeystoreKey
+import slussen.core.port.StartOverStore
+import slussen.persistence.start.FileStartOverStore
 import slussen.persistence.device.DeviceDatabase
 import slussen.persistence.journal.JournalDatabase
 import slussen.persistence.journal.RoomJournalFile
@@ -54,6 +57,7 @@ import java.time.Clock
 class SequenceStartState(outcome: StartOutcome) : StartState {
     override val startKind: StartKind = outcome.kind
     override val unreadableParts: List<UnreadablePart> = outcome.unreadableParts
+    override val startedOver: Boolean = outcome.startedOver
 }
 
 /** The size of `slussen.db`, the only file that is backed up (ADR-002 §5). */
@@ -81,6 +85,8 @@ class SlussenStorage private constructor(
     val journal: JournalDatabase,
     val startState: StartState,
     val backupSize: BackupSizeMonitor,
+    /** Start Over's record in the start intent (UC-010 A12, ADR-002 §3 O-17 step 2). */
+    val startOver: StartOverStore,
 ) {
     val settings = RoomOperatorSettingsStore(main.settings())
     val registry = RoomPluginRegistryStore(main.registry())
@@ -165,6 +171,7 @@ class SlussenStorage private constructor(
                 SqliteDatabaseCheck(DEVICE_VALUES),
                 SqliteDatabaseCheck(JOURNAL_VALUES),
                 clock,
+                deleteCredentialKey = KeystoreKey::delete,
             )
             val outcome = sequence.run()
             val storage = SlussenStorage(
@@ -173,6 +180,7 @@ class SlussenStorage private constructor(
                 SlussenDatabases.openJournal(context),
                 SequenceStartState(outcome),
                 FileBackupSizeMonitor(mainFile),
+                FileStartOverStore(files),
             )
             storage.start(outcome, clock)
             if (outcome.firstUploadMatchingCause != null) sequence.finish()
