@@ -388,6 +388,24 @@ class UC002ImportATransactionFileTest {
         assertEquals(listOf("waits for Comparison", "started, converted before: 1"), signals)
     }
 
+    @Test
+    @UseCase(id = "UC-002", scenario = "A2: File Cannot Be Converted Completely", businessRules = ["BR-001"])
+    @DisplayName("BR-001, NFR-023: a file too large for the device's memory in its conversion is answered as too large; nothing is stored, not even as rejected, and the lane is free for the next operation")
+    fun aFileTooLargeForMemoryIsAnswered() = runTest {
+        ready()
+        val harbor = fileBankAccount()
+        slice.fileFormat.answer = { throw OutOfMemoryError("an invented lack of memory") }
+
+        val outcome = slice.fileImport.import(harbor, ByteArray(0))
+
+        assertEquals(FileImportOutcome.TooLarge, outcome)
+        assertTrue(slice.importStatusStore.files.isEmpty())
+        assertTrue(slice.importStatusStore.bankTransactions.isEmpty())
+        assertNull(slice.coordinator.running.value)
+        converts(line(oct14, -12_340))
+        imported(slice.fileImport.import(harbor, ByteArray(0)))
+    }
+
     // ---- Alternative flows ---------------------------------------------------------------------------------------
 
     @Test

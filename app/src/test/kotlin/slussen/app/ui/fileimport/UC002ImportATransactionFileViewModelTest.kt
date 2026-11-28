@@ -555,11 +555,12 @@ class UC002ImportATransactionFileViewModelTest {
         assertEquals(ImportBankAccount(added.id, "Harbor Health Savings"), page.state.value!!.importFor)
         assertFalse(page.state.value!!.canImportFirst, "later files are imported from the Budget tab")
 
-        page.importStarted()
-        assertNull(page.state.value!!.importFor)
         val place = ImportPlace.FileFormatPage(fileFormatId)
         val screen = screen()
-        assertEquals(ImportBankAccount(added.id, "Harbor Health Savings"), screen.start(place, listOf(ImportBankAccount(added.id, "Harbor Health Savings"))))
+        val opened = mutableListOf<ImportBankAccount>()
+        page.goOnWithImport { bankAccount -> screen.start(place, listOf(bankAccount))?.also { opened += it } != null }
+        assertNull(page.state.value!!.importFor)
+        assertEquals(listOf(ImportBankAccount(added.id, "Harbor Health Savings")), opened)
         converts(line(oct14, -12_340))
         screen.import(InventedFile())
         assertEquals("Imported 2026-10-15 14:00 · new: 1", screen.at(place).answer!!.text)
@@ -617,5 +618,226 @@ class UC002ImportATransactionFileViewModelTest {
             screen.at(carePlace()).answer,
         )
         assertTrue(slice.fileFormat.files.isEmpty())
+    }
+
+    // ---- The review of D4 ----------------------------------------------------------------------------------------
+
+    private fun pagePlace() = ImportPlace.FileFormatPage(fileFormatId)
+
+    /** Another operation runs on the lane until the returned deferred is completed. */
+    private fun anotherOperationRuns(): CompletableDeferred<Unit> {
+        val lane = CompletableDeferred<Unit>()
+        CoroutineScope(Dispatchers.Unconfined).launch { slice.coordinator.run(OperationKind.Comparison, StartedBy.Operator) { lane.await() } }
+        return lane
+    }
+
+    @Test
+    @UseCase(id = "UC-002", scenario = "Main Success Scenario")
+    @DisplayName("Review D4 item 1, S-B-34: an open choice of the Bank Account belongs to its screen: every other import control stays enabled, and leaving the screen ends the choice")
+    fun anOpenChoiceDisablesNoOtherControl() {
+        ready()
+        fileBankAccount(budgetAccount = "Reserve Savings")
+        fileBankAccount("Harbor Second Savings", budgetAccount = "Checking", suffix = "f12e")
+        val household = BudgetViewModel(fixture.services, budgetId("Household")).also { it.load() }.state.value!!.sources.single { it.fileImport != null }.fileImport!!
+        val screen = screen()
+
+        screen.start(household.place, household.bankAccounts)
+
+        assertTrue(screen.at(pagePlace()).enabled)
+        assertNull(screen.at(pagePlace()).choice)
+        screen.left { it == household.place }
+        assertNull(screen.at(household.place).choice)
+        assertTrue(screen.at(household.place).enabled)
+    }
+
+    @Test
+    @UseCase(id = "UC-002", scenario = "Main Success Scenario")
+    @DisplayName("Review D4 item 1, ADR-007 §1: an import that waits shows at every import control what it waits for and for which Bank Account, with Withdraw, and withdrawing there ends it")
+    fun aWaitingImportShowsEverywhere() {
+        ready()
+        fileBankAccount()
+        converts(line(oct14, -12_340))
+        val lane = anotherOperationRuns()
+        val screen = screen()
+        screen.importOnCareFund()
+
+        val elsewhere = screen.at(pagePlace())
+        assertEquals("Waits for: Reading the Budget App · then imports the Transaction File for Harbor Health Savings", elsewhere.title)
+        assertEquals("Harbor Health Savings", elsewhere.forBankAccount)
+        assertTrue(elsewhere.running)
+        assertTrue(elsewhere.canWithdraw)
+        assertFalse(elsewhere.enabled)
+        screen.withdraw()
+
+        assertEquals("Import withdrawn", screen.at(carePlace()).answer!!.text)
+        lane.complete(Unit)
+        assertTrue(slice.fileFormat.files.isEmpty())
+        assertTrue(slice.importStatusStore.files.isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-002", scenario = "Main Success Scenario", businessRules = ["BR-001"])
+    @DisplayName("Review D4 item 1: an import whose store is on its way shows as running at every import control and cannot be withdrawn anywhere")
+    fun aStoreOnItsWayShowsEverywhereWithoutWithdraw() {
+        ready()
+        fileBankAccount()
+        converts(line(oct14, -12_340))
+        val store = CompletableDeferred<Unit>()
+        slice.importStatusStore.beforeImportWhole = { store.await() }
+        val screen = screen()
+        screen.importOnCareFund()
+
+        val elsewhere = screen.at(pagePlace())
+        assertTrue(elsewhere.running)
+        assertFalse(elsewhere.canWithdraw)
+        assertFalse(elsewhere.enabled)
+        assertEquals("Importing the Transaction File for Harbor Health Savings… then comparing with ${fixture.services.budgetAppName}", elsewhere.title)
+        screen.withdraw()
+        store.complete(Unit)
+
+        assertEquals("Imported 2026-10-15 14:00 · new: 1", screen.at(carePlace()).answer!!.text)
+        assertEquals(1, slice.importStatusStore.bankTransactions.size)
+    }
+
+    @Test
+    @UseCase(id = "UC-002", scenario = "Main Success Scenario", businessRules = ["BR-006"])
+    @DisplayName("Review D4 item 2: the answer with its lines is shown only at its own control, and only until the Operator leaves that screen; then the stored Source Health speaks")
+    fun theAnswerEndsWhenItsScreenIsLeft() {
+        ready()
+        fileBankAccount()
+        converts(line(oct14, -12_340))
+        val screen = screen()
+        screen.importOnCareFund()
+        assertEquals(1, screen.at(carePlace()).lines.size)
+        assertNull(screen.at(pagePlace()).answer)
+        assertTrue(screen.at(pagePlace()).lines.isEmpty())
+
+        screen.left { it == pagePlace() }
+        assertTrue(screen.at(carePlace()).answer != null, "leaving another screen keeps it")
+        screen.left { it == carePlace() }
+
+        assertNull(screen.at(carePlace()).answer)
+        assertTrue(screen.at(carePlace()).lines.isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-002", scenario = "Main Success Scenario", businessRules = ["BR-006"])
+    @DisplayName("Review D4 item 2, `UiServices.ended`: the answer ends when another operation ends, not when its own import ends")
+    fun theAnswerEndsWhenAnotherOperationEnds() {
+        ready()
+        fileBankAccount()
+        converts(line(oct14, -12_340))
+        val screen = screen()
+        screen.importOnCareFund()
+        assertEquals("Imported 2026-10-15 14:00 · new: 1", screen.at(carePlace()).answer!!.text)
+
+        anotherOperationRuns().complete(Unit)
+
+        assertNull(screen.at(carePlace()).answer)
+        assertTrue(screen.at(carePlace()).lines.isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-002", scenario = "A7: Bank Account Not Added Yet")
+    @DisplayName("Review D4 item 3, A7: the import is started before the request to go on is consumed; a start refused because another import runs is answered at the form, the Bank Account stays added")
+    fun aRefusedStartAfterAddIsAnsweredAtTheForm() {
+        ready()
+        val page = FileFormatViewModel(fixture.services, fileFormatId).also { it.load() }
+        page.openFormToImport()
+        page.choose(budgetAccountId("Health Savings"), null)
+        page.add(BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), "Harbor Health Savings", "USD", "")
+        val added = page.state.value!!.importFor!!
+        val asked = mutableListOf<ImportBankAccount>()
+
+        page.goOnWithImport { asked += it; false }
+
+        assertEquals(listOf(added), asked)
+        assertNull(page.state.value!!.importFor)
+        assertEquals(
+            "Harbor Health Savings added and mapped → Health Savings · its transactions come from its Transaction Files · " +
+                "Its first file was not imported: another Transaction File import is under way. Import it from its Transaction File Source on its Budget's tab.",
+            page.state.value!!.message,
+        )
+        assertEquals(1, runBlocking { slice.connectionStore.bankAccounts() }.size)
+    }
+
+    @Test
+    @UseCase(id = "UC-002", scenario = "A7: Bank Account Not Added Yet")
+    @DisplayName("Review D4 item 3, A7: the file choice opens only while the page that asked is still shown; leaving it before Add ends never opens the dialog at a later visit")
+    fun theDialogOpensOnlyWhileThePageIsShown() {
+        ready()
+        val page = FileFormatViewModel(fixture.services, fileFormatId).also { it.load() }
+        page.openFormToImport()
+        page.choose(budgetAccountId("Health Savings"), null)
+        val lane = anotherOperationRuns()
+        page.add(BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), "Harbor Health Savings", "USD", "")
+
+        page.left()
+        lane.complete(Unit)
+        page.load()
+
+        assertEquals(1, runBlocking { slice.connectionStore.bankAccounts() }.size)
+        assertNull(page.state.value!!.importFor)
+    }
+
+    @Test
+    @UseCase(id = "UC-002", scenario = "A2: File Cannot Be Converted Completely", businessRules = ["BR-001"])
+    @DisplayName("Review D4 item 4: a file too large for the device's memory, at the read or in the conversion, is answered as too large without \"choose the file again\"; nothing is stored and a next import is admitted")
+    fun aFileTooLargeIsAnswered() {
+        ready()
+        fileBankAccount()
+        val screen = screen()
+        val tooLarge = AnswerUi("The Transaction File is too large for this device", AnswerKind.Failed, "Nothing taken in · the stored Bank Transactions of Harbor Health Savings are unchanged.")
+
+        screen.importOnCareFund(InventedFile(failure = FileTooLargeException()))
+        assertEquals(tooLarge, screen.at(carePlace()).answer)
+
+        slice.fileFormat.answer = { throw OutOfMemoryError("an invented lack of memory") }
+        screen.importOnCareFund()
+        assertEquals(tooLarge, screen.at(carePlace()).answer)
+        assertTrue(slice.importStatusStore.files.isEmpty())
+
+        converts(line(oct14, -12_340))
+        screen.importOnCareFund()
+        assertEquals("Imported 2026-10-15 14:00 · new: 1", screen.at(carePlace()).answer!!.text)
+    }
+
+    @Test
+    @UseCase(id = "UC-002", scenario = "Main Success Scenario")
+    @DisplayName("Review D4 item 5: when the Budget App was read but the statuses could not be read after the import, the answer says that, not that the Budget App could not be read")
+    fun statusesNotReadAreSaidAsSuch() {
+        ready()
+        fileBankAccount()
+        converts(line(oct14, -12_340))
+        slice.importStatusStore.beforeImportWhole = { slice.importStatusStore.bankTransactionsReadFails = true }
+        val screen = screen()
+
+        screen.importOnCareFund()
+
+        val control = screen.at(carePlace())
+        assertEquals(
+            "Freshness: data as of the Transaction File imported 2026-10-15 14:00 · The Transaction Statuses could not be read after the import; the Bank Account shows them",
+            control.answer!!.detail,
+        )
+        assertEquals("status not read", control.lines.single().status)
+    }
+
+    @Test
+    @UseCase(id = "UC-002", scenario = "A7: Bank Account Not Added Yet")
+    @DisplayName("Review D4 item 6: the File Format page keeps its form's message when the reload after an operation ends finishes after the message was given")
+    fun theFormsMessageSurvivesALateReload() {
+        ready()
+        val page = FileFormatViewModel(fixture.services, fileFormatId).also { it.load() }
+        page.openFormToImport()
+        val held = CompletableDeferred<Unit>()
+        var holdNext = true
+        slice.connectionStore.beforeBanksRead = { if (holdNext) { holdNext = false; held.await() } }
+        anotherOperationRuns().complete(Unit)
+
+        page.add(BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), "Harbor Health Savings", "USD", "")
+        assertEquals("Choose a Budget Account · not added", page.state.value!!.message)
+        held.complete(Unit)
+
+        assertEquals("Choose a Budget Account · not added", page.state.value!!.message)
     }
 }

@@ -83,6 +83,12 @@ sealed interface FileImportOutcome {
      */
     data class NotStored(val recordedAsRejected: Boolean) : FileImportOutcome
 
+    /**
+     * NFR-023: the file does not fit into the device's memory for its conversion; nothing is stored, not even as rejected,
+     * and the lane is released.
+     */
+    data object TooLarge : FileImportOutcome
+
     /** Precondition (UC-006 BR-005): an Upload Plan awaits confirmation or an Upload is written; nothing is started. */
     data class Unavailable(val reason: OperationRefusal) : FileImportOutcome
 }

@@ -562,7 +562,13 @@ class InMemoryConnectionStore(val stateVersion: InMemoryStateVersion = InMemoryS
 
     override suspend fun budgets(): List<StoredBudget> = budgetList.toList()
 
-    override suspend fun banks(): List<StoredBank> = bankList.toList()
+    override suspend fun banks(): List<StoredBank> {
+        beforeBanksRead()
+        return bankList.toList()
+    }
+
+    /** Runs as [banks] is read: a test can hold a read of a page here, to put two reads in the order it needs. */
+    var beforeBanksRead: suspend () -> Unit = {}
 
     override suspend fun bankAccounts(): List<StoredBankAccount> = bankAccountList.toList()
 
@@ -1019,7 +1025,7 @@ class InMemoryImportStatusStore(
      */
     override suspend fun importWhole(file: TransactionFileToImport): WholeImport {
         beforeImportWhole()
-        val counting = TransactionFileCounting.count(bankTransactionsOf(file.bankAccountId), file, identify)
+        val counting = TransactionFileCounting.count(storedOf(file.bankAccountId), file, identify)
         if (counting is FileCounting.Collision) return WholeImport.Collision(counting.importIdentifier)
         val inserts = (counting as FileCounting.Counted).inserts
         val working = bankTransactions.toMutableList()
@@ -1160,8 +1166,15 @@ class InMemoryImportStatusStore(
         return plan.stored
     }
 
-    override suspend fun bankTransactionsOf(bankAccountId: Long): List<StoredBankTransaction> =
-        bankTransactions.filter { it.bankAccountId == bankAccountId }
+    override suspend fun bankTransactionsOf(bankAccountId: Long): List<StoredBankTransaction> {
+        if (bankTransactionsReadFails) throw IllegalStateException("The invented storage of this test cannot be read.")
+        return storedOf(bankAccountId)
+    }
+
+    /** Makes [bankTransactionsOf] fail, as a storage that cannot be read would (NFR-023); [importWhole] still counts. */
+    var bankTransactionsReadFails: Boolean = false
+
+    private fun storedOf(bankAccountId: Long): List<StoredBankTransaction> = bankTransactions.filter { it.bankAccountId == bankAccountId }
 
     override suspend fun unreadableTransactionsOf(bankAccountId: Long): List<StoredUnreadableTransaction> =
         unreadableTransactions.filter { it.bankAccountId == bankAccountId }

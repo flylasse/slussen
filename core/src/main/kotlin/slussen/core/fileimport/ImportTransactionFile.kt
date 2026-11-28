@@ -99,7 +99,13 @@ class ImportTransactionFile(
         permit.workingOn(bankAccount.name)
         val importedAt = clock.instant()
 
-        val converted = when (val conversion = convert(preprocessor, file)) {
+        // NFR-023: a file too large for the device's memory in its conversion stores nothing and releases the lane.
+        val conversion = try {
+            convert(preprocessor, file)
+        } catch (tooLarge: OutOfMemoryError) {
+            return FileImportOutcome.TooLarge
+        }
+        val converted = when (conversion) {
             is ConversionResult.Converted -> conversion.file.transactions
             // UC-002 BR-001: A file that cannot be converted completely never brings in part of its transactions (A2).
             is ConversionResult.Rejected -> return reject(bankAccount, fileFormat.id, importedAt, Rejection(RejectionCause.NotConverted, reasonOf(conversion.reason)))

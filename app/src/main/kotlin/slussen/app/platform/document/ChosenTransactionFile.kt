@@ -4,9 +4,9 @@ import android.content.ContentResolver
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import slussen.app.ui.fileimport.FileTooLargeException
 import slussen.app.ui.fileimport.TransactionFileSource
 import java.io.FileNotFoundException
-import java.io.IOException
 
 /**
  * The Transaction File Android's document dialog gave (UC-002 step 3; `ACTION_OPEN_DOCUMENT`, so no permission is
@@ -20,7 +20,7 @@ class ChosenTransactionFile(private val resolver: ContentResolver, private val u
             val stream = resolver.openInputStream(uri) ?: throw FileNotFoundException("The chosen document gave no stream.")
             stream.use { it.readBytes() }
         } catch (tooLarge: OutOfMemoryError) {
-            throw IOException("The chosen document does not fit into memory.")
+            throw FileTooLargeException()
         }
     }
 }

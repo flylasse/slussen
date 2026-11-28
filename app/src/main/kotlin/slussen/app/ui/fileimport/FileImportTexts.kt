@@ -4,6 +4,8 @@ import slussen.app.ui.Formats
 import slussen.app.ui.Texts
 import slussen.app.ui.components.AnswerKind
 import slussen.app.ui.components.AnswerUi
+import slussen.core.comparison.BudgetReadOutcome
+import slussen.core.comparison.ComparisonReport
 import slussen.core.fileimport.FileImportOutcome
 import slussen.core.fileimport.RejectionCause
 import slussen.core.fileimport.TakenInTransaction
@@ -56,6 +58,27 @@ object FileImportTexts {
         "Nothing taken in · the stored Bank Transactions of $bankAccount are unchanged. Choose the file again.",
     )
 
+    /** NFR-023: the file does not fit into the device's memory, at its read or in its conversion; nothing is stored. */
+    fun tooLarge(bankAccount: String) =
+        AnswerUi("The Transaction File is too large for this device", AnswerKind.Failed, "Nothing taken in · the stored Bank Transactions of $bankAccount are unchanged.")
+
+    /** Step 9 of UC-002: whether the new Bank Transactions were compared, as the outcome says. */
+    enum class Compared { Yes, BudgetAppNotRead, StatusesNotRead }
+
+    /**
+     * The Budget App could not be read only when the outcome says so: the Comparison failed, gave no report of a read, or
+     * did not read a Budget (UC-003 A1); otherwise statuses missing were not read after the import.
+     */
+    fun compared(outcome: FileImportOutcome.Imported): Compared {
+        val report = outcome.comparison
+        val notRead = outcome.comparisonFailed || report !is ComparisonReport.Compared || report.budgets.any { it is BudgetReadOutcome.NotRead }
+        return when {
+            outcome.takenIn.none { it.status == null } -> Compared.Yes
+            notRead -> Compared.BudgetAppNotRead
+            else -> Compared.StatusesNotRead
+        }
+    }
+
     /** ADR-007 §1: the import was withdrawn while it waited for the lane. */
     fun withdrawn(bankAccount: String) = AnswerUi("Import withdrawn", AnswerKind.Unchanged, unchanged(bankAccount))
 
@@ -66,8 +89,11 @@ object FileImportTexts {
             val count = if (named || outcome.takenIn.any { it.identical != null }) "new for ${outcome.bankAccountName}: ${outcome.takenIn.size}" else "new: ${outcome.takenIn.size}"
             val freshness = "Freshness: data as of the Transaction File imported $at"
             // Step 9 of UC-002, A1 of UC-003: a Comparison that could not read the Budget App keeps the import, not compared yet.
-            val notCompared = outcome.takenIn.any { it.status == null }
-            val compared = if (notCompared) " · $budgetAppName could not be read: the new Bank Transactions are not compared yet" else ""
+            val compared = when (compared(outcome)) {
+                Compared.Yes -> ""
+                Compared.BudgetAppNotRead -> " · $budgetAppName could not be read: the new Bank Transactions are not compared yet"
+                Compared.StatusesNotRead -> " · The Transaction Statuses could not be read after the import; the Bank Account shows them"
+            }
             AnswerUi("Imported $at · $count", AnswerKind.Done, freshness + compared)
         }
         is FileImportOutcome.Rejected -> {
@@ -96,11 +122,13 @@ object FileImportTexts {
             "The file could not be stored; none of its transactions was taken in · " +
                 if (outcome.recordedAsRejected) "The Source Health shows the failure." else "The Source Health does not show the failure: it could not be recorded either. Import the file again.",
         )
+        // NFR-023: nothing to choose again; the same file fails the same way on this device.
+        FileImportOutcome.TooLarge -> tooLarge(bankAccount)
         is FileImportOutcome.Unavailable -> AnswerUi("Transaction File not imported", AnswerKind.Failed, "${Texts.refusal(outcome.reason)} Nothing taken in.")
     }
 
     /** Step 10 (`#imported`, `#told-apart`): one Bank Transaction taken in, with its Transaction Status. */
-    fun line(taken: TakenInTransaction, formats: Formats, today: LocalDate): TakenInLine {
+    fun line(taken: TakenInTransaction, formats: Formats, today: LocalDate, compared: Compared = Compared.Yes): TakenInLine {
         val payee = taken.payee.orEmpty()
         val identical = taken.identical?.let {
             if (it.number == 1) "${it.number} of ${it.of} · identical" else "${it.number} of ${it.of}: kept as a separate Bank Transaction, never merged"
@@ -109,7 +137,7 @@ object FileImportTexts {
             day = formats.day(taken.bookedDate, today),
             text = listOfNotNull(payee.takeIf { it.isNotEmpty() }, identical).joinToString(" · "),
             amount = formats.difference(taken.amount),
-            status = taken.status?.text ?: "not compared yet",
+            status = taken.status?.text ?: if (compared == Compared.StatusesNotRead) "status not read" else "not compared yet",
         )
     }
 

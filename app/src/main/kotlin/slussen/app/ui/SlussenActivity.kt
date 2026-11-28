@@ -232,6 +232,10 @@ fun SlussenScreens(services: UiServices) {
                 is Screen.Budget -> {
                     val vm: BudgetViewModel = viewModel(key = "budget-${current.budgetId}") { BudgetViewModel(services, current.budgetId) }
                     LaunchedEffect(current) { vm.load() }
+                    // Review D4 items 1-2: leaving the tab ends a choice of the Bank Account and an answer of an import shown on it.
+                    DisposableEffect(current) {
+                        onDispose { fileImport.left { it is ImportPlace.Source && it.budgetId == current.budgetId } }
+                    }
                     val budgetUi = vm.state.collectAsState().value
                     val budgetFailure = vm.failure.collectAsState().value
                     // NFR-023: a Budget whose stored status cannot be read says so on its tab.
@@ -380,12 +384,18 @@ fun SlussenScreens(services: UiServices) {
                     }
                     LaunchedEffect(current) { vm.load() }
                     val place = ImportPlace.FileFormatPage(current.fileFormatId)
+                    // A7 of UC-002: leaving the page ends its answer, and no file choice it asked for opens at a later visit.
+                    DisposableEffect(current) {
+                        onDispose {
+                            vm.left()
+                            fileImport.left { it == place }
+                        }
+                    }
                     vm.state.collectAsState().value?.let { ui ->
-                        // A7 step 2 of UC-002: once the Bank Account is added, the file choice opens for it.
+                        // A7 step 2 of UC-002: once the Bank Account is added, the import is started first, then the request consumed.
                         LaunchedEffect(ui.importFor) {
-                            ui.importFor?.let { added ->
-                                vm.importStarted()
-                                fileImport.start(place, listOf(added))?.let { openDocumentDialog() }
+                            if (ui.importFor != null) {
+                                vm.goOnWithImport { added -> fileImport.start(place, listOf(added))?.also { openDocumentDialog() } != null }
                             }
                         }
                         FileFormatScreen(
