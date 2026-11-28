@@ -1,5 +1,6 @@
 package slussen.core.status
 
+import slussen.core.comparison.ComparisonNotices
 import slussen.core.credential.CredentialStatus
 import slussen.core.credential.CredentialStatusReader
 import slussen.core.fetch.FetchNotices
@@ -16,6 +17,8 @@ import slussen.core.port.JournalEventKind
 import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.ProviderRequestKind
+import slussen.core.request.UnattendedAccesses
+import slussen.core.fetch.AccessLimitHeld
 import slussen.core.port.ProviderRequestStore
 import slussen.core.port.ServiceKey
 import slussen.core.port.StartState
@@ -23,7 +26,9 @@ import slussen.core.port.StoredAccountBalance
 import slussen.core.port.StoredBackOff
 import slussen.core.port.StoredBank
 import slussen.core.port.StoredBankAccount
+import slussen.core.fetch.notCoveredBy
 import slussen.core.port.StoredBankConsent
+import slussen.core.port.StoredOfferedBankAccount
 import slussen.core.port.StoredBudget
 import slussen.core.port.StoredDataProvider
 import slussen.core.port.StoredFetch
@@ -43,7 +48,7 @@ import java.time.Instant
  * Source or the Budget App (BR-001, Konsist K-08).
  */
 class ImportStatus(
-    private val budgetAppName: String,
+    val budgetAppName: String,
     /** The Data Provider rows of this build as they are now, with the Operator Settings changed since the start. */
     private val currentDataProviders: () -> List<StoredDataProvider>,
     private val fileFormats: List<StoredFileFormat>,
@@ -61,6 +66,12 @@ class ImportStatus(
     private val firstRunNext: suspend () -> NextThing? = { null },
     /** UC-001 A21: what the last Fetch of each Bank Account found that nothing stored can show. */
     private val fetchNotices: FetchNotices = FetchNotices(),
+    /** UC-003 A1 step 2: the read of each Budget that failed since its last successful read. */
+    private val comparisonNotices: ComparisonNotices = ComparisonNotices(),
+    /** UC-003 BR-016: whether a Budget owes a read of its read period (`budget_read_state.period_read_owed`). */
+    private val periodReadOwed: suspend (Long) -> Boolean = { false },
+    /** The Offered Bank Accounts of `device.db` (UC-009 BR-009), from which UC-007 A6 is shown (BR-001: stored data only). */
+    private val offered: suspend () -> List<StoredOfferedBankAccount> = { emptyList() },
 ) {
     private val dataProviders: List<StoredDataProvider> get() = currentDataProviders()
 
@@ -80,16 +91,19 @@ class ImportStatus(
         val requests: List<StoredProviderRequest>,
         val firstUploadMatching: FirstUploadMatchingNotice?,
         val credentials: Map<ServiceKey, CredentialStatus>,
+        val periodReadOwed: Set<Long>,
+        val offered: List<StoredOfferedBankAccount>,
     )
 
     // UC-008 BR-001: Opening Slussen shows only stored data; it never contacts a Source, a Bank or the Budget App.
     private suspend fun snapshot(): Snapshot {
         val now = clock.instant()
         val services = listOf(ServiceKey.budgetApp) + dataProviders.map { ServiceKey.dataProvider(it.id) }
+        val budgets = connections.budgets().filter { it.served }
         return Snapshot(
             now = now,
             settings = settings.current(),
-            budgets = connections.budgets().filter { it.served },
+            budgets = budgets,
             banks = connections.banks().associateBy { it.id },
             bankAccounts = connections.bankAccounts().filter { !it.retired && it.mapping != null },
             fetches = stored.recentFetches().sortedByDescending { it.startedAt },
@@ -98,11 +112,33 @@ class ImportStatus(
             backOffs = stored.backOffs(),
             files = stored.latestTransactionFiles(),
             counts = stored.transactionCounts().associateBy { it.bankAccountId },
-            requests = providerRequests.sentSince(now.minus(LIMIT_WINDOW)),
+            // The Unattended Access limit's window is closed at its start (UC-001 BR-012), the Request Limit's is not: the wider of the two is read.
+            requests = providerRequests.sentSince(UnattendedAccesses.readSince(now)),
             firstUploadMatching = firstUploadMatching.notice(),
             credentials = services.associateWith { credentials.status(it) },
+            periodReadOwed = budgets.filter { periodReadOwed(it.id) }.map { it.id }.toSet(),
+            offered = offeredOrUnknown(),
         )
     }
+
+    /**
+     * The Offered Bank Accounts, or none when `device.db` cannot be read: UC-007 A6 is then not known and not shown, and the
+     * rest of the import status is shown all the same.
+     */
+    private suspend fun offeredOrUnknown(): List<StoredOfferedBankAccount> = try {
+        offered()
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        emptyList()
+    }
+
+    /**
+     * UC-001 BR-014: the number of the New Transaction Notification, worked out from stored data at every start and
+     * after every operation ([NewTransactionNumber]); it reads no Source and records nothing (BR-001).
+     */
+    suspend fun newTransactionNumber(): Int =
+        NewTransactionNumber.of(connections.bankAccounts(), connections.budgets(), stored.transactionCounts())
 
     /** Steps 1-3, A10: the Operator opens Slussen; the start of the session is recorded in the Decision Journal. */
     suspend fun open(): Overview {
@@ -125,6 +161,24 @@ class ImportStatus(
             noBankAccountAdded = noBankAccountAdded,
             budgetAppName = budgetAppName,
             firstRun = if (noBankAccountAdded) FirstRunCard(firstRunNext()) else null,
+            budgetAppRead = budgetAppRead(summaries),
+            fetchSchedule = snapshot.settings.scheduledFetchesPerDay,
+        )
+    }
+
+    /** FR-040, UC-003 A1 step 2: the latest successful read of any Budget, and the Budgets whose read failed since. */
+    private fun budgetAppRead(summaries: List<BudgetSummary>): BudgetAppRead {
+        val failed = summaries.mapNotNull { summary ->
+            when (val asOf = summary.statusesAsOf) {
+                StatusesAsOf.NothingToCompare -> null
+                is StatusesAsOf.NotReadYet -> asOf.failedRead
+                is StatusesAsOf.LastRead -> asOf.failedRead
+            }?.let { summary.name to it.failedAt }
+        }
+        return BudgetAppRead(
+            lastReadAt = summaries.filter { it.statusesAsOf is StatusesAsOf.LastRead }.mapNotNull { it.lastReadAt }.maxOrNull(),
+            notRead = failed.map { it.first },
+            failedAt = failed.maxOfOrNull { it.second },
         )
     }
 
@@ -142,12 +196,54 @@ class ImportStatus(
         )
     }
 
-    // UC-008 BR-008: Slussen shows the most recent Fetches, as many as the Operator Setting keeps, with Source, time, who started them and outcome.
-    suspend fun recentFetches(): List<RecentFetch> {
+    /** The summary of the served Budget [budgetId] (step 1), or null when it is not served. */
+    suspend fun summaryOf(budgetId: Long): BudgetSummary? {
         val snapshot = snapshot()
-        return snapshot.fetches.take(snapshot.settings.fetchHistorySize).map { fetch ->
-            RecentFetch(dataProviderName(fetch.dataProviderId), fetch.startedAt, fetch.startedBy, fetch.outcome)
-        }
+        return snapshot.budgets.firstOrNull { it.id == budgetId }?.let { summary(it, snapshot) }
+    }
+
+    /**
+     * Steps 5-8 for the one Bank Account [bankAccountId] (`bank-account.html`): its Budget's summary, its status and the
+     * name of its Source, or null when it is not mapped into a served Budget or is a Retired Account.
+     */
+    suspend fun bankAccountInBudget(bankAccountId: Long): BankAccountInBudget? {
+        val snapshot = snapshot()
+        val bankAccount = snapshot.bankAccounts.firstOrNull { it.id == bankAccountId } ?: return null
+        val budget = snapshot.budgets.firstOrNull { budget -> budget.budgetAccounts.any { it.id == bankAccount.mapping?.budgetAccountId } }
+            ?: return null
+        val sourceName = bankAccount.dataProviderId?.let(::dataProviderName)
+            ?: fileFormats.firstOrNull { it.id == bankAccount.fileFormatId }?.name
+        return BankAccountInBudget(summary(budget, snapshot), bankAccountStatus(bankAccount, budget, snapshot), sourceName)
+    }
+
+    /**
+     * UC-008 A5: the recent Fetches with, for each, what it recorded for each Bank Account and whether it still asks
+     * something of the Operator now, read from stored data only (BR-001).
+     */
+    suspend fun recentFetches(): RecentFetches {
+        val snapshot = snapshot()
+        val everyBankAccount = connections.bankAccounts().associateBy { it.id }
+        val rules = FetchHistoryRules(
+            now = snapshot.now,
+            fetches = snapshot.fetches,
+            accounts = everyBankAccount,
+            backOffs = snapshot.backOffs,
+            sourceName = ::dataProviderName,
+            credentialsAcceptedAt = { (snapshot.credentials[ServiceKey.dataProvider(it)] as? CredentialStatus.Accepted)?.acceptedAt },
+            accountBlocked = { account -> blockedNow(account, snapshot) },
+            // A stored Fetch of a Data Provider this build no longer has gives no Blocked Reason, and does not make the list unreadable.
+            sourceBlocked = { providerId, last -> dataProviders.firstOrNull { it.id == providerId }?.let { sourceBlocked(it, last, snapshot) }.orEmpty() },
+        )
+        // UC-008 BR-008: Slussen shows the most recent Fetches, as many as the Operator Setting keeps, with Source, time, who started them and outcome.
+        val kept = snapshot.settings.fetchHistorySize
+        return RecentFetches(kept, snapshot.fetches.take(kept).map(rules::entry))
+    }
+
+    /** The Blocked Reasons of [bankAccount] as its Budget shows them, or null when it is not fetched now: a Retired Account, unmapped, or in a Budget that is not served. */
+    private fun blockedNow(bankAccount: StoredBankAccount, snapshot: Snapshot): List<Blocked>? {
+        val fetched = snapshot.bankAccounts.firstOrNull { it.id == bankAccount.id } ?: return null
+        val budget = snapshot.budgets.firstOrNull { budget -> budget.budgetAccounts.any { it.id == fetched.mapping?.budgetAccountId } } ?: return null
+        return bankAccountBlocked(fetched, budget, snapshot)
     }
 
     /** A9: the Operator chooses "Start First Upload Matching" (BR-006, BR-009). */
@@ -172,7 +268,22 @@ class ImportStatus(
             notYetUploaded = notYetUploaded(accounts, snapshot),
             blocked = blocked,
             lastReadAt = budget.lastReadAt,
+            statusesAsOf = statusesAsOf(budget, accounts),
+            notComparedYet = accounts.sumOf { snapshot.counts[it.id]?.notComparedYet ?: 0 },
+            budgetAppCredentials = credentialBlocked(snapshot.credentials.getValue(ServiceKey.budgetApp), budgetAppName)?.reason,
+            periodReadOwed = budget.id in snapshot.periodReadOwed,
         )
+    }
+
+    /**
+     * UC-003 A1 step 2: the statuses of a Budget come from its last successful read, shown with its time and with the read
+     * that failed since; a Budget without a Bank Account to compare is not read at all.
+     */
+    private fun statusesAsOf(budget: StoredBudget, accounts: List<StoredBankAccount>): StatusesAsOf {
+        if (accounts.isEmpty()) return StatusesAsOf.NothingToCompare
+        val failed = comparisonNotices.failedRead(budget.id)
+        val readAt = budget.lastReadAt ?: return StatusesAsOf.NotReadYet(failed)
+        return StatusesAsOf.LastRead(readAt, failed?.takeIf { it.failedAt.isAfter(readAt) })
     }
 
     private fun budgetBlocked(budget: StoredBudget, snapshot: Snapshot): List<Blocked> = buildList {
@@ -219,10 +330,13 @@ class ImportStatus(
             SourceStatus(
                 name = fileFormats.single { it.id == id }.name,
                 isFileFormat = true,
-                health = last?.let { SourceHealth.FileImportHealth(it.outcome, it.importedAt) } ?: SourceHealth.NoneYet,
-                freshness = last?.takeIf { it.outcome == TransactionFileOutcome.Imported }?.importedAt,
+                health = last?.let(::fileHealth) ?: SourceHealth.NoneYet,
+                // UC-002 BR-006: The Freshness of a file-imported Bank Account is measured from the time of the last imported Transaction File.
+                freshness = snapshot.files.filter { file -> file.outcome == TransactionFileOutcome.Imported && ofFormat.any { it.id == file.bankAccountId } }
+                    .maxOfOrNull { it.importedAt },
                 notYetUploaded = notYetUploaded(ofFormat, snapshot),
                 blocked = emptyList(),
+                fileFormatId = id,
             )
         }
         return providerSources + fileSources
@@ -243,7 +357,8 @@ class ImportStatus(
         if (last != null && last.outcome == FetchOutcome.Failed) {
             add(Blocked(BlockedReason.FailedFetch, Remedy.FetchAgain, last.startedAt, provider.name))
         }
-        val sent = snapshot.requests.filter { it.dataProviderId == provider.id }.map { it.sentAt }
+        val windowStart = snapshot.now.minus(LIMIT_WINDOW)
+        val sent = snapshot.requests.filter { it.dataProviderId == provider.id && it.sentAt.isAfter(windowStart) }.map { it.sentAt }
         // UC-008 BR-006: A reached Request Limit is shown with the time the limit frees up.
         freesUpAt(sent, provider.requestLimit)?.let {
             add(Blocked(BlockedReason.RequestLimitReached, Remedy.WaitUntilItEnds, it, provider.name))
@@ -270,6 +385,8 @@ class ImportStatus(
             dataProviderId = bankAccount.dataProviderId,
             // A21 of UC-001: the balance the last Fetch reported in another currency, named with both currencies.
             balanceInOtherCurrency = fetchNotices.balanceInOtherCurrency(bankAccount.id),
+            notComparedYet = counts?.notComparedYet ?: 0,
+            fileFormatId = bankAccount.fileFormatId,
         )
     }
 
@@ -283,11 +400,15 @@ class ImportStatus(
     private fun health(bankAccount: StoredBankAccount, snapshot: Snapshot): SourceHealth {
         if (bankAccount.fileFormatId != null) {
             val file = snapshot.files.filter { it.bankAccountId == bankAccount.id }.maxByOrNull { it.importedAt }
-            return file?.let { SourceHealth.FileImportHealth(it.outcome, it.importedAt) } ?: SourceHealth.NoneYet
+            return file?.let(::fileHealth) ?: SourceHealth.NoneYet
         }
         val (fetch, result) = lastResult(bankAccount, snapshot) ?: return SourceHealth.NoneYet
         return SourceHealth.BankAccountFetchHealth(result.outcome, fetch.startedAt, fetch.startedBy)
     }
+
+    // UC-002 BR-006: For a Bank Account whose transactions come from Transaction Files, the Source Health is the outcome of the last Transaction File import (imported or rejected with its reason) with its time.
+    private fun fileHealth(file: StoredTransactionFile) =
+        SourceHealth.FileImportHealth(file.outcome, file.importedAt, file.transactionCount, file.rejectionReason)
 
     // UC-008 BR-003: Freshness shows only how old the data is; old data never changes the Source Health.
     private fun freshness(bankAccount: StoredBankAccount, snapshot: Snapshot): Instant? {
@@ -309,12 +430,22 @@ class ImportStatus(
         val budgetBalance = budgetAccount.balance
         val budgetReadAt = budgetAccount.balanceReadAt
         if (accountBalance == null || budgetBalance == null || budgetReadAt == null) {
-            return BalanceComparison.NotKnown(accountBalance != null, budgetBalance != null, accountBalance?.amount, budgetBalance)
+            return BalanceComparison.NotKnown(
+                accountBalance != null, budgetBalance != null, accountBalance?.amount, budgetBalance,
+                accountBalanceReadAt = accountBalance?.reportedAt,
+                budgetAccountBalanceReadAt = budgetReadAt.takeIf { budgetBalance != null },
+            )
         }
         val limit = Duration.ofHours(snapshot.settings.outdatedBalanceHours.toLong())
         // UC-008 BR-004: An Account Balance older than the outdated-balance limit hides the difference and is marked outdated.
         if (Duration.between(accountBalance.reportedAt, snapshot.now) > limit) {
-            return BalanceComparison.Outdated(accountBalance.amount, budgetBalance, accountBalance.reportedAt)
+            // A2 of UC-008 (UX-24): the remedy of an outdated Account Balance is a Fetch of the Data Provider that reports it.
+            val reportedBy = bankAccount.dataProviderId ?: bankAccount.balanceDataProviderId
+            return BalanceComparison.Outdated(
+                accountBalance.amount, budgetBalance, accountBalance.reportedAt,
+                budgetAccountBalanceReadAt = budgetReadAt,
+                dataProviderName = reportedBy?.let(::dataProviderName),
+            )
         }
         // UC-008 BR-005: The difference is the Account Balance minus the Budget Account's balance, with the time each was read.
         return BalanceComparison.Compared(
@@ -330,21 +461,37 @@ class ImportStatus(
         buildList {
             val subject = bankAccount.name
             val provider = dataProviders.firstOrNull { it.id == bankAccount.dataProviderId }
-            if (provider != null && provider.needsBankConsent) {
-                val consent = snapshot.consents.firstOrNull { it.bankId == bankAccount.bankId && it.dataProviderId == provider.id }
+            // UC-007 BR-009: The Data Provider that reads the Bank Account, for its transactions or for its balance, and the Bank it names for it (`provider_bank_id`) decide which Bank Consent covers it; the Bank the Operator chose never does.
+            val readers = listOfNotNull(bankAccount.dataProviderId, bankAccount.balanceDataProviderId).distinct()
+                .mapNotNull { id -> dataProviders.firstOrNull { it.id == id } }
+            readers.filter { it.needsBankConsent }.forEach { reader ->
+                val consent = snapshot.consents.firstOrNull { it.bankId == bankAccount.providerBankId && it.dataProviderId == reader.id }
                 // UC-008 BR-006: A missing or expired Bank Consent is shown with the action that grants it (UC-007).
                 when {
                     consent == null -> add(Blocked(BlockedReason.MissingBankConsent, Remedy.GrantBankConsent, null, subject))
-                    !consent.expiresAt.isAfter(snapshot.now) ->
-                        add(Blocked(BlockedReason.ExpiredBankConsent, Remedy.GrantBankConsent, consent.expiresAt, subject))
+                    // A Bank Consent the Bank refused counts as expired from the time it was refused (UC-001 A9, entity model BANK_CONSENT).
+                    !consent.expiredFrom.isAfter(snapshot.now) ->
+                        add(Blocked(BlockedReason.ExpiredBankConsent, Remedy.GrantBankConsent, consent.expiredFrom, subject, refusedByBank = consent.refusedByBank))
+                    notDeliveredWith(consent, reader, bankAccount, snapshot) ->
+                        add(Blocked(BlockedReason.UnrecognisedBankAccount, Remedy.IdentifyBankAccount, consent.grantedAt, subject))
                 }
             }
+            // UC-001 BR-004: A Back-off of one Bank holds for each Bank Account read through its Data Provider whose provider_bank_id is that Bank.
+            readers.flatMap { reader ->
+                snapshot.backOffs.filter {
+                    it.dataProviderId == reader.id && it.bankId != null && it.bankId == bankAccount.providerBankId && it.endsAt.isAfter(snapshot.now)
+                }
+            }
+                .maxByOrNull { it.endsAt }
+                ?.let { add(Blocked(BlockedReason.WaitingForProvider, Remedy.WaitUntilItEnds, it.endsAt, subject)) }
+            // UC-008 BR-006: A reached access limit is shown with the time the limit frees up, while it holds.
+            accessLimitOf(bankAccount, readers, snapshot)?.let { held ->
+                val at = listOfNotNull(held.transactionsFreeAt, held.balanceFreeAt).max()
+                add(Blocked(BlockedReason.AccessLimitReached, Remedy.WaitUntilItEnds, at, subject, accessLimit = held))
+            }
             if (provider != null) {
-                snapshot.backOffs.filter { it.dataProviderId == provider.id && it.bankId == bankAccount.bankId && it.endsAt.isAfter(snapshot.now) }
-                    .maxByOrNull { it.endsAt }
-                    ?.let { add(Blocked(BlockedReason.WaitingForProvider, Remedy.WaitUntilItEnds, it.endsAt, subject)) }
                 lastResult(bankAccount, snapshot)?.let { (fetch, result) ->
-                    resultBlocked(result.outcome, fetch, bankAccount, provider, snapshot)?.let { add(it) }
+                    resultBlocked(result.outcome, fetch, bankAccount, provider, snapshot)?.takeIf { found -> none { it.reason == found.reason } }?.let { add(it) }
                 }
             }
             // UC-008 BR-006: A currency mismatch is shown with the action that moves the Account Mapping (UC-009 A8).
@@ -352,6 +499,19 @@ class ImportStatus(
                 add(Blocked(BlockedReason.CurrencyMismatch, Remedy.MoveAccountMapping, null, subject))
             }
         }
+
+    // UC-008 BR-006: An unrecognised Bank Account is shown with the action that confirms or identifies it (UC-009).
+    /**
+     * UC-007 A6, from stored data: the Bank Consent [consent] of [reader] delivered its Bank Accounts, and [bankAccount]'s
+     * reference is not among them. Only when at least one Offered Bank Account of that Bank was kept since the Bank
+     * Consent was granted: when none was (its Bank Accounts could not be kept, or it covers none), what it covers is not
+     * known, and no Bank Account of it is shown as unrecognised for that.
+     */
+    private fun notDeliveredWith(consent: StoredBankConsent, reader: StoredDataProvider, bankAccount: StoredBankAccount, snapshot: Snapshot): Boolean {
+        val reference = if (bankAccount.dataProviderId == reader.id) bankAccount.providerReference else bankAccount.balanceProviderReference
+        // The Fetch leaves such a Bank Account out by the same rule (UC-001 A10, E2 review item 4).
+        return notCoveredBy(consent, reader.id, reference, snapshot.offered)
+    }
 
     private fun resultBlocked(
         outcome: FetchResultOutcome,
@@ -364,28 +524,31 @@ class ImportStatus(
         FetchResultOutcome.NotRecognised, FetchResultOutcome.AmbiguousBankAccount ->
             Blocked(BlockedReason.UnrecognisedBankAccount, Remedy.IdentifyBankAccount, fetch.startedAt, bankAccount.name)
         FetchResultOutcome.Failed -> Blocked(BlockedReason.FailedFetch, Remedy.FetchAgain, fetch.startedAt, bankAccount.name)
-        // UC-008 BR-006: A reached access limit is shown with the time the limit frees up.
-        FetchResultOutcome.AccessLimitReached -> Blocked(
-            BlockedReason.AccessLimitReached,
-            Remedy.WaitUntilItEnds,
-            accessFreesUpAt(bankAccount, snapshot),
-            bankAccount.name,
-        )
         // UC-008 BR-006: Not delivered by the Data Provider is shown with the time of the Fetch and the action that fetches again (UC-001 A19).
         FetchResultOutcome.NotDelivered ->
             Blocked(BlockedReason.NotDelivered, Remedy.FetchAgain, fetch.startedAt, bankAccount.name, provider.name)
         // UC-008 BR-006: The Bank's sign-in at the Data Provider is shown with the action to sign in there again and fetch again (UC-001 A20).
         FetchResultOutcome.SignInNeeded ->
             Blocked(BlockedReason.SignInNeeded, Remedy.SignInAtDataProvider, null, bankAccount.name, provider.name)
-        FetchResultOutcome.Fetched, FetchResultOutcome.NotConsented -> null
+        // A reached access limit is shown while it holds, from the stored Provider Requests (bankAccountBlocked), not from the Fetch Result that recorded it.
+        FetchResultOutcome.Fetched, FetchResultOutcome.NotConsented, FetchResultOutcome.AccessLimitReached -> null
     }
 
-    /** The time the Unattended Access limit of C-006 frees up again for every kind of read that reached it. */
-    private fun accessFreesUpAt(bankAccount: StoredBankAccount, snapshot: Snapshot): Instant? =
-        listOf(ProviderRequestKind.Transactions, ProviderRequestKind.Balance).mapNotNull { kind ->
-            val sent = snapshot.requests.filter { it.bankAccountId == bankAccount.id && it.unattended && it.kind == kind }
-            freesUpAt(sent.map { it.sentAt }, UNATTENDED_ACCESS_LIMIT)
-        }.maxOrNull()
+    /**
+     * UC-001 A13, BR-012: which reads of [bankAccount] wait on the Unattended Access limit through the Data Providers that
+     * need a Bank Consent among [readers], each with the time it is free again, by the count the Scheduled Fetch uses
+     * ([UnattendedAccesses]): its transactions and its balance through the Data Provider that reads them, only its
+     * balance through the one that reads only that (UC-001 BR-011); null while none of them reached the limit.
+     */
+    private fun accessLimitOf(bankAccount: StoredBankAccount, readers: List<StoredDataProvider>, snapshot: Snapshot): AccessLimitHeld? {
+        val consenting = readers.filter { it.needsBankConsent }
+        fun freeAt(kind: ProviderRequestKind, reads: (StoredDataProvider) -> Boolean): Instant? = consenting.filter(reads)
+            .mapNotNull { UnattendedAccesses.of(snapshot.requests, it.id, snapshot.now).freesUpAt(bankAccount.id, kind) }.maxOrNull()
+        val transactions = freeAt(ProviderRequestKind.Transactions) { it.id == bankAccount.dataProviderId }
+        val balance = freeAt(ProviderRequestKind.Balance) { true }
+        if (transactions == null && balance == null) return null
+        return AccessLimitHeld(bankAccount.name, transactions, balance)
+    }
 
     private fun backupWarning(snapshot: Snapshot): BackupWarning? {
         val bytes = backupSize.backedUpBytes()
@@ -398,9 +561,9 @@ class ImportStatus(
         val horizon = snapshot.now.plus(Duration.ofDays(snapshot.settings.consentWarningDays.toLong()))
         // UC-008 BR-002: Every opening shows each Bank Consent whose expiry lies within the consent warning lead time.
         return snapshot.consents
-            .filter { it.expiresAt.isAfter(snapshot.now) && !it.expiresAt.isAfter(horizon) }
+            .filter { it.refusedAt == null && it.expiresAt.isAfter(snapshot.now) && !it.expiresAt.isAfter(horizon) }
             .sortedBy { it.expiresAt }
-            .map { ExpiringBankConsent(snapshot.banks[it.bankId]?.name.orEmpty(), dataProviderName(it.dataProviderId), it.expiresAt) }
+            .map { ExpiringBankConsent(snapshot.banks[it.bankId]?.name.orEmpty(), dataProviderName(it.dataProviderId), it.expiresAt, it.bankId, it.dataProviderId) }
     }
 
     private companion object {
@@ -409,8 +572,5 @@ class ImportStatus(
          * own limits and PSD2 use (NFR-018, C-006); not a Slussen choice.
          */
         val LIMIT_WINDOW: Duration = Duration.ofHours(24)
-
-        /** At most four accesses per Bank Account in any 24 hours without the holder present, per kind of read (C-006). */
-        const val UNATTENDED_ACCESS_LIMIT = 4
     }
 }

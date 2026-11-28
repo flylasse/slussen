@@ -19,7 +19,8 @@ public interface CredentialCapability {
 
 public data class CredentialForm(val fields: List<CredentialField>)
 
-public data class CredentialField(val key: String, val kind: FieldKind, val description: String)
+/** One field of the credentials; an [optional] one may be left empty (S-B-51). */
+public data class CredentialField(val key: String, val kind: FieldKind, val description: String, val optional: Boolean = false)
 
 /** File is chosen with the device's file picker. */
 public enum class FieldKind { Text, Secret, File }

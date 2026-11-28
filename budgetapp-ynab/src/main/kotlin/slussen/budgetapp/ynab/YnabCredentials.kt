@@ -37,14 +37,16 @@ internal class YnabCredentials(private val base: HttpUrl, private val http: OkHt
         val token = input.values[TOKEN]
         if (token == null || token.reveal().isBlank()) return CredentialCheck.Refused
         // UC-014 BR-002: The YNAB token is checked by listing the Budgets; a request the gate refuses is not sent.
-        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null))
+        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null, unattended = false))
         if (admission is Admission.Refused) return CredentialCheck.StoppedByGate(admission.reason)
         val request = Request.Builder().url(base.resolve("budgets")!!).bearer(token).build()
         return when (val answer = http.send(request, context.timeout)) {
             is HttpAnswer.Failed -> CredentialCheck.TransientFailure(answer.kind)
-            is HttpAnswer.Answered -> when (answer.status) {
-                in 200..299 -> CredentialCheck.Accepted(token)
-                401, 403 -> CredentialCheck.Refused
+            is HttpAnswer.Answered -> when {
+                answer.status in 200..299 -> CredentialCheck.Accepted(token)
+                // UC-014 BR-005: Only an answer that the access token is not accepted is refused credentials (ADR-001 §4.2.5).
+                answer.refusal() == Refusal.OfTheToken -> CredentialCheck.Refused
+                answer.refusal() == Refusal.ByTheBudgetApp -> CredentialCheck.TransientFailure(answer.refusalKind()!!)
                 else -> CredentialCheck.TransientFailure(failureOf(answer.status))
             }
         }
@@ -58,6 +60,6 @@ internal class YnabCredentials(private val base: HttpUrl, private val http: OkHt
 @SensitiveApi
 internal fun Request.Builder.bearer(token: Secret): Request.Builder = header("Authorization", "Bearer " + token.reveal())
 
-/** A status that is neither success nor a refusal of the credentials. */
+/** A status that is neither success nor a refusal (ADR-001 §4.2.5); a redirect, which is never followed, cannot be read. */
 internal fun failureOf(status: Int): FailureKind =
     if (status >= 500 || status == 429) FailureKind.ServiceUnavailable else FailureKind.UnreadableAnswer

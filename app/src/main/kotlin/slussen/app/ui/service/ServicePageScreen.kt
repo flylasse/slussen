@@ -12,6 +12,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import slussen.app.ui.components.AccountLine
 import slussen.app.ui.components.AnswerLine
+import slussen.app.ui.components.AnswerUi
 import slussen.app.ui.components.RunningText
 import slussen.app.ui.components.SettingDialog
 import slussen.app.ui.components.SettingEditorUi
@@ -72,7 +74,8 @@ class PageSettingActions(
  * form its part declares, and what else belongs to it. For the Budget App the Budgets in use, their choice and, under
  * each, its Budget Accounts with "Receives from Slussen" (UC-013 steps 2-4, A9); for a Data Provider its Fetch (UC-001,
  * A16 with its confirmation of a warning), its Fetch Cooldown and Request Limit (UC-010 A11) and its Offered Bank Accounts
- * with an import switch each (UC-013 steps 5-7, A3, A6, A10, A11). The Bank Consents come with UC-007. Every action
+ * with an import switch each (UC-013 steps 5-7, A3, A6, A10, A11), and for one that needs a Bank Consent its Bank
+ * Consents (UC-007 BR-008, `consent.html`). Every action
  * answers at its own control (NFR-023, UX-D4): the check of credentials at Save (the checking and check-refused states
  * of a Data Provider's page), a refusal at a Fetch on the page (its refused state), a change of the Fetch Cooldown or
  * the Request Limit at its line (`#fetch-cooldown-saved`, `#local-action-states`).
@@ -96,6 +99,9 @@ fun ServicePageScreen(
     onFetch: () -> Unit,
     onConfirmFetch: () -> Unit,
     onCancelFetch: () -> Unit,
+    onUploadAsCleared: (Boolean) -> Unit = {},
+    /** UC-007 BR-008: the Bank Consents of a Data Provider that needs one; null on every other page. */
+    bankConsents: (@Composable () -> Unit)? = null,
 ) {
     val values = remember { mutableStateMapOf<String, String>() }
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
@@ -108,7 +114,10 @@ fun ServicePageScreen(
             SlussenCard {
                 Muted(ui.credentials)
                 if (ui.entering) {
-                    ui.fields.forEach { field -> CredentialFieldInput(field, values[field.key].orEmpty(), !ui.checking) { values[field.key] = it } }
+                    ui.fields.forEach { field ->
+                        CredentialFieldInput(field, values[field.key].orEmpty(), !ui.checking, ui.fieldNotes[field.key]) { values[field.key] = it }
+                    }
+                    ui.ownReturnAddressNote?.let { Muted(it) }
                     // A1 of UC-014: the answer of the check, at the field it answers.
                     ui.credentialAnswer?.let { AnswerLine(it) }
                     Row {
@@ -125,13 +134,19 @@ fun ServicePageScreen(
                 } else {
                     ui.credentialAnswer?.let { AnswerLine(it) }
                     Row {
-                        OutlinedButton(onClick = onStartEntering) { Text(ui.enterAction) }
-                        if (ui.canRemove) TextButton(onClick = onRequestRemoval) { Text("Remove") }
+                        OutlinedButton(onClick = onStartEntering, enabled = !ui.removing) { Text(ui.enterAction) }
+                        // NFR-023 (`#local-action-states`): after the confirmation of the removal (UC-014 A3), Remove shows that it runs.
+                        if (ui.canRemove || ui.removing) {
+                            TextButton(onClick = onRequestRemoval, enabled = !ui.removing) {
+                                RunningText(if (ui.removing) "Removing…" else "Remove", ui.removing)
+                            }
+                        }
                     }
                 }
             }
             val snack = ui.snack
             if (snack != null) SnackLine(snack, connect)
+            bankConsents?.invoke()
             if (ui.fetchCooldown != null) {
                 SectionTitle("Fetch")
                 SlussenCard {
@@ -161,11 +176,23 @@ fun ServicePageScreen(
             }
             ui.offered?.let { offered -> OfferedSection(offered, connect) }
             ui.budgets?.let { budgets -> BudgetsSection(budgets, connect) }
-            if (ui.uploadAsClearedShown) {
+            ui.uploadAsCleared?.let { cleared ->
                 SectionTitle("Upload")
                 SlussenCard {
-                    Text("Upload as Cleared", fontSize = 13.sp)
-                    Muted("On by default · changing it comes with Adjust Settings")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Upload as Cleared", fontSize = 13.sp)
+                            Muted(cleared.pending ?: "On by default")
+                        }
+                        Switch(
+                            checked = cleared.on,
+                            onCheckedChange = onUploadAsCleared,
+                            enabled = cleared.pending == null,
+                            modifier = Modifier.testTag("upload-as-cleared"),
+                        )
+                    }
+                    Muted(cleared.statement)
+                    cleared.answer?.let { AnswerLine(it) }
                 }
             }
         }
@@ -227,7 +254,7 @@ fun ServicePageScreen(
 
 /** One declared field: text, secret (hidden while typed) or a file chosen with the device's file picker (UC-014 BR-002). */
 @Composable
-private fun CredentialFieldInput(field: FieldUi, value: String, enabled: Boolean, onValue: (String) -> Unit) {
+private fun CredentialFieldInput(field: FieldUi, value: String, enabled: Boolean, note: String?, onValue: (String) -> Unit) {
     when (field.kind) {
         FieldKind.File -> {
             val context = LocalContext.current
@@ -248,7 +275,10 @@ private fun CredentialFieldInput(field: FieldUi, value: String, enabled: Boolean
             enabled = enabled,
             singleLine = true,
             placeholder = { Text(field.description) },
-            supportingText = { Text(field.description) },
+            // UC-014 BR-002: an optional field says so (S-B-51); a refusal of the entry with it filled in is said at it (A1).
+            label = if (field.optional) ({ Text("Optional") }) else null,
+            isError = note != null,
+            supportingText = { Text(note ?: field.description) },
             visualTransformation = if (field.kind == FieldKind.Secret) PasswordVisualTransformation() else VisualTransformation.None,
         )
     }
@@ -296,7 +326,19 @@ private fun OfferedLine(line: OfferedLineUi, connect: ConnectActions) {
         onSwitch = line.importOn?.let { { on: Boolean -> connect.onSwitchImport(line, on) } },
         trailing = line.trailing,
         switchTag = "import-${line.offeredBankAccountId ?: line.leftOutBankAccountId}",
+        switchEnabled = line.pending == null,
     )
+    SwitchState(line.pending, line.answer)
+}
+
+/** NFR-023 (`connections.html#local-action-states`): under a switch, that it is being stored, or its last answer. */
+@Composable
+private fun SwitchState(pending: String?, answer: AnswerUi?) {
+    if (pending != null) {
+        RunningText(pending, running = true)
+    } else if (answer != null) {
+        AnswerLine(answer)
+    }
 }
 
 /** UC-013 steps 2-4, A2, A7, A9 (`connections.html`: the Budget App's page, `#choose-budgets-first`, `#kept-switch`). */
@@ -339,7 +381,9 @@ private fun BudgetsSection(budgets: BudgetsSectionUi, connect: ConnectActions) {
                         onSwitch = line.receives?.let { { on: Boolean -> connect.onReceives(line.budgetAccountId, on) } },
                         trailing = if (line.receives == null) "Account Mapping" else null,
                         switchTag = "receives-${line.budgetAccountId}",
+                        switchEnabled = line.pending == null,
                     )
+                    SwitchState(line.pending, line.answer)
                 }
             }
         }

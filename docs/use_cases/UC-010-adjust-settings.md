@@ -20,8 +20,8 @@
 1. Slussen shows the current value of each Operator Setting that applies to everything: Upload Window, file upload window, fetch period, Fetch Schedule, default wait, Request Limit warning pause, request timeout, Upload Plan lifetime, Consent Request lifetime, number of recent Fetches kept, Card Payment Descriptions, Bank Transfer Descriptions, transfer pairing days, Lonely Transfer grace period, outdated-balance limit, consent warning lead time, Decision Journal on or off with its size limit, warning threshold and current size, backup warning threshold, and Detailed Logging. The Operator Settings that belong to one service are shown with that service, which Settings lists directly (BR-010): the Fetch Cooldown of each Data Provider, with the default its part declares, and the Request Limit of a Data Provider that publishes none, with the default and the range its part declares, with the Data Provider, and Upload as Cleared, only when the Budget App supports the Cleared marker, with the Budget App. Slussen also shows the version name of the app and, for a debug build, that it is one (BR-011).
 2. Operator changes the value of an Operator Setting.
 3. Slussen checks that the value lies within the allowed range of the Operator Setting (BR-002).
-4. Slussen stores the value and applies it from the next Fetch, Scheduled Fetch, Comparison, Upload or opening of the app on.
-5. When the Operator Setting is one that a Transaction Status depends on (the Upload Window, the file upload window, the Card Payment Descriptions, the Bank Transfer Descriptions, the transfer pairing days or the Lonely Transfer grace period), Slussen gives every stored Bank Transaction its Transaction Status again under the new value, without contacting the Budget App or any Source; any other Operator Setting changes no Transaction Status.
+4. Slussen stores the value and applies it from the next Fetch, Scheduled Fetch, Comparison, Upload or opening of the app on. What Slussen stored earlier keeps the time it was stored with, such as the end of a Back-off and the expiry of a Consent Request. A lower number of recent Fetches kept shows only that many of the most recent Fetches from the change on, and the older ones are removed at the next Fetch (ADR-002 §10); a higher one brings back none that was removed.
+5. When the Operator Setting is one that a Transaction Status depends on (the Upload Window, the file upload window, the Card Payment Descriptions, the Bank Transfer Descriptions, the transfer pairing days or the Lonely Transfer grace period), Slussen gives every stored Bank Transaction of a Budget that owes no read of its read period its Transaction Status again under the new value and detects the Transfers among those not yet uploaded again, as UC-009 BR-015 says: by the rules of the Comparison and from its stored copy of the Budget App Transactions, without contacting the Budget App or any Source, with the time shown with the statuses unchanged; the Bank Transactions of a Budget not read yet stay not compared yet, a Transfer Decision is kept or dropped as UC-005 BR-015 says, every Transaction Status that changed is recorded in the Decision Journal, and when Slussen stops before the statuses are given again, no Upload Plan is prepared until they are. Any other Operator Setting changes no Transaction Status. When a change makes the longest of the fetch period, the Upload Window and the file upload window longer, each Budget that Slussen has read before, served or not, owes a read of the longer read period instead (UC-003 BR-016): its Bank Transactions get no Transaction Status again from stored data and keep the ones the latest Comparison gave them, the Budget shows that a read of the Budget App is owed and why, that read gives them their statuses under the new value, and no Upload Plan is prepared for the Budget before it (UC-006 A14). A Budget not read yet gets the longer period at its first read.
 6. Slussen records the change in the Decision Journal.
 
 ## Alternative Flows
@@ -50,7 +50,7 @@
 
 1. Slussen asks the Operator to confirm.
 2. Operator confirms.
-3. Slussen removes every entry of the Decision Journal, records that the Decision Journal was cleared as its first new entry, and changes nothing else.
+3. Slussen removes every entry of the Decision Journal and frees the space they took (ADR-002 §9), records that the Decision Journal was cleared as its first new entry (none while the Decision Journal is switched off), and changes nothing else.
 4. Use case ends.
 
 ### A4: Decision Journal Near Its Limit
@@ -74,7 +74,7 @@
 **Trigger:** Operator changes the Fetch Schedule (step 2)  
 **Flow:**
 
-1. Slussen states how many Scheduled Fetches it will make in any 24 hours under the new Fetch Schedule (2 by default), or that it will make none when the value is 0, and that a Scheduled Fetch never uploads.
+1. Slussen states how many Scheduled Fetches it will make in any 24 hours under the new Fetch Schedule (2 by default), or that it will make none when the value is 0, and that a Scheduled Fetch never uploads. The schedule is set again from the time of the change (UC-001 BR-013).
 2. Use case continues at step 3.
 
 ### A7: Edit a Description List
@@ -127,17 +127,18 @@
 **Trigger:** Operator chooses, on Settings, to start Slussen over (step 2)  
 **Flow:**
 
-1. Slussen states everything it will delete: the chosen Budgets and their Budget Accounts, the Bank Accounts with their Account Mappings and Start Dates, the Left-Out Bank Accounts, the Bank Transactions with their Review Decisions and Transfer Decisions, the Sent Record, the service credentials, the Bank Consents, the Operator Settings and the Decision Journal, with the number of Bank Accounts and Bank Transactions; and that, as after a new installation, nothing is uploaded until First Upload Matching is confirmed (UC-006 BR-017).
+1. Slussen states everything it will delete: the chosen Budgets and their Budget Accounts, the Bank Accounts with their Account Mappings and Start Dates, the Left-Out Bank Accounts, the Bank Transactions with their Review Decisions and Transfer Decisions, the Sent Record, the service credentials, the Bank Consents, which it first asks the Data Provider to end (step 4), stating that a Bank Consent it cannot end stays at the Bank until it expires, the Operator Settings and the Decision Journal, with the number of Bank Accounts and Bank Transactions; and that, as after a new installation, nothing is uploaded until First Upload Matching is confirmed (UC-006 BR-017).
 2. Operator confirms, or cancels and the use case ends with nothing deleted.
-3. Slussen deletes everything it stores and starts as a new installation, opening a First Upload Matching (UC-006 BR-017).
-4. Use case ends.
+3. When something else is under way (another operation runs or waits, a Consent Request waits for the Bank's result, a Journal Export is being written, or an Upload Plan awaits confirmation or an Upload is being written), Slussen says what is under way and that Start Over can be chosen once it has ended, deletes nothing, and the use case ends.
+4. Slussen first asks the Data Provider to end each Bank Consent, as UC-007 A7 step 3 does, then deletes everything it stores, whatever the answers, cancels the Scheduled Fetches the Fetch Schedule had set and removes the New Transaction Notification, and starts as a new installation, opening a First Upload Matching (UC-006 BR-017) and setting the Fetch Schedule as the first start of a new installation does (UC-001 BR-013); it names each Bank whose Bank Consent the Data Provider did not confirm as ended at the Bank, also one it could not contact, so that the Operator can end it at the Bank. The names are read from the record of Start Over by the start that finishes it and shown until the Operator closes them; no later start shows them.
+5. Use case ends.
 
 ## Postconditions
 
 ### Success Postconditions
 
 - The Operator Setting has the new value, and the Transaction Statuses reflect it when they depend on it (step 5).
-- The change is recorded in the Decision Journal, unless the Decision Journal is switched off.
+- The change is recorded in the Decision Journal, unless the Decision Journal is switched off. Switching it off is recorded as its last entry before it stops recording: that entry is handed to the Decision Journal before the new value is stored and is never refused for the Decision Journal being off. Switching it on is recorded as its first entry after.
 
 ### Failure Postconditions
 
@@ -156,7 +157,7 @@ The Upload Window lies between 1 and 60 days, the file upload window between 7 a
 
 ### BR-003: Journal Size Limit
 
-The Decision Journal stays within its size limit by removing its oldest entries, and Slussen warns when it reaches the warning threshold (80% of the limit by default).
+The Decision Journal stays within its size limit by removing its oldest entries, and Slussen warns when it reaches the warning threshold (80% of the limit by default). Its size is the space it takes on the device (ADR-002 §9). Entries are removed only while that size is above the size limit: after an entry is recorded, and right after a lower size limit is stored (A2), also while the Decision Journal is switched off; they are removed oldest first until the size is within the limit. Raising the size limit, changing the warning threshold or switching the Decision Journal off or on removes no entry, and no entry is removed for any other reason than the size limit or a clearing (A3).
 
 ### BR-004: Journal Never Affects Decisions
 
@@ -186,11 +187,11 @@ The default lists ship with the build from the repository.
 | CRD AUTOPAY |  |
 | CITICARDAP |  |
 
-ÖVERFÖRING also matches OVERFORING, since entries are compared without regard to accents (BR-008, UC-005 BR-012).
+ÖVERFÖRING also matches OVERFORING, since entries are compared without regard to accents (BR-008, UC-005 BR-012). An entry that equals no entry of the default list of its own list, compared as BR-008 compares, is shown as added by the Operator; this is worked out each time it is shown and not stored.
 
 ### BR-008: Valid Description Entries
 
-An entry is a non-empty text. Within one list, no two entries are equal when compared without regard to case and accents. A `*` stands for any characters (UC-005 BR-012); no other character has a special meaning.
+An entry is a non-empty text no longer than its stored length (`TRANSFER_DESCRIPTION`). Spaces at its start and end are removed before it is checked and stored, so that an entry of spaces only is empty. Within one list, no two entries are equal when compared without regard to case and accents. A `*` stands for any characters (UC-005 BR-012); no other character has a special meaning. An entry holds at least one character other than `*`, since an entry of stars only would match nothing. A list may hold no entry.
 
 ### BR-009: Description Changes Apply Only Before Upload
 

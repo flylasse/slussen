@@ -67,6 +67,18 @@ class SchemaVersionCheckTest {
         assertTrue(changeOfFinalVersion(name, 99, committed)!!.contains("no pin"))
     }
 
+    @Test
+    @DisplayName("NFR-017: a planted change to committed version 1 of device.db is refused: version 1 is final since version 2 was added (ADR-002 §7, S-B-45)")
+    fun aChangedVersion1OfDeviceDbIsRefused() {
+        val name = "slussen.persistence.device.DeviceDatabase"
+        val committed = RoomSchemas.file(RoomSchemas.committed, slussen.persistence.device.DeviceDatabase::class, 1).readText()
+        val planted = committed.replace("`offered_at` INTEGER NOT NULL)", "`offered_at` INTEGER NOT NULL, `bank_consent_id` INTEGER)")
+
+        assertEquals(null, changeOfFinalVersion(name, 1, committed))
+        assertTrue(planted != committed)
+        assertTrue(changeOfFinalVersion(name, 1, planted)!!.contains("$name version 1"))
+    }
+
     /** Why [text], the committed file of [version] of [database], is not the final one, or null when it is. */
     private fun changeOfFinalVersion(database: String, version: Int, text: String): String? {
         val pin = FINAL_VERSIONS[database]?.get(version)
@@ -85,7 +97,9 @@ class SchemaVersionCheckTest {
         /**
          * The SHA-256 of the committed schema file of every version older than the current one, line endings read as LF
          * (`.gitattributes` checks text out with CRLF on Windows), taken from the file as committed: version 1 at the
-         * baseline `96712aa`, versions 2, 3 and 4 as committed with their Migrations (ADR-002 §7, S-39).
+         * baseline `96712aa`, versions 2, 3, 4 and 5 as committed with their Migrations (ADR-002 §7, S-39). Version 5 is
+         * final since version 6 was added (build-out plan §3). Version 1 of `device.db` is final since its version 2 was
+         * added (S-B-45, phase E1): pinned as committed, unchanged since the merge `16f975c` that carries the baseline.
          */
         val FINAL_VERSIONS: Map<String, Map<Int, String>> = mapOf(
             "slussen.persistence.main.SlussenDatabase" to mapOf(
@@ -93,6 +107,10 @@ class SchemaVersionCheckTest {
                 2 to "4d4103016f183cca23a08edb31f2cb9db38009f3ed05bed19768c00fe78e4f3c",
                 3 to "6d66b0b9ec8bc333eda57a05f393213a7e9dc62e37b748ca16fd06057a150e4d",
                 4 to "fc49c92ba11a33a377f521f0ca8670b8d4738bd5cd3c95bf024e9fab5852f247",
+                5 to "ea41deba3498682d329e4cc2d4880d676048155c95ece84132a39b1a9aa44213",
+            ),
+            "slussen.persistence.device.DeviceDatabase" to mapOf(
+                1 to "985143f6c4f9434cd1f731b56330b1a1b5041b6c40efd0547e3da83aa652dd81",
             ),
         )
     }

@@ -13,22 +13,40 @@ import java.time.ZoneId
  * The slice on the fakes of `:testing` for the screen tests on a device or emulator, with invented data only, and an
  * invented version of the app unless a test gives the installed one.
  */
-class ScreenFixture(appVersion: AppVersion = AppVersion.of(packageName = "slussen.app", versionName = "9.8.7")) {
-    val slice = TestSlice()
+class ScreenFixture(
+    appVersion: AppVersion = AppVersion.of(packageName = "slussen.app", versionName = "9.8.7"),
+    startKind: slussen.core.port.StartKind = slussen.core.port.StartKind.Normal,
+    unreadableParts: List<slussen.core.port.UnreadablePart> = emptyList(),
+) {
+    val slice = TestSlice(startKind, unreadableParts)
     val services = UiServices(
         credentials = slice.credentials,
         settingsOverview = slice.settingsOverview,
         connect = slice.connect,
         providerSettings = slice.providerSettings,
         generalSettings = slice.generalSettings,
+        descriptionLists = slice.descriptionLists,
+        journalControl = slice.journalControl,
+        journalExport = slice.journalExport,
         mappings = slice.mappings,
         status = slice.status,
+        bankAccountTransactions = slice.bankAccountTransactions,
+        transfers = slice.budgetTransfers,
         fetch = slice.fetch,
+        fileImport = slice.fileImport,
+        review = slice.review,
+        transferDecisions = slice.transferDecisions,
         comparison = slice.comparison,
         formats = Formats(ZoneId.of("Europe/Stockholm")),
         clock = slice.clock,
         appVersion = appVersion,
         running = slice.coordinator.running,
+        ended = slice.coordinator.ended,
+        budgetAppName = slice.plugins.budgetApp.profile.name,
+        bankConsents = slice.bankConsents,
+        consentProviders = slice.plugins.dataProviders.filter { it.stored.needsBankConsent }
+            .map { slussen.app.ui.consent.ConsentProvider(it.key, it.stored.name) },
+        applicationReturnAddress = slussen.testing.ExampleData.CONSENT_RETURN_ADDRESS,
     )
 }
 
@@ -36,11 +54,7 @@ class ScreenFixture(appVersion: AppVersion = AppVersion.of(packageName = "slusse
 @Composable
 fun Settings(viewModel: slussen.app.ui.settings.SettingsViewModel) {
     viewModel.state.collectAsState().value?.let {
-        slussen.app.ui.settings.SettingsScreen(
-            it, onEntry = {}, onAccountMappings = {}, onRecentFetches = {},
-            onEditFetchPeriod = viewModel::startEditingFetchPeriod, onFetchPeriodValue = viewModel::editFetchPeriod,
-            onSaveFetchPeriod = viewModel::saveFetchPeriod, onCancelFetchPeriod = viewModel::cancelFetchPeriod,
-        )
+        slussen.app.ui.settings.SettingsScreen(it, onEntry = {}, onAccountMappings = {}, onRecentFetches = {}, actions = viewModel.actions())
     }
 }
 
@@ -74,11 +88,12 @@ fun ServicePage(viewModel: ServicePageViewModel, onMap: () -> Unit = {}) {
                 onRequestLimitValue = viewModel::editRequestLimit,
             ),
             onFetch = viewModel::fetch, onConfirmFetch = viewModel::confirmFetch, onCancelFetch = viewModel::cancelFetch,
+            onUploadAsCleared = viewModel::switchUploadAsCleared,
         )
     }
 }
 
-/** The Account Mappings of [viewModel] with every action wired as `SlussenScreens` wires them; a list line opens [onService]. */
+/** The Account Mappings of [viewModel] with every action wired as `SlussenScreens` wires them; a line of Not imported or Kept by hand opens [onService]. */
 @Composable
 fun AccountMappings(viewModel: slussen.app.ui.mappings.AccountMappingsViewModel, onService: (slussen.core.port.ServiceKey) -> Unit = {}) {
     viewModel.state.collectAsState().value?.let {
@@ -87,6 +102,7 @@ fun AccountMappings(viewModel: slussen.app.ui.mappings.AccountMappingsViewModel,
             card = slussen.app.ui.mappings.cardActionsOf(viewModel), onOpenTypeAndBank = viewModel::openTypeAndBank,
             onSaveTypeAndBank = viewModel::saveTypeAndBank, onConfirmClearing = viewModel::confirmClearing,
             onCancelClearing = viewModel::cancelClearing, onCancelTypeAndBank = viewModel::cancelTypeAndBank,
+            changes = slussen.app.ui.mappings.mappingChangeActionsOf(viewModel),
         )
     }
 }

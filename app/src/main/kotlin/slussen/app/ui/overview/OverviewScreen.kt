@@ -1,5 +1,7 @@
 package slussen.app.ui.overview
 
+import slussen.core.port.ServiceKey
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,7 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import slussen.app.ui.budget.RemedyAction
 import slussen.app.ui.components.Banner
+import slussen.app.ui.components.BudgetAppLine
 import slussen.app.ui.components.FetchButton
 import slussen.app.ui.components.FetchResultLine
 import slussen.app.ui.components.FirstUploadMatchingBanner
@@ -48,13 +52,17 @@ fun OverviewScreen(
     onFetchAll: () -> Unit,
     onConfirmFetch: () -> Unit,
     onCancelFetch: () -> Unit,
+    onReadAgain: () -> Unit = {},
+    onRemedy: (RemedyAction) -> Unit = {},
+    onRenew: (ServiceKey, Long) -> Unit = { _, _ -> },
 ) {
     val firstRun = ui.firstRun
     if (firstRun != null) {
-        // UC-008 BR-011: While no Bank Account is added, the Overview shows nothing but the card that leads to Settings.
+        // UC-008 BR-011: While no Bank Account is added, the Overview shows nothing but the notices of stored data that could not be read and the card that leads to Settings.
         LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
+            item { ScreenTitle("Slussen", ui.heading) }
+            items(ui.unreadableNotices) { Banner(it.title, it.detail, SlussenColors.Surface2, SlussenColors.Text) }
             item {
-                ScreenTitle("Slussen", ui.heading)
                 SlussenCard(border = SlussenColors.Teal) {
                     Text(firstRun.title, color = SlussenColors.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Text(firstRun.next, color = SlussenColors.Teal, fontSize = 13.sp)
@@ -68,16 +76,17 @@ fun OverviewScreen(
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
             ScreenTitle("Slussen", ui.heading)
-            Muted(ui.budgetAppRead)
+            // FR-040, NFR-023 (`#read-one-failed`): the line of the Budget App, whose Read again answers on the line itself.
+            BudgetAppLine(ui.budgetAppLine, onReadAgain, onRemedy)
         }
-        items(ui.unreadableNotices) { Banner(it, null) }
+        items(ui.unreadableNotices) { Banner(it.title, it.detail, SlussenColors.Surface2, SlussenColors.Text) }
         val firstUploadMatching = ui.firstUploadMatching
         if (firstUploadMatching != null) {
             // UC-008 BR-009: information or a caution, never an error colour.
             item { FirstUploadMatchingBanner(firstUploadMatching, onStartFirstUploadMatching) }
         }
         if (ui.message != null) item { Banner(ui.message, null, SlussenColors.Surface2, SlussenColors.Text) }
-        if (ui.backupWarning != null) item { Banner(ui.backupWarning, null) }
+        ui.backupWarning?.let { warning -> item { Banner(warning.title, warning.detail) } }
         // P9-14: the Fetch action stands above the Budget cards, where it is seen without scrolling.
         item {
             Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -87,7 +96,13 @@ fun OverviewScreen(
                 if (ui.fetchNote != null) Muted(ui.fetchNote)
             }
         }
-        items(ui.expiringConsents) { Banner(it, ui.expiringConsentNote) }
+        // UC-008 BR-002: each expiring Bank Consent with its expiry date and the renew action (UC-007 BR-003).
+        items(ui.expiringConsents) { expiring ->
+            SlussenCard(border = SlussenColors.Amber) {
+                Text(expiring.text, color = SlussenColors.Amber, fontSize = 13.sp)
+                OutlinedButton(onClick = { onRenew(expiring.service, expiring.bankId) }) { Text(expiring.action) }
+            }
+        }
         items(ui.budgets) { budget ->
             SlussenCard(modifier = Modifier.clickable { onBudget(budget.budgetId) }) {
                 Row {
@@ -96,6 +111,11 @@ fun OverviewScreen(
                     Text(budget.currency, color = SlussenColors.Text2, fontSize = 12.sp)
                 }
                 Muted(budget.counts)
+                // For UC-004, UC-005: the card leads to the Budget's tab, where what waits for a decision is decided.
+                budget.decide?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
+                // A1 step 2 of UC-003: statuses never shown as current when the read since failed.
+                budget.statuses?.let { Muted(it) }
+                budget.readAgainNote?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
                 budget.firstUploadMatching?.let { chip -> Text(chip.text, color = toneColours(chip.tone).second, fontSize = 12.sp) }
                 if (budget.blocked.isEmpty() && budget.firstUploadMatching == null) {
                     Text("Nothing blocked", color = SlussenColors.Green, fontSize = 12.sp)

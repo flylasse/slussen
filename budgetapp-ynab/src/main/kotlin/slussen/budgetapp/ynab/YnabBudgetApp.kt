@@ -13,10 +13,10 @@ import slussen.pluginapi.diagnostic.SlussenLog
 /**
  * The YNAB Budget App (ADR-001 §1, §4.2): everything that depends on YNAB's behaviour (C-009), reached through YNAB's
  * public interface (C-008). It builds its profile, its credentials (UC-014), the reading of Budgets (UC-013) and of the
- * changes of a Budget (UC-003); the reading of one transaction and the writer come with the slice that builds UC-006.
+ * changes of a Budget (UC-003) and of one transaction, and the writer of an Upload (UC-006, ADR-001 §4.2.4, §4.2.5).
  */
 class YnabBudgetApp internal constructor(
-    private val log: SlussenLog,
+    log: SlussenLog,
     base: HttpUrl,
     http: OkHttpClient,
 ) : BudgetApp {
@@ -45,8 +45,15 @@ class YnabBudgetApp internal constructor(
 
     override val reader: BudgetAppReader = YnabReader(base, http)
 
-    override val writer: BudgetAppWriter
-        get() = TODO("Built by the slice that builds UC-006 (ADR-001 §4.2.4).")
+    /** Reached by the core's Upload only, through its write permit (ADR-007 §7). */
+    override val writer: BudgetAppWriter = YnabWriter(
+        base,
+        http,
+        log,
+        importIdentifierMaxLength = profile.importIdentifierMaxLength,
+        payeeMaxLength = profile.payeeMaxLength,
+        memoMaxLength = profile.memoMaxLength,
+    )
 
     companion object {
         /** YNAB's public interface (C-008), version 1. */

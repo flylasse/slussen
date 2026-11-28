@@ -88,7 +88,12 @@ class PluginRegistryPersistenceIT {
         assertEquals(30, settings.current().fetchPeriodDays)
 
         registry.storeFetchCooldown(id, 15)
-        settings.storeFetchPeriod(14)
+        settings.store(
+            slussen.core.port.SettingChange(
+                slussen.core.port.SettingValue.Number(slussen.core.port.NumberSetting.FetchPeriod, 14),
+                slussen.core.port.SettingFollowUp.None,
+            ),
+        )
 
         assertEquals(15, registry.reconcile(listOf(declared), emptyList()).dataProviders.single().fetchCooldownMinutes)
         assertEquals(14, settings.current().fetchPeriodDays)

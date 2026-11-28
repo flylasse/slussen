@@ -132,7 +132,7 @@ name.
   (`bank_session.bank_consent_id` is a real foreign key in `device.db`; `bank_account.generated_identifier` a unique
   index in `slussen.db`). A reference across databases (`service_credential.data_provider_id`,
   `bank_consent.bank_id`, `bank_consent.data_provider_id`,
-  `consent_request.bank_id`, `consent_request.data_provider_id`, `offered_bank_account.data_provider_id`, `bank_id`
+  `consent_request.data_provider_id`, `offered_bank_account.data_provider_id`, `bank_id`
   and `proposed_bank_account_id`) is a plain column; the core checks it.
 - `BUDGET_APP_TRANSACTION` is stored with every attribute of the entity model, `transfer_link_reference`,
   `merged_into_reference`, `cleared` and `approved` included (S-12), as the read model of ADR-001 §4.2.3 delivers them.
@@ -147,9 +147,9 @@ Technical storage that is not in the entity model, complete list:
 
 | Table | Database | Columns | Why |
 |---|---|---|---|
-| `budget_read_state` | `slussen.db` | `budget_id` (key), `change_cursor` (TEXT), `period_read_owed` (INTEGER, 0 or 1) | The opaque `ChangeCursor` of ADR-001 §4.2.3 that lets every later read take "all changes since the previous read" (UC-003 BR-016); technical by the Operator's answer to O-P1-03. `period_read_owed` is set when a served Budget gains a Budget Account (UC-003 BR-016, S-T-18): its next read covers the read period as well as the changes since `change_cursor`. Written only by O-4, except `period_read_owed` set by UC-013. |
+| `budget_read_state` | `slussen.db` | `budget_id` (key), `change_cursor` (TEXT), `period_read_owed` (INTEGER, 0 or 1) | The opaque `ChangeCursor` of ADR-001 §4.2.3 that lets every later read take "all changes since the previous read" (UC-003 BR-016); technical by the Operator's answer to O-P1-03. `period_read_owed` is set when a served Budget gains a Budget Account (UC-003 BR-016, S-T-18): its next read covers the read period as well as the changes since `change_cursor`. Written only by O-4, deleted only by O-12 at a start that opens a First Upload Matching (§6 step 5), except `period_read_owed` set by UC-013 and by an Operator Setting change that makes the read period longer (O-13, UC-010 step 5), only on an existing row, served or not: a Budget without a `change_cursor` gets no row before its first read, which covers the read period anyway. |
 | `coordinator_state` | `slussen.db` | one row: `mode` (Normal, Plan Open, Uploading), `upload_plan_id`, `state_version` (INTEGER), `scheduled_fetch_deferred` (BOOLEAN), `comparison_pending` (BOOLEAN) | The operation coordinator's mode, the version of everything an Upload Plan depends on, and the marker that a Comparison's read is stored but its conclusions are not (ADR-007 §2, §3a, §6). |
-| `upload_plan_item` | `slussen.db` | `upload_plan_id`, `position`, `write_kind` (`Create`, `LinkedTransfer`, `ClearCounterpart`), `bank_transaction_id`, `budget_account_id`, `import_identifier`, `occurrence`, `booked_date`, `amount`, `payee_sent`, `memo_sent`, `cleared`, `transfer_budget_account_id`, `clear_counterpart`, `transfer_counterpart_id` and `counterpart_reference` (clearing items only), `reused_sent_record_id`, `reused_outcome`, plus the plan's captured `state_version` and `change_cursor` per Budget in a header row | The immutable write set of an Upload Plan (ADR-007 §4). Inserted only by O-6; never updated. |
+| `upload_plan_item` | `slussen.db` | `upload_plan_id`, `position`, `write_kind` (`Create`, `LinkedTransfer`, `ClearCounterpart`), `bank_transaction_id`, `budget_account_id`, `import_identifier`, `occurrence`, `booked_date`, `amount`, `payee_sent`, `memo_sent`, `cleared`, `transfer_budget_account_id`, `clear_counterpart`, `transfer_counterpart_id` and `counterpart_reference` (clearing items only), `reused_sent_record_id`, `reused_outcome`, plus the plan's captured `state_version` and `change_cursor` in a header row: the row at `position` 0 with `write_kind` Header and no payload, holding `coordinator_state.state_version` and the `change_cursor` of the plan's one Budget (`upload_plan.budget_id`; a Transfer never crosses Budgets, UC-005 BR-004), the writes following from `position` 1 | The immutable write set of an Upload Plan (ADR-007 §4). Inserted only by O-6; never updated. |
 | `consent_request_correlation` | `device.db` | `consent_request_id` (key, foreign key), `state_digest` (TEXT, SHA-256 of the `state`, unique), `provider_handle` (TEXT, the plug-in's opaque handle) | Matches the answer from Strong Customer Authentication to its Consent Request (ADR-001 §4.1). The `state` itself is never stored. |
 
 **Budgets, Bank Accounts and Account Mappings are set in the app (S-23; UC-013, UC-009).** There is no Build
@@ -251,20 +251,74 @@ a step from two calls. Each operation that changes something an Upload Plan depe
 |---|---|---|---|
 | O-1 | `FetchStore.storeBankAccountDelivery` | For one identified Bank Account: new Bank Transactions (with `occurrence_number` allocated and Import Identifiers computed and checked for collision, ADR-008 §4, §5), changed content of known ones, new Unreadable Transactions (counted against stored ones with the same readable fields and reason), the Account Balance, the `fetch_result` | UC-001 steps 7-8, A8, A17, BR-010, BR-016, NFR-020 |
 | O-2 | `FetchStore.replaceOfferedBankAccounts` (`device.db`) | Replaces the Offered Bank Accounts of a Data Provider, or of one Bank through it, with the latest delivery | UC-009 BR-009 |
-| O-3 | `FileImportStore.importWhole` | The `transaction_file` record Imported and every new Bank Transaction of the file with its occurrence number and Import Identifier; a collision or any failure stores none of them and the core records the file as Rejected in a separate step | UC-002 BR-001, BR-003, A6, NFR-020, ADR-008 §5 |
+| O-3 | `FileImportStore.importWhole` | The `transaction_file` record Imported and every new Bank Transaction of the file with its occurrence number and Import Identifier, the file's transactions counted against the stored Bank Transactions of the Bank Account as UC-002 BR-003 says, from what is stored inside the same transaction; a collision or any failure stores none of them and the core records the file as Rejected in a separate step | UC-002 BR-001, BR-002, BR-003, A4, A6, NFR-020, ADR-008 §5 |
 | O-4 | `BudgetAppCopyStore.applyChangeSet` | The changed `budget_app_transaction` records (upserted by `budget_app_reference`) with every attribute, Transfer link, merge target, Cleared and approved included, the Budget Account balances, `budget.last_read_at` and the next `change_cursor`, only if the stored cursor still equals the one the read started from; and `coordinator_state.comparison_pending` set (ADR-007 §3a) | UC-003 step 1, BR-016, BR-020 |
-| O-5 | `ComparisonStore.applyComparison` | Conclusions computed from stored data only (the stored copy of O-4, never a transient read): Transaction Statuses, Sent Records settled as Written when their Import Identifier was found, Transfer Counterparts reconciled from the stored `transfer_link_reference` with their stored `cleared` value (ADR-001 §4.2.3), `recovery_check.compared_at` when every Budget with a mapped Bank Account was read in the Comparison, and `comparison_pending` cleared; a Bank Transaction with a Sent Record is compared with the Budget Account recorded in its Sent Record as well as with its current one (UC-003 BR-021) | UC-003 steps 3-7, BR-017, BR-019, BR-020, BR-021; UC-005 BR-009 |
+| O-5 | `ComparisonStore.applyComparison` | Conclusions computed from stored data only (the stored copy of O-4, never a transient read): Transaction Statuses, the Transfers among the compared Bank Transactions (a Transfer the Operator decided on is kept with its decision, also while the Bank Account of one of its sides is a Retired Account, when it is in no Upload Plan; it is joined by its arriving other side, a Bank Transaction that is not uploaded and comes from no Transfer with a decision or an uploaded Transfer Leg, and a Transfer without a decision that this Bank Transaction leaves is removed and its other Transfer Leg detected again in the same conclusions; when its decision is Confirmed or Budget Account Chosen and its own sides are no longer valid, or the other side of such a Lonely Transfer was already uploaded as an ordinary transaction, it is removed with its Transfer Legs released and the dropped decision handed to the Decision Journal, while a Transfer the Operator split or holds back is never removed here: UC-005 BR-005, BR-015), Sent Records settled as Written when their Import Identifier was found, Transfer Counterparts reconciled from the stored `transfer_link_reference` with their stored `cleared` value (ADR-001 §4.2.3), `recovery_check.compared_at` when every Budget with a mapped Bank Account was read in the Comparison, and `comparison_pending` cleared; a Bank Transaction with a Sent Record is compared with the Budget Account recorded in its Sent Record as well as with its current one (UC-003 BR-021) | UC-003 steps 3-7, BR-017, BR-019, BR-020, BR-021; UC-005 BR-005, BR-009, BR-015 |
 | O-6 | `UploadStore.preparePlan` | The `upload_plan`, its `eligible_transaction` and `upload_plan_item` records, and the mode Plan Open | ADR-007 §4 |
 | O-7 | `UploadStore.confirmPlan` | §4 below: the Sent Record before every transaction send, with the expiry checked inside the transaction | UC-006 step 6, A5, A7, BR-006 |
 | O-8 | `UploadStore.recordOutcomes` | The reported outcomes of one Budget Account's transaction sends | UC-006 steps 8-9, A8, A9, BR-012 |
 | O-9 | `UploadStore.finishUpload` | The end of the Upload and the mode Normal | UC-006 step 12 |
-| O-10 | `ConsentStore.startRequest`, `consumeAnswer`, `replaceConsent`, `revoke` (`device.db`) | Start: a new Consent Request with its correlation, making earlier ones of the Bank unanswerable. Consume: the most-recent, lifetime and not-answered checks and `answered` set, together. Replace: the Bank Consent and its Bank Session in place of the earlier ones, refused when a newer Consent Request exists. Revoke: delete the Bank Consent, its Bank Session and every Consent Request of the Bank | UC-007 BR-002, BR-003, BR-004, BR-007; NFR-013 |
+| O-10 | `ConsentStore.startRequest`, `consumeAnswer`, `replaceConsent`, `abandonRequest`, `markRefused`, `revoke` (`device.db`) | Start: a new Consent Request with its correlation, making earlier ones of the Bank unanswerable. Consume: the most-recent, lifetime and not-answered checks and `answered` set, together. Replace: the Bank Consent (with `refused_at` empty) and its Bank Session in place of the earlier ones, refused when a newer Consent Request exists; the `bank` row of the Consent Request's `bank_reference` is found or created in `slussen.db` by the core right before it, after the Data Provider completed the grant, since one transaction cannot span the two databases, so that only a granted Bank Consent leaves a Bank. Abandon: delete one unanswered Consent Request with its correlation (S-B-44). Mark refused: set `refused_at` of the Bank's Bank Consent once, keeping the earliest time (S-B-44). Revoke: delete the Bank Consent, its Bank Session and every Consent Request of the Bank | UC-007 BR-002, BR-003, BR-004, BR-007, A10; UC-001 A9; NFR-013 |
 | O-11 | `PluginRegistryStore.reconcile` | §2, the Data Providers and File Formats of the build, with the Request Limit (published, or a default and range) and the default Fetch Cooldown their parts declare | FR-017, UC-001 BR-006, BR-007 |
-| O-12 | `FirstUploadMatchingStore.openCheck`, `confirmChecks` | Open a First Upload Matching with its cause; confirm every open one whose `compared_at` is filled, together with its Decision Journal record request | UC-006 BR-017, UC-008 A9, BR-009 |
-| O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses; setting a Funded By or Transfer Partner (also from a Transfer Decision) is refused unless the Budget Account is in the same Budget, differs from the Bank Account's own, and receives through an Account Mapping of a Bank Account that is not a Retired Account, never a Manually Kept Account (UC-005 BR-014, `BANK_ACCOUNT` constraints); `MappingStore.move`, `MappingStore.remove` and `MappingStore.identifyAgain` change or delete an Account Mapping or record a new identification of its Bank Account (with `identified_at`), refused while a `sent_record` of the Bank Account's transactions with the mapping's `budget_account_id` (also one sent through an earlier mapping to that Budget Account; `first_sent_at` does not decide) has an `outcome` other than Rejected, unless the call carries the Operator's confirmation of the stated number of those sent transactions and, separately, of the Rejected ones; each records the change, and a move resets `first_sent_at` (UC-009 A6-A8, A11, BR-003, BR-007); `MappingStore.mapAgain` stores, without confirmation, a new Account Mapping with `first_sent_at` empty for a Bank Account that has none, refused unless the Budget Account belongs to a served Budget in the Bank Account's currency and receives through no Account Mapping (UC-009 A8); confirming a proposed match records the identification with `identified_at` (UC-009 steps 4-6, A1); renaming and Start Date are single updates (UC-009 A12, A13); a Review Decision on a Transfer Leg also sets the statuses of the other Transfer Legs of its Transfer (Deferred, or Already In Budget App while an Already Present decision holds) in the same transaction | UC-004 BR-006, BR-009; UC-005 BR-013, BR-014; UC-009 BR-003, BR-007, BR-008, A6-A14, UC-010 |
+| O-12 | `FirstUploadMatchingStore.openCheck`, `confirmChecks` | Open a First Upload Matching with its cause, deleting every `budget_read_state` row (§6 step 5); confirm every open one whose `compared_at` is filled, together with its Decision Journal record request | UC-006 BR-017, UC-008 A9, BR-009 |
+| O-13 | `ReviewStore.decide`, `TransferStore.decide`, `MappingStore.*`, `SettingsStore.*` | Each decision or change with its effect on statuses; a change that the specification follows with statuses given again or Transfers detected again from stored data (UC-009 BR-015, UC-010 step 5), and a Transfer Decision that releases a Transfer Leg or removes another Transfer (UC-005 A3 step 4, BR-016), sets `coordinator_state.comparison_pending` in its own transaction, and the conclusions follow through O-5 without a read of the Budget App (ADR-007 §3a); a Transfer Decision Budget Account Chosen stores, in one transaction, the new other side, the removal of a Transfer without a decision that it takes its Transfer Leg from, and the Funded By or Transfer Partner the Operator keeps, and is refused when a Bank Transaction could be the other side and each one that could has been uploaded or is a Transfer Leg of another Transfer that the Operator decided on or one of whose Transfer Legs has been uploaded (UC-005 A3, A10, BR-016); setting a Funded By or Transfer Partner (also from a Transfer Decision) is refused unless the Budget Account is in the same Budget, differs from the Bank Account's own, and receives through an Account Mapping of a Bank Account that is not a Retired Account, never a Manually Kept Account (UC-005 BR-014, `BANK_ACCOUNT` constraints); `MappingStore.move`, `MappingStore.remove` and `MappingStore.identifyAgain` change or delete an Account Mapping or record a new identification of its Bank Account (with `identified_at`), refused while a `sent_record` of the Bank Account's transactions with the mapping's `budget_account_id` (also one sent through an earlier mapping to that Budget Account; `first_sent_at` does not decide) has an `outcome` other than Rejected, or while a `sent_record` with `sent_as_transfer` true and such an `outcome` belongs to a Transfer Leg of a `transfer` that names that `budget_account_id` for its other side, whether or not a `transfer_counterpart` is recorded (UC-009 BR-003), unless the call carries the Operator's confirmation of the stated number of those sent transactions and, separately, of the Rejected ones; each records the change, and a move resets `first_sent_at` (UC-009 A6-A8, A11, BR-003, BR-007); `MappingStore.mapAgain` stores, without confirmation, a new Account Mapping with `first_sent_at` empty for a Bank Account that has none, refused unless the Budget Account belongs to a served Budget in the Bank Account's currency, receives through no Account Mapping and is not a Manually Kept Account, as a move is (UC-009 A8, UC-013 BR-014); confirming a proposed match records the identification with `identified_at` (UC-009 steps 4-6, A1); renaming and Start Date are single updates (UC-009 A12, A13); a Review Decision or Transfer Decision is refused, storing nothing, while its Budget owes a read of its read period, read in its own transaction (UC-004 A12, UC-005 A11, UC-003 BR-016); a Review Decision on a Transfer Leg also sets the statuses of the other Transfer Legs of its Transfer (Deferred, or Already In Budget App while an Already Present decision holds) in the same transaction; `SettingsStore.*` stores one Operator Setting, or replaces every `transfer_description` of one `kind` for an edit or a restore, together with `comparison_pending` when UC-010 step 5 follows; when the change makes the longest of `fetch_period_days`, `upload_window_days` and `file_upload_window_days` longer, it sets instead `budget_read_state.period_read_owed` for every Budget that has a `change_cursor`, served or not, and no `comparison_pending` of its own, since no statuses are given again for those Budgets (UC-003 BR-016, ADR-007 §3a); removing Decision Journal entries after a lower size limit is a separate step on `journal.db` (§9) | UC-004 BR-006, BR-009; UC-005 BR-013, BR-014, BR-016; UC-009 BR-003, BR-007, BR-008, BR-015, A6-A14, UC-010 step 5, A7, A8 |
 | O-14 | `UploadStore.recordClearing` | The result of one clearing (ADR-007 §6 step 8): a new `transfer_counterpart` with the leg's `sent_record_id`, its `budget_app_reference` and `state` Cleared (with `cleared_at`) or Uncleared; or an existing one set to Cleared with `cleared_at`. It never inserts, resets or changes a `sent_record` | UC-006 steps 10, BR-009, BR-010, BR-011, A11 |
 | O-15 | `ConnectionStore.serveBudgets`, `ConnectionStore.leaveOut`, `ConnectionStore.addBankAccount`, `ConnectionStore.bringBack`, `ConnectionStore.setManuallyKept` | Serve: set `budget.served` for the chosen Budgets, refused for a Budget into which a Bank Account is mapped (UC-013 A2). Leave out: one `left_out_bank_account` for the Offered Bank Account whose import the Operator switched off, at once and without a confirmation, or one for each of them when the Operator switches off every one (UC-013 steps 6-7, A12, BR-011, BR-012). Add: a new `bank_account` with its generated identifier, proposed name, optional Start Date, how the Source identifies it, `identified_at`, for a File Format the optional `balance_data_provider_id` with the `balance_provider_reference` of the Offered Bank Account chosen for its balance, deleting its `left_out_bank_account` when it was left out (UC-013 A4, BR-006), and its `account_mapping`, refused when the Budget Account already receives through an Account Mapping, its Budget has another currency (UC-013 A5) or it is a Manually Kept Account (BR-014). Bring back: delete one `left_out_bank_account` when its import is switched on again (UC-013 A10). Mark and unmark: set or clear `budget_account.manually_kept` when the Operator switches "Receives from Slussen" off or on, setting refused while it receives through an Account Mapping (UC-013 A9, BR-014) | UC-013 steps 3-13, BR-001, BR-003, BR-011, BR-012, BR-014, A2, A4, A5, A9, A10, A12; FR-097, FR-098, FR-105, FR-106 |
 | O-16 | `CredentialStore.replace`, `CredentialStore.remove` (`device.db`) | Replace: the encrypted `service_credential` of one service, only after the service accepted it, in place of the earlier one. Remove: delete it (§2a) | UC-014 steps 4, A1, A3; NFR-021 |
+| O-17 | `StartOverStore.recordStartOver`, then the start sequence (§6) | Start Over: records durably, in the start intent, that a new installation is owed; the next start deletes everything Slussen stores before Room opens a database, in the order below, and starts as a new installation | UC-010 A12; FR-107; UC-006 BR-017 |
+
+**Start Over (O-17).** No transaction spans the three databases, the files and the Keystore, so Start Over is made
+safe by its order and by the start intent of §6, not by a transaction. In this order:
+
+1. **End the Bank Consents.** On the lane, which it holds alone (ADR-007 §2), the core asks the Data Provider to end
+   each stored Bank Consent, as UC-007 A7 step 3 does, through the gate and with the Operator present; nothing is
+   deleted yet. A Data Provider that cannot be reached, that refuses, whose credentials are missing or refused, or whose
+   gate holds the request back does not stop Start Over; its Bank is named in the result.
+2. **Record the obligation.** `slussen.start-intent` is written as §6 step 3 writes it (a temporary file, flushed,
+   renamed, the directory flushed), with the cause New Installation on its first line, `Start Over` on its second, the
+   number of Banks of step 1 on its third, and one line for each of them, in the same write: why its Bank Consent was
+   not confirmed as ended, its Data Provider's name and its name, each within the length the entity model gives it. A
+   Bank whose names do not fit that form is left out, still counted. From then on every start resumes from it (§6
+   step 1). When it cannot be written, nothing is deleted and Start Over is answered as not done.
+3. **End the process.** From the record on, every screen shows only that Slussen is starting over and closes and opens
+   again. The Fetch Schedule's work is cancelled and removed from WorkManager's own records, and the New Transaction
+   Notification is removed. While the app is in the foreground it asks a small activity of its own in a separate
+   process to open it again once this process has ended. Then the process ends in every case, without releasing the
+   lane, so that nothing runs on the old data again and nothing of it stays in memory (screens, the answers of Consent
+   Requests, an import's state, the Decision Journal's queue). Nothing of the result travels in an intent: whether the
+   app opens itself again or the Operator opens it, the next start finishes the deletion and shows the result.
+4. **Delete, at the next start, before Room opens anything.** The start sequence, resuming from an intent that carries
+   `Start Over`, deletes in this order: `slussen.lastgood.db` and its temporary file, so that no later start can bring
+   the old data back (§8 step 3); `slussen.db` with its rollback journal, any `-wal` and `-shm`, and every original of it
+   set aside as unreadable (§8 step 3); `device.db` with the same files and originals, then the Keystore key
+   `slussen.service-credential` (§2a); `journal.db` with the same files and originals; and `installation.id`. Each file
+   is checked absent after its deletion: one that cannot be deleted stops the start with the intent kept, so that no
+   database is opened over part of the old data, and the next start deletes again from the beginning. A key the Keystore
+   does not delete does not stop it: with `device.db` gone it encrypts nothing.
+5. **Start as a new installation.** The sequence goes on at §6 step 4 with the cause New Installation: a new
+   `installation.id`; Room creates the three databases with a new installation's content (the default
+   `operator_settings`, the default Transfer Descriptions, and through O-11 the Data Providers and File Formats of the
+   build); O-12 opens a First Upload Matching with cause New Installation; the intent is deleted and the directory
+   flushed (§6 step 6). An intent that cannot be deleted stops the start as a file that cannot be deleted does, so that
+   no installation goes on with it. The app then cancels any work step 3 left and sets the Fetch Schedule's work as a
+   first start does (UC-001 BR-013).
+6. **Show the result.** The start that deletes reads the Banks of step 2 from the intent before it is deleted, and only
+   that process shows them, until the Operator closes them; a later start shows nothing. Only the exact first two lines
+   delete: an intent whose first line is not the cause New Installation deletes nothing, and one with the first line
+   alone is an ordinary new installation's. A list that is damaged or shorter than its number still deletes, and the
+   result then says that the list is not known or not complete. A start that stops (a file or the intent that cannot be
+   deleted) shows a screen that says Slussen could not finish starting over, that nothing can be used until it has,
+   and that the Operator can open Slussen again or, if it stays, remove the app's data in the device's settings.
+
+What an ended process leaves: before step 2, everything as it was, and no Start Over (a Bank Consent already ended at
+its Data Provider is refused at the next Fetch, UC-001 A9, and the Operator can start over again); from step 2 on, an
+intent with which the next start finishes the deletion and opens a First Upload Matching. So no start finds Sent Records
+or Import Identifiers gone while it does not open a First Upload Matching, and no Upload Plan is prepared from what is
+left before First Upload Matching is confirmed (§6, ADR-007 §3). An end during step 4 or step 5, before the intent is
+deleted, repeats step 4 on what is there, with the same result. What stays is not Slussen's: the app's own installation,
+the device's notification permission, WorkManager's own database (which holds no Slussen data, §1, and none of
+Slussen's work after step 3), and what the Data Providers, the Banks and the Budget App hold, a Bank Consent not ended
+among them.
 
 A crash at any point leaves each operation either complete or absent. Each has an instrumented test that injects a
 failure before the commit and checks that nothing of it is visible (ADR-005 §7, E-05). Because O-4 stores the cursor
@@ -395,8 +449,9 @@ anything:
 4. **Do the work of the cause.** For Last Good Copy: §8 step 3, which is safe to repeat (a `slussen.db` that still
    fails the checks of §8 step 1 is the unreadable original and is set aside again; one that passes is the
    replacement). Then `installation.id` is written when it is absent.
-5. **Open First Upload Matching.** One transaction of O-12 opens the First Upload Matching with the cause and resets `coordinator_state`
-   as ADR-007 §8 says.
+5. **Open First Upload Matching.** One transaction of O-12 opens the First Upload Matching with the cause, resets `coordinator_state`
+   as ADR-007 §8 says, and deletes every `budget_read_state` row, so that no stored cursor is used: each Budget's next
+   read is a first read over the read period (UC-003 BR-016), and the stored copy is kept.
 6. **Clear the intent.** `slussen.start-intent` is deleted and the directory flushed, only after step 5 committed.
 
 A process that dies between any two steps restarts at step 1 with the intent present and finishes the same work; it
@@ -437,6 +492,20 @@ stored data, and none deletes it.
   also a table that a later slice adds for an entity it builds, raises that database's version by one, commits the
   new version's schema file in the same commit, and adds a hand-written Room `Migration` from the previous version.
   The first after the baseline is `slussen.db` version 2 with `left_out_bank_account` (S-38).
+- **`device.db` version 2 (S-B-45).** Version 1, as committed and as the Operator's phone holds it, has
+  `service_credential` and `offered_bank_account` only; the Bank Consent tables of §1 come in version 2, never in
+  version 1 in place. The Migration from version 1 creates, and changes nothing else: `bank_consent` (`id`, `bank_id`,
+  `data_provider_id`, `granted_at`, `expires_at`, `refused_at`; a unique index on (`bank_id`, `data_provider_id`), one
+  Bank Consent per Bank and Data Provider), `bank_session` (`id`, `bank_consent_id` a real foreign key with a unique
+  index, `session_reference`, `opened_at`), `consent_request` (`id`, `bank_reference`, `data_provider_id`, `started_at`,
+  `expires_at`, `answered`) and `consent_request_correlation` (§2), each column as the entity model and §2 describe it.
+  Beyond the entity model as it stood, `bank_consent.refused_at` is new: UC-001 A9 treats a Bank Consent the Bank
+  no longer accepts as expired from then on, which `expires_at`, the date the Bank or Data Provider reported, cannot
+  say without being overwritten; and `consent_request.bank_reference` (TEXT) takes the place of `bank_id`, so that no
+  `bank` row exists for an attempt that is refused or abandoned (S-B-45, amended). `bank_session.session_reference` holds more than a session identifier (ADR-001
+  §4.1.1), which needs no column of its own: the entity model gives it a longer length. The Bank of a Bank Consent
+  needs no change of `slussen.db`, which stays at version 6: the Data Provider's Bank reference carries the Bank's
+  country (ADR-001 §4.1), so `BANK.name` stays unique and two Banks of one name in two countries are two rows.
 - **Migration tests from every committed version.** For each database, a `MigrationTestHelper` test creates the
   database at every committed version with invented rows in every table, migrates it to the current version, and
   checks that every row and value is kept. It runs instrumented (§11; ADR-005 §7 E-06) and, where Room's JVM support
@@ -479,7 +548,9 @@ is closed:
    cause Last Good Copy (§6, step 3 of the start sequence) and restarts its process; the next start sequence resumes
    from that intent and treats `slussen.db` as unreadable (step 3 here). For `device.db` or `journal.db` it marks that
    file unreadable in the same way, without a start intent, and step 5 applies.
-   Room's `onCorruption` callback does the same instead of SQLite's default, which deletes the file.
+   Room's `onCorruption` callback does the same instead of SQLite's default, which deletes the file. A screen that
+   answers a failure of storage at its control (NFR-023) lets `UnreadableStoredData` through to this handler and never
+   answers it as a failure to store that the Operator could try again.
 5. `device.db` and `journal.db` get no last good copy: starting with no Bank Consent is safe (the Operator grants
    again), and losing the journal changes nothing (NFR-006). Their unreadable originals are kept the same way, they
    start empty, the notice of UC-008 A1 names the part, and no First Upload Matching is opened (S-13).
@@ -494,11 +565,23 @@ before the first slice that uploads.
 - Written only through `DecisionJournalRecorder` (ADR-001 §3), on its own single-threaded coroutine dispatcher,
   never inside a transaction of `slussen.db`. Any failure is caught, counted and dropped; it never reaches the
   caller (NFR-006, UC-004 BR-005).
-- `journal.db` is created with `auto_vacuum = INCREMENTAL`. After each write, when `page_count × page_size` exceeds
+- `journal.db` is created with `auto_vacuum = INCREMENTAL`. Its size is `page_count × page_size`, compared and shown in
+  MB of 1,000,000 bytes as Android shows file sizes, shown with one decimal (UC-010 step 1, A2, A4). After each write,
+  and right after a lower size limit is stored, also while the Decision Journal is switched off, when that size exceeds
   the size limit (`OPERATOR_SETTINGS.journal_size_limit_mb`, 50 MB by default, an Operator Setting), the oldest
-  entries are deleted and `PRAGMA incremental_vacuum` returns the space (UC-010 BR-003). The warning uses
+  entries (lowest `id`) are deleted and `PRAGMA incremental_vacuum` returns the space, until the size is within the
+  limit (UC-010 BR-003). Clearing (UC-010 A3) deletes every entry and returns the space the same way. The warning uses
   `journal_warning_percent` (80% by default, an Operator Setting).
-- Nothing in the core reads entries except the export (Konsist K-07 in ADR-001).
+- Nothing in the core reads entries except the export (Konsist K-07 in ADR-001). The export notes the `id` of the newest entry
+  and the number of entries up to it when it starts, on the journal's own thread, reads the Budget App, and only then
+  streams the entries up to that `id`, oldest first by `id`, to the file without holding them all in memory, in short
+  reads bounded by entry ids, each on the journal's own thread and each after the last entry written, so that no entry
+  recorded after the start enters the file and an entry removed meanwhile by the size limit or a clearing is left out and
+  counted (UC-011 BR-007). It holds no read transaction over the whole export: one would hold every write, trimming and
+  clearing of the Decision Journal for its length (UC-010 BR-004), and no read transaction is held across a request to
+  the Budget App (S-B-28).
+  Switching the Decision Journal off hands its entry to the recorder before `journal_on` is stored; the recorder never
+  drops that entry for `journal_on` being false (UC-010 success postconditions).
 - Offered Bank Accounts, Bank Sessions and `state` values never reach it (`OFFERED_BANK_ACCOUNT`, `BANK_SESSION`
   constraints; NFR-012).
 
@@ -507,9 +590,12 @@ before the first slice that uploads.
 - At the start of each Fetch, `provider_request` records whose `sent_at` is more than 24 hours old are deleted: the
   window of the Data Providers' own limits and of C-006, not a Slussen choice.
 - `fetch` records beyond `OPERATOR_SETTINGS.fetch_history_size` (60 by default, an Operator Setting) are deleted,
-  oldest first, with their `fetch_result` records.
+  oldest first, with their `fetch_result` records, in the transaction that stores a new Fetch. A lower value therefore
+  removes the older Fetches at the next Fetch; until then Recent Fetches shows only that many of the most recent ones
+  (UC-010 step 4).
 - `consent_request` records of a Bank are deleted with its Bank Consent on revocation (O-10); an expired, unanswered
-  Consent Request is kept until the next one of the Bank replaces it.
+  Consent Request is kept until the next one of the Bank replaces it, and one the Operator abandons is deleted at once
+  (UC-007 A10).
 - Unreadable Transactions are never deleted by housekeeping (`UNREADABLE_TRANSACTION` constraints).
 
 ### 11. Access
@@ -647,3 +733,31 @@ run with JUnit 5 (ADR-004, ADR-005).
   or of a last good copy is stored), §8, Consequences, Alternatives. The entries above keep the name of their time.
 - S-41 follow-up (2026-10-24): §3 O-12 `RecoveryStore` renamed `FirstUploadMatchingStore`; the table keeps its name
   `recovery_check` (§2).
+- Build-out, phase W2-0 (2026-11-26): S-B-02, S-B-03, S-B-04, S-B-10, S-B-12: §3 O-5 (a Transfer the Operator decided
+  on is kept, joined by its arriving other side, or removed when its own sides are no longer valid; UC-005 BR-005,
+  BR-015) and O-13 (a change followed by statuses given again sets `comparison_pending`; a Transfer Decision Budget
+  Account Chosen takes its other side only from a Transfer without a decision, and is refused when every candidate is
+  uploaded or in a decided Transfer; no move or new Account Mapping to a Manually Kept Account). S-B-05 makes
+  `transfer.outflow_budget_account_id` optional, in schema version 6 of `slussen.db` (§7).
+- Build-out, the review of phase W2-0 (2026-11-26): §3 O-5 (retiring a Bank Account removes no Transfer the Operator
+  decided on; the other side joins only from a Transfer without a decision and without an uploaded Transfer Leg; a
+  Lonely Transfer whose other side was already uploaded as ordinary is removed) and O-13 (a Transfer Decision that
+  releases a Transfer Leg sets `comparison_pending`; the refusal also covers a Transfer with an uploaded Transfer Leg).
+- Build-out, phase B3 (2026-11-27): S-B-17: §3 O-5 (only a Transfer with the decision Confirmed or Budget Account
+  Chosen is removed when its own sides are no longer valid; a Transfer the Operator split or holds back is never removed by O-5; UC-005
+  BR-007, BR-015).
+- Build-out, phase W3-0 (2026-11-27): S-B-19, S-B-21, S-B-22, S-B-24: §2 (`budget_read_state.period_read_owed` also set
+  by an Operator Setting change that makes the read period longer), §3 O-13 (`SettingsStore.*`), §9 (the size of
+  `journal.db` and when entries are removed; clearing; the export's one read transaction, streamed), §10 (a lower
+  number of recent Fetches kept takes effect at the next Fetch).
+- Build-out, the review of phase W3-0 (2026-11-27): §2 and O-13 (`period_read_owed` only on a Budget with a
+  `change_cursor`; a change that owes the read sets no `comparison_pending` of its own), §9 (the export notes the
+  newest entry, reads the Budget App, then streams the entries; the entry of switching the Decision Journal off is
+  never dropped).
+- Build-out, phase W4-0 (2026-11-28): S-B-68: §2 (the header row of `upload_plan_item`: position 0, `write_kind`
+  Header, the `state_version` and the `change_cursor` of the plan's one Budget); S-B-71: §3 O-13 (a Transfer
+  Counterpart in the mapping's Budget Account counts in the guard of a move, a removal and an identification); S-B-72:
+  §8 step 4 (unreadable stored data is let through the answers to storage failures).
+- Build-out, the review of phase W4-0 (2026-11-28): §2 and §6 step 5 (a start that opens a First Upload Matching
+  deletes every `budget_read_state` row, so no stored cursor is used), §3 O-12, O-13 (a send as a transfer counts for
+  the other side's Budget Account whether or not its Transfer Counterpart is recorded).

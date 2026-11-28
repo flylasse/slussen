@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -16,21 +18,45 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import slussen.app.ui.components.AnswerLine
+import slussen.app.ui.components.Banner
 import slussen.app.ui.components.Muted
 import slussen.app.ui.components.SettingDialog
+import slussen.app.ui.components.RunningText
+import slussen.core.port.NumberSetting
 import slussen.app.ui.components.NavigationLine
 import slussen.app.ui.components.ScreenTitle
 import slussen.app.ui.components.SectionTitle
 import slussen.app.ui.components.SlussenCard
 import slussen.app.ui.theme.SlussenColors
 
+/** What the Operator Settings on Settings do when tapped (UC-010 steps 2-4, A1, A5, A6). */
+data class SettingsActions(
+    val onEdit: (NumberSetting) -> Unit = {},
+    val onValue: (String) -> Unit = {},
+    val onSave: (String) -> Unit = {},
+    val onCancel: () -> Unit = {},
+    val onTapDetailedLogging: () -> Unit = {},
+    val onConfirmDetailedLogging: () -> Unit = {},
+    val onCancelDetailedLogging: () -> Unit = {},
+    /** UC-010 A2-A4: a tap on a line of the Decision Journal, its dialog and its question. */
+    val onTapJournal: (JournalControlKind) -> Unit = {},
+    val onJournalValue: (String) -> Unit = {},
+    val onSaveJournal: (String) -> Unit = {},
+    val onCancelJournal: () -> Unit = {},
+    val onConfirmJournal: () -> Unit = {},
+    val onCancelJournalConfirm: () -> Unit = {},
+)
+
 /**
- * Settings (`docs/mockups/settings.html#first-run`, `#list`, `#to-map`, `#list-this-build`): at its top, with no level
- * between, the services and File Formats of this build, each with its status and opening its page, then the Account
- * Mappings, available or with why not yet (UC-014 step 1, BR-007, UC-010 BR-010, UC-013 step 1, BR-008, BR-015); Recent
- * Fetches; the fetch period, changed in its dialog and answering at its own line (UC-010 steps 1-4, 6, A1, NFR-023;
- * `#fetch-period-edit` to `#fetch-period-failed`), and the other Operator Settings with the values that apply; and the
- * version of the app in "This app" (UC-010 step 1, BR-011; `settings.html#list-2`).
+ * Settings (`docs/mockups/settings.html#first-run`, `#list`, `#list-2`, `#to-map`): at its top, with no level between,
+ * the services and File Formats of this build, each with its status and opening its page, then the Account Mappings,
+ * available or with why not yet (UC-014 step 1, BR-007, UC-010 BR-010, UC-013 step 1, BR-008, BR-015); Recent Fetches;
+ * the Operator Settings that apply to everything in the sections of the mockup, each changed in its dialog or at its
+ * switch and answering at its own line (UC-010 steps 1-6, A1, A5, A6, NFR-023; `#out-of-range`, `#saved`,
+ * `#saved-read-owed`, `#detailed-logging`, `#fetch-schedule`, `#fetch-period-edit` to `#fetch-period-failed`); the
+ * Decision Journal's switch, size limit, warning threshold and clearing with its questions and its warning (UC-010 A2-A4;
+ * `#journal-limit`, `#clear-journal`, `#journal-near`); the Journal Export beside Recent Fetches (UC-011); and the
+ * version of the app in "This app" (UC-010 step 1, BR-011).
  */
 @Composable
 fun SettingsScreen(
@@ -38,14 +64,22 @@ fun SettingsScreen(
     onEntry: (EntryPage) -> Unit,
     onAccountMappings: () -> Unit,
     onRecentFetches: () -> Unit,
-    onEditFetchPeriod: () -> Unit = {},
-    onFetchPeriodValue: (String) -> Unit = {},
-    onSaveFetchPeriod: (String) -> Unit = {},
-    onCancelFetchPeriod: () -> Unit = {},
+    actions: SettingsActions = SettingsActions(),
+    onTransferDescriptions: () -> Unit = {},
+    onJournalExport: () -> Unit = {},
+    /** UC-010 A12 (`#started-over`): the card of a new installation after Start Over, at the top. */
+    startedOver: StartedOverCardUi? = null,
+    onCloseStartedOver: () -> Unit = {},
+    /** UC-010 A12 (`#list-2`, `#start-over`): the row of Start Over at the end, with its state, answer and dialog. */
+    startOver: StartOverUi? = null,
+    startOverActions: StartOverActions = StartOverActions(),
 ) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
-            ScreenTitle("Settings", "Set up Slussen from the top")
+            ScreenTitle("Settings", "Operator Settings · stored on this device and in its backups")
+            startedOver?.let { StartedOverCard(it, onCloseStartedOver) }
+            // A4 of UC-010 (`#journal-near`): the Decision Journal nearly full, with its size and its limit, at the top.
+            ui.journalNearLimit?.let { Banner(it.title, it.text) }
             SectionTitle("Services and Account Mappings")
         }
         items(ui.entries) { entry ->
@@ -56,25 +90,58 @@ fun SettingsScreen(
             SlussenCard(modifier = if (mappings.available) Modifier.clickable(onClick = onAccountMappings) else Modifier) {
                 EntryItem("Account Mappings", "Bank Accounts → Budget Accounts", mappings.status, mappings.isNext, enabled = mappings.available)
             }
+            SectionTitle("Fetches and the Decision Journal")
+            SlussenCard {
+                NavigationLine("Recent Fetches", "Source, time, who started it, outcome", onRecentFetches)
+                // For UC-011 (`settings.html#list`): the Journal Export, from Settings.
+                NavigationLine("Export the Decision Journal", "Journal Export with the Budget App's current transactions", onJournalExport)
+            }
+            ui.notReadAgain?.let { Muted(it) }
+        }
+        items(ui.sections) { section ->
+            SectionTitle(section.title)
+            SlussenCard {
+                section.items.forEach { item ->
+                    when (item) {
+                        is SettingItemUi.Number -> {
+                            val line = item.line
+                            SettingLine(
+                                line.name, line.hint, line.value,
+                                Modifier.clickable { actions.onEdit(line.setting) }.testTag(line.tag),
+                            )
+                            line.answer?.let { AnswerLine(it) }
+                            // The next Scheduled Fetch and the notifications line (`#fetch-schedule`, `#notifications-off`).
+                            line.notes.forEach { Muted(it) }
+                        }
+                        is SettingItemUi.Switch -> {
+                            val line = item.line
+                            SettingLine(
+                                line.name, line.hint, line.pending ?: if (line.on) "On" else "Off",
+                                Modifier.clickable(enabled = line.pending == null, onClick = actions.onTapDetailedLogging).testTag(line.tag),
+                            )
+                            line.answer?.let { AnswerLine(it) }
+                        }
+                        is SettingItemUi.Shown -> SettingLine(item.line.name, item.line.hint, item.line.value)
+                        // A7, A8 of UC-010 (`#list`): each description list opens the Transfer Descriptions.
+                        // A2-A4 of UC-010 (`#list-2`): each control of the Decision Journal, its state while its change is on its way and its answer.
+                        is SettingItemUi.Journal -> {
+                            val line = item.line
+                            SettingLine(
+                                line.name, line.hint, line.pending ?: line.value,
+                                Modifier.clickable(enabled = line.pending == null) { actions.onTapJournal(line.control) }.testTag(line.tag),
+                            )
+                            line.answer?.let { AnswerLine(it) }
+                        }
+                        is SettingItemUi.Lists -> SettingLine(
+                            item.line.name, item.line.hint, "›",
+                            Modifier.clickable(onClick = onTransferDescriptions).testTag(item.line.tag),
+                        )
+                    }
+                }
+                section.note?.let { Muted(it) }
+            }
         }
         item {
-            SectionTitle("Fetches")
-            SlussenCard { NavigationLine("Recent Fetches", "Source, time, who started it, outcome", onRecentFetches) }
-            val fetchPeriod = ui.fetchPeriod
-            if (fetchPeriod != null) {
-                SectionTitle("Fetching")
-                SlussenCard {
-                    SettingLine("Fetch period", fetchPeriod.hint, fetchPeriod.value, Modifier.clickable(onClick = onEditFetchPeriod).testTag("fetch-period"))
-                    fetchPeriod.answer?.let { AnswerLine(it) }
-                }
-            }
-            if (ui.shownSettings.isNotEmpty()) {
-                SectionTitle("Other Operator Settings")
-                SlussenCard {
-                    ui.shownSettings.forEach { SettingLine(it.name, it.hint, it.value) }
-                    ui.shownSettingsNote?.let { Muted(it) }
-                }
-            }
             SectionTitle("This app")
             SlussenCard {
                 Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -84,17 +151,57 @@ fun SettingsScreen(
                     }
                     Text(ui.version, color = SlussenColors.Text)
                 }
+                startOver?.let { StartOverControl(it, startOverActions) }
             }
         }
     }
-    val editor = ui.fetchPeriodEditor
-    if (editor != null) {
+    startOver?.dialog?.let { StartOverDialog(it, startOverActions) }
+    val open = ui.numberEditor
+    if (open != null) {
         SettingDialog(
-            editor = editor,
-            onValueChange = onFetchPeriodValue,
-            onSave = { onSaveFetchPeriod(editor.value) },
+            editor = open.editor,
+            onValueChange = actions.onValue,
+            onSave = { actions.onSave(open.editor.value) },
             onReset = null,
-            onCancel = onCancelFetchPeriod,
+            onCancel = actions.onCancel,
+        )
+    }
+    val journalEditor = ui.journalEditor
+    if (journalEditor != null) {
+        SettingDialog(
+            editor = journalEditor.editor,
+            onValueChange = actions.onJournalValue,
+            onSave = { actions.onSaveJournal(journalEditor.editor.value) },
+            onReset = null,
+            onCancel = actions.onCancelJournal,
+        )
+    }
+    val question = ui.journalConfirm
+    if (question != null) {
+        AlertDialog(
+            onDismissRequest = { if (!question.saving) actions.onCancelJournalConfirm() },
+            title = { Text(question.title) },
+            text = { Text(question.text) },
+            confirmButton = {
+                TextButton(onClick = actions.onConfirmJournal, enabled = !question.saving, modifier = Modifier.testTag("confirm-journal")) {
+                    RunningText(question.confirm, question.saving)
+                }
+            },
+            dismissButton = { TextButton(onClick = actions.onCancelJournalConfirm, enabled = !question.saving) { Text("Cancel") } },
+        )
+    }
+    val statement = ui.detailedLoggingStatement
+    if (statement != null) {
+        AlertDialog(
+            onDismissRequest = { if (!statement.saving) actions.onCancelDetailedLogging() },
+            title = { Text(statement.title) },
+            text = { Text(statement.text) },
+            confirmButton = {
+                TextButton(onClick = actions.onConfirmDetailedLogging, enabled = !statement.saving, modifier = Modifier.testTag("confirm-detailed-logging")) {
+                    RunningText(statement.confirm, statement.saving)
+                }
+            },
+            dismissButton = { TextButton(onClick = actions.onCancelDetailedLogging, enabled = !statement.saving) { Text("Cancel") } },
         )
     }
 }

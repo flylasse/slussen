@@ -21,8 +21,13 @@ import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
 import slussen.core.port.FetchStore
 import slussen.core.port.FileFormatRegistration
+import slussen.core.port.ConsentStore
 import slussen.core.port.ImportStatusStore
+import slussen.core.port.IdentificationStored
 import slussen.core.port.KeptOutcome
+import slussen.core.port.MappingStored
+import slussen.core.port.NewIdentification
+import slussen.core.port.SentThrough
 import slussen.core.port.MappingStore
 import slussen.core.port.NewBackOff
 import slussen.core.port.NewBankAccount
@@ -33,6 +38,13 @@ import slussen.core.port.NewProviderRequest
 import slussen.core.port.OfferedBankAccountStore
 import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
+import slussen.core.port.SettingChange
+import slussen.core.port.DescriptionListChange
+import slussen.core.port.StoredTransferDescription
+import slussen.persistence.main.entity
+import slussen.persistence.main.settings
+import slussen.core.port.OtherSideKind
+import slussen.core.port.OtherSideStored
 import slussen.core.port.PluginRegistryStore
 import slussen.core.port.ProviderRequestKind
 import slussen.core.port.ProviderRequestStore
@@ -59,6 +71,13 @@ import slussen.core.port.StoredProviderRequest
 import slussen.core.port.StoredFirstUploadMatching
 import slussen.core.port.StoredTransactionCounts
 import slussen.core.port.StoredTransactionFile
+import slussen.core.port.FileImportStore
+import slussen.core.port.RejectedTransactionFile
+import slussen.core.port.TransactionFileOutcome
+import slussen.core.port.TransactionFileToImport
+import slussen.core.port.WholeImport
+import slussen.persistence.main.TransactionFileDao
+import slussen.persistence.main.TransactionFileEntity
 import slussen.persistence.device.OfferedBankAccountDao
 import slussen.persistence.device.OfferedBankAccountEntity
 import slussen.persistence.main.AccountBalanceEntity
@@ -83,6 +102,7 @@ import slussen.persistence.main.FirstUploadMatchingDao
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
 import java.time.Instant
+import java.time.LocalDate
 
 private const val MAIN_PART = "slussen.db"
 private const val DEVICE_PART = "device.db"
@@ -97,62 +117,22 @@ private fun currencyOf(text: String, part: String): CurrencyCode =
 
 /** `OPERATOR_SETTINGS` in `slussen.db`; the one record starts with every default (entity model constraints). */
 class RoomOperatorSettingsStore(private val dao: OperatorSettingsDao) : OperatorSettingsStore {
-    override suspend fun current(): OperatorSettings = dao.current()?.let(::toSettings) ?: OperatorSettings.DEFAULT
+    override suspend fun current(): OperatorSettings = dao.current()?.settings() ?: OperatorSettings.DEFAULT
 
-    override suspend fun storeFetchPeriod(days: Int) {
-        dao.storeFetchPeriod(days)
+    override suspend fun store(change: SettingChange) {
+        dao.store(change)
+    }
+
+    override suspend fun transferDescriptions(): List<StoredTransferDescription> = dao.transferDescriptions().map { it.stored() }
+
+    override suspend fun store(change: DescriptionListChange) {
+        dao.storeDescriptions(change)
     }
 
     /** The default content of ADR-002 §8 step 3: one record with every default, when there is none. */
     suspend fun ensureDefault() {
-        if (dao.count() == 0) dao.insert(toEntity(OperatorSettings.DEFAULT))
+        if (dao.count() == 0) dao.insert(OperatorSettings.DEFAULT.entity())
     }
-
-    private fun toSettings(e: OperatorSettingsEntity) = OperatorSettings(
-        uploadWindowDays = e.uploadWindowDays,
-        fileUploadWindowDays = e.fileUploadWindowDays,
-        fetchPeriodDays = e.fetchPeriodDays,
-        defaultWaitHours = e.defaultWaitHours,
-        requestLimitWarningHours = e.requestLimitWarningHours,
-        requestTimeoutSeconds = e.requestTimeoutSeconds,
-        uploadPlanMinutes = e.uploadPlanMinutes,
-        consentRequestMinutes = e.consentRequestMinutes,
-        fetchHistorySize = e.fetchHistorySize,
-        scheduledFetchesPerDay = e.scheduledFetchesPerDay,
-        transferPairingDays = e.transferPairingDays,
-        lonelyTransferGraceDays = e.lonelyTransferGraceDays,
-        outdatedBalanceHours = e.outdatedBalanceHours,
-        consentWarningDays = e.consentWarningDays,
-        journalOn = e.journalOn,
-        journalSizeLimitMb = e.journalSizeLimitMb,
-        journalWarningPercent = e.journalWarningPercent,
-        backupWarningPercent = e.backupWarningPercent,
-        detailedLogging = e.detailedLogging,
-        uploadAsCleared = e.uploadAsCleared,
-    )
-
-    private fun toEntity(s: OperatorSettings) = OperatorSettingsEntity(
-        uploadWindowDays = s.uploadWindowDays,
-        fileUploadWindowDays = s.fileUploadWindowDays,
-        fetchPeriodDays = s.fetchPeriodDays,
-        defaultWaitHours = s.defaultWaitHours,
-        requestLimitWarningHours = s.requestLimitWarningHours,
-        requestTimeoutSeconds = s.requestTimeoutSeconds,
-        uploadPlanMinutes = s.uploadPlanMinutes,
-        consentRequestMinutes = s.consentRequestMinutes,
-        fetchHistorySize = s.fetchHistorySize,
-        scheduledFetchesPerDay = s.scheduledFetchesPerDay,
-        transferPairingDays = s.transferPairingDays,
-        lonelyTransferGraceDays = s.lonelyTransferGraceDays,
-        outdatedBalanceHours = s.outdatedBalanceHours,
-        consentWarningDays = s.consentWarningDays,
-        journalOn = s.journalOn,
-        journalSizeLimitMb = s.journalSizeLimitMb,
-        journalWarningPercent = s.journalWarningPercent,
-        backupWarningPercent = s.backupWarningPercent,
-        detailedLogging = s.detailedLogging,
-        uploadAsCleared = s.uploadAsCleared,
-    )
 }
 
 /** O-11 and the Operator Settings kept per Data Provider (O-13 `SettingsStore`) in `slussen.db`. */
@@ -307,6 +287,8 @@ class RoomConnectionStore(private val dao: ConnectionDao) : ConnectionStore {
 
     override suspend fun bankNamed(name: String): StoredBank = dao.bankNamed(name).let { StoredBank(it.id, it.name, it.country) }
 
+    override suspend fun removeBankIfUnreferenced(bankId: Long): Boolean = dao.deleteBankIfUnreferenced(bankId) > 0
+
     override suspend fun leftOutBankAccounts(): List<StoredLeftOutBankAccount> = dao.leftOut().map { it.stored() }
 
     override suspend fun leaveOut(leftOut: List<NewLeftOutBankAccount>): Boolean = dao.leaveOut(
@@ -317,6 +299,13 @@ class RoomConnectionStore(private val dao: ConnectionDao) : ConnectionStore {
 
     override suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome =
         dao.setManuallyKept(budgetAccountId, manuallyKept).outcome()
+
+    override suspend fun sentThroughMappings(): Map<Long, SentThrough> {
+        val mapped = dao.mappings().associate { it.bankAccountId to it.budgetAccountId }
+        return dao.sentRecordsByBankAccount().groupBy { it.bankAccountId }.mapValues { (bankAccountId, records) ->
+            SentThrough.of(records.map { it.stored() }, mapped[bankAccountId])
+        }
+    }
 }
 
 private fun LeftOutBankAccountEntity.stored() = StoredLeftOutBankAccount(id, dataProviderId, providerReference, name, leftOutAt)
@@ -327,7 +316,11 @@ private fun ConnectionDao.Kept.outcome(): KeptOutcome = when (this) {
     ConnectionDao.Kept.NotFound -> KeptOutcome.NotFound
 }
 
-/** O-13 `MappingStore` in `slussen.db`: the changes of UC-009 that this build makes. */
+/**
+ * O-13 `MappingStore` in `slussen.db`: the changes of UC-009 that this build makes, each one transaction of
+ * [ConnectionDao] that raises `state_version` and, where UC-009 BR-015 follows it with statuses given again, sets the
+ * Comparison marker.
+ */
 class RoomMappingStore(private val dao: ConnectionDao) : MappingStore {
     override suspend fun changeTypeAndBank(
         bankAccountId: Long,
@@ -338,6 +331,33 @@ class RoomMappingStore(private val dao: ConnectionDao) : MappingStore {
     ) {
         dao.changeTypeAndBank(bankAccountId, type.text, bank, clearFundedBy, clearTransferPartner)
     }
+
+    override suspend fun setRetired(bankAccountId: Long, retired: Boolean): Boolean = dao.setRetired(bankAccountId, retired)
+
+    override suspend fun rename(bankAccountId: Long, name: String): Boolean = dao.rename(bankAccountId, name)
+
+    override suspend fun setStartDate(bankAccountId: Long, startDate: LocalDate?): Boolean = dao.setStartDate(bankAccountId, startDate)
+
+    override suspend fun setOtherSide(bankAccountId: Long, kind: OtherSideKind, budgetAccountId: Long?): OtherSideStored =
+        when (dao.setOtherSide(bankAccountId, fundedBy = kind == OtherSideKind.FundedBy, budgetAccountId)) {
+            ConnectionDao.OtherSide.Stored -> OtherSideStored.Stored
+            ConnectionDao.OtherSide.NotAllowed -> OtherSideStored.NotAllowed
+            ConnectionDao.OtherSide.NotFound -> OtherSideStored.NotFound
+        }
+
+    override suspend fun sentThrough(bankAccountId: Long): SentThrough = dao.sentThrough(bankAccountId)
+
+    override suspend fun sentForIdentification(bankAccountId: Long): SentThrough = dao.sentForIdentification(bankAccountId)
+
+    override suspend fun identify(bankAccountId: Long, identification: NewIdentification, confirmed: SentThrough?): IdentificationStored =
+        dao.identify(bankAccountId, identification, confirmed)
+
+    override suspend fun move(bankAccountId: Long, budgetAccountId: Long, confirmed: SentThrough?): MappingStored =
+        dao.move(bankAccountId, budgetAccountId, confirmed)
+
+    override suspend fun mapAgain(bankAccountId: Long, budgetAccountId: Long): MappingStored = dao.mapAgain(bankAccountId, budgetAccountId)
+
+    override suspend fun remove(bankAccountId: Long, confirmed: SentThrough?): MappingStored = dao.remove(bankAccountId, confirmed)
 }
 
 /** The Offered Bank Accounts in `device.db` (O-2). */
@@ -425,6 +445,13 @@ class RoomFirstUploadMatchingStore(private val dao: FirstUploadMatchingDao) : Fi
 class RoomCoordinatorStore(private val dao: CoordinatorDao) : CoordinatorStore {
     override suspend fun mode(): CoordinatorMode =
         dao.state()?.let { state -> modeOf(state.mode) } ?: CoordinatorMode.Normal
+
+    override suspend fun scheduledFetchDeferred(): Boolean = dao.scheduledFetchDeferred() ?: false
+
+    override suspend fun deferScheduledFetch() = dao.deferScheduledFetch()
+
+    // UC-001 BR-013: The deferral is cleared in the storage transaction that records the start of a Scheduled Fetch, so that an ended process neither loses it nor runs it twice.
+    override suspend fun recordScheduledFetchStart(): Boolean = dao.clearScheduledFetchDeferred() == 1
 
     companion object {
         /** The texts of `coordinator_state.mode` (ADR-002 §2). */
@@ -524,30 +551,77 @@ class RoomFetchStore(
 }
 
 /**
+ * `transaction_file` and the Bank Transactions of Import a Transaction File (UC-002) in `slussen.db` (ADR-002 §1, O-3).
+ * [identify] computes the Import Identifiers O-3 stores: the protocol of ADR-008, which a test replaces with a test-only
+ * digest to plant a collision (ADR-008 §5).
+ */
+class RoomFileImportStore(
+    private val dao: TransactionFileDao,
+    private val identify: (ImportIdentifierInput) -> String = ImportIdentifierProtocol::importIdentifier,
+) : FileImportStore {
+    override suspend fun importWhole(file: TransactionFileToImport): WholeImport = dao.importWhole(file, identify)
+
+    override suspend fun recordRejected(file: RejectedTransactionFile) {
+        // Entity model TRANSACTION_FILE: rejection_reason is filled exactly when the outcome is Rejected, at most 200 characters.
+        require(file.reason.isNotEmpty() && file.reason.length <= REJECTION_REASON_MAX_LENGTH) { "A rejection reason is filled and at most 200 characters." }
+        dao.insert(
+            TransactionFileEntity(
+                bankAccountId = file.bankAccountId,
+                fileFormatId = file.fileFormatId,
+                importedAt = file.importedAt,
+                outcome = TransactionFileOutcome.Rejected.text,
+                transactionCount = 0,
+                rejectionReason = file.reason,
+            ),
+        )
+    }
+
+    private companion object {
+        /** `TRANSACTION_FILE.rejection_reason` holds at most 200 characters (entity model). */
+        const val REJECTION_REASON_MAX_LENGTH = 200
+    }
+}
+
+/**
  * The import status data of UC-001, UC-002, UC-003 and UC-007. The Fetches with their Fetch Results, the Account
  * Balances and the Back-offs of UC-001 are read from `fetch`, `fetch_result`, `account_balance` and `back_off`, the
- * counts of UC-003 from the Transaction Statuses in `bank_transaction` and `unreadable_transaction`; the other tables
- * (`transaction_file`, `bank_consent`) come with the slices that build those use cases (ADR-002 §1), and until then each
- * of their reads is empty.
+ * Transaction Files of UC-002 from `transaction_file`, the counts of UC-003 from the Transaction Statuses in
+ * `bank_transaction` and `unreadable_transaction`, and the Bank Consents of UC-007 from `bank_consent` in `device.db`
+ * version 2 (ADR-002 §1, §7) through [consents].
  */
-class RoomImportStatusStore(private val fetches: FetchDao, private val connections: RoomConnectionStore) : ImportStatusStore {
+class RoomImportStatusStore(
+    private val fetches: FetchDao,
+    private val connections: RoomConnectionStore,
+    private val files: TransactionFileDao,
+    private val consents: ConsentStore,
+) : ImportStatusStore {
     override suspend fun recentFetches(): List<StoredFetch> = withResults(fetches.recent(), fetches.results())
 
     override suspend fun accountBalances(): List<StoredAccountBalance> = fetches.balances().map {
         StoredAccountBalance(it.bankAccountId, Amount(it.amount), currencyOf(it.currency, MAIN_PART), it.reportedAt)
     }
 
-    override suspend fun bankConsents(): List<StoredBankConsent> = emptyList()
+    override suspend fun bankConsents(): List<StoredBankConsent> = consents.bankConsents()
 
     override suspend fun backOffs(): List<StoredBackOff> = fetches.backOffs().map { it.stored() }
 
-    override suspend fun latestTransactionFiles(): List<StoredTransactionFile> = emptyList()
+    override suspend fun latestTransactionFiles(): List<StoredTransactionFile> = files.latest().map {
+        StoredTransactionFile(
+            bankAccountId = it.bankAccountId,
+            importedAt = it.importedAt,
+            outcome = valueOfText<TransactionFileOutcome>(it.outcome, MAIN_PART) { outcome -> outcome.text },
+            transactionCount = it.transactionCount,
+            rejectionReason = it.rejectionReason,
+        )
+    }
 
     /** UC-003 BR-014, UC-008 BR-003: the counts the core's rules give each Bank Account's stored transactions. */
     override suspend fun transactionCounts(): List<StoredTransactionCounts> {
         val budgets = connections.budgets()
         val transferLegs = fetches.transferLegs().map { it.stored() }
-        return connections.bankAccounts().map { account ->
+        val bankAccounts = connections.bankAccounts()
+        val withRetiredSide = EligibleTransactions.withARetiredSide(fetches.transfers().map { it.stored() }, transferLegs, bankAccounts)
+        return bankAccounts.map { account ->
             val budget = budgets.firstOrNull { budget -> budget.budgetAccounts.any { it.id == account.mapping?.budgetAccountId } }
             EligibleTransactions.countsOf(
                 account,
@@ -555,6 +629,7 @@ class RoomImportStatusStore(private val fetches: FetchDao, private val connectio
                 fetches.bankTransactionsOf(account.id).map { it.stored() },
                 fetches.unreadableTransactionsOf(account.id).map { it.stored() },
                 transferLegs,
+                withRetiredSide,
             )
         }
     }

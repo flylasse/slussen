@@ -118,7 +118,11 @@ class EnableBankingDataProviderTest : DataProviderContractTest() {
     fun applicationIsCheckedWithASignedRequest() {
         val credentials = provider().credentials
         assertEquals(
-            listOf(EnableBankingCredentials.APPLICATION_ID to FieldKind.Text, EnableBankingCredentials.PRIVATE_KEY to FieldKind.File),
+            listOf(
+                EnableBankingCredentials.APPLICATION_ID to FieldKind.Text,
+                EnableBankingCredentials.PRIVATE_KEY to FieldKind.File,
+                EnableBankingCredentials.RETURN_ADDRESS to FieldKind.Text,
+            ),
             credentials.form.fields.map { it.key to it.kind },
         )
         server.enqueue(MockResponse().setBody("""{"name":"Invented household app"}"""))
@@ -204,6 +208,21 @@ class EnableBankingDataProviderTest : DataProviderContractTest() {
         override fun event(event: LogEvent, vararg facts: LogFact) {}
 
         override fun detail(event: LogEvent, message: () -> String) {}
+    }
+
+    @Test
+    @DisplayName("C2 review item 1, ADR-001 §4.0: an answer 503 with Retry-After: 0, and an answer 408, are not sent again by OkHttp: the server receives exactly one request for each")
+    fun noStatusMakesTheLibrarySendAgain() {
+        listOf(MockResponse().setResponseCode(503).setHeader("Retry-After", "0"), MockResponse().setResponseCode(408)).forEach { answer ->
+            server.shutdown()
+            server = MockWebServer().apply { start() }
+            server.enqueue(answer)
+            server.enqueue(MockResponse().setBody("""{"name":"Invented household app"}"""))
+            val result = runBlocking { provider().credentials.check(input(), TestRequestContext()) }
+            assertTrue(result !is CredentialCheck.Accepted, "the check was sent again and accepted: $result")
+            Thread.sleep(300)
+            assertEquals(1, server.requestCount, "OkHttp sent the request again after $answer")
+        }
     }
 
     private companion object {

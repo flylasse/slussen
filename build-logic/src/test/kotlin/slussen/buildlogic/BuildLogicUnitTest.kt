@@ -140,8 +140,19 @@ class BuildLogicUnitTest {
     }
 
     @Test
-    @DisplayName("NFR-022, ADR-001 section 5: only network access and the app's own receiver permission are allowed; every other uses-permission is named")
+    @DisplayName("NFR-022, ADR-001 section 5: the check holds exactly the permissions of NFR-022 and the app's own receiver permission; every other uses-permission is named")
     fun devicePermissionsAllowed() {
+        assertEquals(
+            setOf(
+                "android.permission.INTERNET",
+                "android.permission.ACCESS_NETWORK_STATE",
+                "android.permission.WAKE_LOCK",
+                "android.permission.RECEIVE_BOOT_COMPLETED",
+                "android.permission.POST_NOTIFICATIONS",
+                "slussen.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+            ),
+            DevicePermissions.allowed("slussen.app"),
+        )
         val manifest = """
             <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="slussen.fixture">
                 <permission android:name="slussen.app.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" android:protectionLevel="signature" />
@@ -173,6 +184,33 @@ class BuildLogicUnitTest {
             DevicePermissions.disallowed(requested, "slussen.app.debug"),
         )
         assertEquals(emptyList<String>(), DevicePermissions.disallowed(requested.take(2), "slussen.app.debug"))
+    }
+
+    @Test
+    @DisplayName("NFR-022, ADR-001 section 5: exactly the list passes; one permission more, such as WorkManager's foreground service, or one fewer is named")
+    fun devicePermissionsExactly() {
+        val exactly = listOf(
+            "android.permission.INTERNET",
+            "android.permission.WAKE_LOCK",
+            "android.permission.ACCESS_NETWORK_STATE",
+            "android.permission.RECEIVE_BOOT_COMPLETED",
+            "android.permission.POST_NOTIFICATIONS",
+            "slussen.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+        )
+        assertEquals(emptyList<String>(), DevicePermissions.disallowed(exactly, "slussen.app"))
+        assertEquals(emptyList<String>(), DevicePermissions.missing(exactly, "slussen.app"))
+
+        val oneMore = exactly + "android.permission.FOREGROUND_SERVICE"
+        assertEquals(listOf("android.permission.FOREGROUND_SERVICE"), DevicePermissions.disallowed(oneMore, "slussen.app"))
+        assertEquals(emptyList<String>(), DevicePermissions.missing(oneMore, "slussen.app"))
+
+        val oneFewer = exactly - "android.permission.POST_NOTIFICATIONS"
+        assertEquals(emptyList<String>(), DevicePermissions.disallowed(oneFewer, "slussen.app"))
+        assertEquals(listOf("android.permission.POST_NOTIFICATIONS"), DevicePermissions.missing(oneFewer, "slussen.app"))
+        assertEquals(
+            listOf("slussen.app.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"),
+            DevicePermissions.missing(exactly, "slussen.app.debug"),
+        )
     }
 
     @Test

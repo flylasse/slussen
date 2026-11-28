@@ -1,5 +1,7 @@
 package slussen.core.port
 
+import slussen.core.consent.ConsentNotEnded
+
 import java.time.Instant
 
 /** How this start began (ADR-002 §6). */
@@ -24,7 +26,19 @@ data class UnreadablePart(val part: StoredPart, val startedFromLastGoodCopy: Boo
 interface StartState {
     val startKind: StartKind
     val unreadableParts: List<UnreadablePart>
+
+    /** What this start read from the record of a Start Over it finished (ADR-002 §3 O-17 step 6), or null for any other start. */
+    val startOver: StartOverRecord? get() = null
+
+    /** This start finished a Start Over (UC-010 A12, ADR-002 §3 O-17): the start of a new installation. */
+    val startedOver: Boolean get() = startOver != null
 }
+
+/**
+ * The Banks a Start Over recorded with itself (ADR-002 §3 O-17 steps 2, 6): [notEnded] null when the list could not be
+ * read, and [complete] false when an entry was left out or could not be read.
+ */
+data class StartOverRecord(val notEnded: List<ConsentNotEnded>?, val complete: Boolean)
 
 /** The size of the data Slussen includes in device backups, and the limit Android sets (ADR-002 §5, C-015). */
 interface BackupSizeMonitor {
@@ -63,7 +77,25 @@ interface FirstUploadMatchingStore {
 /** The coordinator's mode, kept in `coordinator_state` so that a restart sees it (ADR-007 §2). */
 enum class CoordinatorMode { Normal, PlanOpen, Uploading }
 
-/** Reads the coordinator's mode (ADR-002 §2, `coordinator_state`). */
+/**
+ * Reads the coordinator's mode and keeps the deferral of a Scheduled Fetch (ADR-002 §2, `coordinator_state`;
+ * ADR-007 §2, §8).
+ */
 interface CoordinatorStore {
     suspend fun mode(): CoordinatorMode
+
+    /**
+     * `scheduled_fetch_deferred`: a Scheduled Fetch fell due while an Upload Plan awaited confirmation or its Upload was
+     * written, and no Scheduled Fetch has started since (UC-001 BR-013).
+     */
+    suspend fun scheduledFetchDeferred(): Boolean
+
+    /** Sets `scheduled_fetch_deferred`; one flag however many Scheduled Fetches fall due meanwhile (UC-001 BR-013). */
+    suspend fun deferScheduledFetch()
+
+    /**
+     * Records the start of a Scheduled Fetch: in one storage transaction, clears `scheduled_fetch_deferred` and returns
+     * whether it was set, so that an ended process neither loses a deferral nor runs it twice (ADR-007 §2, §8).
+     */
+    suspend fun recordScheduledFetchStart(): Boolean
 }

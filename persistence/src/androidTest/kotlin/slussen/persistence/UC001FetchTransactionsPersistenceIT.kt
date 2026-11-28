@@ -30,6 +30,10 @@ import slussen.core.port.NewBankAccount
 import slussen.core.port.NewBackOff
 import slussen.core.port.NewFetch
 import slussen.core.port.StartedBy
+import slussen.core.port.NumberSetting
+import slussen.core.port.SettingChange
+import slussen.core.port.SettingFollowUp
+import slussen.core.port.SettingValue
 import slussen.core.port.StoredAccountBalance
 import slussen.core.port.StoredFetchResult
 import slussen.pluginapi.value.Amount
@@ -92,6 +96,62 @@ class UC001FetchTransactionsPersistenceIT {
         )
         assertEquals(listOf(now.plusSeconds(600), now), restarted.importStatus.recentFetches().map { it.startedAt })
         assertEquals(StartedBy.Operator, restarted.importStatus.recentFetches().first().startedBy)
+        restarted.close()
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-013"])
+    @DisplayName("BR-013: a deferred Scheduled Fetch survives a restart, which does not clear it; recording the start of a Scheduled Fetch clears it once, also after a restart")
+    fun scheduledFetchDeferralSurvivesARestartAndClearsOnce() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        assertEquals(false, storage.coordinator.scheduledFetchDeferred())
+        storage.coordinator.deferScheduledFetch()
+        storage.coordinator.deferScheduledFetch()
+        storage.close()
+
+        val restarted = SlussenStorage.open(DeviceFiles.context, clock)
+
+        assertEquals(true, restarted.coordinator.scheduledFetchDeferred())
+        assertEquals(true, restarted.coordinator.recordScheduledFetchStart())
+        assertEquals(false, restarted.coordinator.recordScheduledFetchStart())
+        restarted.close()
+        val again = SlussenStorage.open(DeviceFiles.context, clock)
+        assertEquals(false, again.coordinator.scheduledFetchDeferred())
+        again.close()
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-013"])
+    @DisplayName("BR-013: a Fetch Schedule of 0 removes a deferred Scheduled Fetch in the transaction that stores it; set above 0 again, none is deferred; a value above 0 keeps one")
+    fun fetchScheduleOfZeroRemovesTheDeferral() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        storage.coordinator.deferScheduledFetch()
+        storage.settings.store(SettingChange(SettingValue.Number(NumberSetting.FetchSchedule, 1), SettingFollowUp.None))
+        assertEquals(true, storage.coordinator.scheduledFetchDeferred())
+
+        storage.settings.store(SettingChange(SettingValue.Number(NumberSetting.FetchSchedule, 0), SettingFollowUp.None))
+
+        assertEquals(false, storage.coordinator.scheduledFetchDeferred())
+        storage.settings.store(SettingChange(SettingValue.Number(NumberSetting.FetchSchedule, 2), SettingFollowUp.None))
+        storage.close()
+        val restarted = SlussenStorage.open(DeviceFiles.context, clock)
+        assertEquals(false, restarted.coordinator.scheduledFetchDeferred())
+        assertEquals(false, restarted.coordinator.recordScheduledFetchStart())
+        restarted.close()
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-013"])
+    @DisplayName("A12 step 2: a Fetch started by the Fetch Schedule is read back as started by it, also after a restart")
+    fun scheduledFetchIsReadBackAsStartedByTheSchedule() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        val feeds = registeredFeeds(storage)
+        storage.fetches.recordFetch(NewFetch(feeds, now, StartedBy.Schedule, FetchOutcome.Failed), keep = 60)
+        storage.close()
+
+        val restarted = SlussenStorage.open(DeviceFiles.context, clock)
+
+        assertEquals(StartedBy.Schedule to FetchOutcome.Failed, restarted.fetches.fetchesOf(feeds).single().let { it.startedBy to it.outcome })
         restarted.close()
     }
 

@@ -18,18 +18,23 @@ import slussen.core.port.BankAccountType
 import slussen.core.port.BudgetAccountToStore
 import slussen.core.port.BudgetAppTransactionState
 import slussen.core.port.BudgetToServe
+import slussen.core.port.ChosenBudgetAppTransaction
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.EnteredBy
 import slussen.core.port.JournalEventKind
+import slussen.core.port.ReviewChoice
 import slussen.core.port.ServiceKey
 import slussen.core.port.StableReferenceKind
 import slussen.core.port.StoredAccountMapping
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredBankTransaction
 import slussen.core.port.StoredBudgetAppTransaction
+import slussen.core.port.StoredReviewDecision
 import slussen.core.port.TransactionStatus
 import slussen.core.status.Blocked
 import slussen.core.status.BlockedReason
+import slussen.core.status.BudgetAppRead
+import slussen.core.status.StatusesAsOf
 import slussen.core.status.NotYetUploaded
 import slussen.core.status.Remedy
 import slussen.pluginapi.budgetapp.BudgetAppTransactionRead
@@ -703,6 +708,58 @@ class UC003CompareWithTheBudgetAppTest {
 
     @Test
     @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read")
+    @DisplayName("A1 step 2 (FR-040, S-T-08, overview.html#read-one-failed): the import status shows each Budget's statuses as of its last successful read, the read that failed since with its time and kind, and the Bank Transactions not compared yet of each Bank Account; the Budgets read show the time of this read; a later successful read clears the failure")
+    fun statusesShowTheirLastSuccessfulRead() = runTest {
+        ready()
+        val checking = bankAccount("Kestrel Checking", "Checking")
+        stored(checking, "TX-1", oct14, amount(-10))
+        val summer = bankAccount("Aurora Current", "Current", currency = EUR)
+        stored(summer, "TX-9", oct14, amount(-9))
+        suspend fun summary(name: String) = slice.status.workspace(budget(name).id).summary
+
+        assertEquals(StatusesAsOf.NotReadYet(failedRead = null), summary("Household").statusesAsOf)
+        assertEquals(1, summary("Household").notComparedYet)
+        assertEquals(StatusesAsOf.NothingToCompare, summary("Care Fund").statusesAsOf)
+        assertEquals(BudgetAppRead(lastReadAt = null, notRead = emptyList(), failedAt = null), slice.status.overview().budgetAppRead)
+
+        answerHousehold(read("ynab-1", oct14.minusDays(1), amount(-10)))
+        compare()
+        val firstRead = slice.clock.instant()
+        assertEquals(StatusesAsOf.LastRead(firstRead, failedRead = null), summary("Household").statusesAsOf)
+        assertEquals(0, summary("Household").notComparedYet)
+        // The boundary (review 5d): a failure noted at the time of the last successful read is not after it, one a second later is.
+        slice.comparisonNotices.noteFailed(budget("Household").id, BudgetReadFailure(firstRead, FailureKind.Timeout))
+        assertEquals(StatusesAsOf.LastRead(firstRead, failedRead = null), summary("Household").statusesAsOf)
+        val justAfter = BudgetReadFailure(firstRead.plusSeconds(1), FailureKind.Timeout)
+        slice.comparisonNotices.noteFailed(budget("Household").id, justAfter)
+        assertEquals(StatusesAsOf.LastRead(firstRead, justAfter), summary("Household").statusesAsOf)
+
+        slice.clock.advance(Duration.ofHours(2))
+        stored(checking, "TX-2", oct14, amount(-20), firstSeenAt = slice.clock.instant())
+        slice.budgetApp.reader.changesAnswer = { asked ->
+            if (asked.budgetReference == "budget-household") ReadResult.TransientFailure(FailureKind.Timeout)
+            else ReadResult.Answered(ChangeSet(emptyList(), ChangeCursor("summer-2")))
+        }
+        compare()
+        val failedAt = slice.clock.instant()
+
+        val household = slice.status.workspace(budget("Household").id)
+        assertEquals(StatusesAsOf.LastRead(firstRead, BudgetReadFailure(failedAt, FailureKind.Timeout)), household.summary.statusesAsOf)
+        assertEquals(1, household.summary.notComparedYet)
+        assertEquals(1, household.bankAccounts.single().notComparedYet)
+        assertEquals(StatusesAsOf.LastRead(failedAt, failedRead = null), summary("Summer House").statusesAsOf)
+        assertEquals(BudgetAppRead(lastReadAt = failedAt, notRead = listOf("Household"), failedAt = failedAt), slice.status.overview().budgetAppRead)
+
+        slice.clock.advance(Duration.ofMinutes(5))
+        answerHousehold(next = "k-2")
+        compare()
+        assertEquals(StatusesAsOf.LastRead(slice.clock.instant(), failedRead = null), summary("Household").statusesAsOf)
+        assertEquals(0, summary("Household").notComparedYet)
+        assertEquals(BudgetAppRead(lastReadAt = slice.clock.instant(), notRead = emptyList(), failedAt = null), slice.status.overview().budgetAppRead)
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read")
     @DisplayName("A1: when the Budget App cannot be read at all, no Budget is read and nothing changes")
     fun noBudgetCanBeRead() = runTest {
         ready()
@@ -872,5 +929,185 @@ class UC003CompareWithTheBudgetAppTest {
 
         assertInstanceOf(FetchReport.ServedFromFetchCooldown::class.java, served.reports.single())
         assertInstanceOf(ComparisonReport.Compared::class.java, served.comparison)
+    }
+
+    // ---- Review Decisions in the order of BR-001 (BR-009, BR-010; UC-004 BR-006) -------------------------------------
+
+    /** A Review Decision as UC-004 stored it (O-13), in the storage the Comparison concludes from. */
+    private fun decided(storedBankTransaction: Long, choice: ReviewChoice, chosen: ChosenBudgetAppTransaction? = null) {
+        slice.copyStore.reviewDecisions.removeAll { it.storedBankTransaction == storedBankTransaction }
+        slice.copyStore.reviewDecisions += StoredReviewDecision(storedBankTransaction, choice, chosen, now.minus(Duration.ofMinutes(5)))
+    }
+
+    /** An Import by an Other Import Path as the Budget App reports it. */
+    private fun otherImport(reference: String, date: LocalDate, amount: Amount, account: String = "ba-checking", state: ReadState = ReadState.Present) =
+        read(reference, date, amount, account = account, importIdentifier = "YNAB:$reference", state = state)
+
+    @Test
+    @UseCase(id = "UC-003", businessRules = ["BR-001", "BR-010", "BR-014"])
+    @DisplayName("BR-001: a Bank Transaction with a Review Decision follows that decision before the rules of doubt: Import Anyway makes one without a Stable Reference, and one that resembles an Import by an Other Import Path, New and eligible; Defer makes one Deferred, neither eligible nor waiting; one without a decision keeps its doubt")
+    fun aReviewDecisionStandsBeforeTheRulesOfDoubt() = runTest {
+        ready()
+        val checking = bankAccount("Kestrel Checking", "Checking")
+        val noReference = stored(checking, null, oct14, amount(-12))
+        val resembles = stored(checking, "TX-2", oct14, amount(-18, 600))
+        val resemblesOwn = stored(checking, "TX-3", oct14, amount(-29))
+        val undecided = stored(checking, "TX-4", oct14, amount(-31))
+        answerHousehold(
+            otherImport("ynab-2", oct14.minusDays(1), amount(-18, 600)),
+            read("ynab-3", oct14.minusDays(1), amount(-29), importIdentifier = "SLS9-unsupported"),
+            otherImport("ynab-4", oct14, amount(-31)),
+        )
+        decided(noReference, ReviewChoice.ImportAnyway)
+        decided(resembles, ReviewChoice.ImportAnyway)
+        decided(resemblesOwn, ReviewChoice.Defer)
+
+        compare()
+
+        assertEquals(TransactionStatus.New, status(noReference))
+        assertEquals(TransactionStatus.New, status(resembles))
+        assertEquals(TransactionStatus.Deferred, status(resemblesOwn))
+        assertEquals(TransactionStatus.PossibleImportByOtherPath, status(undecided))
+        assertEquals(NotYetUploaded(2, 1), counts("Household"))
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A5: Transaction Leaves the Upload Window While Waiting", businessRules = ["BR-001", "BR-010", "BR-011", "BR-018"])
+    @DisplayName("BR-001, BR-010, A5: a rule that stands before the Review Decision gives the status: Already In Budget App, Deleted In Budget App, Before Start Date, Too Old and In The Future are given whatever the decision is, only Re-upload sets Deleted aside; the decision is kept and applies again when that rule no longer does")
+    fun aRuleBeforeTheReviewDecisionGivesTheStatus() = runTest {
+        ready()
+        val checking = bankAccount("Kestrel Checking", "Checking", startDate = today.minusDays(20))
+        val held = stored(checking, "TX-1", oct14, amount(-64, 180))
+        val deleted = stored(checking, "TX-2", oct14, amount(-20))
+        val beforeStart = stored(checking, "TX-3", today.minusDays(21), amount(-7))
+        val tooOld = stored(checking, "TX-4", today.minusDays(8), amount(-11))
+        val future = stored(checking, "TX-5", today.plusDays(1), amount(-12))
+        answerHousehold(
+            read("ynab-1", oct14, amount(-64, 180), importIdentifier = identifier("TX-1")),
+            read("ynab-2", oct14, amount(-20), importIdentifier = identifier("TX-2"), state = ReadState.Deleted),
+            otherImport("ynab-4", today.minusDays(8), amount(-11)),
+        )
+        decided(held, ReviewChoice.Defer)
+        decided(deleted, ReviewChoice.ImportAnyway)
+        decided(beforeStart, ReviewChoice.ImportAnyway)
+        decided(tooOld, ReviewChoice.Defer)
+        decided(future, ReviewChoice.ImportAnyway)
+
+        compare()
+
+        assertEquals(TransactionStatus.AlreadyInBudgetApp, status(held))
+        assertEquals(TransactionStatus.DeletedInBudgetApp, status(deleted))
+        assertEquals(TransactionStatus.BeforeStartDate, status(beforeStart))
+        assertEquals(TransactionStatus.TooOld, status(tooOld))
+        assertEquals(TransactionStatus.InTheFuture, status(future))
+        assertEquals(NotYetUploaded(0, 0), counts("Household"))
+        assertEquals(5, slice.copyStore.reviewDecisions.size)
+
+        // The Operator widens the Upload Window: the Defer decision applies again, as it was kept.
+        slice.settings.settings = slice.settings.settings.copy(uploadWindowDays = 10)
+        compare()
+        assertEquals(TransactionStatus.Deferred, status(tooOld))
+        // A day later the Bank Transaction dated tomorrow is inside the window: its Import Anyway applies.
+        slice.clock.advance(Duration.ofDays(1))
+        compare()
+        assertEquals(TransactionStatus.New, status(future))
+        assertEquals(TransactionStatus.DeletedInBudgetApp, status(deleted))
+    }
+
+    @Test
+    @UseCase(id = "UC-003", businessRules = ["BR-001", "BR-004", "BR-005", "BR-011"])
+    @DisplayName("BR-001, BR-004, BR-005, BR-011: a Bank Transaction that was deleted or merged in the Budget App is sent again only by a Re-upload decision: with it, it is New and eligible inside the Upload Window and Too Old outside it")
+    fun reUploadSetsDeletedAndMergedAside() = runTest {
+        ready()
+        val checking = bankAccount("Kestrel Checking", "Checking")
+        val deleted = stored(checking, "TX-1", oct14, amount(-64, 180))
+        val merged = stored(checking, "TX-2", oct14, amount(-20))
+        val deletedOld = stored(checking, "TX-3", today.minusDays(8), amount(-7))
+        val deletedUndecided = stored(checking, "TX-4", oct14, amount(-9))
+        answerHousehold(
+            read("ynab-1", oct14, amount(-64, 180), importIdentifier = identifier("TX-1"), state = ReadState.Deleted),
+            read("ynab-2", oct14, amount(-20), importIdentifier = identifier("TX-2"), state = ReadState.Merged("ynab-7")),
+            read("ynab-3", today.minusDays(8), amount(-7), importIdentifier = identifier("TX-3"), state = ReadState.Deleted),
+            read("ynab-4", oct14, amount(-9), importIdentifier = identifier("TX-4"), state = ReadState.Deleted),
+        )
+        decided(deleted, ReviewChoice.ReUpload)
+        decided(merged, ReviewChoice.ReUpload)
+        decided(deletedOld, ReviewChoice.ReUpload)
+
+        compare()
+
+        assertEquals(TransactionStatus.New, status(deleted))
+        assertEquals(TransactionStatus.New, status(merged))
+        assertEquals(TransactionStatus.TooOld, status(deletedOld))
+        assertEquals(TransactionStatus.DeletedInBudgetApp, status(deletedUndecided))
+        assertEquals(NotYetUploaded(2, 0), counts("Household"))
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A4: Already-Present Decision No Longer Holds", businessRules = ["BR-009", "BR-014"])
+    @DisplayName("A4, BR-009: an Already Present decision holds while the chosen Budget App Transaction exists, is in the Budget Account recorded with the decision and has the amount recorded with it: the Bank Transaction is Already In Budget App; when it was deleted, is in another Budget Account or has another amount, the Bank Transaction is Decision No Longer Holds, waits for the Operator again, is never eligible, and the change is journaled")
+    fun alreadyPresentIsRecheckedAtEveryComparison() = runTest {
+        ready()
+        val checking = bankAccount("Kestrel Checking", "Checking")
+        val checkingAccount = budgetAccount("Checking").id
+        val holds = stored(checking, "TX-1", oct14, amount(-10))
+        val chosenDeleted = stored(checking, "TX-2", oct14, amount(-20))
+        val chosenMoved = stored(checking, "TX-3", oct14, amount(-30))
+        val chosenChanged = stored(checking, "TX-4", oct14, amount(-40))
+        val amounts = mapOf(holds to amount(-10), chosenDeleted to amount(-20), chosenMoved to amount(-30), chosenChanged to amount(-40))
+        answerHousehold(*amounts.values.mapIndexed { index, amount -> otherImport("ynab-${index + 1}", oct14, amount) }.toTypedArray())
+        amounts.entries.forEachIndexed { index, (tx, amount) ->
+            decided(tx, ReviewChoice.AlreadyPresent, ChosenBudgetAppTransaction("ynab-${index + 1}", checkingAccount, amount))
+        }
+
+        compare()
+
+        amounts.keys.forEach { assertEquals(TransactionStatus.AlreadyInBudgetApp, status(it)) }
+        assertEquals(NotYetUploaded(0, 0), counts("Household"))
+
+        // The Budget App reports the chosen transactions again: one unchanged but for its date and payee, one deleted, one in Reserve Savings, one with another amount.
+        answerHousehold(
+            otherImport("ynab-1", oct14.minusDays(9), amount(-10)),
+            otherImport("ynab-2", oct14, amount(-20), state = ReadState.Deleted),
+            otherImport("ynab-3", oct14, amount(-30), account = "ba-reserve"),
+            otherImport("ynab-4", oct14, amount(-40, 10)),
+            next = "k-2",
+        )
+        val journaled = slice.journalRecorder.entries.size
+        compare()
+
+        assertEquals(TransactionStatus.AlreadyInBudgetApp, status(holds))
+        listOf(chosenDeleted, chosenMoved, chosenChanged).forEach { assertEquals(TransactionStatus.DecisionNoLongerHolds, status(it)) }
+        assertEquals(NotYetUploaded(0, 3), counts("Household"))
+        assertEquals(4, slice.copyStore.reviewDecisions.size)
+        val entries = slice.journalRecorder.entries.drop(journaled)
+        assertEquals(List(3) { "Transaction Status changed from Already In Budget App to Decision No Longer Holds" }, entries.map { it.details })
+        assertEquals(setOf(identifier("TX-2"), identifier("TX-3"), identifier("TX-4")), entries.map { it.importIdentifier }.toSet())
+    }
+
+    @Test
+    @UseCase(id = "UC-003", businessRules = ["BR-010"])
+    @DisplayName("BR-010: a Bank Transaction with the Review Decision Defer stays Deferred across every later Comparison, also when the resembling Import has disappeared, until the Operator changes the decision")
+    fun deferredStaysHeld() = runTest {
+        ready()
+        val checking = bankAccount("Kestrel Checking", "Checking")
+        val tx = stored(checking, "TX-1", oct14, amount(-18, 600))
+        answerHousehold(otherImport("ynab-1", oct14, amount(-18, 600)))
+        decided(tx, ReviewChoice.Defer)
+        compare()
+        assertEquals(TransactionStatus.Deferred, status(tx))
+
+        answerHousehold(otherImport("ynab-1", oct14, amount(-18, 600), state = ReadState.Deleted), next = "k-2")
+        compare()
+        answerHousehold(next = "k-3")
+        compare()
+
+        assertEquals(TransactionStatus.Deferred, status(tx))
+        assertEquals(NotYetUploaded(0, 0), counts("Household"))
+
+        // The Operator clears the decision (UC-004 A6): nothing resembles it any more, so it is New.
+        slice.copyStore.reviewDecisions.clear()
+        compare()
+        assertEquals(TransactionStatus.New, status(tx))
     }
 }

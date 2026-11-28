@@ -2,6 +2,7 @@ package slussen.core.connection
 
 import slussen.core.operation.OperationRefusal
 import slussen.core.port.BankAccountType
+import slussen.core.port.OtherSideKind
 import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
@@ -160,13 +161,19 @@ data class OfferedOfProvider(
 
 /** The outcome of switching off the import of one Offered Bank Account (UC-013 steps 6-7, BR-011, BR-012). */
 sealed interface ImportSwitchedOff {
-    /** Step 7: it is a Left-Out Bank Account at once, recorded in the Decision Journal by [name]. */
-    data class LeftOut(val leftOutBankAccountId: Long, val name: String) : ImportSwitchedOff
+    /**
+     * Step 7: it is a Left-Out Bank Account at once, recorded in the Decision Journal by [name]; [leftOutBankAccountId]
+     * is null when it was stored but could not be read back.
+     */
+    data class LeftOut(val leftOutBankAccountId: Long?, val name: String) : ImportSwitchedOff
 
     /** BR-012: it has no import switch: added, a proposed match, the balance of a File Format's Bank Account, already left out or not stored. */
     data object NoSwitch : ImportSwitchedOff
 
     data class Unavailable(val reason: OperationRefusal) : ImportSwitchedOff
+
+    /** The stored data could not be read or written: nothing is left out or recorded, and it stays imported (NFR-023). */
+    data object NotStored : ImportSwitchedOff
 }
 
 /** One Budget Account under its served Budget on the Budget App's page (UC-013 step 4, BR-014). */
@@ -243,6 +250,9 @@ sealed interface BroughtBack {
     data object NotFound : BroughtBack
 
     data class Unavailable(val reason: OperationRefusal) : BroughtBack
+
+    /** The stored data could not be read or written: it stays a Left-Out Bank Account and nothing is recorded (NFR-023). */
+    data object NotStored : BroughtBack
 }
 
 /** The outcome of switching "Receives from Slussen" off (mark) or on (unmark) for a Budget Account (UC-013 A9, UC-009 A16). */
@@ -261,6 +271,9 @@ sealed interface KeepOutcome {
     data object NotManuallyKept : KeepOutcome
 
     data class Unavailable(val reason: OperationRefusal) : KeepOutcome
+
+    /** The stored data could not be read or written: the Budget Account keeps its mark and nothing is recorded (NFR-023). */
+    data object NotStored : KeepOutcome
 }
 
 /** A Manually Kept Account of a served Budget, shown apart from the Bank Accounts (UC-009 step 1, BR-013). */
@@ -337,7 +350,17 @@ sealed interface PairOutcome {
 /** A File Format of this build that a Bank Account can take its transactions from (UC-013 A4). */
 data class FileFormatChoice(val fileFormatId: Long, val name: String)
 
-/** One added Bank Account with its Account Mapping, for the Bank Accounts and Account Mappings list. */
+/**
+ * UC-009 step 1: the Funded By of a credit card Bank Account, or the Transfer Partner of another one ([kind]), by its
+ * Budget Account; [budgetAccountId] and [budgetAccountName] are null while none is set. [applies] says whether Slussen
+ * uses it to detect Transfers: false while none is set, and for one that is set and no longer applies (UC-005 BR-014).
+ */
+data class OtherSideShown(val kind: OtherSideKind, val budgetAccountId: Long?, val budgetAccountName: String?, val applies: Boolean) {
+    /** UC-005 BR-014: one is set, and Slussen does not use it: it is shown as no longer applying. */
+    val noLongerApplies: Boolean get() = budgetAccountId != null && !applies
+}
+
+/** One added Bank Account with its Account Mapping, for the Bank Accounts and Account Mappings list (UC-009 step 1). */
 data class AddedBankAccount(
     val bankAccountId: Long,
     val name: String,
@@ -348,5 +371,12 @@ data class AddedBankAccount(
     val budgetAccountName: String?,
     val startDate: LocalDate?,
     val retired: Boolean,
+    /** Its Funded By when it is a credit card, its Transfer Partner otherwise, and whether it applies. */
+    val otherSide: OtherSideShown? = null,
+    /** Whether a transaction was recorded as sent through its Account Mapping to its current Budget Account (`first_sent_at`). */
+    val sentThrough: Boolean = false,
+    /** Whether its Source identifies it: a Data Provider's reference is recorded for it, or its transactions come from Transaction Files. */
+    val identified: Boolean = true,
+    /** Step 2 of UC-009: an Offered Bank Account its Source last delivered is proposed as a likely match of it and waits for the Operator's confirmation (UC-013 A6). */
+    val waitsForConfirmation: Boolean = false,
 )
-

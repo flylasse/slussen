@@ -1,9 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- The only permission Slussen asks the device for: network access, for the requests to the Data Providers and the
-         Budget App (NFR-022, ADR-001 section 5). The permission check of ADR-001 section 6.4 fails on any other. -->
+    <!-- Exactly the permissions of NFR-022 and ADR-001 section 5 (S-B-37), each for what it is listed with. The
+         permission check of ADR-001 section 6.4 fails on any other and on one of these missing. -->
+    <!-- The requests to the Data Providers and the Budget App. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Starting a Scheduled Fetch only while the device has a network connection (UC-001 A12, BR-013). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Keeping the device awake while a Scheduled Fetch runs. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Keeping the Fetch Schedule after the device restarts (UC-001 BR-013). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Showing the New Transaction Notification (UC-001 BR-014); the device asks the Operator for it. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- WorkManager brings this one; a Scheduled Fetch runs no foreground work, so no use case needs it (ADR-001 section 5). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
+
+    <!-- UC-007 A11: whether the device has a browser for the Bank's sign-in is asked through this element, which is no
+         permission (NFR-022, ADR-001 section 5, S-B-43). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
 
     <!-- Backup rules: one copy, in :persistence (ADR-002 §5). -->
     <application
@@ -24,5 +46,34 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- UC-007 BR-011: Slussen's own return address, <application id>://consent, so that a debug and a release
+             build each take only their own answers; an intent filter is no permission (NFR-022, S-B-43). Received by
+             an activity without a screen, kept out of recents and history, that hands the answer on and brings
+             Slussen forward as it is (E4 review item 2). -->
+        <activity
+            android:name=".ui.ConsentReturnActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${applicationId}" android:host="consent" />
+            </intent-filter>
+        </activity>
+
+        <!-- UC-010 A12, ADR-002 §3 O-17 step 3: opens Slussen again after Start Over has ended its process, from a process
+             of its own, so that the start does not land in the process that ends. Not exported; no permission. -->
+        <activity
+            android:name=".platform.restart.RestartActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:process=":restart"
+            android:theme="@android:style/Theme.NoDisplay" />
     </application>
 </manifest>

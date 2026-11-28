@@ -14,7 +14,8 @@ import slussen.app.ui.components.AnswerKind
 import slussen.app.ui.components.AnswerUi
 import slussen.app.ui.components.SettingEditorUi
 import slussen.app.ui.settings.FetchPeriodUi
-import slussen.app.ui.settings.ShownSettingUi
+import slussen.app.ui.settings.SettingItemUi
+import slussen.core.port.NumberSetting
 import kotlinx.coroutines.CompletableDeferred
 import slussen.app.ui.settings.EntryPage
 import slussen.app.ui.settings.SettingsViewModel
@@ -319,29 +320,13 @@ class UC010AdjustSettingsViewModelTest {
 
     @Test
     @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-001", "BR-002"], requirements = ["NFR-023"])
-    @DisplayName("Step 1 (settings.html#list-this-build): Settings shows the fetch period, 30 days by default, 7 to 180, to change; the other Operator Settings with the values that apply, and a line that changing them comes later and that no action is needed now")
+    @DisplayName("Step 1 (settings.html#list): Settings shows the fetch period, 30 days by default, 7 to 180, to change, in the section Fetching")
     fun settingsShowsTheFetchPeriod() {
         val ui = settings().ui()
 
         assertEquals(FetchPeriodUi("30 days", "Days back a Fetch asks for · default 30 · 7 to 180", answer = null), ui.fetchPeriod)
         assertNull(ui.fetchPeriodEditor)
-        assertEquals(
-            listOf(
-                ShownSettingUi(
-                    "Fetch Schedule",
-                    "Scheduled Fetches come in a later version; until then Slussen fetches only when you start a Fetch. No action is needed now.",
-                    "none yet",
-                ),
-                ShownSettingUi("Default wait", "Hours · default 8", "8 h"),
-                ShownSettingUi("Request timeout", "Seconds · default 30", "30 s"),
-                ShownSettingUi("Number of recent Fetches kept", "Default 60", "60"),
-                ShownSettingUi("Upload Window", "Days back that could be uploaded · default 7", "7 days"),
-                ShownSettingUi("Transfer pairing days", "Default 5", "5"),
-                ShownSettingUi("Lonely Transfer grace period", "Days · default 6", "6 days"),
-            ),
-            ui.shownSettings,
-        )
-        assertEquals("Changing these Operator Settings comes in a later version; the values shown apply. No action is needed now.", ui.shownSettingsNote)
+        assertTrue(ui.sections.single { it.title == "Fetching" }.items.any { (it as? SettingItemUi.Number)?.line?.setting == NumberSetting.FetchPeriod })
     }
 
     @Test
@@ -547,5 +532,38 @@ class UC010AdjustSettingsViewModelTest {
     fun onlyTheDebugSuffixMakesADebugBuild() {
         assertFalse(AppVersion.of(packageName = "slussen.debugger", versionName = "4.5.6").debugBuild)
         assertFalse(AppVersion.of(packageName = "slussen.app.debug.other", versionName = "4.5.6").debugBuild)
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", requirements = ["NFR-023"])
+    @DisplayName("Failure postconditions, NFR-023 (review 6): a Fetch Cooldown not stored while the page cannot be read again either says Not saved at its line and that the page could not be read again; a change whose admission cannot be read says Not saved too, never a crash")
+    fun fetchCooldownNotSavedWithAStorageThatCannotBeRead() {
+        val page = page(slice.feedsKey)
+        page.startEditingFetchCooldown()
+        slice.registry.failsToStore = true
+        slice.offeredStore.failsToRead = true
+
+        page.saveFetchCooldown("15")
+
+        assertNull(page.ui().fetchCooldownEditor)
+        assertEquals(
+            AnswerUi("Not saved: Slussen could not store 15 min. Still 60 min, the default.", AnswerKind.Failed, "Tap Change to try again."),
+            page.ui().fetchCooldownAnswer,
+        )
+        assertEquals(
+            "This page could not be read again from the data stored on this device. Open it again to see it as stored.",
+            page.ui().message,
+        )
+
+        slice.registry.failsToStore = false
+        slice.offeredStore.failsToRead = false
+        slice.coordinatorStore.failsToRead = true
+        page.startEditingFetchCooldown()
+        page.saveFetchCooldown("20")
+        assertEquals(
+            AnswerUi("Not saved: Slussen could not store 20 min. Still 60 min, the default.", AnswerKind.Failed, "Tap Change to try again."),
+            page.ui().fetchCooldownAnswer,
+        )
+        assertEquals(60, storedCooldown())
     }
 }

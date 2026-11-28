@@ -389,4 +389,124 @@ class UC014ManageServiceCredentialsViewModelTest {
         )
         assertEquals("Enter new credentials", ui.enterAction)
     }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", requirements = ["NFR-023"])
+    @DisplayName("A3 (connections.html#local-action-states): after the confirmation, Remove shows Removing… before anything is deleted, and Replace and Remove wait; it ends as removed")
+    fun removalShowsThatItRuns() {
+        runBlocking { slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+        val hold = CompletableDeferred<Unit>()
+        slice.vault.beforeRemove = { hold.await() }
+        val page = page(slice.feedsKey)
+
+        page.requestRemoval()
+        page.confirmRemoval()
+        assertTrue(page.ui().removing)
+        assertNull(page.ui().removalQuestion)
+        assertNull(page.ui().credentialAnswer)
+        page.requestRemoval()
+        assertNull(page.ui().removalQuestion)
+        hold.complete(Unit)
+
+        assertFalse(page.ui().removing)
+        assertEquals(AnswerUi("Removed · recorded in the Decision Journal", AnswerKind.Done), page.ui().credentialAnswer)
+        assertNull(runBlocking { slice.vault.read(slice.feedsKey) })
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", requirements = ["NFR-023"])
+    @DisplayName("A3 (connections.html#local-action-states, issue #33): a removal that cannot be stored answers at the credentials that they were not removed and are kept, and the app keeps running; Remove stays offered")
+    fun removalThatCannotBeStored() {
+        runBlocking { slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+        slice.vault.failsToRemove = true
+        val page = page(slice.feedsKey)
+
+        page.requestRemoval()
+        page.confirmRemoval()
+
+        assertEquals(AnswerUi("Not removed · credentials kept · try again", AnswerKind.Failed), page.ui().credentialAnswer)
+        assertFalse(page.ui().removing)
+        assertTrue(page.ui().canRemove)
+        assertEquals("Accepted 2026-10-15", page.ui().credentials)
+        assertNull(page.ui().message)
+        assertTrue(runBlocking { slice.vault.read(slice.feedsKey) } != null)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", requirements = ["NFR-023"])
+    @DisplayName("A3 (issue #33): when the stored state of Slussen cannot be read at the removal, nothing is deleted and the credentials answer Not removed instead of a crash")
+    fun removalWhenTheStoredStateCannotBeRead() {
+        runBlocking { slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+        val page = page(slice.feedsKey)
+        slice.coordinatorStore.failsToRead = true
+
+        page.requestRemoval()
+        page.confirmRemoval()
+
+        assertEquals(AnswerUi("Not removed · credentials kept · try again", AnswerKind.Failed), page.ui().credentialAnswer)
+        assertFalse(page.ui().removing)
+        assertTrue(runBlocking { slice.vault.read(slice.feedsKey) } != null)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A3: Remove Credentials", requirements = ["NFR-023"])
+    @DisplayName("A3 (issue #33): while an Upload Plan awaits confirmation the removal answers why at the credentials, and the credentials stay")
+    fun removalUnavailableWhileAPlanAwaitsConfirmation() {
+        runBlocking { slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
+        val page = page(slice.feedsKey)
+        slice.coordinatorStore.mode = CoordinatorMode.PlanOpen
+
+        page.requestRemoval()
+        page.confirmRemoval()
+
+        assertEquals(
+            AnswerUi("Unavailable while an Upload Plan awaits confirmation. Confirm or cancel it first.", AnswerKind.Unchanged),
+            page.ui().credentialAnswer,
+        )
+        assertTrue(runBlocking { slice.vault.read(slice.feedsKey) } != null)
+    }
+
+    // ---- A storage that cannot be read or written on the page (NFR-023, review 6) -----------------------------------
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "Main Success Scenario", businessRules = ["BR-007"], requirements = ["NFR-023"])
+    @DisplayName("BR-007, NFR-023 (review 6): a service's page whose stored data cannot be read says so with the next action instead of a crash, and opens once it can be read")
+    fun pageThatCannotBeOpened() {
+        slice.offeredStore.failsToRead = true
+
+        val page = ServicePageViewModel(fixture.services, slice.feedsKey).also { it.load() }
+
+        assertNull(page.state.value)
+        assertEquals(
+            "This page could not be opened: the data stored on this device could not be read, and nothing was changed. Tap Try again, or go back and open it again.",
+            page.notOpened.value,
+        )
+        slice.offeredStore.failsToRead = false
+        page.load()
+        assertNull(page.notOpened.value)
+        assertEquals("Kestrel Feeds", page.ui().name)
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "Main Success Scenario", businessRules = ["BR-003"], requirements = ["NFR-023"])
+    @DisplayName("Steps 3-4, NFR-023 (review 6): credentials that cannot be checked or stored because the stored data cannot be used answer at the form that nothing was stored and the earlier ones stay, instead of a crash")
+    fun credentialsThatCannotBeStored() {
+        val page = page(slice.feedsKey)
+        page.startEntering()
+        slice.coordinatorStore.failsToRead = true
+
+        page.save(mapOf("setupKey" to ExampleData.SETUP_KEY))
+
+        assertEquals(
+            AnswerUi(
+                "Not stored: Slussen could not use the data stored on this device · the earlier credentials stay unchanged",
+                AnswerKind.Failed,
+                "Try again.",
+            ),
+            page.ui().credentialAnswer,
+        )
+        assertFalse(page.ui().checking)
+        assertTrue(page.ui().entering)
+        assertNull(runBlocking { slice.vault.read(slice.feedsKey) })
+    }
 }

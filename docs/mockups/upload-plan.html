@@ -458,13 +458,35 @@
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
+<div class="state" id="reading">
+<div class="step-label"><span class="n">UC-006 2 · ADR-007 §3</span><p><b>Reading the Budget App before the plan</b> (S-B-61): Review Upload Plan first reads the Budget and compares it, then prepares the plan from what the Budget App holds now. Nothing is paused yet; no plan exists until the read is stored.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Plan</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="card blue steps"><div class="stepn"><span class="i"><span class="spin" style="display:inline-block"></span></span> <span><span class="t">Reading YNAB</span></span></div><div class="stepn"><span class="i">·</span> <span><span class="t">Compare</span></span></div><div class="stepn"><span class="i">·</span> <span><span class="t">Upload Plan</span></span></div></div><a class="cta" href="#awaiting">Upload Plan ready</a>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="read-failed">
+<div class="step-label"><span class="n">UC-006 A15</span><p><b>The read before the plan failed</b>, or the credentials were refused: no Upload Plan, nothing written, the statuses stay as the last read left them.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Plan</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="banner red"><span class="txt"><b>No Upload Plan · YNAB could not be read</b> <span class="d">Statuses as of 14:02. Nothing was written.</span></span></div><div class="banner red"><span class="txt"><b>Or: no Upload Plan · credentials refused</b></span></div><a class="cta" href="#reading">Try again</a> <a class="cta" href="connections.html#ynab">Enter credentials</a>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
 <div class="state" id="recovery">
 <div class="step-label"><span class="n">UC-006 A13 · UC-008 BR-009</span><p><b>First Upload Matching open</b>, here after a restore: no Upload Plan; the same explanation and reason line as on the Overview, and the action that starts it. Amber, never red.</p></div>
 <div class="phone">
 <div class="screen-title"><a class="back" href="budget.html#household">‹</a> Upload Plan</div>
 <p class="screen-sub">Household</p>
 <div class="body">
-<div class="banner"><span class="txt"><b>No Upload Plan · Uploads wait for First Upload Matching</b> <span class="d">Before Slussen uploads anything, it compares the transactions it fetched with what is already in YNAB and marks every match, so that no transaction ends up in YNAB twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual.</span> <span class="d">Slussen was restored from a backup. It may have uploaded transactions after the backup was made that its records no longer show.</span></span></div><a class="cta" href="first-upload-matching.html#open">Start First Upload Matching</a>
+<div class="banner"><span class="txt"><b>No Upload Plan · Uploads wait for First Upload Matching</b> <span class="d">Before Slussen uploads anything, it compares the transactions it fetched with what is already in YNAB and marks every match, so that no transaction ends up in YNAB twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual. A transaction you deleted in YNAB after Slussen had uploaded it may come back there once, waiting for your approval; delete it again.</span> <span class="d">Slussen was restored from a backup. It may have uploaded transactions after the backup was made that its records no longer show.</span></span></div><a class="cta" href="first-upload-matching.html#open">Start First Upload Matching</a>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>

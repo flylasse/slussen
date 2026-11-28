@@ -38,6 +38,10 @@ tasks.withType<Test>().configureEach {
     inputs.dir(committedRoomSchemas).withPropertyName("committedRoomSchemas").withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty("slussen.schemas.generated", generatedRoomSchemas.get().dir(variant).asFile.path)
     systemProperty("slussen.schemas.committed", committedRoomSchemas.asFile.path)
+    // EntityModelSchemaTest compares the tables of slussen.db with the entity model as it is written (ADR-002 §2).
+    val entityModel = rootProject.layout.projectDirectory.file("docs/entity_model.md")
+    inputs.file(entityModel).withPropertyName("entityModel").withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("slussen.entityModel", entityModel.asFile.path)
 }
 
 dependencies {

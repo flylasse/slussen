@@ -325,7 +325,7 @@
 </div>
 </div>
 <div class="state" id="lonely">
-<div class="step-label"><span class="n">UC-005 A4</span><p><b>A Lonely Transfer</b> with its expected other side and the date by which it must arrive.</p></div>
+<div class="step-label"><span class="n">UC-005 A4</span><p><b>A Lonely Transfer</b> with its expected other side and the date by which it must arrive. Once the Operator has confirmed it, held it back or chosen another Budget Account, it stays a Lonely Transfer with that decision after the date too, and its other side joins it on arrival (UC-005 BR-005).</p></div>
 <div class="phone">
 <div class="screen-title">Transfers</div>
 <p class="screen-sub">Household</p>
@@ -341,7 +341,7 @@
 <p class="lede"></p>
 <div class="flow">
 <div class="state" id="split">
-<div class="step-label"><span class="n">UC-005 A1</span><p><b>Split</b> of the Bank Transfer Checking → Reserve Savings: each Transfer Leg becomes an ordinary Bank Transaction.</p></div>
+<div class="step-label"><span class="n">UC-005 A1</span><p><b>Split</b> of the Bank Transfer Checking → Reserve Savings: each Transfer Leg becomes an ordinary Bank Transaction. The Transfer stays listed as split, so that the decision can be changed until Upload, and neither Transfer Leg joins another Transfer meanwhile (UC-005 BR-010).</p></div>
 <div class="phone">
 <div class="screen-title">Transfers</div>
 <p class="screen-sub">Household</p>
@@ -363,12 +363,23 @@
 </div>
 </div>
 <div class="state" id="first-card-payment">
-<div class="step-label"><span class="n">UC-005 A8</span><p><b>The first Card Payment of a credit card without Funded By</b> is a Guessed Transfer. It starts only from the card's own Bank Transaction.</p></div>
+<div class="step-label"><span class="n">UC-005 A8</span><p><b>The first Card Payment of a credit card without Funded By</b> is a Guessed Transfer. It starts only from the card's own Bank Transaction. With no proposal there is nothing to confirm: choose the paying Budget Account, split or hold back (UC-005 A8 step 2).</p></div>
 <div class="phone">
 <div class="screen-title">Transfers</div>
 <p class="screen-sub">Household</p>
 <div class="body">
 <div class="sheet amber"><div class="grab"></div><h4>Card Payment to Home Card · 95.00 USD</h4><p class="ctx">Pinecrest Home Card · 2026-10-14 · Guessed Transfer</p><p class="note">No Funded By · no proposal.</p><a class="item" href="transfer-budget-account.html#choose"><span class="ic">⇆</span> <span><span class="t">Choose the paying Budget Account…</span> <span class="d">Required before this Transfer can be in an Upload Plan.</span></span></a><div class="item "><span class="ic">⇹</span> <span><span class="t">Split into ordinary transactions</span> </span></div><div class="item "><span class="ic">⏸</span> <span><span class="t">Hold back</span> </span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="funded-by-not-applying">
+<div class="step-label"><span class="n">UC-005 A8 · BR-014</span><p><b>A Funded By that is set but no longer applies</b> is never called missing. Here Home Card has the Funded By Old Savings, to which no Bank Account that Slussen fetches is mapped any more: the Guessed Transfer names it, says that it no longer applies and leads to the action that changes or clears it (UC-009 A9). The list says the same in short: Funded By Old Savings no longer applies · choose the paying Budget Account.</p></div>
+<div class="phone">
+<div class="screen-title">Transfers</div>
+<p class="screen-sub">Household</p>
+<div class="body">
+<div class="sheet amber"><div class="grab"></div><h4>Card Payment to Home Card · 95.00 USD</h4><p class="ctx">Pinecrest Home Card · 2026-10-14 · Guessed Transfer</p><p class="note">Funded By <b>Old Savings</b> no longer applies: no Bank Account that Slussen fetches is mapped to Old Savings · no proposal.</p><a class="item" href="account-mappings.html#funded-by"><span class="ic">✎</span> <span><span class="t">Change or clear the Funded By…</span> <span class="d">In Account Mappings.</span></span></a><a class="item" href="transfer-budget-account.html#choose"><span class="ic">⇆</span> <span><span class="t">Choose the paying Budget Account…</span> <span class="d">Required before this Transfer can be in an Upload Plan.</span></span></a><div class="item "><span class="ic">⇹</span> <span><span class="t">Split into ordinary transactions</span> </span></div><div class="item "><span class="ic">⏸</span> <span><span class="t">Hold back</span> </span></div></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab on" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>

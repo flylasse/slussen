@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import slussen.persistence.device.DeviceDatabase
+import slussen.persistence.device.DeviceMigrations
 import slussen.persistence.journal.JournalDatabase
 import slussen.persistence.main.SlussenDatabase
 import slussen.persistence.main.SlussenMigrations
@@ -24,6 +25,7 @@ object SlussenDatabases {
 
     fun deviceFile(context: Context): File = File(context.noBackupFilesDir, DEVICE_FILE)
 
+    // UC-011 BR-004: The Decision Journal is never included in device backups: journal.db lives in noBackupFilesDir, which Android never backs up.
     fun journalFile(context: Context): File = File(context.noBackupFilesDir, JOURNAL_FILE)
 
     /**
@@ -39,16 +41,30 @@ object SlussenDatabases {
             .addCallback(DefaultDescriptionLists)
             .build()
 
-    /** `JournalMode.TRUNCATE` and `PRAGMA synchronous = FULL` (ADR-002 §4). */
+    /**
+     * `JournalMode.TRUNCATE` and `PRAGMA synchronous = FULL` (ADR-002 §4), with the Migration from every committed schema
+     * version, so an installed `device.db` is upgraded and never cleared (ADR-002 §7, NFR-017).
+     */
     fun openDevice(context: Context): DeviceDatabase =
         Room.databaseBuilder(context, DeviceDatabase::class.java, deviceFile(context).path)
+            // UC-014 BR-003: The service credentials and the Offered Bank Accounts in device.db are kept on an upgrade to version 2.
+            .addMigrations(*DeviceMigrations.ALL)
             .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
             .addCallback(SynchronousFull)
             .build()
 
-    /** `auto_vacuum = INCREMENTAL`, so that the oldest entries' space can be returned (ADR-002 §9). */
+    /**
+     * `auto_vacuum = INCREMENTAL`, so that the oldest entries' space can be returned (ADR-002 §9), and
+     * `JournalMode.TRUNCATE` as the other two databases: ADR-002 §1 names `journal.db` and its rollback journal as the
+     * files it keeps, and the size the limit is kept against (`page_count × page_size`) then counts everything the
+     * Decision Journal holds, with no write-ahead log beside it. A `journal.db` an earlier build left in write-ahead
+     * logging is switched when Room opens it: SQLite writes its log back into the file and removes it, so its entries
+     * stay. Without write-ahead logging a reader would wait for a writer; the Journal Export's reads are short and run on
+     * the journal's own thread (ADR-002 §9), so none waits for long.
+     */
     fun openJournal(context: Context): JournalDatabase =
         Room.databaseBuilder(context, JournalDatabase::class.java, journalFile(context).path)
+            .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
             .addCallback(IncrementalAutoVacuum)
             .build()
 

@@ -334,7 +334,7 @@
 </div>
 </div>
 <div class="state" id="notification">
-<div class="step-label"><span class="n">UC-001 A12</span><p><b>After a Scheduled Fetch</b> (outside the app). The New Transaction Notification and the badge on the app icon.</p></div>
+<div class="step-label"><span class="n">UC-001 A12</span><p><b>After a Scheduled Fetch</b> (outside the app). The New Transaction Notification and the badge on the app icon: the sum of the Overview's counts of every Budget (UC-001 BR-014). Tapping it opens the Overview. When notifications are not allowed: <a href="#notification-ask">the one question</a> and <a href="settings.html#notifications-off">the line on Settings</a>.</p></div>
 <div class="phone">
 <div class="screen-title">Android</div>
 <p class="screen-sub">Lock screen and launcher</p>
@@ -353,6 +353,17 @@
 
 </div>
 
+</div>
+</div>
+<div class="state" id="notification-ask">
+<div class="step-label"><span class="n">UC-001 BR-014</span><p><b>The one question about notifications</b> (UC-001 BR-014). The Overview opens while the Fetch Schedule is above 0, Slussen's notifications are not allowed and the device has no answer of the Operator to that question yet: Slussen asks the device's question, over the Overview. Allow: the notification shows the number the next time Slussen works it out (at every start and after every operation). Don't allow: the device has the Operator's answer, the question is not asked again, and Settings says that the number is not shown (<a href="settings.html#notifications-off">the line on Settings</a>). Closed without an answer, it is asked at the next opening; after a reinstall, once more. Slussen keeps nothing of its own about the question.</p></div>
+<div class="phone">
+<div class="screen-title">Slussen</div>
+<p class="screen-sub">Overview · 2026-10-15 14:32 · device time</p>
+<div class="body">
+<div class="ghost"><a class="btn primary" href="budget.html#fetch-states">Fetch all Data Providers</a><div class="card"><div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span></div><div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:90px;margin:0"><h4>Allow Slussen to send you notifications?</h4><p class="small muted">The device's own question. Slussen shows one silent notification: the number of Bank Transactions waiting for an Upload Plan or your Review Decision.</p><div class="actions"><a class="c" href="settings.html#notifications-off">Don't allow</a> <a class="ok" href="#notification">Allow</a></div></div>
+</div>
+<div class="nav"><a class="tab on" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 </div>
@@ -388,7 +399,7 @@
 <div class="screen-title">Slussen</div>
 <p class="screen-sub">Overview</p>
 <div class="body">
-<div class="snack" style="margin:0 0 9px"><span>Bank Accounts added: 4 · fetched from the next Fetch</span></div><a class="banner blue" href="first-upload-matching.html#new-installation"><span class="txt"><b>Uploads wait for First Upload Matching</b> <span class="d">Before Slussen uploads anything, it compares the transactions it fetched with what is already in YNAB and marks every match, so that no transaction ends up in YNAB twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual.</span> <span class="d">This is a new installation. Your earlier importer, YNAB's own bank import or you by hand may already have added some of these transactions to YNAB.</span></span> <span class="cta-btn">Start First Upload Matching</span></a><a class="btn primary" href="budget.html#fetch-states">Fetch all Data Providers</a><div class="card"><div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span></div><div class="bh"><span class="meta">No Fetch yet</span></div><div class="tagrow"><span class="chip blue">Uploads wait for First Upload Matching</span></div></div><div class="card"><div class="bh"><span class="nm">Summer House</span> <span class="chip grey">EUR</span></div><div class="bh"><span class="meta">No Fetch yet</span></div><div class="tagrow"><span class="chip blue">Uploads wait for First Upload Matching</span></div></div><div class="card"><div class="bh"><span class="nm">Care Fund</span> <span class="chip grey">USD</span></div><div class="bh"><span class="meta">No Fetch yet</span></div><div class="tagrow"><span class="chip blue">Uploads wait for First Upload Matching</span></div></div>
+<div class="snack" style="margin:0 0 9px"><span>Bank Accounts added: 4 · fetched from the next Fetch</span></div><a class="banner blue" href="first-upload-matching.html#new-installation"><span class="txt"><b>Uploads wait for First Upload Matching</b> <span class="d">Before Slussen uploads anything, it compares the transactions it fetched with what is already in YNAB and marks every match, so that no transaction ends up in YNAB twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual. A transaction you deleted in YNAB after Slussen had uploaded it may come back there once, waiting for your approval; delete it again.</span> <span class="d">This is a new installation. Your earlier importer, YNAB's own bank import or you by hand may already have added some of these transactions to YNAB.</span></span> <span class="cta-btn">Start First Upload Matching</span></a><a class="btn primary" href="budget.html#fetch-states">Fetch all Data Providers</a><div class="card"><div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span></div><div class="bh"><span class="meta">No Fetch yet</span></div><div class="tagrow"><span class="chip blue">Uploads wait for First Upload Matching</span></div></div><div class="card"><div class="bh"><span class="nm">Summer House</span> <span class="chip grey">EUR</span></div><div class="bh"><span class="meta">No Fetch yet</span></div><div class="tagrow"><span class="chip blue">Uploads wait for First Upload Matching</span></div></div><div class="card"><div class="bh"><span class="nm">Care Fund</span> <span class="chip grey">USD</span></div><div class="bh"><span class="meta">No Fetch yet</span></div><div class="tagrow"><span class="chip blue">Uploads wait for First Upload Matching</span></div></div>
 </div>
 <div class="nav"><a class="tab on" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household</a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House</a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
@@ -401,7 +412,7 @@
 <div class="body">
 
 <a class="banner" href="first-upload-matching.html#open"><span class="txt"><b>Uploads wait for First Upload Matching</b>
-<span class="d">Before Slussen uploads anything, it compares the transactions it fetched with what is already in YNAB and marks every match, so that no transaction ends up in YNAB twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual.</span>
+<span class="d">Before Slussen uploads anything, it compares the transactions it fetched with what is already in YNAB and marks every match, so that no transaction ends up in YNAB twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual. A transaction you deleted in YNAB after Slussen had uploaded it may come back there once, waiting for your approval; delete it again.</span>
 <span class="d">Slussen was restored from a backup. It may have uploaded transactions after the backup was made that its records no longer show.</span></span>
 <span class="cta-btn">Start First Upload Matching</span></a>
 <div class="banner"><span class="txt"><b>Bank Consents are not restored</b> <span class="d">Grant the Bank Consent of Aurora Bank and of Vesta Sparbank again.</span></span> <a class="cta-btn" href="connections.html#enable-banking">Bank Consents</a></div>
@@ -414,14 +425,16 @@
 </div>
 </div>
 <div class="state" id="damaged">
-<div class="step-label"><span class="n">UC-008 A1</span><p><b>Stored data damaged</b>, not Decision-Critical Data: a notice only.</p></div>
+<div class="step-label"><span class="n">UC-008 A1 · BR-012</span><p><b>Stored data damaged</b>, not Decision-Critical Data, here both such parts: a notice each, with what the part started from and the next action or that none is needed; no First Upload Matching.</p></div>
 <div class="phone">
 <div class="screen-title">Slussen</div>
 <p class="screen-sub">Overview</p>
 <div class="body">
 
 <div class="banner grey"><span class="txt"><b>Stored data could not be read: Decision Journal</b>
-<span class="d">Started from its last good copy · Uploads not affected</span></span></div>
+<span class="d">Started empty: the Decision Journal has no last good copy · the unreadable original is kept on this device · nothing else is affected, no action is needed</span></span></div>
+<div class="banner grey"><span class="txt"><b>Stored data could not be read: service credentials, Bank Consents and Offered Bank Accounts</b>
+<span class="d">Started empty: this part has no last good copy · the unreadable original is kept on this device · enter the credentials of each service again in Settings and grant each Bank Consent again; the Offered Bank Accounts come back with the next Fetch or Bank Consent</span></span></div>
 <a class="card amber" href="budget.html#household" style="display:block">
   <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="r dot amber"></span></div>
   <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>
@@ -442,16 +455,16 @@
 </div>
 </div>
 <div class="state" id="damaged-critical">
-<div class="step-label"><span class="n">UC-008 A1</span><p><b>Decision-Critical Data damaged:</b> the notice names the part, and First Upload Matching opens (cause Last Good Copy, BR-009): amber, a caution, never red.</p></div>
+<div class="step-label"><span class="n">UC-008 A1 · BR-012</span><p><b>Decision-Critical Data damaged:</b> the notice names the part, and First Upload Matching opens (cause Last Good Copy, BR-009): amber, a caution, never red.</p></div>
 <div class="phone">
 <div class="screen-title">Slussen</div>
 <p class="screen-sub">Overview</p>
 <div class="body">
 
-<div class="banner grey"><span class="txt"><b>Stored data could not be read: Bank Transactions and Sent Record</b>
-<span class="d">Started from the last good copy</span></span></div>
+<div class="banner grey"><span class="txt"><b>Stored data could not be read: stored transactions, decisions and settings</b>
+<span class="d">Started from its last good copy, made at an earlier start · the unreadable original is kept on this device · check in Settings that your Budgets, Bank Accounts and Account Mappings are as you left them, and see First Upload Matching below</span></span></div>
 <a class="banner" href="first-upload-matching.html#last-good-copy"><span class="txt"><b>Uploads wait for First Upload Matching</b>
-<span class="d">Before Slussen uploads anything, it compares the transactions it fetched with what is already in YNAB and marks every match, so that no transaction ends up in YNAB twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual.</span>
+<span class="d">Before Slussen uploads anything, it compares the transactions it fetched with what is already in YNAB and marks every match, so that no transaction ends up in YNAB twice. You look at the result and confirm; until then nothing is uploaded. Fetching works as usual. A transaction you deleted in YNAB after Slussen had uploaded it may come back there once, waiting for your approval; delete it again.</span>
 <span class="d">Slussen's records could not be read, so it started from its last good copy, or from empty records when it had none. Anything uploaded after that copy was made is not in its records.</span></span> <span class="cta-btn">Start First Upload Matching</span></a>
 </div>
 <div class="nav"><a class="tab on" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
@@ -465,7 +478,7 @@
 <div class="body">
 
 <div class="banner"><span class="txt"><b>Backed-up data nears Android's backup limit</b>
-<span class="d">21.3 MB of 25 MB, Android's limit · above it Android backs up nothing</span></span></div>
+<span class="d">21.3 MB of 25 MB, Android's limit · above it Android backs up nothing · Slussen has no action that makes it smaller, and none is needed: Slussen goes on working, and First Upload Matching covers a restore of an older backup</span></span></div>
 <a class="card amber" href="budget.html#household" style="display:block">
   <div class="bh"><span class="nm">Household</span> <span class="chip grey">USD</span> <span class="r dot amber"></span></div>
   <div class="bh"><span class="meta">Eligible 9 · waiting for a decision 9</span></div>

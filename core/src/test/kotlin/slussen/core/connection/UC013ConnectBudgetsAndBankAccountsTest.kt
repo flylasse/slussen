@@ -1491,4 +1491,87 @@ class UC013ConnectBudgetsAndBankAccountsTest {
         assertEquals(listOf("Rewards Card", "Current", "Savings", "Card"), pairing.freeBudgetAccounts.map { it.name })
         assertEquals(0, slice.budgetApp.writer.calls)
     }
+
+    // ---- A storage that cannot be written (issue #33) ---------------------------------------------------------------
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-012"])
+    @DisplayName("Steps 6-7: a switch-off that cannot be stored answers Not Stored: nothing is left out, nothing is recorded, and the Offered Bank Account stays imported and to map")
+    fun switchOffThatCannotBeStoredLeavesNothingOut() = runTest {
+        readyToPair()
+        val recorded = slice.journalRecorder.entries.size
+        slice.connectionStore.failsToStore = true
+
+        val outcome = slice.connect.switchImportOff(offeredId("acct-1182"))
+
+        assertEquals(ImportSwitchedOff.NotStored, outcome)
+        assertTrue(slice.connectionStore.leftOutBankAccounts().isEmpty())
+        assertEquals(recorded, slice.journalRecorder.entries.size)
+        assertEquals(listOf("CHK", "Pinecrest Rewards Visa", "Reserve Saver", "Aurora Dollar"), toMapNames())
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A10: Bring Back a Left-Out Bank Account", businessRules = ["BR-011"])
+    @DisplayName("A10: a bring-back that cannot be stored answers Not Stored: the Left-Out Bank Account stays left out and nothing is recorded")
+    fun bringBackThatCannotBeStoredKeepsItLeftOut() = runTest {
+        readyToPair()
+        switchOff("acct-7731")
+        val reserve = slice.connectionStore.leftOutBankAccounts().single()
+        val recorded = slice.journalRecorder.entries.size
+        slice.connectionStore.failsToStore = true
+
+        val outcome = slice.connect.bringBack(reserve.id)
+
+        assertEquals(BroughtBack.NotStored, outcome)
+        assertEquals(listOf("acct-7731"), leftOutReferences())
+        assertEquals(recorded, slice.journalRecorder.entries.size)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "A9: Mark or Unmark a Budget Account Manually Kept", businessRules = ["BR-014"])
+    @DisplayName("A9: Receives from Slussen switched off or on that cannot be stored answers Not Stored: the Budget Account keeps its mark and nothing is recorded")
+    fun receivesThatCannotBeStoredKeepsTheMark() = runTest {
+        readyToPair()
+        slice.connect.setReceivesFromSlussen(budgetAccountId("Reserve Savings"), receives = false)
+        val recorded = slice.journalRecorder.entries.size
+        slice.connectionStore.failsToStore = true
+
+        val unmark = slice.connect.setReceivesFromSlussen(budgetAccountId("Reserve Savings"), receives = true)
+        val mark = slice.connect.setReceivesFromSlussen(budgetAccountId("Checking"), receives = false)
+
+        assertEquals(KeepOutcome.NotStored, unmark)
+        assertEquals(KeepOutcome.NotStored, mark)
+        val accounts = slice.connectionStore.budgets().flatMap { it.budgetAccounts }
+        assertTrue(accounts.single { it.name == "Reserve Savings" }.manuallyKept)
+        assertFalse(accounts.single { it.name == "Checking" }.manuallyKept)
+        assertEquals(recorded, slice.journalRecorder.entries.size)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-011", "BR-012"])
+    @DisplayName("Steps 6-7 (review 3): a switch-off that is stored while the Operator Settings cannot be read for its Decision Journal entry answers Left Out, never Not Stored; the entry is dropped and counted")
+    fun switchOffStoredWhileTheJournalCannotRecord() = runTest {
+        readyToPair()
+        slice.connectionStore.beforeStore = { slice.settings.failsToRead = true }
+
+        val outcome = slice.connect.switchImportOff(offeredId("acct-1182"))
+
+        val leftOut = slice.connectionStore.leftOutBankAccounts().single()
+        assertEquals(ImportSwitchedOff.LeftOut(leftOut.id, "Pinecrest Rewards Visa ••1182"), outcome)
+        assertEquals(1L, slice.journal.dropped)
+    }
+
+    @Test
+    @UseCase(id = "UC-013", scenario = "Main Success Scenario", businessRules = ["BR-011", "BR-012"])
+    @DisplayName("Steps 6-7 (review 4b): a switch-off that is stored but cannot be read back answers Left Out without the id that Undo needs")
+    fun switchOffStoredButNotReadBack() = runTest {
+        readyToPair()
+        slice.connectionStore.beforeStore = { slice.connectionStore.failsToReadLeftOut = true }
+
+        val outcome = slice.connect.switchImportOff(offeredId("acct-1182"))
+
+        assertEquals(ImportSwitchedOff.LeftOut(null, "Pinecrest Rewards Visa ••1182"), outcome)
+        slice.connectionStore.failsToReadLeftOut = false
+        assertEquals(listOf("acct-1182"), leftOutReferences())
+    }
 }

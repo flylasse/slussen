@@ -10,6 +10,7 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -17,6 +18,8 @@ import slussen.pluginapi.budgetapp.BudgetAccountRead
 import slussen.pluginapi.budgetapp.BudgetApp
 import slussen.pluginapi.budgetapp.BudgetAppTransactionRead
 import slussen.pluginapi.budgetapp.BudgetRead
+import slussen.pluginapi.budgetapp.CreateItem
+import slussen.pluginapi.budgetapp.ItemOutcome
 import slussen.pluginapi.budgetapp.ChangeCursor
 import slussen.pluginapi.budgetapp.ChangeSet
 import slussen.pluginapi.budgetapp.EntryKind
@@ -30,10 +33,33 @@ import slussen.pluginapi.diagnostic.LogEvent
 import slussen.pluginapi.diagnostic.LogFact
 import slussen.pluginapi.diagnostic.SlussenLog
 import slussen.pluginapi.request.FailureKind
+import slussen.budgetapp.ynab.YnabWriteExamples.ACCOUNT
+import slussen.budgetapp.ynab.YnabWriteExamples.AMOUNT_T
+import slussen.budgetapp.ynab.YnabWriteExamples.BUDGET
+import slussen.budgetapp.ynab.YnabWriteExamples.ID_A
+import slussen.budgetapp.ynab.YnabWriteExamples.ID_B
+import slussen.budgetapp.ynab.YnabWriteExamples.ID_T
+import slussen.budgetapp.ynab.YnabWriteExamples.ITEM_A
+import slussen.budgetapp.ynab.YnabWriteExamples.ITEM_B
+import slussen.budgetapp.ynab.YnabWriteExamples.MEMO_A
+import slussen.budgetapp.ynab.YnabWriteExamples.OTHER_ACCOUNT
+import slussen.budgetapp.ynab.YnabWriteExamples.PAYEE_A
+import slussen.budgetapp.ynab.YnabWriteExamples.REF_A
+import slussen.budgetapp.ynab.YnabWriteExamples.REF_B
+import slussen.budgetapp.ynab.YnabWriteExamples.REF_COUNTERPART
+import slussen.budgetapp.ynab.YnabWriteExamples.REF_T
+import slussen.budgetapp.ynab.YnabWriteExamples.approvedFlagsOf
+import slussen.budgetapp.ynab.YnabWriteExamples.error
+import slussen.budgetapp.ynab.YnabWriteExamples.listCreated
+import slussen.budgetapp.ynab.YnabWriteExamples.received
+import slussen.budgetapp.ynab.YnabWriteExamples.saved
 import slussen.pluginapi.testfixtures.BudgetAppContractTest
 import slussen.pluginapi.testfixtures.ChangesScenario
+import slussen.pluginapi.testfixtures.ClearScenario
 import slussen.pluginapi.testfixtures.CredentialScenario
 import slussen.pluginapi.testfixtures.DeviceRefusal
+import slussen.pluginapi.testfixtures.LookupScenario
+import slussen.pluginapi.testfixtures.WriteScenario
 import slussen.pluginapi.testfixtures.ReadScenario
 import slussen.pluginapi.testfixtures.RecordingRequestThreads
 import slussen.pluginapi.testfixtures.TestRequestContext
@@ -193,6 +219,128 @@ class YnabBudgetAppTest : BudgetAppContractTest() {
     override fun changesUnavailable() = changes(MockResponse().setResponseCode(503))
 
     override fun changesNeverAnswering() = changes(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+
+    private fun lookingUp(answer: MockResponse): LookupScenario {
+        server.enqueue(answer)
+        return LookupScenario(app().reader, Secret(PLANTED_TOKEN), BUDGET, REF_T)
+    }
+
+    override fun lookupFound() = lookingUp(
+        MockResponse().setBody("""{"data":{"transaction":${saved(REF_T, ID_T, amount = AMOUNT_T, cleared = "cleared", transferAccount = OTHER_ACCOUNT, transferTransaction = REF_COUNTERPART)},"server_knowledge":94}}"""),
+    )
+
+    override fun expectedLookup() = BudgetAppTransactionRead(
+        REF_T, ACCOUNT, YnabWriteExamples.DATE_A, Amount(AMOUNT_T), PAYEE_A, MEMO_A, ID_T, EntryKind.Imported,
+        TransferLink(REF_COUNTERPART, OTHER_ACCOUNT), ReadState.Present, cleared = true, approved = false,
+    )
+
+    override fun lookupNotFound() = lookingUp(error(404, "404.2", "resource_not_found"))
+
+    override fun lookupCredentialRefused() = lookingUp(MockResponse().setResponseCode(401).setBody(UNAUTHORIZED))
+
+    override fun lookupNeverAnswering() = lookingUp(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+
+    override fun plantedReadValues(): List<String> = YnabWriteExamples.planted + listOf(
+        "Corner Grocer", "Invented memo", "Harbor Fuel", "Pinecrest Bakery", "Harbor Pharmacy", "Example Household", "Example Checking",
+        "Example Card", "Example Summer House", "budget-0001", "account-0001", "account-0002", "tx-0001", "tx-0005", "tx-0007",
+        "SLS1-aaaaaaaaaaaaaaaaaaaaaaaaaa", "42500", "4140050", "1268400", "150000",
+    )
+
+    /**
+     * The documented refusals that are not of the access token (ADR-001 §4.2.5 Refusals), and a 403 whose code cannot
+     * be read, each with the failure kind that tells its reason (S-B-79).
+     */
+    private val refusalsNotOfTheToken: List<Pair<MockResponse, FailureKind>>
+        get() = listOf(
+            error(403, "403.1", "subscription_lapsed") to FailureKind.RefusedSubscriptionLapsed,
+            error(403, "403.2", "trial_expired") to FailureKind.RefusedTrialEnded,
+            error(403, "403.4", "data_limit_reached") to FailureKind.RefusedDataLimitReached,
+            error(403, "403.5", "email_unconfirmed") to FailureKind.RefusedAddressUnconfirmed,
+            MockResponse().setResponseCode(403).setBody("not json") to FailureKind.RefusedOtherReason,
+            error(403, "403.9", "invented_refusal") to FailureKind.RefusedOtherReason,
+        )
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A2: Budget App Refuses Slussen's Credentials")
+    @DisplayName("ADR-001 §4.2.5 Refusals: a 401 and a 403 with YNAB's code 403.3 (unauthorized_scope) are refused credentials for a read of the Budgets and of changes")
+    fun refusalsOfTheTokenAreRefusedCredentials() {
+        listOf(MockResponse().setResponseCode(401).setBody(UNAUTHORIZED), error(403, "403.3", "unauthorized_scope")).forEach { answer ->
+            server.enqueue(answer)
+            assertEquals(ReadResult.CredentialsRefused, runBlocking { app().reader.readBudgets(TestRequestContext(credential = Secret(PLANTED_TOKEN))) })
+        }
+        server.enqueue(error(403, "403.3", "unauthorized_scope"))
+        assertEquals(ReadResult.CredentialsRefused, runBlocking { app().reader.readChanges("budget-0001", null, FROM, TestRequestContext(credential = Secret(PLANTED_TOKEN))) })
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read")
+    @DisplayName("W4-0 review item 5, C2 review item 6, ADR-001 §4.2.5 Refusals: a lapsed subscription, an expired trial, a data limit, an unconfirmed address and a 403 whose code cannot be read are a failure of a read with that reason, never refused credentials")
+    fun otherRefusalsOfAReadTellTheirReason() {
+        val context = TestRequestContext(credential = Secret(PLANTED_TOKEN))
+        refusalsNotOfTheToken.forEach { (answer, kind) ->
+            server.enqueue(answer)
+            assertEquals(ReadResult.TransientFailure(kind), runBlocking { app().reader.readBudgets(context) })
+            server.enqueue(answer)
+            assertEquals(ReadResult.TransientFailure(kind), runBlocking { app().reader.readChanges("budget-0001", null, FROM, context) })
+            server.enqueue(answer)
+            assertEquals(ReadResult.TransientFailure(kind), runBlocking { app().reader.readTransaction(BUDGET, REF_T, context) })
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-014", scenario = "A2: Service Cannot Be Reached")
+    @DisplayName("W4-0 review item 5, C2 review item 6: a token check YNAB answers with a refusal that is not of the token (403.1, 403.2, 403.4, 403.5, an unreadable 403) is a failure with that reason, not Refused; 403.3 is Refused")
+    fun otherRefusalsOfATokenCheckAreNotRefusedCredentials() {
+        refusalsNotOfTheToken.forEach { (answer, kind) ->
+            server.enqueue(answer)
+            assertEquals(CredentialCheck.TransientFailure(kind), runBlocking { app().credentials.check(tokenInput(), TestRequestContext()) })
+        }
+        server.enqueue(error(403, "403.3", "unauthorized_scope"))
+        assertEquals(CredentialCheck.Refused, runBlocking { app().credentials.check(tokenInput(), TestRequestContext()) })
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read")
+    @DisplayName("C2 review item 1, ADR-001 §4.0: a read answered 503 with Retry-After: 0, or 408, is not sent again by OkHttp: the server receives exactly one request")
+    fun noStatusMakesTheLibrarySendAReadAgain() {
+        listOf(MockResponse().setResponseCode(503).setHeader("Retry-After", "0"), MockResponse().setResponseCode(408)).forEach { answer ->
+            server.shutdown()
+            server = MockWebServer().apply { start() }
+            server.enqueue(answer)
+            server.enqueue(MockResponse().setBody(BUDGETS_ANSWER))
+            val result = runBlocking { app().reader.readBudgets(TestRequestContext(credential = Secret(PLANTED_TOKEN))) }
+            assertTrue(result is ReadResult.TransientFailure, "the read was sent again: $result")
+            Thread.sleep(300)
+            assertEquals(1, server.requestCount, "OkHttp sent the read again after $answer")
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read")
+    @DisplayName("E3 review item 5, ADR-001 §4.0: a read answered with a redirect does not follow it and is an unreadable answer; a read whose connection is lost is sent once")
+    fun readFollowsNoRedirectAndIsSentOnce() {
+        val elsewhere = MockWebServer().apply { start() }
+        try {
+            elsewhere.enqueue(MockResponse().setBody(BUDGETS_ANSWER))
+            server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", elsewhere.url("/v1/budgets").toString()))
+            assertEquals(
+                ReadResult.TransientFailure(FailureKind.UnreadableAnswer),
+                runBlocking { app().reader.readBudgets(TestRequestContext(credential = Secret(PLANTED_TOKEN))) },
+            )
+            assertEquals(0, elsewhere.requestCount, "the redirect's target received a request")
+        } finally {
+            elsewhere.shutdown()
+        }
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
+        server.enqueue(MockResponse().setBody(BUDGETS_ANSWER))
+        val before = server.requestCount
+        assertEquals(
+            ReadResult.TransientFailure(FailureKind.ConnectionLost),
+            runBlocking { app().reader.readBudgets(TestRequestContext(credential = Secret(PLANTED_TOKEN))) },
+        )
+        Thread.sleep(300)
+        assertEquals(before + 1, server.requestCount, "the read was sent again by the HTTP library")
+    }
 
     private fun readChanges(since: ChangeCursor?, body: String = CHANGES_ANSWER): ReadResult<ChangeSet> {
         server.enqueue(MockResponse().setBody(body))

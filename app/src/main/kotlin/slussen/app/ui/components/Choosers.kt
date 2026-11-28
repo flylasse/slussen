@@ -48,6 +48,8 @@ fun AccountLine(
     trailing: String? = null,
     modifier: Modifier = Modifier,
     switchTag: String? = null,
+    /** NFR-023: false while the switch is being stored, so that it takes no second tap. */
+    switchEnabled: Boolean = true,
 ) {
     Row(modifier = modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
@@ -64,6 +66,7 @@ fun AccountLine(
             Switch(
                 checked = switchOn,
                 onCheckedChange = onSwitch,
+                enabled = switchEnabled,
                 modifier = if (switchTag != null) Modifier.testTag(switchTag) else Modifier,
             )
         }

@@ -19,6 +19,9 @@ enum class FetchOutcome(val text: String) {
     Failed("Failed"),
     NotConsented("Not Consented"),
     CredentialsRefused("Credentials Refused"),
+
+    /** UC-001 A13 step 4: a Scheduled Fetch in which the Unattended Access limit left every selected Bank Account out. */
+    AccessLimitReached("Access Limit Reached"),
 }
 
 /** The `Values:` of `FETCH_RESULT.outcome`. */
@@ -53,14 +56,26 @@ data class StoredAccountBalance(
     val reportedAt: Instant,
 )
 
-/** `BANK_CONSENT` (entity model) as stored in `device.db`. */
+/**
+ * `BANK_CONSENT` (entity model) as stored in `device.db`. [bankId] is the Bank the Data Provider names, which a Bank
+ * Account's `provider_bank_id` refers to (UC-007 BR-009).
+ */
 data class StoredBankConsent(
     val id: Long,
     val bankId: Long,
     val dataProviderId: Long,
     val grantedAt: Instant,
+    /** The expiry the Bank or Data Provider reported, kept as reported (UC-007 BR-004). */
     val expiresAt: Instant,
-)
+    /** `refused_at`: the time the Data Provider first reported that the Bank no longer accepts it, null until then (UC-001 A9). */
+    val refusedAt: Instant? = null,
+) {
+    /** True when the Bank refused it before its reported expiry (UC-001 A9): it then counts as expired from [refusedAt]. */
+    val refusedByBank: Boolean get() = refusedAt != null && refusedAt.isBefore(expiresAt)
+
+    /** The time from which it counts as expired: its refusal, when the Bank refused it before its reported expiry (entity model). */
+    val expiredFrom: Instant get() = if (refusedByBank) refusedAt!! else expiresAt
+}
 
 /** The `Values:` of `BACK_OFF.cause`. */
 enum class BackOffCause(val text: String) {
@@ -88,16 +103,22 @@ data class StoredTransactionFile(
     val bankAccountId: Long,
     val importedAt: Instant,
     val outcome: TransactionFileOutcome,
+    /** The booked transactions with an amount other than zero the file delivered, those already stored included; 0 when rejected. */
+    val transactionCount: Int = 0,
+    /** Filled exactly when [outcome] is Rejected (`TRANSACTION_FILE.rejection_reason`). */
+    val rejectionReason: String? = null,
 )
 
 /**
  * The Bank Transactions of one Bank Account that are not yet uploaded, as the latest Comparison left them (UC-003
- * BR-014): its Eligible Transactions and those waiting for a decision.
+ * BR-014): its Eligible Transactions and those waiting for a decision, and apart from them those not compared yet,
+ * stored since its Budget's last successful read (UC-003 A1, S-T-08).
  */
 data class StoredTransactionCounts(
     val bankAccountId: Long,
     val eligible: Int,
     val waitingForDecision: Int,
+    val notComparedYet: Int = 0,
 )
 
 /**
@@ -115,7 +136,11 @@ interface ImportStatusStore {
 
     suspend fun backOffs(): List<StoredBackOff>
 
-    /** The latest Transaction File import of each file-imported Bank Account. */
+    /**
+     * For each file-imported Bank Account, its latest Transaction File, and, when that one was rejected, also its latest
+     * imported one, latest first: the Source Health is the outcome of the last import and the Freshness is measured from
+     * the last imported file (UC-002 BR-006).
+     */
     suspend fun latestTransactionFiles(): List<StoredTransactionFile>
 
     suspend fun transactionCounts(): List<StoredTransactionCounts>

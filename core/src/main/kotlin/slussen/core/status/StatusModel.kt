@@ -1,6 +1,8 @@
 package slussen.core.status
 
+import slussen.core.comparison.BudgetReadFailure
 import slussen.core.credential.CredentialStatusReader
+import slussen.core.fetch.AccessLimitHeld
 import slussen.core.fetch.BalanceInOtherCurrency
 import slussen.core.firstupload.FirstUploadMatchingNotice
 import slussen.core.journal.DecisionJournal
@@ -82,6 +84,16 @@ data class Blocked(
     val at: Instant?,
     val subject: String,
     val dataProviderName: String? = null,
+    /**
+     * For an expired Bank Consent: true when the Bank refused it before its reported expiry, [at] then being the time of
+     * the refusal (UC-008 BR-006, UC-001 A9); false for an ordinary expiry and every other Blocked Reason.
+     */
+    val refusedByBank: Boolean = false,
+    /**
+     * For a reached access limit (UC-001 A13, BR-012): which read waits, its transactions, its balance or both, each with
+     * the time it is free again; null for every other Blocked Reason.
+     */
+    val accessLimit: AccessLimitHeld? = null,
 )
 
 /** Source Health: only the outcome of the last Fetch or Transaction File import (BR-003). */
@@ -91,7 +103,16 @@ sealed interface SourceHealth {
     data class BankAccountFetchHealth(val outcome: FetchResultOutcome, val at: Instant, val startedBy: StartedBy) :
         SourceHealth
 
-    data class FileImportHealth(val outcome: TransactionFileOutcome, val at: Instant) : SourceHealth
+    /**
+     * UC-002 BR-006: the outcome of the last Transaction File import with its time; [delivered] the Bank Transactions an
+     * imported file delivered (UC-002 step 7), [rejectionReason] the reason a rejected file was recorded with.
+     */
+    data class FileImportHealth(
+        val outcome: TransactionFileOutcome,
+        val at: Instant,
+        val delivered: Int = 0,
+        val rejectionReason: String? = null,
+    ) : SourceHealth
 
     /** No Fetch or import yet. */
     data object NoneYet : SourceHealth
@@ -108,22 +129,29 @@ sealed interface BalanceComparison {
         val budgetAccountBalanceReadAt: Instant,
     ) : BalanceComparison
 
-    /** A2: older than the outdated-balance limit; the difference is hidden. */
+    /**
+     * A2: older than the outdated-balance limit; the difference is hidden. A newer one comes with a Fetch of
+     * [dataProviderName], the Data Provider that reports the Account Balance (UX-24).
+     */
     data class Outdated(
         val accountBalance: Amount,
         val budgetAccountBalance: Amount?,
         val accountBalanceReadAt: Instant,
+        val budgetAccountBalanceReadAt: Instant? = null,
+        val dataProviderName: String? = null,
     ) : BalanceComparison
 
     /** A3: the Bank Account's currency differs from its Budget's; the difference is hidden. */
     data class CurrencyMismatch(val bankAccountCurrency: CurrencyCode, val budgetCurrency: CurrencyCode) : BalanceComparison
 
-    /** A4: which balance is not known; no difference. */
+    /** A4: which balance is not known; no difference. The one that is known keeps the time it was reported or read (BR-005). */
     data class NotKnown(
         val accountBalanceKnown: Boolean,
         val budgetAccountBalanceKnown: Boolean,
         val accountBalance: Amount?,
         val budgetAccountBalance: Amount?,
+        val accountBalanceReadAt: Instant? = null,
+        val budgetAccountBalanceReadAt: Instant? = null,
     ) : BalanceComparison
 }
 
@@ -144,6 +172,10 @@ data class BankAccountStatus(
     val dataProviderId: Long?,
     /** UC-001 A21: the balance its last Fetch reported in another currency and did not store, or null. */
     val balanceInOtherCurrency: BalanceInOtherCurrency? = null,
+    /** UC-003 A1, S-T-08: its Bank Transactions stored since its Budget's last successful read, without a Transaction Status. */
+    val notComparedYet: Int = 0,
+    /** The File Format whose Transaction Files bring its transactions (UC-002); null for one a Data Provider fetches. */
+    val fileFormatId: Long? = null,
 )
 
 /** One Source of the selected Budget (steps 5-6). */
@@ -156,6 +188,8 @@ data class SourceStatus(
     val blocked: List<Blocked>,
     /** A Data Provider that reports only the Account Balance of the Budget's file-imported Bank Accounts (UC-001 BR-011). */
     val balanceOnly: Boolean = false,
+    /** The File Format of a Transaction File Source, whose Bank Accounts of this Budget import from it (UC-002 step 1); null for a Data Provider. */
+    val fileFormatId: Long? = null,
 )
 
 /** The overview line of one Budget: counts and blocked states only (step 1, BR-007). */
@@ -166,10 +200,50 @@ data class BudgetSummary(
     val notYetUploaded: NotYetUploaded,
     val blocked: List<Blocked>,
     val lastReadAt: Instant?,
+    /** UC-003 A1 step 2, step 7: when its Transaction Statuses were given, and a read that failed since. */
+    val statusesAsOf: StatusesAsOf = StatusesAsOf.NothingToCompare,
+    /** UC-003 A1, S-T-08: its Bank Transactions not compared yet, counted neither as Eligible nor as waiting. */
+    val notComparedYet: Int = 0,
+    /**
+     * UC-014 BR-005, UC-003 A2: credentials missing or credentials refused when the Budget App cannot be read for want of
+     * credentials, so that entering them is the next action before a read; null while they are accepted.
+     */
+    val budgetAppCredentials: BlockedReason? = null,
+    /**
+     * UC-003 BR-016, UC-010 step 5: the Budget owes a read of its read period, because the read period became longer or
+     * the Budget gained a Budget Account, so Slussen's copy of the Budget App lacks transactions of it: its statuses stay
+     * as the latest Comparison that read it left them, and that read gives them again (`budget.html#period-read-owed`).
+     */
+    val periodReadOwed: Boolean = false,
 )
 
+/** When the Transaction Statuses of one Budget were given (UC-003 step 7, A1 step 2). */
+sealed interface StatusesAsOf {
+    /** No Bank Account of the Budget is compared: there is nothing to read the Budget App for. */
+    data object NothingToCompare : StatusesAsOf
+
+    /** No read of the Budget has succeeded yet; its Bank Transactions are not compared yet. [failedRead] since, or null. */
+    data class NotReadYet(val failedRead: BudgetReadFailure?) : StatusesAsOf
+
+    /** The statuses come from the last successful read at [readAt]; [failedRead] is a read that failed since, or null. */
+    data class LastRead(val readAt: Instant, val failedRead: BudgetReadFailure?) : StatusesAsOf
+}
+
+/**
+ * The line of the Budget App on the Overview (FR-040, UC-003 A1): the latest successful read of any Budget, the
+ * Budgets whose read failed since their last successful one, and when the latest of those failed.
+ */
+data class BudgetAppRead(val lastReadAt: Instant?, val notRead: List<String>, val failedAt: Instant?)
+
 /** A Bank Consent that expires within the consent warning lead time (step 2, BR-002), with its renew action. */
-data class ExpiringBankConsent(val bankName: String, val dataProviderName: String, val expiresAt: Instant)
+data class ExpiringBankConsent(
+    val bankName: String,
+    val dataProviderName: String,
+    val expiresAt: Instant,
+    /** The Bank and Data Provider of the Bank Consent, for the renew action (UC-007 BR-003). */
+    val bankId: Long = 0,
+    val dataProviderId: Long = 0,
+)
 
 /** A7, BR-010: the backed-up data nears Android's backup limit. */
 data class BackupWarning(val backedUpBytes: Long, val limitBytes: Long)
@@ -190,6 +264,10 @@ data class Overview(
     val budgetAppName: String,
     /** A10, BR-011: while no Bank Account is added, the one card that leads to Settings, with the next thing to do; else null. */
     val firstRun: FirstRunCard? = null,
+    /** FR-040, UC-003 A1: when the Budget App was last read, and which Budgets were not. */
+    val budgetAppRead: BudgetAppRead = BudgetAppRead(null, emptyList(), null),
+    /** UC-001 BR-014: the stored Fetch Schedule, so that the question about notifications is asked only while it is above 0. */
+    val fetchSchedule: Int = 0,
 )
 
 /** A10, BR-011: the only card shown while no Bank Account is added; it leads to Settings and names [next] (UC-013 BR-008). */
@@ -205,5 +283,5 @@ data class BudgetWorkspace(
     val budgetAppName: String,
 )
 
-/** One of the most recent Fetches (A5, BR-008). */
-data class RecentFetch(val sourceName: String, val startedAt: Instant, val startedBy: StartedBy, val outcome: FetchOutcome)
+/** One Bank Account of a served Budget (steps 5-8), with its Budget's [summary] and the name of its Source. */
+data class BankAccountInBudget(val summary: BudgetSummary, val status: BankAccountStatus, val sourceName: String?)

@@ -1,0 +1,437 @@
+package slussen.testing
+
+import slussen.core.port.AddOutcome
+import slussen.core.port.BankAccountDelivery
+import slussen.core.port.BankAccountType
+import slussen.core.port.BankChoice
+import slussen.core.port.BudgetAccountToStore
+import slussen.core.port.BudgetAppCopyStore
+import slussen.core.port.BudgetReadToStore
+import slussen.core.port.BudgetToServe
+import slussen.core.port.ChangeSetApplied
+import slussen.core.port.ComparisonConclusions
+import slussen.core.port.ComparisonStore
+import slussen.core.port.ConnectionStore
+import slussen.core.port.DataProviderRegistration
+import slussen.core.port.DataProviderSettingsStore
+import slussen.core.port.DroppedTransferDecision
+import slussen.core.port.DeliveredTransaction
+import slussen.core.port.DeliveredTransactions
+import slussen.core.port.FetchOutcome
+import slussen.core.port.FetchResultOutcome
+import slussen.core.port.FetchStore
+import slussen.core.port.IdentificationStored
+import slussen.core.port.KeptOutcome
+import slussen.core.port.MappingStored
+import slussen.core.port.NewIdentification
+import slussen.core.port.MappingStore
+import slussen.core.port.NewBankAccount
+import slussen.core.port.NewFetch
+import slussen.core.port.NewLeftOutBankAccount
+import slussen.core.port.NewUnreadableTransaction
+import slussen.core.port.OperatorSettingsStore
+import slussen.core.port.NumberSetting
+import slussen.core.port.SettingChange
+import slussen.core.port.SettingFollowUp
+import slussen.core.port.SettingValue
+import slussen.core.port.OtherSideKind
+import slussen.core.port.OtherSideStored
+import slussen.core.port.PluginRegistryStore
+import slussen.core.port.ReviewChoice
+import slussen.core.port.ReviewDecisionWrite
+import slussen.core.port.ReviewRuling
+import slussen.core.port.ReviewStore
+import slussen.core.port.ServeOutcome
+import slussen.core.port.StartedBy
+import slussen.core.port.StoredReviewDecision
+import slussen.core.port.StoredTransfer
+import slussen.core.port.TransactionStatus
+import slussen.core.port.TransferDecision
+import slussen.core.port.TransferDecisionWrite
+import slussen.core.port.TransferDropReason
+import slussen.core.port.TransferRuling
+import slussen.core.port.TransferStore
+import slussen.core.port.TransferType
+import slussen.core.port.UnreadableTransactionReason
+import slussen.core.port.UnreadableTransactionStatus
+import slussen.pluginapi.budgetapp.ChangeCursor
+import slussen.pluginapi.provider.RequestLimitDeclaration
+import slussen.pluginapi.value.Amount
+import slussen.pluginapi.value.CurrencyCode
+import java.time.Instant
+import java.time.LocalDate
+
+/**
+ * Every storage operation of the core's ports that changes what an Upload Plan was prepared from, and each of their
+ * refusals, run once in a fixed order on invented data against the stores it is given: the in-memory fakes on the JVM and
+ * the Room stores on a device run the same steps, so that both raise `coordinator_state.state_version` for the same
+ * operations (ADR-002 §3; ADR-007 §6 step 2). A stored change must raise the version, so that a confirmation finds it and
+ * writes nothing (UC-006 A5); a refusal stores nothing and must leave it, and so does a change of something no Upload Plan
+ * is prepared from, such as the status of an Unreadable Transaction, which is never uploaded (UC-004 BR-007).
+ */
+class StateVersionScenario(
+    private val registry: PluginRegistryStore,
+    private val providerSettings: DataProviderSettingsStore,
+    private val settings: OperatorSettingsStore,
+    private val connections: ConnectionStore,
+    private val mappings: MappingStore,
+    private val copy: BudgetAppCopyStore,
+    private val comparisons: ComparisonStore,
+    private val fetches: FetchStore,
+    private val reviews: ReviewStore,
+    private val transfers: TransferStore,
+    private val stateVersion: suspend () -> Long,
+) {
+    /** One step: the [operation], whether what it does [mustRaise] the version, and whether the version [rose]. */
+    data class Step(val operation: String, val mustRaise: Boolean, val rose: Boolean)
+
+    private val steps = mutableListOf<Step>()
+    private val usd = CurrencyCode("USD")
+    private val eur = CurrencyCode("EUR")
+    private val now: Instant = Instant.parse("2026-11-26T12:00:00Z")
+
+    private suspend fun <T> step(operation: String, mustRaise: Boolean, run: suspend () -> T): T {
+        val before = stateVersion()
+        val result = run()
+        steps += Step(operation, mustRaise, rose = stateVersion() > before)
+        return result
+    }
+
+    private suspend fun <T> stored(operation: String, run: suspend () -> T): T = step(operation, mustRaise = true, run)
+
+    private suspend fun <T> refused(operation: String, run: suspend () -> T): T = step("$operation (refused)", mustRaise = false, run)
+
+    /** A stored change of something no Upload Plan is prepared from. */
+    private suspend fun <T> outsideAnyPlan(operation: String, run: suspend () -> T): T = step("$operation (in no Upload Plan)", mustRaise = false, run)
+
+    private fun bankAccount(generatedIdentifier: String, budgetAccountId: Long) = NewBankAccount(
+        generatedIdentifier = generatedIdentifier,
+        bank = BankChoice.Named("Kestrel Bank"),
+        providerBankId = null,
+        dataProviderId = null,
+        fileFormatId = null,
+        balanceDataProviderId = null,
+        balanceProviderReference = null,
+        name = "Kestrel Checking",
+        currency = usd,
+        type = BankAccountType.Checking,
+        providerReference = null,
+        bankAccountFingerprint = null,
+        identifiedAt = now,
+        startDate = null,
+        budgetAccountId = budgetAccountId,
+    )
+
+    /** Runs every step and returns them in order; an outcome other than the one a step expects fails the run. */
+    suspend fun run(): List<Step> {
+        steps.clear()
+        val registered = registry.reconcile(
+            listOf(
+                DataProviderRegistration(
+                    name = "Kestrel Feeds",
+                    sourceKey = "example-state-version-feeds",
+                    givesStableReference = true,
+                    needsBankConsent = false,
+                    defaultFetchCooldownMinutes = 60,
+                    requestLimit = RequestLimitDeclaration.NotPublished(defaultRequests = 20, range = 1..50),
+                ),
+                DataProviderRegistration(
+                    name = "Harbor Open Banking",
+                    sourceKey = "example-state-version-open-banking",
+                    givesStableReference = true,
+                    needsBankConsent = false,
+                    defaultFetchCooldownMinutes = 60,
+                    requestLimit = RequestLimitDeclaration.Published(requests = 4, source = "the invented terms of Harbor Open Banking"),
+                ),
+            ),
+            emptyList(),
+        ).dataProviders
+        val dataProviderId = registered.single { it.sourceKey == "example-state-version-feeds" }.id
+        val publishingId = registered.single { it.sourceKey == "example-state-version-open-banking" }.id
+        val listed = listOf(
+            BudgetToServe(
+                "budget-state-version-household", "Household", usd,
+                listOf(
+                    BudgetAccountToStore("ba-state-version-checking", "Checking", Amount(4_140_050)),
+                    BudgetAccountToStore("ba-state-version-reserve", "Reserve Savings", Amount(12_000_000)),
+                    BudgetAccountToStore("ba-state-version-travel", "Travel Card", Amount(-90_000)),
+                ),
+            ),
+            BudgetToServe("budget-state-version-summer", "Summer House", eur, listOf(BudgetAccountToStore("ba-state-version-current", "Current", Amount(3_402_300)))),
+        )
+        val both = listed.map { it.budgetAppReference }.toSet()
+
+        check(stored("serve Budgets") { connections.serveBudgets(listed, both, now) } == ServeOutcome.Served)
+        val budgets = connections.budgets().filter { it.budgetAppReference in both }
+        val household = budgets.single { it.name == "Household" }
+        val checking = household.budgetAccounts.single { it.name == "Checking" }.id
+        val reserve = household.budgetAccounts.single { it.name == "Reserve Savings" }.id
+        val current = budgets.single { it.name == "Summer House" }.budgetAccounts.single().id
+        val travel = household.budgetAccounts.single { it.name == "Travel Card" }.id
+
+        val added = stored("add a Bank Account with its Account Mapping") {
+            connections.addBankAccount(bankAccount("6f1c2a4e-0b7d-4c1e-9a55-2f8e3b1c0d4a", checking))
+        }
+        check(added is AddOutcome.Added) { "$added" }
+        check(
+            refused("add a Bank Account to a Budget Account that already receives") {
+                connections.addBankAccount(bankAccount("7a2d3b5f-1c8e-4d2f-8b66-3f9f4c2d1e5b", checking))
+            } is AddOutcome.BudgetAccountAlreadyMapped,
+        )
+        check(
+            refused("stop serving a Budget with a mapped Bank Account") {
+                connections.serveBudgets(listed, setOf("budget-state-version-summer"), now)
+            } is ServeOutcome.StillMapped,
+        )
+
+        val leftOut = listOf(NewLeftOutBankAccount(dataProviderId, "acct-2290", "Kids Saver ••2290", now))
+        check(stored("leave out an Offered Bank Account") { connections.leaveOut(leftOut) })
+        check(!refused("leave out a Bank Account that is left out") { connections.leaveOut(leftOut) })
+        val leftOutId = connections.leftOutBankAccounts().single { it.providerReference == "acct-2290" }.id
+        check(stored("bring back a Left-Out Bank Account") { connections.bringBack(leftOutId) } != null)
+        check(refused("bring back a Bank Account that is not left out") { connections.bringBack(leftOutId) } == null)
+
+        check(stored("mark a Manually Kept Account") { connections.setManuallyKept(current, true) } == KeptOutcome.Stored)
+        check(
+            refused("mark a Budget Account that receives through an Account Mapping as a Manually Kept Account") {
+                connections.setManuallyKept(checking, true)
+            } is KeptOutcome.StillReceives,
+        )
+        check(stored("unmark a Manually Kept Account") { connections.setManuallyKept(current, false) } == KeptOutcome.Stored)
+
+        stored("change the type and the Bank of a Bank Account") {
+            mappings.changeTypeAndBank(added.bankAccountId, BankAccountType.Savings, BankChoice.Named("Aurora Bank"), clearFundedBy = false, clearTransferPartner = false)
+        }
+        // ADR-007 §3a: a change of UC-009 that BR-015 follows with statuses given again leaves the Comparison pending in its own transaction, until O-5 gives them.
+        suspend fun leavesTheComparisonPending(operation: String) {
+            check(comparisons.comparisonPending()) { "$operation must leave the Comparison pending" }
+            comparisons.applyComparison(emptySet()) { ComparisonConclusions(statuses = emptyMap()) }
+            check(!comparisons.comparisonPending())
+        }
+        leavesTheComparisonPending("a change of the Bank Account type")
+
+        // The changes of one Bank Account (UC-009 A4, A5, A9, A12, A13; O-13), with a second Bank Account that feeds Reserve Savings.
+        val saver = connections.addBankAccount(bankAccount("8b3e4c6a-2d9f-4e3a-9c77-4a0a5d3e2f6c", reserve).copy(name = "Reserve Saver", type = BankAccountType.Savings))
+        check(saver is AddOutcome.Added) { "$saver" }
+        check(stored("retire a Bank Account") { mappings.setRetired(saver.bankAccountId, true) })
+        leavesTheComparisonPending("retiring")
+        check(connections.bankAccounts().single { it.id == saver.bankAccountId }.let { it.retired && it.mapping?.budgetAccountId == reserve })
+        check(!refused("retire a Retired Account") { mappings.setRetired(saver.bankAccountId, true) })
+        // UC-005 BR-014: A Budget Account that only a Retired Account is mapped to is not one that Slussen fetches.
+        check(
+            refused("set a Transfer Partner that only a Retired Account feeds") {
+                mappings.setOtherSide(added.bankAccountId, OtherSideKind.TransferPartner, reserve)
+            } == OtherSideStored.NotAllowed,
+        )
+        check(stored("restore a Retired Account") { mappings.setRetired(saver.bankAccountId, false) })
+        leavesTheComparisonPending("restoring")
+        check(stored("set the Transfer Partner of a Bank Account") { mappings.setOtherSide(added.bankAccountId, OtherSideKind.TransferPartner, reserve) } == OtherSideStored.Stored)
+        leavesTheComparisonPending("a Transfer Partner")
+        check(connections.bankAccounts().single { it.id == added.bankAccountId }.transferPartnerBudgetAccountId == reserve)
+        check(
+            refused("set a Funded By for a Bank Account that is not a credit card") {
+                mappings.setOtherSide(added.bankAccountId, OtherSideKind.FundedBy, reserve)
+            } == OtherSideStored.NotAllowed,
+        )
+        check(
+            refused("set a Bank Account's own Budget Account as its Transfer Partner") {
+                mappings.setOtherSide(added.bankAccountId, OtherSideKind.TransferPartner, checking)
+            } == OtherSideStored.NotAllowed,
+        )
+        check(
+            refused("set a Budget Account of another Budget as a Transfer Partner") {
+                mappings.setOtherSide(added.bankAccountId, OtherSideKind.TransferPartner, current)
+            } == OtherSideStored.NotAllowed,
+        )
+        check(!comparisons.comparisonPending()) { "a refused Funded By or Transfer Partner leaves no Comparison pending" }
+        check(stored("clear the Transfer Partner of a Bank Account") { mappings.setOtherSide(added.bankAccountId, OtherSideKind.TransferPartner, null) } == OtherSideStored.Stored)
+        leavesTheComparisonPending("clearing a Transfer Partner")
+        check(connections.bankAccounts().single { it.id == added.bankAccountId }.transferPartnerBudgetAccountId == null)
+        check(stored("set the Start Date of a Bank Account") { mappings.setStartDate(added.bankAccountId, LocalDate.of(2026, 11, 1)) })
+        leavesTheComparisonPending("a Start Date")
+        check(connections.bankAccounts().single { it.id == added.bankAccountId }.startDate == LocalDate.of(2026, 11, 1))
+        check(stored("rename a Bank Account") { mappings.rename(added.bankAccountId, "Everyday Checking") })
+        // UC-009 BR-011: The name never identifies a Bank Account and no Transaction Status depends on it: no Comparison is pending after it.
+        check(!comparisons.comparisonPending()) { "a new name leaves no Comparison pending" }
+        check(connections.bankAccounts().single { it.id == added.bankAccountId }.name == "Everyday Checking")
+        check(!refused("rename a Bank Account that is not stored") { mappings.rename(added.bankAccountId + 1000, "Everyday Checking") })
+        check(!refused("set the Start Date of a Bank Account that is not stored") { mappings.setStartDate(added.bankAccountId + 1000, null) })
+
+        // Moving, removing and mapping again an Account Mapping, and identifying a Bank Account (UC-009 A8, A11, steps 4-6; O-13), with nothing sent through it.
+        check(stored("move an Account Mapping") { mappings.move(added.bankAccountId, travel, confirmed = null) } == MappingStored.Stored)
+        leavesTheComparisonPending("a move")
+        check(connections.bankAccounts().single { it.id == added.bankAccountId }.mapping?.budgetAccountId == travel)
+        check(
+            refused("move an Account Mapping to a Budget Account that receives through another one") {
+                mappings.move(added.bankAccountId, reserve, confirmed = null)
+            } == MappingStored.NotAllowed,
+        )
+        check(stored("remove an Account Mapping") { mappings.remove(added.bankAccountId, confirmed = null) } == MappingStored.Stored)
+        leavesTheComparisonPending("a removal")
+        check(refused("remove an Account Mapping that is not stored") { mappings.remove(added.bankAccountId, confirmed = null) } == MappingStored.NotAllowed)
+        check(stored("map a Bank Account again") { mappings.mapAgain(added.bankAccountId, checking) } == MappingStored.Stored)
+        leavesTheComparisonPending("a new Account Mapping")
+        check(connections.bankAccounts().single { it.id == added.bankAccountId }.mapping?.let { it.budgetAccountId == checking && it.firstSentAt == null } == true)
+        check(refused("map again a Bank Account that has an Account Mapping") { mappings.mapAgain(added.bankAccountId, travel) } == MappingStored.NotAllowed)
+        val fed = connections.addBankAccount(
+            bankAccount("9c4f5d7b-3e0a-4f4b-8d88-5b1b6e4f3a7d", travel).copy(name = "Kestrel Travel", dataProviderId = dataProviderId, providerReference = "acct-state-1"),
+        )
+        check(fed is AddOutcome.Added) { "$fed" }
+        val identification = NewIdentification("acct-state-2", bankAccountFingerprint = null, providerBankId = null, identifiedAt = now)
+        check(stored("identify a Bank Account again") { mappings.identify(fed.bankAccountId, identification, confirmed = null) } == IdentificationStored.Stored)
+        // UC-009 BR-015 names no identification: no Comparison is pending after it.
+        check(!comparisons.comparisonPending()) { "an identification leaves no Comparison pending" }
+        check(connections.bankAccounts().single { it.id == fed.bankAccountId }.let { it.providerReference == "acct-state-2" && it.identifiedAt == now })
+        check(
+            refused("identify a Bank Account that no Data Provider reads") {
+                mappings.identify(added.bankAccountId, identification.copy(providerReference = "acct-state-3"), confirmed = null)
+            } == IdentificationStored.NotFound,
+        )
+
+        stored("change the fetch period") { settings.store(SettingChange(SettingValue.Number(NumberSetting.FetchPeriod, 45), SettingFollowUp.None)) }
+        stored("change the Request Limit of a Data Provider that publishes none") { providerSettings.storeRequestLimit(dataProviderId, 30) }
+        // UC-001 BR-007: A Request Limit the Data Provider publishes is never changed by the Operator's setting.
+        refused("change the Request Limit of a Data Provider that publishes its Request Limit") { providerSettings.storeRequestLimit(publishingId, 30) }
+        stored("change the Fetch Cooldown of a Data Provider") { providerSettings.storeFetchCooldown(dataProviderId, 120) }
+
+        val read = BudgetReadToStore(household.id, startedFrom = null, transactions = emptyList(), next = ChangeCursor("4182"), balances = emptyMap(), readAt = now)
+        check(stored("store a read of the Budget App with its cursor (O-4)") { copy.applyChangeSet(read) } is ChangeSetApplied.Stored)
+        check(refused("store a read that started from another cursor (O-4)") { copy.applyChangeSet(read) } == ChangeSetApplied.CursorMoved)
+        stored("store the conclusions of a Comparison (O-5)") {
+            comparisons.applyComparison(setOf(household.id)) { ComparisonConclusions(statuses = emptyMap()) }
+        }
+
+        // O-1: a Bank Transaction and an Unreadable Transaction of the Bank Account, received before the read above.
+        val fetchId = fetches.recordFetch(NewFetch(dataProviderId, now.minusSeconds(3600), StartedBy.Operator, FetchOutcome.Fetched), keep = 60)
+        val delivery = BankAccountDelivery(
+            fetchId, added.bankAccountId, FetchResultOutcome.Fetched, transactionCount = 1, balance = null,
+            transactions = DeliveredTransactions(
+                "example-state-version-feeds", now.minusSeconds(3600),
+                listOf(DeliveredTransaction("TX-STATE-1", LocalDate.of(2026, 11, 25), Amount(-18_600), usd, "Riverside Apothecary", null)),
+                listOf(NewUnreadableTransaction(null, Amount(-7_250), usd, "Kiosk Nord", null, UnreadableTransactionReason.MissingDate)),
+            ),
+        )
+        stored("store a delivery with a new Bank Transaction (O-1)") { fetches.storeBankAccountDelivery(delivery) }
+        val transaction = fetches.bankTransactionsOf(added.bankAccountId).single().id
+        val unreadable = fetches.unreadableTransactionsOf(added.bankAccountId).single().id
+
+        refused("rule on a Review Decision with nothing to store (O-13)") { reviews.decide(setOf(household.id)) { ReviewRuling(write = null, answer = Unit) } }
+        val deferred = stored("store a Review Decision with the Transaction Status that follows from it (O-13)") {
+            reviews.decide(setOf(household.id)) {
+                ReviewRuling(
+                    ReviewDecisionWrite(
+                        transaction, StoredReviewDecision(transaction, ReviewChoice.Defer, chosen = null, decidedAt = now),
+                        ComparisonConclusions(statuses = mapOf(transaction to TransactionStatus.Deferred)),
+                    ),
+                    answer = Unit,
+                )
+            }
+        }
+        check(deferred.changes.map { it.to } == listOf(TransactionStatus.Deferred)) { "${deferred.changes}" }
+        check(fetches.bankTransactionsOf(added.bankAccountId).single().status == TransactionStatus.Deferred)
+        val cleared = stored("clear a Review Decision with the Transaction Status that follows (O-13)") {
+            reviews.decide(setOf(household.id)) { data ->
+                check(data.reviewDecisions.map { it.storedBankTransaction to it.choice } == listOf(transaction to ReviewChoice.Defer)) { "${data.reviewDecisions}" }
+                ReviewRuling(ReviewDecisionWrite(transaction, decision = null, ComparisonConclusions(statuses = mapOf(transaction to TransactionStatus.New))), answer = Unit)
+            }
+        }
+        check(cleared.changes.map { it.to } == listOf(TransactionStatus.New)) { "${cleared.changes}" }
+        check(comparisons.comparisonDataOf(setOf(household.id)).reviewDecisions.isEmpty())
+        check(outsideAnyPlan("defer an Unreadable Transaction") { reviews.storeUnreadableStatus(unreadable, UnreadableTransactionStatus.Deferred) })
+        check(reviews.unreadableTransaction(unreadable)?.status == UnreadableTransactionStatus.Deferred)
+        check(!refused("defer an Unreadable Transaction that is not stored") { reviews.storeUnreadableStatus(unreadable + 1000, UnreadableTransactionStatus.Deferred) })
+
+        // O-13 for a Transfer Decision: a Guessed Transfer without a paying side that the Operator holds back (UC-005 A2, A8).
+        refused("rule on a Transfer Decision with nothing to store (O-13)") { transfers.decide(setOf(household.id)) { TransferRuling(write = null, answer = Unit) } }
+        val held = stored("store a Transfer Decision with its Transfer Leg and the Transaction Status that follows (O-13)") {
+            transfers.decide(setOf(household.id)) {
+                TransferRuling(
+                    TransferDecisionWrite(
+                        transfer = StoredTransfer(
+                            id = 0, outflowBudgetAccountId = null, inflowBudgetAccountId = checking, amount = Amount(18_600), type = TransferType.CardPayment,
+                            guessed = true, decision = TransferDecision.Held, decidedAt = now,
+                        ),
+                        legs = listOf(transaction),
+                        dissolved = emptyList(),
+                        kept = null,
+                        statuses = mapOf(transaction to TransactionStatus.HeldTransfer),
+                    ),
+                    answer = Unit,
+                )
+            }
+        }
+        check(held.changes.map { it.to } == listOf(TransactionStatus.HeldTransfer)) { "${held.changes}" }
+        val heldTransfer = comparisons.comparisonDataOf(setOf(household.id)).transfers.single()
+        check(heldTransfer.id == held.transferId && heldTransfer.decision == TransferDecision.Held && heldTransfer.outflowBudgetAccountId == null) { "$heldTransfer" }
+        check(fetches.bankTransactionsOf(added.bankAccountId).single().let { it.transferId == held.transferId && it.status == TransactionStatus.HeldTransfer })
+        // ADR-007 §3a: O-13 leaves the Comparison pending, so that no Upload Plan is prepared before the Transfers are detected again.
+        check(comparisons.comparisonPending())
+        stored("store the conclusions of a Comparison that drop a Transfer Decision (O-5)") {
+            comparisons.applyComparison(setOf(household.id)) { data ->
+                ComparisonConclusions(
+                    statuses = mapOf(transaction to TransactionStatus.New),
+                    dropped = listOf(DroppedTransferDecision(data.transfers.single(), TransferDropReason.TypeNoLongerFits, data.bankTransactions.filter { it.transferId != null })),
+                )
+            }
+        }
+        check(!comparisons.comparisonPending())
+        check(comparisons.comparisonDataOf(setOf(household.id)).transfers.isEmpty())
+        check(fetches.bankTransactionsOf(added.bankAccountId).single().let { it.transferId == null && it.status == TransactionStatus.New })
+        return steps.toList()
+    }
+
+    companion object {
+        /** The operations of [run] in its order, each with " (refused)" when it stores nothing: what a runner expects to see. */
+        val OPERATIONS: List<String> = listOf(
+            "serve Budgets",
+            "add a Bank Account with its Account Mapping",
+            "add a Bank Account to a Budget Account that already receives (refused)",
+            "stop serving a Budget with a mapped Bank Account (refused)",
+            "leave out an Offered Bank Account",
+            "leave out a Bank Account that is left out (refused)",
+            "bring back a Left-Out Bank Account",
+            "bring back a Bank Account that is not left out (refused)",
+            "mark a Manually Kept Account",
+            "mark a Budget Account that receives through an Account Mapping as a Manually Kept Account (refused)",
+            "unmark a Manually Kept Account",
+            "change the type and the Bank of a Bank Account",
+            "retire a Bank Account",
+            "retire a Retired Account (refused)",
+            "set a Transfer Partner that only a Retired Account feeds (refused)",
+            "restore a Retired Account",
+            "set the Transfer Partner of a Bank Account",
+            "set a Funded By for a Bank Account that is not a credit card (refused)",
+            "set a Bank Account's own Budget Account as its Transfer Partner (refused)",
+            "set a Budget Account of another Budget as a Transfer Partner (refused)",
+            "clear the Transfer Partner of a Bank Account",
+            "set the Start Date of a Bank Account",
+            "rename a Bank Account",
+            "rename a Bank Account that is not stored (refused)",
+            "set the Start Date of a Bank Account that is not stored (refused)",
+            "move an Account Mapping",
+            "move an Account Mapping to a Budget Account that receives through another one (refused)",
+            "remove an Account Mapping",
+            "remove an Account Mapping that is not stored (refused)",
+            "map a Bank Account again",
+            "map again a Bank Account that has an Account Mapping (refused)",
+            "identify a Bank Account again",
+            "identify a Bank Account that no Data Provider reads (refused)",
+            "change the fetch period",
+            "change the Request Limit of a Data Provider that publishes none",
+            "change the Request Limit of a Data Provider that publishes its Request Limit (refused)",
+            "change the Fetch Cooldown of a Data Provider",
+            "store a read of the Budget App with its cursor (O-4)",
+            "store a read that started from another cursor (O-4) (refused)",
+            "store the conclusions of a Comparison (O-5)",
+            "store a delivery with a new Bank Transaction (O-1)",
+            "rule on a Review Decision with nothing to store (O-13) (refused)",
+            "store a Review Decision with the Transaction Status that follows from it (O-13)",
+            "clear a Review Decision with the Transaction Status that follows (O-13)",
+            "defer an Unreadable Transaction (in no Upload Plan)",
+            "defer an Unreadable Transaction that is not stored (refused)",
+            "rule on a Transfer Decision with nothing to store (O-13) (refused)",
+            "store a Transfer Decision with its Transfer Leg and the Transaction Status that follows (O-13)",
+            "store the conclusions of a Comparison that drop a Transfer Decision (O-5)",
+        )
+    }
+}

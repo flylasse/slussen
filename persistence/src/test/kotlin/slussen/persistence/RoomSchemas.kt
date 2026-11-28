@@ -2,6 +2,8 @@ package slussen.persistence
 
 import androidx.room.RoomDatabase
 import androidx.room.RoomOpenDelegate
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
 import slussen.persistence.device.DeviceDatabase
 import slussen.persistence.journal.JournalDatabase
 import slussen.persistence.main.SlussenDatabase
@@ -52,4 +54,39 @@ internal object RoomSchemas {
 
     fun versionOf(schema: File): Int =
         checkNotNull(Regex(""""version"\s*:\s*(\d+)""").find(schema.readText())) { "$schema has no version" }.groupValues[1].toInt()
+
+    /**
+     * Creates the tables, indices and Room's identity row of [version] of [database] in [into], exactly as its committed
+     * schema file states them: what a build that held that version created on the device.
+     */
+    fun create(database: KClass<out RoomDatabase>, version: Int, into: SQLiteConnection) {
+        val schema = file(committed, database, version).readText()
+        // Runs of ordinary characters are taken whole (possessive): one step per character overflowed the stack on long SQL texts.
+        val token = Regex(""""(tableName|createSql)"\s*:\s*"((?:[^"\\]++|\\.)*+)"""")
+        var table = ""
+        token.findAll(schema.substringBefore("\"setupQueries\"")).forEach { match ->
+            val value = match.groupValues[2].replace("\\\"", "\"")
+            if (match.groupValues[1] == "tableName") table = value else into.execSQL(value.replace("\${TABLE_NAME}", table))
+        }
+        val setup = schema.substringAfter("\"setupQueries\"").substringAfter("[").substringBefore("]")
+        Regex(""""((?:[^"\\]++|\\.)*+)"""").findAll(setup).forEach { into.execSQL(it.groupValues[1].replace("\\\"", "\"")) }
+    }
+
+    /** The `createSql` texts of [table] in [version] of [database], the table first and then its indices, with the table named [named]. */
+    fun createSqlOf(database: KClass<out RoomDatabase>, version: Int, table: String, named: String = table): List<String> {
+        val entity = file(committed, database, version).readText()
+            .substringAfter("\"tableName\": \"$table\"").substringBefore("\"tableName\"")
+        return Regex(""""createSql"\s*:\s*"([^"]*)"""").findAll(entity).map { it.groupValues[1].replace("\${TABLE_NAME}", named) }.toList()
+    }
+
+    /** Every row [sql] gives on [connection], each value as its text. */
+    fun rows(connection: SQLiteConnection, sql: String): List<List<String?>> {
+        val rows = mutableListOf<List<String?>>()
+        connection.prepare(sql).use { statement ->
+            while (statement.step()) {
+                rows += (0 until statement.getColumnCount()).map { if (statement.isNull(it)) null else statement.getText(it) }
+            }
+        }
+        return rows
+    }
 }

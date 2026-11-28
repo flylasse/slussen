@@ -1,5 +1,6 @@
 package slussen.core.transfer
 
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -9,17 +10,21 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import slussen.core.comparison.ComparisonReport
+import slussen.core.comparison.EligibleTransactions
 import slussen.core.comparison.ComparisonStart
 import slussen.core.identity.ImportIdentifierInput
 import slussen.core.identity.ImportIdentifierProtocol
 import slussen.core.port.BankAccountType
 import slussen.core.port.BudgetAccountToStore
 import slussen.core.port.BudgetToServe
+import slussen.core.port.ChosenBudgetAppTransaction
 import slussen.core.port.JournalEventKind
+import slussen.core.port.ReviewChoice
 import slussen.core.port.StableReferenceKind
 import slussen.core.port.StoredAccountMapping
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredBankTransaction
+import slussen.core.port.StoredReviewDecision
 import slussen.core.port.StoredTransfer
 import slussen.core.port.StoredTransferDescription
 import slussen.core.port.TransactionStatus
@@ -27,6 +32,8 @@ import slussen.core.port.TransferDecision
 import slussen.core.port.TransferDescriptionKind
 import slussen.core.port.TransferType
 import slussen.core.status.NotYetUploaded
+import slussen.core.status.StatusReason
+import slussen.core.status.TransferShown
 import slussen.pluginapi.budgetapp.BudgetAppTransactionRead
 import slussen.pluginapi.budgetapp.ChangeCursor
 import slussen.pluginapi.budgetapp.ChangeSet
@@ -50,9 +57,9 @@ import java.time.LocalDate
  * Review Transfers (UC-005) as far as the transactions plan's Phase 7b builds it: Transfers detected inside the
  * Comparison's conclusions (UC-003 step 4) from stored data, with BR-001..BR-006, BR-010, BR-012..BR-014, A4, A5 and A8
  * as far as they give a Transaction Status, the stored Transfers with the decision Proposed, the Eligible Transactions
- * and counts (UC-003 BR-014) and the Decision Journal (UC-011 BR-001). The Transfer Decisions (steps 2-6, A1-A3, A9,
- * BR-007, BR-008, BR-011), A6, A7 and BR-009 are later initiatives, and every screen is Phase 7c. Every name, amount,
- * payee and identifier is invented (C-005).
+ * and counts (UC-003 BR-014) and the Decision Journal (UC-011 BR-001). The Transfer Decisions (steps 2-6, A1-A4, A8-A10,
+ * BR-005, BR-007, BR-008, BR-011, BR-015, BR-016) are tested in [UC005TransferDecisionsTest]; A6 and BR-009 come with the
+ * Uploads. Every name, amount, payee and identifier is invented (C-005).
  */
 @DisplayName("UC-005: Review Transfers")
 class UC005ReviewTransfersTest {
@@ -616,6 +623,50 @@ class UC005ReviewTransfersTest {
         assertEquals(TransactionStatus.TransferLeg, status(paid))
     }
 
+    @Test
+    @UseCase(id = "UC-005", scenario = "A5: Other Side Not Arrived Within the Grace Period", businessRules = ["BR-005", "BR-006"])
+    @DisplayName("A5 step 1 (O-T-11): on its Bank Account, a Lonely Transfer shows the other side it expects and the last day of the grace period; the day after, the same Bank Transaction is shown as an ordinary one with the reason that its other side did not arrive in time, derived and stored nowhere; an ordinary payment that matches no description has no such reason")
+    fun lateOtherSideIsShownWithItsReason() = runTest {
+        ready()
+        checking()
+        val card = rewardsCard()
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
+        val paid = stored(card, "TX-1", today.minusDays(6), amount(120), payee = "AUTOPAY")
+        val refund = stored(card, "TX-2", today.minusDays(6), amount(15), payee = "Harbor Outfitters refund")
+        compare()
+
+        fun line(id: Long) = runBlocking { slice.bankAccountTransactions.of(card) }.weeks.flatMap { it.lines }.single { it.key.id == id }
+        val lonely = (line(paid).reason as StatusReason.TransferLeg).transfer
+        assertEquals(TransferShown(TransferType.CardPayment, false, "Checking", otherLeg = null, expectedBy = today, writesIt = true, keptOutBy = null), lonely)
+
+        slice.clock.advance(Duration.ofDays(1))
+        compare()
+
+        assertEquals(TransactionStatus.New, line(paid).status)
+        assertEquals(StatusReason.OtherSideDidNotArriveInTime("Checking", graceDays = 6, lastDay = today, proposed = false), line(paid).reason)
+        assertNull(line(paid).transfer)
+        assertEquals(StatusReason.NoMatch, line(refund).reason)
+        // BR-006, A8: without a Funded By, and with two Bank Accounts that could pay, the card's inflow has no known other side, so no such reason.
+        joint()
+        slice.connectionStore.link(card, fundedBy = null)
+        assertEquals(StatusReason.NoMatch, line(paid).reason)
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A5: Other Side Not Arrived Within the Grace Period", businessRules = ["BR-002", "BR-005"])
+    @DisplayName("A5 step 1 (O-T-11, review 2c): when the other side was only proposed (A8: a card without a Funded By and one Bank Account that could pay), the reason says that it was proposed, not that it is the other side")
+    fun proposedOtherSideIsSaidToBeProposed() = runTest {
+        ready()
+        checking()
+        val card = rewardsCard()
+        val paid = stored(card, "TX-1", today.minusDays(7), amount(120), payee = "AUTOPAY")
+        compare()
+
+        val line = slice.bankAccountTransactions.of(card).weeks.flatMap { it.lines }.single { it.key.id == paid }
+
+        assertEquals(StatusReason.OtherSideDidNotArriveInTime("Checking", graceDays = 6, lastDay = today.minusDays(1), proposed = true), line.reason)
+    }
+
     // ---- A8: the first Card Payment without a Funded By -------------------------------------------------------------
 
     @Test
@@ -1006,8 +1057,8 @@ class UC005ReviewTransfersTest {
         val held = slice.copyStore.transfers.single().copy(decision = TransferDecision.Held, decidedAt = now)
         slice.copyStore.transfers[0] = held
         slice.importStatusStore.bankTransactions.replaceAll { if (it.transferId == held.id) it.copy(status = TransactionStatus.HeldTransfer) else it }
-        // Even when the pair no longer holds as Slussen would detect it.
-        change(card) { it.copy(type = BankAccountType.Savings) }
+        // Even when the pair no longer holds as Slussen would detect it: with no transfer pairing days the two are a day too far apart (BR-015).
+        slice.settings.settings = slice.settings.settings.copy(transferPairingDays = 0)
 
         assertEquals(0, compare())
 
@@ -1016,5 +1067,210 @@ class UC005ReviewTransfersTest {
         assertEquals(TransactionStatus.HeldTransfer, status(received))
         assertEquals(held.id, transaction(paid).transferId)
         assertEquals(NotYetUploaded(0, 0), counts("Household"))
+    }
+
+    // ---- The Review Decision on a Transfer Leg (BR-013; UC-004 BR-009) ------------------------------------------------
+
+    /** A Review Decision as UC-004 stored it (O-13), in the storage the Comparison concludes from; it replaces an earlier one. */
+    private fun decided(storedBankTransaction: Long, choice: ReviewChoice, chosen: ChosenBudgetAppTransaction? = null) {
+        slice.copyStore.reviewDecisions.removeAll { it.storedBankTransaction == storedBankTransaction }
+        slice.copyStore.reviewDecisions += StoredReviewDecision(storedBankTransaction, choice, chosen, now.minus(Duration.ofMinutes(5)))
+    }
+
+    /** An Import by an Other Import Path of 99.00 into Rewards Card, as the Budget App reports it. */
+    private fun importIntoRewards(state: ReadState = ReadState.Present) = BudgetAppTransactionRead(
+        "ynab-1", "ba-rewards", oct12, amount(99), "Card payment", null, "YNAB:99000:2026-10-12:1", EntryKind.Imported, null, state, cleared = true, approved = true,
+    )
+
+    /** Kestrel Checking and Kestrel Rewards, whose Funded By is Checking, so that a Card Payment between them is not guessed. */
+    private suspend fun checkingAndCard(): Pair<Long, Long> {
+        ready()
+        val checking = checking()
+        val card = rewardsCard()
+        slice.connectionStore.link(card, fundedBy = budgetAccount("Checking"))
+        return checking to card
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A9: Transfer With a Doubtful Transfer Leg", businessRules = ["BR-010", "BR-013"])
+    @DisplayName("BR-013: when every doubtful Transfer Leg is decided Import Anyway, it rejoins its Transfer, which is eligible as one linked transfer through its outflow side; while one doubtful Transfer Leg of the Transfer has no Review Decision, the whole Transfer still waits")
+    fun importAnywayLetsADoubtfulTransferLegRejoinItsTransfer() = runTest {
+        val (checking, card) = checkingAndCard()
+        val noReference = stored(checking, null, oct12, amount(-250))
+        val received = stored(card, "TX-2", oct13, amount(250))
+        // A second Card Payment, both of whose Transfer Legs are doubtful.
+        val alsoNoReference = stored(checking, null, oct12, amount(-99))
+        val resembling = stored(card, "TX-4", oct12, amount(99))
+        answerHousehold(importIntoRewards())
+        decided(noReference, ReviewChoice.ImportAnyway)
+        decided(alsoNoReference, ReviewChoice.ImportAnyway)
+
+        compare()
+
+        assertEquals(TransactionStatus.TransferLeg, status(noReference))
+        assertEquals(TransactionStatus.TransferLeg, status(received))
+        assertEquals(setOf(noReference, received), legsOf(transferOf(received)!!))
+        // The second Transfer waits for the Review Decision on its other doubtful Transfer Leg.
+        assertEquals(TransactionStatus.TransferLeg, status(alsoNoReference))
+        assertEquals(TransactionStatus.PossibleImportByOtherPath, status(resembling))
+        assertEquals(NotYetUploaded(1, 1), counts("Household"))
+        assertEquals(1, eligibleOf(checking))
+        assertEquals(0, eligibleOf(card))
+
+        decided(resembling, ReviewChoice.ImportAnyway)
+        compare()
+
+        assertEquals(TransactionStatus.TransferLeg, status(resembling))
+        assertEquals(NotYetUploaded(2, 0), counts("Household"))
+        assertEquals(2, eligibleOf(checking))
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A9: Transfer With a Doubtful Transfer Leg", businessRules = ["BR-013"])
+    @DisplayName("BR-013 (S-B-09): when a Transfer Leg is decided Already Present, the whole Transfer counts as already in the Budget App: every other Transfer Leg is Already In Budget App and nothing of it is eligible, while that decision holds; when it does not hold any more, that Transfer Leg is Decision No Longer Holds and holds its whole Transfer, the other Transfer Leg is Transfer Leg again; Re-upload lets it rejoin its Transfer as Import Anyway does")
+    fun alreadyPresentOnATransferLegCountsTheWholeTransferAsInTheBudgetApp() = runTest {
+        val (checking, card) = checkingAndCard()
+        val paid = stored(checking, "TX-3", oct12, amount(-99))
+        val resembling = stored(card, "TX-4", oct12, amount(99))
+        answerHousehold(importIntoRewards())
+        decided(resembling, ReviewChoice.AlreadyPresent, ChosenBudgetAppTransaction("ynab-1", budgetAccount("Rewards Card"), amount(99)))
+
+        compare()
+
+        assertEquals(TransactionStatus.AlreadyInBudgetApp, status(resembling))
+        assertEquals(TransactionStatus.AlreadyInBudgetApp, status(paid))
+        assertEquals(setOf(paid, resembling), legsOf(transferOf(paid)!!))
+        assertEquals(NotYetUploaded(0, 0), counts("Household"))
+
+        answerHousehold(importIntoRewards(ReadState.Deleted))
+        compare()
+
+        assertEquals(TransactionStatus.DecisionNoLongerHolds, status(resembling))
+        assertEquals(TransactionStatus.TransferLeg, status(paid))
+        assertEquals(setOf(paid, resembling), legsOf(transferOf(paid)!!))
+        assertEquals(NotYetUploaded(0, 1), counts("Household"))
+        assertEquals(0, eligibleOf(checking))
+
+        decided(resembling, ReviewChoice.ReUpload)
+        compare()
+
+        assertEquals(TransactionStatus.TransferLeg, status(resembling))
+        assertEquals(TransactionStatus.TransferLeg, status(paid))
+        assertEquals(NotYetUploaded(1, 0), counts("Household"))
+        assertEquals(1, eligibleOf(checking))
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A9: Transfer With a Doubtful Transfer Leg", businessRules = ["BR-013"])
+    @DisplayName("BR-013: when a Transfer Leg is decided Defer, the whole Transfer is held back: every other Transfer Leg is Deferred and nothing of it is eligible or waits; a Lonely Transfer whose one Transfer Leg is deferred is held back the same way")
+    fun deferOnATransferLegHoldsTheWholeTransferBack() = runTest {
+        val (checking, card) = checkingAndCard()
+        val noReference = stored(checking, null, oct12, amount(-250))
+        val received = stored(card, "TX-2", oct13, amount(250))
+        // A Lonely Transfer: an inflow to the card that matches a Card Payment Description and resembles an Import.
+        val lonely = stored(card, "TX-5", oct12, amount(99), payee = "AUTOPAY RECEIVED")
+        answerHousehold(importIntoRewards())
+        decided(noReference, ReviewChoice.Defer)
+        decided(lonely, ReviewChoice.Defer)
+
+        compare()
+
+        assertEquals(TransactionStatus.Deferred, status(noReference))
+        assertEquals(TransactionStatus.Deferred, status(received))
+        assertEquals(setOf(noReference, received), legsOf(transferOf(received)!!))
+        assertEquals(TransactionStatus.Deferred, status(lonely))
+        assertEquals(setOf(lonely), legsOf(transferOf(lonely)!!))
+        assertEquals(NotYetUploaded(0, 0), counts("Household"))
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A9: Transfer With a Doubtful Transfer Leg", businessRules = ["BR-010", "BR-013"])
+    @DisplayName("BR-013, BR-010: a Transfer Leg with a Review Decision of its own has the status that decision gives it, and the decision on another Transfer Leg gives a status only to a Transfer Leg without one: with one Transfer Leg Already Present and the other Defer, the first is Already In Budget App, the second Deferred, and nothing of the Transfer is eligible")
+    fun eachDecidedTransferLegHasTheStatusOfItsOwnDecision() = runTest {
+        val (checking, card) = checkingAndCard()
+        val noReference = stored(checking, null, oct12, amount(-99))
+        val resembling = stored(card, "TX-4", oct12, amount(99))
+        answerHousehold(importIntoRewards())
+        decided(noReference, ReviewChoice.Defer)
+        decided(resembling, ReviewChoice.AlreadyPresent, ChosenBudgetAppTransaction("ynab-1", budgetAccount("Rewards Card"), amount(99)))
+
+        compare()
+
+        assertEquals(TransactionStatus.Deferred, status(noReference))
+        assertEquals(TransactionStatus.AlreadyInBudgetApp, status(resembling))
+        assertEquals(NotYetUploaded(0, 0), counts("Household"))
+
+        // Already Present prevails over Defer for a Transfer Leg that is decided Import Anyway: it follows its Transfer, which counts as in the Budget App.
+        decided(noReference, ReviewChoice.ImportAnyway)
+        compare()
+        assertEquals(TransactionStatus.AlreadyInBudgetApp, status(noReference))
+        assertEquals(NotYetUploaded(0, 0), counts("Household"))
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A9: Transfer With a Doubtful Transfer Leg", businessRules = ["BR-010", "BR-013"])
+    @DisplayName("BR-013, BR-010: a Guessed Transfer also needs its Transfer Decision: a doubtful Transfer Leg decided Import Anyway rejoins it with the status Guessed Transfer, and nothing of it is eligible")
+    fun aGuessedTransferStillNeedsItsTransferDecision() = runTest {
+        ready()
+        val checking = checking()
+        // Without a Funded By the Card Payment is a Guessed Transfer (A8).
+        val card = rewardsCard()
+        val noReference = stored(checking, null, oct12, amount(-250))
+        val received = stored(card, "TX-2", oct13, amount(250))
+        decided(noReference, ReviewChoice.ImportAnyway)
+
+        compare()
+
+        assertTrue(transferOf(received)!!.guessed)
+        assertEquals(TransactionStatus.GuessedTransfer, status(noReference))
+        assertEquals(TransactionStatus.GuessedTransfer, status(received))
+        assertEquals(NotYetUploaded(0, 2), counts("Household"))
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A1: Split Into Ordinary Transactions", businessRules = ["BR-010"])
+    @DisplayName("A1, BR-010: while the Transfer Decision is Split, the Transfer stays stored with its Transfer Legs, each of which gets its status as an ordinary Bank Transaction and is eligible on its own, and Slussen forms no other Transfer from them")
+    fun afterSplitEachTransferLegIsComparedAsAnOrdinaryBankTransaction() = runTest {
+        val (checking, card) = checkingAndCard()
+        val paid = stored(checking, "TX-1", oct12, amount(-250))
+        val received = stored(card, "TX-2", oct13, amount(250))
+        compare()
+        assertEquals(TransactionStatus.TransferLeg, status(paid))
+        val split = slice.copyStore.transfers.single().copy(decision = TransferDecision.Split, decidedAt = now)
+        slice.copyStore.transfers[0] = split
+        // Another inflow to the card that could pair with the outflow, were it not a Transfer Leg of the split Transfer.
+        val alsoReceived = stored(card, "TX-3", oct12, amount(250))
+
+        compare()
+
+        assertEquals(TransactionStatus.New, status(paid))
+        assertEquals(TransactionStatus.New, status(received))
+        assertEquals(TransactionStatus.New, status(alsoReceived))
+        assertEquals(listOf(split), slice.copyStore.transfers.toList())
+        assertEquals(setOf(paid, received), legsOf(split))
+        assertNull(transaction(alsoReceived).transferId)
+        assertEquals(NotYetUploaded(3, 0), counts("Household"))
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A9: Transfer With a Doubtful Transfer Leg", businessRules = ["BR-010", "BR-013"])
+    @DisplayName("BR-013 (S-B-09): a Transfer Leg that is Decision No Longer Holds is named as what keeps its Transfer out of every Upload Plan before a Transfer Leg an earlier rule gave its status, as a Needs Review one is")
+    fun decisionNoLongerHoldsIsNamedAsWhatHoldsItsTransfer() = runTest {
+        val (checking, card) = checkingAndCard()
+        // The outflow is dated before the Upload Window (Too Old); the inflow resembles an Import.
+        val paid = stored(checking, "TX-3", oct12.minusDays(5), amount(-99))
+        val resembling = stored(card, "TX-4", oct12, amount(99))
+        answerHousehold(importIntoRewards())
+        decided(resembling, ReviewChoice.AlreadyPresent, ChosenBudgetAppTransaction("ynab-1", budgetAccount("Rewards Card"), amount(98)))
+
+        compare()
+
+        assertEquals(TransactionStatus.TooOld, status(paid))
+        assertEquals(TransactionStatus.DecisionNoLongerHolds, status(resembling))
+        assertEquals(setOf(paid, resembling), legsOf(transferOf(paid)!!))
+        val legs = slice.importStatusStore.bankTransactions.filter { it.transferId != null }
+        assertEquals(resembling, EligibleTransactions.keptOutBy(transaction(paid), legs)?.id)
+        assertEquals(resembling, EligibleTransactions.keptOutBy(transaction(resembling), legs)?.id)
+        assertEquals(NotYetUploaded(0, 1), counts("Household"))
     }
 }

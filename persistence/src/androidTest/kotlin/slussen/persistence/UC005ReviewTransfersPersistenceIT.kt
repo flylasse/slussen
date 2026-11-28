@@ -33,6 +33,20 @@ import slussen.core.port.TransferDecision
 import slussen.core.port.TransferDescriptionKind
 import slussen.core.port.TransferToStore
 import slussen.core.port.TransferType
+import slussen.core.port.DroppedTransferDecision
+import slussen.core.port.KeptOtherSide
+import slussen.core.port.OtherSideKind
+import slussen.core.port.SentRecordOutcome
+import slussen.core.port.StoredSentRecord
+import slussen.core.port.TransferDecided
+import slussen.core.port.TransferDropReason
+import slussen.core.port.TransferRuling
+import slussen.core.port.UploadPlanState
+import slussen.core.transfer.TransferChoice
+import slussen.core.transfer.TransferDecisionRules
+import slussen.core.transfer.TransferOutcome
+import slussen.persistence.main.SentRecordEntity
+import slussen.persistence.main.UploadPlanEntity
 import slussen.pluginapi.budgetapp.ChangeCursor
 import slussen.pluginapi.testfixtures.UseCase
 import slussen.pluginapi.value.Amount
@@ -47,8 +61,9 @@ import java.time.ZoneOffset
  * The Transfers a Comparison detects (UC-003 step 4, UC-005) as O-5 stores them in `slussen.db` on a device or emulator:
  * the `transfer` rows with the decision Proposed and `bank_transaction.transfer_id`, written with the Transaction Statuses
  * in the one transaction of `applyComparison`, all or nothing; the description lists read from `transfer_description`; a
- * Transfer that no longer holds releasing its Transfer Legs; a decided Transfer never changed; and that they survive a
- * restart (ADR-002 §1, §3). Invented data only (C-005).
+ * Transfer that no longer holds releasing its Transfer Legs; a decided Transfer kept, joined or dropped as UC-005 BR-005 and
+ * BR-015 say; the Transfer Decisions as O-13 `TransferStore.decide` stores them, all or nothing with their effect; and
+ * that they survive a restart (ADR-002 §1, §3). Invented data only (C-005).
  */
 @DisplayName("UC-005: Review Transfers, on the device")
 class UC005ReviewTransfersPersistenceIT {
@@ -348,6 +363,273 @@ class UC005ReviewTransfersPersistenceIT {
         assertEquals(TransactionStatus.New, released.status)
         assertNull(transaction(storage, household.card, "TX-4").transferId)
         assertEquals(2, changes.size)
+        storage.close()
+    }
+
+    // ---- O-13: the Transfer Decisions (ADR-002 §3) ---------------------------------------------------------------------
+
+    private suspend fun stateVersion(storage: SlussenStorage): Long = storage.main.coordinator().stateVersion() ?: 0
+
+    /** One Transfer Decision as the core makes it: its own rules inside the transaction of O-13, on what is stored. */
+    private suspend fun decide(storage: SlussenStorage, household: Household, leg: Long, choice: TransferChoice): TransferDecided<TransferOutcome> =
+        storage.transfers.decide(setOf(household.budget)) { data ->
+            val (write, ruled) = TransferDecisionRules.decide(leg, choice, data, windows(), now)
+            TransferRuling(write, ruled.outcome)
+        }
+
+    private suspend fun fundedBy(storage: SlussenStorage, bankAccount: Long): Long? =
+        storage.connections.bankAccounts().single { it.id == bankAccount }.fundedByBudgetAccountId
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A3: Choose Another Budget Account", businessRules = ["BR-006", "BR-010", "BR-016"])
+    @DisplayName("A3, BR-016 (O-13): a Transfer Decision Budget Account Chosen is stored in one transaction with its time, both sides, the flag removed, the Transfer Legs' statuses and the Funded By the Operator keeps; it raises state_version and leaves the Comparison pending until O-5 follows; all of it is read back after a restart")
+    fun aTransferDecisionIsStoredWithItsEffect() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        val household = household(storage)
+        deliver(storage, household, household.checking, delivered("TX-1", oct12, -250400))
+        deliver(storage, household, household.card, delivered("TX-2", oct13, 250400))
+        compare(storage, household)
+        val paid = transaction(storage, household.checking, "TX-1")
+        assertEquals(TransactionStatus.GuessedTransfer, paid.status)
+        assertTrue(transfers(storage).single().guessed)
+        val version = stateVersion(storage)
+
+        val decided = decide(storage, household, paid.id, TransferChoice.ChooseBudgetAccount(household.budgetAccounts.getValue("Checking"), keep = true))
+
+        assertEquals(TransferOutcome.Stored(TransferDecision.BudgetAccountChosen, lonely = false, kept = OtherSideKind.FundedBy, detectedAgain = true), decided.answer)
+        assertEquals(2, decided.changes.size)
+        assertTrue(stateVersion(storage) > version)
+        assertTrue(pending(storage))
+        compare(storage, household)
+        assertFalse(pending(storage))
+        storage.close()
+
+        val restarted = SlussenStorage.open(DeviceFiles.context, clock)
+        val transfer = transfers(restarted).single()
+        assertEquals(decided.transferId, transfer.id)
+        assertEquals(TransferDecision.BudgetAccountChosen, transfer.decision)
+        assertEquals(now, transfer.decidedAt)
+        assertFalse(transfer.guessed)
+        assertEquals(household.budgetAccounts.getValue("Checking") to household.budgetAccounts.getValue("Rewards Card"), transfer.outflowBudgetAccountId to transfer.inflowBudgetAccountId)
+        val legs = listOf(transaction(restarted, household.checking, "TX-1"), transaction(restarted, household.card, "TX-2"))
+        assertEquals(listOf(transfer.id, transfer.id), legs.map { it.transferId })
+        assertEquals(listOf(TransactionStatus.TransferLeg, TransactionStatus.TransferLeg), legs.map { it.status })
+        assertEquals(household.budgetAccounts.getValue("Checking"), fundedBy(restarted, household.card))
+        assertEquals(1, restarted.importStatus.transactionCounts().single { it.bankAccountId == household.checking }.eligible)
+        restarted.close()
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A8: First Card Payment Without Funded By", businessRules = ["BR-007", "BR-010"])
+    @DisplayName("A2, A8 (O-13, S-B-05): holding back a Guessed Transfer for which Slussen proposes no paying Budget Account stores a new Transfer without its outflow side, with the decision Held and its one Transfer Leg Held Transfer; a later Comparison keeps it without a side, also once the card has a Funded By")
+    fun aHeldTransferWithoutAPayingSideIsStored() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        val household = household(storage)
+        deliver(storage, household, household.card, delivered("TX-1", oct13, 250400, payee = "AUTOPAY"))
+        compare(storage, household)
+        val toCard = transaction(storage, household.card, "TX-1")
+        assertEquals(TransactionStatus.GuessedTransfer, toCard.status)
+        assertTrue(transfers(storage).isEmpty())
+
+        val decided = decide(storage, household, toCard.id, TransferChoice.Hold)
+
+        assertEquals(TransferOutcome.Stored(TransferDecision.Held, lonely = true, kept = null, detectedAgain = true), decided.answer)
+        execute(storage, "UPDATE bank_account SET funded_by_budget_account_id = ? WHERE id = ?", household.budgetAccounts.getValue("Checking"), household.card)
+        compare(storage, household)
+        val held = transfers(storage).single()
+        assertEquals(decided.transferId, held.id)
+        assertNull(held.outflowBudgetAccountId)
+        assertEquals(household.budgetAccounts.getValue("Rewards Card"), held.inflowBudgetAccountId)
+        assertEquals(TransferDecision.Held, held.decision)
+        assertTrue(held.guessed)
+        val leg = transaction(storage, household.card, "TX-1")
+        assertEquals(held.id, leg.transferId)
+        assertEquals(TransactionStatus.HeldTransfer, leg.status)
+        storage.close()
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A3: Choose Another Budget Account", businessRules = ["BR-016"])
+    @DisplayName("A3, BR-016 (O-13): a choice that takes its other side from a Transfer without a Transfer Decision removes that Transfer, releases its other Transfer Leg and gives the taken one to the selected Transfer in the same transaction; O-5 then detects Transfers again for the released one")
+    fun aChoiceDissolvesTheTransferItTakesItsOtherSideFrom() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        val household = household(storage)
+        execute(storage, "UPDATE bank_account SET transfer_partner_budget_account_id = ? WHERE id = ?", household.budgetAccounts.getValue("Reserve Savings"), household.checking)
+        deliver(storage, household, household.reserve, delivered("TX-1", oct12, -250000))
+        deliver(storage, household, household.checking, delivered("TX-2", oct12, 250000, payee = "Online Transfer"))
+        deliver(storage, household, household.card, delivered("TX-3", oct13, 250000, payee = "AUTOPAY"))
+        compare(storage, household)
+        val proposed = transfers(storage).single()
+        val fromReserve = transaction(storage, household.reserve, "TX-1")
+        assertEquals(proposed.id, fromReserve.transferId)
+        val toCard = transaction(storage, household.card, "TX-3")
+        assertNull(toCard.transferId)
+
+        val decided = decide(storage, household, toCard.id, TransferChoice.ChooseBudgetAccount(household.budgetAccounts.getValue("Reserve Savings"), keep = false))
+
+        assertEquals(TransferOutcome.Stored(TransferDecision.BudgetAccountChosen, lonely = false, kept = null, detectedAgain = true), decided.answer)
+        val chosen = transfers(storage).single()
+        assertTrue(chosen.id != proposed.id)
+        assertEquals(household.budgetAccounts.getValue("Reserve Savings") to household.budgetAccounts.getValue("Rewards Card"), chosen.outflowBudgetAccountId to chosen.inflowBudgetAccountId)
+        assertEquals(chosen.id, transaction(storage, household.reserve, "TX-1").transferId)
+        assertEquals(chosen.id, transaction(storage, household.card, "TX-3").transferId)
+        assertNull(transaction(storage, household.checking, "TX-2").transferId)
+        assertTrue(pending(storage))
+
+        compare(storage, household)
+
+        assertFalse(pending(storage))
+        val again = transfers(storage).single { it.id != chosen.id }
+        assertEquals(TransferDecision.Proposed, again.decision)
+        assertEquals(again.id, transaction(storage, household.checking, "TX-2").transferId)
+        assertNull(fundedBy(storage, household.card))
+        storage.close()
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "Main Success Scenario", businessRules = ["BR-010"], requirements = ["NFR-002"])
+    @DisplayName("O-13 is all or nothing: when a part of a Transfer Decision cannot be stored, nothing of it is: the Transfer keeps the decision Proposed and its flag, no Transaction Status, state_version or marker changes; and a ruling that refuses stores nothing either")
+    fun o13StoresADecisionWithItsEffectOrNotAtAll() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        val household = household(storage)
+        deliver(storage, household, household.checking, delivered("TX-1", oct12, -250400))
+        deliver(storage, household, household.card, delivered("TX-2", oct13, 250400))
+        compare(storage, household)
+        val before = transfers(storage).single()
+        val paid = transaction(storage, household.checking, "TX-1")
+        val version = stateVersion(storage)
+
+        val failed = runCatching {
+            storage.transfers.decide(setOf(household.budget)) { data ->
+                val (write, ruled) = TransferDecisionRules.decide(paid.id, TransferChoice.Confirm, data, windows(), now)
+                // A Funded By for a Bank Account that is not stored: refused after the Transfer and its Transfer Legs were written.
+                TransferRuling(write!!.copy(kept = KeptOtherSide(999_999, OtherSideKind.FundedBy, household.budgetAccounts.getValue("Checking"))), ruled.outcome)
+            }
+        }
+        val refused = decide(storage, household, paid.id, TransferChoice.ChooseBudgetAccount(household.budgetAccounts.getValue("Rewards Card"), keep = true))
+
+        assertTrue(failed.isFailure)
+        assertEquals(TransferOutcome.BudgetAccountNotOffered, refused.answer)
+        assertNull(refused.transferId)
+        assertEquals(listOf(before), transfers(storage))
+        assertEquals(TransactionStatus.GuessedTransfer, transaction(storage, household.checking, "TX-1").status)
+        assertEquals(TransactionStatus.GuessedTransfer, transaction(storage, household.card, "TX-2").status)
+        assertEquals(version, stateVersion(storage))
+        assertFalse(pending(storage))
+        assertNull(fundedBy(storage, household.card))
+        storage.close()
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A7: Transfer Already Uploaded", businessRules = ["BR-008"])
+    @DisplayName("A7, BR-008 (O-13, with a planted Sent Record): the Sent Records of the Transfer Legs are read with the stored data, so that a Transfer one of whose Transfer Legs has a Sent Record that is not Rejected is locked and a decision on it stores nothing; a Rejected one locks nothing")
+    fun theLockReadsTheStoredSentRecords() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        val household = household(storage)
+        deliver(storage, household, household.checking, delivered("TX-1", oct12, -250400))
+        deliver(storage, household, household.card, delivered("TX-2", oct13, 250400))
+        compare(storage, household)
+        val paid = transaction(storage, household.checking, "TX-1")
+        val uploads = storage.main.uploads()
+        val plan = uploads.insertPlan(
+            UploadPlanEntity(
+                budgetId = household.budget, bankAccountId = null, preparedAt = now, expiresAt = now.plusSeconds(600), newCount = 0, matchCount = 0,
+                counterpartCount = 1, totalInflow = 0, totalOutflow = 250400, state = UploadPlanState.Confirmed.text,
+            ),
+        )
+        val record = uploads.insertSentRecord(
+            SentRecordEntity(
+                bankTransaction = paid.id, uploadPlanId = plan, budgetAccountId = household.budgetAccounts.getValue("Checking"), importIdentifier = paid.importIdentifier,
+                occurrence = 0, bookedDate = oct12, amount = -250400, sentAsTransfer = true, sentAt = now, outcome = SentRecordOutcome.Rejected.text, budgetAppReference = null,
+            ),
+        )
+        val read = storage.comparisons.comparisonDataOf(setOf(household.budget)).sentRecords
+        assertEquals(listOf(StoredSentRecord(paid.id, household.budgetAccounts.getValue("Checking"), sentAsTransfer = true, outcome = SentRecordOutcome.Rejected)), read)
+        assertEquals(TransferOutcome.Stored(TransferDecision.Held, lonely = false, kept = null, detectedAgain = true), decide(storage, household, paid.id, TransferChoice.Hold).answer)
+
+        uploads.updateSentRecord(uploads.sentRecord(record)!!.copy(outcome = SentRecordOutcome.Written.text, budgetAppReference = "ynab-tx-0001"))
+        val version = stateVersion(storage)
+
+        assertEquals(TransferOutcome.Locked, decide(storage, household, paid.id, TransferChoice.Confirm).answer)
+        assertEquals(TransferDecision.Held, transfers(storage).single().decision)
+        assertEquals(version, stateVersion(storage))
+        // A Comparison keeps the uploaded Transfer as it is stored.
+        compare(storage, household)
+        assertEquals(TransferDecision.Held, transfers(storage).single().decision)
+        assertEquals(paid.transferId, transaction(storage, household.card, "TX-2").transferId)
+        storage.close()
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A4: Lonely Transfer", businessRules = ["BR-005", "BR-015"])
+    @DisplayName("BR-005, BR-015 (O-5): the arriving other side joins a confirmed Lonely Transfer, which keeps its decision and its identifier; when the Account Mapping of a Transfer Leg's Bank Account then names another Budget Account, the Transfer is removed with both Transfer Legs released, and they are detected again in the same transaction")
+    fun o5JoinsAndDropsATransferTheOperatorDecidedOn() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        val household = household(storage)
+        execute(storage, "UPDATE bank_account SET funded_by_budget_account_id = ? WHERE id = ?", household.budgetAccounts.getValue("Checking"), household.card)
+        deliver(storage, household, household.card, delivered("TX-1", oct13, 120000, payee = "AUTOPAY"))
+        compare(storage, household)
+        val toCard = transaction(storage, household.card, "TX-1")
+        val confirmed = decide(storage, household, toCard.id, TransferChoice.Confirm).transferId!!
+        compare(storage, household)
+
+        // The other side arrives after the grace period of 6 days has ended, on 20 October.
+        deliver(storage, household, household.checking, delivered("TX-2", oct13, -120000))
+        compare(storage, household, today = LocalDate.of(2026, 10, 20))
+
+        val joined = transfers(storage).single()
+        assertEquals(confirmed, joined.id)
+        assertEquals(TransferDecision.Confirmed, joined.decision)
+        assertEquals(confirmed, transaction(storage, household.checking, "TX-2").transferId)
+        assertEquals(TransactionStatus.TransferLeg, transaction(storage, household.checking, "TX-2").status)
+
+        // Kestrel Checking is mapped to Reserve Savings instead, and Reserve Saver has no Account Mapping any more.
+        execute(storage, "DELETE FROM account_mapping WHERE bank_account_id = ?", household.reserve)
+        execute(storage, "UPDATE account_mapping SET budget_account_id = ? WHERE bank_account_id = ?", household.budgetAccounts.getValue("Reserve Savings"), household.checking)
+        var dropped: List<DroppedTransferDecision> = emptyList()
+        storage.comparisons.applyComparison(setOf(household.budget)) { data ->
+            ComparisonRules.conclude(data, windows(LocalDate.of(2026, 10, 20))).also { dropped = it.dropped }
+        }
+
+        assertEquals(listOf(confirmed to TransferDropReason.TransferLegMappedElsewhere), dropped.map { it.transfer.id to it.reason })
+        assertTrue(transfers(storage).none { it.id == confirmed })
+        // Detected again: a Card Payment between the Budget Accounts as they are now, without a Transfer Decision.
+        val again = transfers(storage).single()
+        assertEquals(TransferDecision.Proposed, again.decision)
+        assertEquals(household.budgetAccounts.getValue("Reserve Savings"), again.outflowBudgetAccountId)
+        assertEquals(again.id, transaction(storage, household.checking, "TX-2").transferId)
+        assertEquals(again.id, transaction(storage, household.card, "TX-1").transferId)
+        storage.close()
+    }
+
+    @Test
+    @UseCase(id = "UC-005", scenario = "A4: Lonely Transfer", businessRules = ["BR-007", "BR-015"])
+    @DisplayName("BR-015 (O-5, review of B3 item 3; S-B-17): a Transfer the Operator decided on is read through its Budget Accounts when the Bank Account of its one Transfer Leg has no Account Mapping any more: a confirmed Lonely Transfer is removed with its Transfer Leg released and handed over as dropped, and a held one is kept as it is stored")
+    fun aDecidedLonelyTransferIsReadWhenItsBankAccountLosesItsAccountMapping() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        val household = household(storage)
+        execute(storage, "UPDATE bank_account SET funded_by_budget_account_id = ? WHERE id = ?", household.budgetAccounts.getValue("Checking"), household.card)
+        deliver(storage, household, household.card, delivered("TX-1", oct13, 120000, payee = "AUTOPAY"), delivered("TX-2", oct13, 64000, payee = "AUTOPAY"))
+        compare(storage, household)
+        val confirmed = decide(storage, household, transaction(storage, household.card, "TX-1").id, TransferChoice.Confirm).transferId!!
+        compare(storage, household)
+        val held = decide(storage, household, transaction(storage, household.card, "TX-2").id, TransferChoice.Hold).transferId!!
+        compare(storage, household)
+
+        execute(storage, "DELETE FROM account_mapping WHERE bank_account_id = ?", household.card)
+        val read = storage.comparisons.comparisonDataOf(setOf(household.budget))
+        var dropped: List<DroppedTransferDecision> = emptyList()
+        storage.comparisons.applyComparison(setOf(household.budget)) { data -> ComparisonRules.conclude(data, windows()).also { dropped = it.dropped } }
+
+        assertEquals(setOf(confirmed, held), read.transfers.map { it.id }.toSet())
+        assertEquals(2, read.bankTransactions.count { it.transferId != null })
+        assertTrue(read.bankAccounts.any { it.id == household.card && it.mapping == null })
+        assertEquals(listOf(confirmed to TransferDropReason.TransferLegNotMapped), dropped.map { it.transfer.id to it.reason })
+        val kept = transfers(storage).single()
+        assertEquals(held, kept.id)
+        assertEquals(TransferDecision.Held, kept.decision)
+        assertNull(transaction(storage, household.card, "TX-1").transferId)
+        assertEquals(held, transaction(storage, household.card, "TX-2").transferId)
         storage.close()
     }
 }

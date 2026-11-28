@@ -45,6 +45,27 @@ class UC010AdjustSettingsTest {
 
     @Test
     @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-010"])
+    @DisplayName("Step 1 (UC-014 BR-007, UC-001 A9): a Bank Consent the Bank refused is shown on the Data Provider's page and entry as expired from its refusal, with that time and that the Bank refused it, whatever expiry was reported; one far from its expiry shows no expiry")
+    fun aRefusedBankConsentIsShownAsRefusedInSettings() = runTest {
+        slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        val now = slice.clock.instant()
+        val aurora = slice.connectionStore.bankNamed("Aurora Bank").id
+        val vesta = slice.connectionStore.bankNamed("Vesta Sparbank").id
+        slice.importStatusStore.consents += slussen.core.port.StoredBankConsent(1, vesta, slice.openBankingId, now.minus(java.time.Duration.ofDays(1)), now.plus(java.time.Duration.ofDays(170)))
+        val connected = slice.settingsOverview.servicePage(slice.openBankingKey).status
+        val refusedAt = now.minus(java.time.Duration.ofHours(3))
+        slice.importStatusStore.consents += slussen.core.port.StoredBankConsent(2, aurora, slice.openBankingId, now.minus(java.time.Duration.ofDays(10)), now.plus(java.time.Duration.ofDays(160)), refusedAt)
+
+        val page = slice.settingsOverview.servicePage(slice.openBankingKey).status
+        val entry = slice.settingsOverview.entries().entries.single { it.name == "Aurora Open Banking" }.status
+
+        assertTrue(connected is ServiceStatus.Connected, "$connected")
+        assertEquals(ServiceStatus.BankConsentExpires(refusedAt, refusedByBank = true), page)
+        assertEquals(EntryStatus.BankConsentExpires(refusedAt, refusedByBank = true), entry)
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "Main Success Scenario", businessRules = ["BR-010"])
     @DisplayName("Step 1, BR-010: Settings lists the services directly at its top, in the order of setting up: the Budget App, each Data Provider and each File Format of the build, set up or not, then the Account Mappings; each entry comes from what its part declares")
     fun settingsListsTheServicesDirectly() = runTest {
         val top = slice.settingsOverview.entries()

@@ -4,9 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import slussen.app.ui.ReadAgain
 import slussen.app.ui.Texts
+import slussen.core.port.ServiceKey
 import slussen.app.ui.UiServices
+import slussen.app.ui.components.BudgetAppLineUi
+import slussen.core.status.StatusesAsOf
 import slussen.app.ui.service.FetchWarningUi
 import slussen.core.fetch.FetchReport
 import slussen.core.fetch.FetchStart
@@ -31,7 +37,16 @@ data class BudgetLine(
     val blocked: List<String>,
     /** BR-006, BR-009 (`overview.html#recovery`): "Uploads wait for First Upload Matching" in its tone, or null. */
     val firstUploadMatching: FirstUploadMatchingChip? = null,
+    /** UC-003 step 7, A1 step 2 (`overview.html#read-one-failed`): when its statuses were given; null with nothing to compare. */
+    val statuses: String? = null,
+    /** UC-003 A1 step 2: the remedy of statuses that are not current, a read of the Budget App; null while they are. */
+    val readAgainNote: String? = null,
+    /** UC-004, UC-005: where its transactions waiting for a decision are decided, the Budget's tab; null while none waits. */
+    val decide: String? = null,
 )
+
+/** A notice of the Overview: its [title] and what it means with what comes next, the [detail] (NFR-023). */
+data class NoticeUi(val title: String, val detail: String)
 
 /** UC-008 A10, BR-011 (`overview.html#new-installation`, `#first-run-next`): the one card that leads to Settings. */
 data class FirstRunUi(val title: String, val next: String, val then: String?)
@@ -39,12 +54,16 @@ data class FirstRunUi(val title: String, val next: String, val then: String?)
 /** What the Overview shows when Slussen opens (UC-008 steps 1-3, A1, A7, A8, A10). */
 data class OverviewUi(
     val heading: String,
-    val budgetAppRead: String,
-    val unreadableNotices: List<String>,
+    /** FR-040, UC-003 (`overview.html#read-one-failed`): the line of the Budget App with Read again and its answer. */
+    val budgetAppLine: BudgetAppLineUi,
+    /** A1, BR-012 (`overview.html#damaged`, `#damaged-critical`): one notice for each part that could not be read. */
+    val unreadableNotices: List<NoticeUi>,
     /** A8, BR-009: First Upload Matching with its explanation, reason lines and action; null while none is open. */
     val firstUploadMatching: FirstUploadMatchingUi?,
-    val backupWarning: String?,
-    val expiringConsents: List<String>,
+    /** A7, BR-010 (`overview.html#backup-warning`): the backup size warning, or null. */
+    val backupWarning: NoticeUi?,
+    /** Step 2, UC-008 BR-002: each Bank Consent that expires within the consent warning lead time, with its renew action (UC-007 BR-003). */
+    val expiringConsents: List<ExpiringConsentUi>,
     val budgets: List<BudgetLine>,
     val noBankAccountAdded: Boolean,
     val message: String?,
@@ -60,14 +79,33 @@ data class OverviewUi(
     val firstRun: FirstRunUi? = null,
     /** P9-14: one line saying what a Fetch does in this build, next to the Fetch action. */
     val fetchNote: String? = null,
-    /** Step 2 (P9-13): under the expiring Bank Consents, why they cannot be renewed in this build. */
-    val expiringConsentNote: String? = null,
+    /** UC-001 BR-014: the stored Fetch Schedule; the question about notifications is asked only while it is above 0. */
+    val fetchSchedule: Int = 0,
 )
+
+/** Step 2: an expiring Bank Consent with its renew action, which opens the sheet of its Bank on its Data Provider's page (UC-007 BR-003). */
+data class ExpiringConsentUi(val text: String, val action: String, val service: ServiceKey, val bankId: Long)
+
+/** UC-001 BR-014 (`overview.html#notification-ask`): when the Overview asks the device's one question about notifications. Pure. */
+object NotificationQuestion {
+    // UC-001 BR-014: Slussen asks once, when the Overview opens while the Fetch Schedule is above 0, Slussen's notifications are not allowed and the device has no answer of the Operator to that question yet; it keeps nothing of its own about the question.
+    /**
+     * Whether to ask, with the stored [fetchSchedule], whether notifications are [allowed], whether the device asks the
+     * Operator before an app shows notifications ([deviceAsks], Android 13 and later), and whether it has the Operator's
+     * answer already ([deviceHasAnswer]).
+     */
+    fun ask(fetchSchedule: Int, allowed: Boolean, deviceAsks: Boolean, deviceHasAnswer: Boolean): Boolean =
+        fetchSchedule > 0 && !allowed && deviceAsks && !deviceHasAnswer
+}
 
 /** The Overview tab (UC-008), from stored data only. */
 class OverviewViewModel(private val services: UiServices) : ViewModel() {
     private val mutableState = MutableStateFlow<OverviewUi?>(null)
     val state: StateFlow<OverviewUi?> = mutableState
+
+    /** NFR-023 (review 6): why the screen could not be shown, with the next action, while its stored data cannot be read. */
+    private val mutableNotOpened = MutableStateFlow<String?>(null)
+    val notOpened: StateFlow<String?> = mutableNotOpened
 
     private var opened = false
 
@@ -83,25 +121,83 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
     /** P9-16, ADR-007 §1: the operation that runs now. */
     private var running: RunningOperation? = services.running.value
 
+    /** FR-040: Read the Budget App again, at the line of the Budget App. */
+    private val reading = ReadAgain(services)
+
+    /** The line of the Budget App as the stored status gives it, and the Budget App's name. */
+    private var budgetAppStatus = ""
+    private var budgetAppName = ""
+
     init {
         viewModelScope.launch {
             services.running.collect { now ->
                 running = now
-                mutableState.value = mutableState.value?.let { it.copy(fetchButton = fetchButton(it.canFetch)) }
+                mutableState.value = mutableState.value?.let {
+                    it.copy(fetchButton = fetchButton(it.canFetch), budgetAppLine = budgetAppLine())
+                }
+            }
+        }
+        viewModelScope.launch {
+            // NFR-023: when an operation ends, whichever screen started it, the stored status it changed is shown again.
+            services.ended.drop(1).collect { if (!reading.pending && mutableState.value != null) reload() }
+        }
+    }
+
+    /** Shows the stored status again; a storage that cannot be read leaves the screen as it is, never a crash (NFR-023). */
+    private suspend fun reload() {
+        try {
+            show(services.status.overview())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Unit
+        }
+    }
+
+    private fun budgetAppLine() = reading.line(budgetAppStatus, running, budgetAppName)
+
+    /**
+     * FR-040, UC-003 trigger: the Operator reads the Budget App again; no Bank is contacted. Its line shows at once that
+     * it reads, or what it waits for, then its answer; the stored status is shown again afterwards (NFR-023, UX-12).
+     */
+    fun readAgain() {
+        val current = mutableState.value ?: return
+        if (current.firstRun != null || !current.budgetAppLine.button.enabled || !reading.begin()) return
+        mutableState.value = current.copy(budgetAppLine = budgetAppLine())
+        viewModelScope.launch {
+            reading.run(budgetAppName)
+            try {
+                show(services.status.overview())
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                // NFR-023: the stored status could not be read again; said at the line, never a crash.
+                reading.statusNotRead()
+                mutableState.value = mutableState.value?.copy(budgetAppLine = budgetAppLine())
             }
         }
     }
 
     /** UC-008 steps 1-3: the first load of a session records its start; later loads only read the stored status again. */
     fun load() {
-        viewModelScope.launch { show(if (opened) services.status.overview() else services.status.open().also { opened = true }) }
+        viewModelScope.launch {
+            try {
+                show(if (opened) services.status.overview() else services.status.open().also { opened = true })
+                mutableNotOpened.value = null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                // NFR-023 (review 6): an Overview never shown says why, with the next action; one shown keeps what it shows.
+                if (mutableState.value == null) mutableNotOpened.value = NOT_OPENED
+            }
+        }
     }
 
     /** P9-16 (`budget.html#fetch-states`): "Fetching <Data Provider>…", disabled, while a Fetch runs. */
     private fun fetchButton(canFetch: Boolean): FetchButtonUi {
         val now = running
         return if (now != null && now.kind == OperationKind.Fetch) {
-            FetchButtonUi(Texts.fetching(now.subject), enabled = false, running = true)
+            FetchButtonUi(Texts.fetching(now), enabled = false, running = true)
         } else {
             FetchButtonUi(FETCH_ALL, enabled = canFetch, running = false)
         }
@@ -115,38 +211,55 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
         }
         val formats = services.formats
         val firstUploadMatching = overview.firstUploadMatching
+        val now = services.clock.instant()
+        budgetAppName = overview.budgetAppName
+        // A1 step 2 of UC-003: the line names the Budgets whose read failed since their last successful read.
+        budgetAppStatus = Texts.budgetAppRead(
+            overview.budgetAppRead,
+            overview.budgets.count { it.statusesAsOf != StatusesAsOf.NothingToCompare },
+            overview.budgetAppName,
+            formats,
+            now,
+        )
         mutableState.value = OverviewUi(
-            heading = "Overview · ${formats.dateTime(services.clock.instant())} · device time",
-            budgetAppRead = overview.budgets.mapNotNull { it.lastReadAt }.maxOrNull()
-                ?.let { "${overview.budgetAppName} · read ${formats.time(it)}" }
-                ?: "${overview.budgetAppName} · not read yet",
-            unreadableNotices = overview.unreadable.map { notice ->
-                "Stored data could not be read: ${Texts.part(notice.part)}" +
-                    if (notice.startedFromLastGoodCopy) " · started from its last good copy" else " · started empty"
-            },
+            heading = "Overview · ${formats.dateTime(now)} · device time",
+            budgetAppLine = budgetAppLine(),
+            unreadableNotices = overview.unreadable.map { Texts.unreadableNotice(it, firstUploadMatchingShown = firstUploadMatching != null) },
             // UC-008 BR-009: Every opening shows that Uploads wait for First Upload Matching, as information, never as an error.
             firstUploadMatching = firstUploadMatching?.let { Texts.firstUploadMatching(it, overview.budgetAppName) },
             backupWarning = overview.backupWarning?.let {
-                "Backed-up data nears Android's backup limit: ${formats.megabytes(it.backedUpBytes)} of " +
-                    "${formats.megabytes(it.limitBytes)}, Android's limit · above it Android backs up nothing"
+                NoticeUi(
+                    "Backed-up data nears Android's backup limit",
+                    "${formats.megabytes(it.backedUpBytes)} of ${formats.megabytes(it.limitBytes)}, Android's limit · above it " +
+                        "Android backs up nothing · ${Texts.NO_BACKUP_ACTION}",
+                )
             },
+            // UC-008 BR-002: each expiring Bank Consent with its expiry date and the renew action (UC-007 BR-003).
             expiringConsents = overview.expiringBankConsents.map {
-                "Bank Consent of ${it.bankName} through ${it.dataProviderName} expires ${formats.date(it.expiresAt)} · Renew"
+                ExpiringConsentUi(
+                    "Bank Consent of ${it.bankName} through ${it.dataProviderName} expires ${formats.date(it.expiresAt)}",
+                    "Renew",
+                    ServiceKey.dataProvider(it.dataProviderId),
+                    it.bankId,
+                )
             },
             budgets = overview.budgets.map { budget ->
                 BudgetLine(
                     budgetId = budget.budgetId,
                     name = budget.name,
                     currency = budget.currency.code,
-                    counts = "Eligible ${budget.notYetUploaded.eligible} · waiting for a decision " +
-                        "${budget.notYetUploaded.waitingForDecision}",
+                    // A1 of UC-003 (S-T-08): a Bank Transaction not compared yet is counted neither as Eligible nor as waiting.
+                    counts = Texts.counts(budget.notYetUploaded, budget.notComparedYet),
                     blocked = budget.blocked.filterNot { it.reason == BlockedReason.UploadsWaitForFirstUploadMatching }
-                        .map { blocked -> "Blocked: ${blocked.subject}, ${Texts.blockedReason(blocked.reason, blocked.dataProviderName)}" }
+                        .map { blocked -> "Blocked: ${blocked.subject}, ${Texts.blockedReason(blocked)}" }
                         .distinct(),
                     // UC-008 BR-006: The Blocked Reason "Uploads wait for First Upload Matching", in the tone of BR-009.
                     firstUploadMatching = firstUploadMatching?.takeIf {
                         budget.blocked.any { it.reason == BlockedReason.UploadsWaitForFirstUploadMatching }
                     }?.let { FirstUploadMatchingChip(Texts.UPLOADS_WAIT_FOR_FIRST_UPLOAD_MATCHING, it.tone) },
+                    statuses = Texts.statusesAsOf(budget.statusesAsOf, overview.budgetAppName, formats, now),
+                    decide = Texts.decideOnOverview(budget.notYetUploaded.waitingForDecision, budget.name),
+                    readAgainNote = Texts.readAgainNote(budget, overview.budgetAppName),
                 )
             },
             noBankAccountAdded = overview.noBankAccountAdded,
@@ -155,23 +268,18 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
             fetchButton = fetchButton(canFetch = true),
             fetchResults = fetchResults,
             fetchWarning = pendingWarnings.firstOrNull(),
-            fetchNote = Texts.FETCH_IN_THIS_BUILD,
-            // Step 2 (P9-13): the renew action needs Grant Bank Consent (UC-007), which this build does not have.
-            expiringConsentNote = if (overview.expiringBankConsents.isEmpty()) {
-                null
-            } else {
-                "${Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD}, so it cannot be renewed here."
-            },
+            fetchNote = Texts.fetchNote(overview.budgetAppName),
+            fetchSchedule = overview.fetchSchedule,
         )
     }
 
-    // UC-008 BR-011: While no Bank Account is added, the Overview shows nothing but the card that leads to Settings and names the next thing, not even First Upload Matching.
+    // UC-008 BR-011: While no Bank Account is added, the Overview shows nothing but the notices of stored data that could not be read and below them the card that leads to Settings and names the next thing, not even First Upload Matching.
     private fun showFirstRun(overview: Overview, card: FirstRunCard) {
         val (next, then) = card.next?.let(Texts::next) ?: ("Next: open Settings" to null)
         mutableState.value = OverviewUi(
             heading = "Overview · ${services.formats.dateTime(services.clock.instant())} · device time",
-            budgetAppRead = "",
-            unreadableNotices = emptyList(),
+            budgetAppLine = BudgetAppLineUi("", FetchButtonUi(Texts.readAgain(overview.budgetAppName), enabled = false, running = false)),
+            unreadableNotices = overview.unreadable.map { Texts.unreadableNotice(it, firstUploadMatchingShown = false) },
             firstUploadMatching = null,
             backupWarning = null,
             expiringConsents = emptyList(),
@@ -183,6 +291,7 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
             fetchResults = emptyList(),
             fetchWarning = null,
             firstRun = FirstRunUi("Set up Slussen in Settings", next, then),
+            fetchSchedule = overview.fetchSchedule,
         )
     }
 
@@ -194,18 +303,37 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
         fetchResults = emptyList()
         mutableState.value = mutableState.value?.copy(fetchResults = fetchResults, message = null)
         viewModelScope.launch {
-            when (val start = services.fetch.fetchAll()) {
+            when (val start = stoppedOr { services.fetch.fetchAll() }) {
+                null -> fetchResults = listOf(stopped(tap))
                 is FetchStart.Unavailable ->
                     fetchResults = listOf(FetchResultUi(Texts.refusal(start.reason), null, FetchResultKind.NotFetched, tap))
                 is FetchStart.Ran -> {
-                    fetchResults = start.reports.filterNot { it is FetchReport.WarningToConfirm }.map { onOverview(it, tap) }
-                    pendingWarnings = start.reports.filterIsInstance<FetchReport.WarningToConfirm>()
-                        .map { Texts.fetchWarning(it, services.formats) }
+                    fetchResults = start.reports.filterNot { it.asksFirst() }.map { onOverview(it, tap) }
+                    pendingWarnings = start.reports.mapNotNull { question(it) }
                 }
             }
-            show(services.status.overview())
+            reload()
+            mutableState.value = mutableState.value?.copy(fetchResults = fetchResults, fetchWarning = pendingWarnings.firstOrNull())
         }
     }
+
+    /** NFR-023: the outcome of [fetch], or null when it stopped because the stored data could not be used. */
+    private suspend fun stoppedOr(fetch: suspend () -> FetchStart): FetchStart? =
+        try {
+            fetch()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            null
+        }
+
+    /** NFR-023: a Fetch that stopped may have stored part of what it read, so the answer says only that it stopped. */
+    private fun stopped(tap: Int) = FetchResultUi(
+        "The Fetch stopped: Slussen could not use the data stored on this device",
+        "Fetch again; Recent Fetches shows what was stored.",
+        FetchResultKind.Failed,
+        tap,
+    )
 
     /** UC-001 A11 (P9-16): on the Overview each result names its Data Provider. */
     private fun onOverview(report: FetchReport, tap: Int): FetchResultUi =
@@ -217,24 +345,42 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
         pendingWarnings = pendingWarnings.drop(1)
         val tap = ++taps
         viewModelScope.launch {
-            when (val start = services.fetch.fetch(warning.service, confirmedDespiteWarning = true)) {
+            val start = stoppedOr {
+                services.fetch.fetch(warning.service, confirmedDespiteWarning = warning.confirmsWarning, confirmedUnattended = warning.confirmsUnattended)
+            }
+            when (start) {
+                null -> fetchResults = fetchResults + stopped(tap)
                 is FetchStart.Unavailable ->
                     fetchResults = fetchResults + FetchResultUi(Texts.refusal(start.reason), null, FetchResultKind.NotFetched, tap)
-                is FetchStart.Ran -> fetchResults = fetchResults + start.reports.map { onOverview(it, tap) }
+                is FetchStart.Ran -> {
+                    fetchResults = fetchResults + start.reports.filterNot { it.asksFirst() }.map { onOverview(it, tap) }
+                    // A22 after A16: a Fetch confirmed despite the warning can still ask whether to read a Bank that counts it as unattended.
+                    pendingWarnings = start.reports.mapNotNull { question(it) } + pendingWarnings
+                }
             }
-            show(services.status.overview())
+            reload()
+            mutableState.value = mutableState.value?.copy(fetchResults = fetchResults, fetchWarning = pendingWarnings.firstOrNull())
         }
     }
 
-    /** UC-001 A16: the Operator cancels; that Data Provider is not fetched. */
+    /** UC-001 A16, A22 step 1: a report that asks the Operator before anything is sent. */
+    private fun FetchReport.asksFirst(): Boolean = this is FetchReport.WarningToConfirm || this is FetchReport.UnattendedToConfirm
+
+    private fun question(report: FetchReport): FetchWarningUi? = when (report) {
+        is FetchReport.WarningToConfirm -> Texts.fetchWarning(report, services.formats)
+        is FetchReport.UnattendedToConfirm -> Texts.fetchWarning(report)
+        else -> null
+    }
+
+    /** UC-001 A16, A22: the Operator cancels; that Data Provider is not fetched. */
     fun cancelFetch() {
         pendingWarnings = pendingWarnings.drop(1)
         mutableState.value = mutableState.value?.copy(fetchWarning = pendingWarnings.firstOrNull())
     }
 
     /**
-     * UC-008 A9: the Operator chooses "Start First Upload Matching". Step 1 needs Compare With the Budget App (UC-003),
-     * which no slice builds yet (O-P2-09), so First Upload Matching stays open and the screen says why.
+     * UC-008 A9: the Operator chooses "Start First Upload Matching". Its confirmation comes with Uploads (A-10), so First
+     * Upload Matching stays open and the screen says so, with no action needed.
      */
     fun startFirstUploadMatching() {
         viewModelScope.launch {
@@ -248,5 +394,7 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
 
     private companion object {
         const val FETCH_ALL = "Fetch all Data Providers"
+        const val NOT_OPENED =
+            "The Overview could not be shown: the status stored on this device could not be read, and nothing was changed. Tap Try again."
     }
 }

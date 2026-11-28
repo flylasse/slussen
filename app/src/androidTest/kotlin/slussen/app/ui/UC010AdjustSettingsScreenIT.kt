@@ -47,7 +47,8 @@ class UC010AdjustSettingsScreenIT {
         }
 
         onNodeWithText("50 per 24 hours · not published by Aurora Open Banking · default 50 · 10 to 500").assertExists()
-        onNodeWithText("Change").performClick()
+        // The page has two "Change" actions since the Fetch Cooldown got its editor (transactions plan Phase 6b).
+        onNodeWithTag("change-request-limit").performClick()
         onNodeWithText("Enter 10 to 500.", substring = true).assertExists()
         onNodeWithText("Reset to default").performClick()
 

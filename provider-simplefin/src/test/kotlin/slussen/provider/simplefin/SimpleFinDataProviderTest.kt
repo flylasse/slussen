@@ -439,8 +439,20 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
         assertNull(sent.requestUrl!!.queryParameter("balances-only"))
         assertNull(sent.requestUrl!!.queryParameter("account"))
         assertEquals("2", sent.requestUrl!!.queryParameter("version"))
-        assertEquals(listOf(RequestSummary(RequestKind.Transactions, null, null)), gate.requests)
+        assertEquals(listOf(RequestSummary(RequestKind.Transactions, null, null, unattended = false)), gate.requests)
         assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", businessRules = ["BR-012"])
+    @DisplayName("BR-012: the request of an unattended Fetch is admitted as unattended (ADR-001 §4.0, S-B-46)")
+    fun unattendedFetchIsAdmittedAsUnattended() {
+        val gate = RecordingRequestGate()
+        val answered = fetchAnswered()
+
+        fetch(FetchScenario(answered.dataProvider, answered.request.copy(presence = OperatorPresence.Unattended), answered.credential), gate)
+
+        assertEquals(listOf(RequestSummary(RequestKind.Transactions, null, null, unattended = true)), gate.requests)
     }
 
     @Test
@@ -461,7 +473,7 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
             assertNull(sent.requestUrl!!.queryParameter("start-date"))
             assertNull(sent.requestUrl!!.queryParameter("end-date"))
             assertEquals("2", sent.requestUrl!!.queryParameter("version"), "$selection")
-            assertEquals(listOf(RequestSummary(RequestKind.Balance, null, null)), gate.requests)
+            assertEquals(listOf(RequestSummary(RequestKind.Balance, null, null, unattended = false)), gate.requests)
         }
     }
 
@@ -664,6 +676,21 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
         override fun event(event: LogEvent, vararg facts: LogFact) {}
 
         override fun detail(event: LogEvent, message: () -> String) {}
+    }
+
+    @Test
+    @DisplayName("C2 review item 1, ADR-001 §4.0: an answer 503 with Retry-After: 0, and an answer 408, are not sent again by OkHttp: the server receives exactly one request for each")
+    fun noStatusMakesTheLibrarySendAgain() {
+        listOf(MockResponse().setResponseCode(503).setHeader("Retry-After", "0"), MockResponse().setResponseCode(408)).forEach { answer ->
+            server.shutdown()
+            server = MockWebServer().apply { start() }
+            server.enqueue(answer)
+            server.enqueue(MockResponse().setBody(accessAddress()))
+            val result = runBlocking { provider().credentials.check(input(), TestRequestContext()) }
+            assertTrue(result !is CredentialCheck.Accepted, "the check was sent again and accepted: $result")
+            Thread.sleep(300)
+            assertEquals(1, server.requestCount, "OkHttp sent the request again after $answer")
+        }
     }
 
     private companion object {

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import slussen.app.ui.Texts
 import slussen.app.ui.UiServices
@@ -35,13 +36,15 @@ import slussen.core.port.ServiceKey
 import slussen.core.settings.RequestLimitShown
 import slussen.core.settings.ServicePage
 import slussen.core.settings.SettingOutcome
+import slussen.core.settings.SwitchOutcome
+import slussen.core.port.SwitchSetting
 import slussen.core.settings.ServiceStatus
 import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.credential.FieldKind
 import slussen.pluginapi.value.Secret
 
-/** One credential field as the service's part declares it (UC-014 BR-002). */
-data class FieldUi(val key: String, val kind: FieldKind, val description: String)
+/** One credential field as the service's part declares it (UC-014 BR-002); an [optional] one may be left empty (S-B-51). */
+data class FieldUi(val key: String, val kind: FieldKind, val description: String, val optional: Boolean = false)
 
 /**
  * Editing the Request Limit of a Data Provider that publishes none (UC-010 steps 2-4, A1, A11;
@@ -70,6 +73,10 @@ data class BudgetAccountLine(
     val balance: String,
     /** The switch "Receives from Slussen"; null when it receives through an Account Mapping, shown instead. */
     val receives: Boolean?,
+    /** NFR-023 (`connections.html#local-action-states`): "Switching off…" or "Switching on…" while the switch is stored. */
+    val pending: String? = null,
+    /** NFR-023: the answer of the last tap of this switch that changed nothing: a refusal, or a change not stored. */
+    val answer: AnswerUi? = null,
 )
 
 data class BudgetAccountsGroup(val title: String, val lines: List<BudgetAccountLine>)
@@ -95,6 +102,10 @@ data class OfferedLineUi(
     val importOn: Boolean?,
     /** What stands instead of a switch: where an added one goes, a proposed match, a balance source. */
     val trailing: String?,
+    /** NFR-023 (`connections.html#local-action-states`): "Switching off…" or "Switching on…" while the switch is stored. */
+    val pending: String? = null,
+    /** NFR-023: the answer of the last tap of this switch that changed nothing: a refusal, or a change not stored. */
+    val answer: AnswerUi? = null,
 )
 
 data class OfferedBankGroup(val name: String, val rows: List<OfferedLineUi>)
@@ -175,10 +186,35 @@ data class ServicePageUi(
     val fetchCooldownAnswer: AnswerUi? = null,
     /** NFR-023 (UX-22): the answer of the last change of the Request Limit, at its line. */
     val requestLimitAnswer: AnswerUi? = null,
+    /** UC-014 A3 (NFR-023, `connections.html#local-action-states`): the confirmed removal runs; Remove shows "Removing…". */
+    val removing: Boolean = false,
+    /** UC-010 A9, BR-010: Upload as Cleared on the Budget App's page when it supports the Cleared marker; null otherwise. */
+    val uploadAsCleared: ClearedSwitchUi? = null,
+    /** UC-014 A1: what the last refusal says at an optional field, by its key. */
+    val fieldNotes: Map<String, String> = emptyMap(),
+    /** UC-007 BR-011, UC-014 BR-002: for a Data Provider that needs a Bank Consent, Slussen's own return address, sent when none is entered. */
+    val ownReturnAddressNote: String? = null,
 )
 
+/**
+ * UC-010 A9 (NFR-023): Upload as Cleared as stored, with what a change means (A9 step 1), "Switching off…" or "Switching
+ * on…" while it is stored ([pending]), and the answer of its last change at the switch.
+ */
+data class ClearedSwitchUi(val on: Boolean, val statement: String, val pending: String? = null, val answer: AnswerUi? = null)
+
 /** UC-001 A16 (`budget.html#request-limit-warning`): the warning, its end and the risk, before the Operator confirms. */
-data class FetchWarningUi(val service: ServiceKey, val title: String, val text: String, val risk: String)
+/**
+ * A question before a Fetch (UC-001 A16, A22): what it confirms when the Operator confirms it, the Request Limit warning
+ * ([confirmsWarning]) and the reads a Bank counts as unattended ([confirmsUnattended]).
+ */
+data class FetchWarningUi(
+    val service: ServiceKey,
+    val title: String,
+    val text: String,
+    val risk: String,
+    val confirmsWarning: Boolean = true,
+    val confirmsUnattended: Boolean = false,
+)
 
 /** A service's page, opened from its entry in Settings (UC-014, UC-013, UC-010 BR-010). */
 class ServicePageViewModel(
@@ -187,6 +223,10 @@ class ServicePageViewModel(
 ) : ViewModel() {
     private val mutableState = MutableStateFlow<ServicePageUi?>(null)
     val state: StateFlow<ServicePageUi?> = mutableState
+
+    /** NFR-023 (review 6): why the screen could not be shown, with the next action, while its stored data cannot be read. */
+    private val mutableNotOpened = MutableStateFlow<String?>(null)
+    val notOpened: StateFlow<String?> = mutableNotOpened
 
     private var page: ServicePage? = null
 
@@ -201,7 +241,17 @@ class ServicePageViewModel(
     private var choosing = false
 
     /** What Undo does: the last switch, switched back. */
-    private var undoAction: (suspend () -> Unit)? = null
+    private var undoAction: (() -> Unit)? = null
+
+    /**
+     * NFR-023 (`connections.html#local-action-states`, issue #33): each switch while it is being stored, with what its line
+     * says meanwhile, and the answer of a line's last tap that changed nothing, kept until the page is opened again.
+     */
+    private val switching = mutableListOf<Pair<SwitchKey, String>>()
+    private val lineAnswers = mutableListOf<Pair<SwitchKey, AnswerUi>>()
+
+    /** UC-014 A3 (NFR-023): the confirmed removal of the credentials runs. */
+    private var removing = false
 
     /** P9-16: the result of the last tap of the Fetch, and the taps of this page, so that every result is shown as new. */
     private var fetchResult: FetchResultUi? = null
@@ -216,6 +266,13 @@ class ServicePageViewModel(
 
     /** UC-014 A1: the last check was refused, so the form offers to try again. */
     private var refusedAtCheck = false
+
+    /** UC-014 A1: what the last refusal says at an optional field the Operator filled in. */
+    private var fieldNotes: Map<String, String> = emptyMap()
+
+    /** UC-010 A9 (NFR-023): Upload as Cleared while it is stored, and the answer of its last change, at its switch. */
+    private var clearedPending: String? = null
+    private var clearedAnswer: AnswerUi? = null
 
     /** NFR-023 (UX-22): the answer of the last change of each setting of this page, at its line. */
     private var fetchCooldownAnswer: AnswerUi? = null
@@ -239,7 +296,7 @@ class ServicePageViewModel(
         if (isBudgetApp) return null
         val now = running
         return if (now != null && now.kind == OperationKind.Fetch) {
-            FetchButtonUi(Texts.fetching(now.subject), enabled = false, running = true)
+            FetchButtonUi(Texts.fetching(now), enabled = false, running = true)
         } else {
             FetchButtonUi("Fetch $name", enabled = canFetch, running = false)
         }
@@ -248,11 +305,28 @@ class ServicePageViewModel(
     fun load() {
         snack = null
         undoAction = null
+        lineAnswers.clear()
         credentialAnswer = null
         refusedAtCheck = false
         fetchCooldownAnswer = null
         requestLimitAnswer = null
-        viewModelScope.launch { reload() }
+        clearedAnswer = null
+        viewModelScope.launch { reloadOrSay() }
+    }
+
+    /**
+     * Reads the page again; NFR-023 (review 6): a page never shown says that it could not be opened, with the next action;
+     * one already shown keeps what it shows and says that it could not be read again.
+     */
+    private suspend fun reloadOrSay(message: String? = null) {
+        try {
+            reload(message)
+            mutableNotOpened.value = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            if (mutableState.value == null) mutableNotOpened.value = PAGE_NOT_OPENED else showAsItIs(PAGE_NOT_READ_AGAIN)
+        }
     }
 
     /** Reads the page, and what UC-013 shows on it, again. */
@@ -304,9 +378,9 @@ class ServicePageViewModel(
             // A3 of UC-013 (P9-05): one sentence while nothing is offered.
             emptyText = when (offered.remedy) {
                 OfferRemedy.StartFetch -> "None yet · a Fetch lists the Bank Accounts $name offers; no transactions are fetched until a Bank Account is added"
-                // P9-13: a Bank Consent shows the Bank Accounts, and this build has none yet.
+                // A3 of UC-013: a Bank Consent of a Bank lists its Bank Accounts (UC-007 step 9).
                 OfferRemedy.GrantBankConsent ->
-                    "None yet · a Bank Consent of a Bank lists its Bank Accounts here · ${Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD}"
+                    "None yet · a Bank Consent of a Bank lists its Bank Accounts here: grant one under Bank Consents"
                 null -> null
             },
             nothingNew = if (offered.nothingNew) "Nothing new to import · every Offered Bank Account is added, not imported or reports a balance" else null,
@@ -364,7 +438,7 @@ class ServicePageViewModel(
                 null
             },
             credentials = if (refused) refusedCredentials(page) else Texts.credentialStatus(page.credentialStatus, formats),
-            fields = page.credentialFields.map { FieldUi(it.key, it.kind, it.description) },
+            fields = fieldsOf(page),
             entering = entering,
             removalQuestion = removalQuestion,
             canRemove = page.credentialStatus != CredentialStatus.Missing,
@@ -392,14 +466,15 @@ class ServicePageViewModel(
                 }
             },
             uploadAsClearedShown = page.supportsClearedMarker,
-            budgets = if (page.isBudgetApp) budgetsSection else null,
-            offered = if (page.isBudgetApp) null else offeredSection,
+            uploadAsCleared = page.uploadAsCleared?.let { on -> ClearedSwitchUi(on, clearedStatement(page.name), clearedPending, clearedAnswer) },
+            budgets = if (page.isBudgetApp) budgetsWithAnswers() else null,
+            offered = if (page.isBudgetApp) null else offeredWithAnswers(),
             snack = snack,
-            // UC-001 BR-008: No Bank is contacted without a valid Bank Consent; this build grants none, so the Fetch is unavailable (P9-13).
-            canFetch = !page.isBudgetApp && !page.needsBankConsent,
+            // UC-001 BR-008: a Data Provider that needs a Bank Consent is fetched too; the core contacts no Bank without a valid one (A4).
+            canFetch = !page.isBudgetApp,
             fetchWarning = fetchWarning,
-            fetchUnavailable = if (!page.isBudgetApp && page.needsBankConsent) "${Texts.cannotFetchWithoutBankConsents(page.name)}." else null,
-            fetchButton = fetchButton(page.name, canFetch = !page.isBudgetApp && !page.needsBankConsent, isBudgetApp = page.isBudgetApp),
+            fetchUnavailable = null,
+            fetchButton = fetchButton(page.name, canFetch = !page.isBudgetApp, isBudgetApp = page.isBudgetApp),
             fetchResult = fetchResult,
             // UC-014 BR-005: Refused or missing credentials lead first to the action that enters them here (UX-21).
             enterAction = when {
@@ -415,8 +490,17 @@ class ServicePageViewModel(
             fetchCooldownEditable = page.fetchCooldownMinutes != null,
             fetchCooldownAnswer = fetchCooldownAnswer,
             requestLimitAnswer = requestLimitAnswer,
+            removing = removing,
+            fieldNotes = fieldNotes,
+            ownReturnAddressNote = if (!page.isBudgetApp && page.needsBankConsent && services.applicationReturnAddress.isNotEmpty()) {
+                "Left empty, the return address is Slussen's own: ${services.applicationReturnAddress}"
+            } else {
+                null
+            },
         )
     }
+
+    private fun fieldsOf(page: ServicePage) = page.credentialFields.map { FieldUi(it.key, it.kind, it.description, it.optional) }
 
     /** UC-014 BR-005 (UX-21, the refused state of a Data Provider's page): the refusal stays in view instead of "Accepted". */
     private fun refusedCredentials(page: ServicePage): String {
@@ -442,9 +526,10 @@ class ServicePageViewModel(
     private fun earlierCredentialsNote(page: ServicePage): String? =
         if (page.credentialStatus == CredentialStatus.Missing) null else "The earlier credentials stay until the new ones are accepted."
 
-    /** Step 2: show the form its part declares. */
+    /** Step 2: show the form its part declares; while a removal runs, it waits (NFR-023). */
     fun startEntering() {
         val current = page ?: return
+        if (removing) return
         credentialAnswer = null
         refusedAtCheck = false
         mutableState.value = mutableState.value?.copy(
@@ -480,18 +565,43 @@ class ServicePageViewModel(
         if (checking) return
         checking = true
         credentialAnswer = null
-        mutableState.value = current.copy(checking = true, credentialAnswer = null, message = null)
+        fieldNotes = emptyMap()
+        mutableState.value = current.copy(checking = true, credentialAnswer = null, message = null, fieldNotes = emptyMap())
         viewModelScope.launch {
-            val input = CredentialInput(values.mapValues { Secret(it.value) })
-            val outcome = services.credentials.enter(service, input)
+            val optional = (page?.credentialFields ?: emptyList()).filter { it.optional }.map { it.key }.toSet()
+            // UC-014 BR-002: an optional field left empty is left out of the entry (S-B-51).
+            val input = CredentialInput(values.filterNot { (key, value) -> key in optional && value.isBlank() }.mapValues { Secret(it.value) })
+            val outcome = orWhenNotStored<CredentialOutcome?>(null) { services.credentials.enter(service, input) }
             checking = false
-            val page = pageWithSections()
+            if (outcome == null) {
+                // NFR-023 (review 6): the stored data could not be used; the vault replaces credentials in one operation, so nothing was stored.
+                credentialAnswer = AnswerUi(
+                    "Not stored: Slussen could not use the data stored on this device · the earlier credentials stay unchanged",
+                    AnswerKind.Failed,
+                    "Try again.",
+                )
+                showAsItIs()
+                mutableState.value = mutableState.value?.copy(checking = false)
+                return@launch
+            }
+            val page = pageOrNull() ?: run {
+                val name = mutableState.value?.name.orEmpty()
+                credentialAnswer = AnswerUi(
+                    Texts.outcome(name, outcome, services.formats),
+                    if (outcome is CredentialOutcome.Accepted) AnswerKind.Done else AnswerKind.Unchanged,
+                )
+                showAsItIs(PAGE_NOT_READ_AGAIN)
+                mutableState.value = mutableState.value?.copy(checking = false, entering = false)
+                return@launch
+            }
             val text = Texts.outcome(page.name, outcome, services.formats)
-            refusedAtCheck = outcome == CredentialOutcome.Refused
+            refusedAtCheck = outcome is CredentialOutcome.Refused
+            // A1 of UC-014: an optional value filled in may be why the entry was refused: said at its field.
+            fieldNotes = (outcome as? CredentialOutcome.Refused)?.atFields.orEmpty().associateWith { REFUSED_AT_FIELD }
             credentialAnswer = when (outcome) {
                 is CredentialOutcome.Accepted -> AnswerUi(text, AnswerKind.Done)
                 // A1: refused at the check; nothing is stored and the earlier credentials stay (BR-005).
-                CredentialOutcome.Refused -> AnswerUi(
+                is CredentialOutcome.Refused -> AnswerUi(
                     "Refused by ${page.name} ${services.formats.time(services.clock.instant())} · nothing stored",
                     AnswerKind.Failed,
                     "Check what you entered, or get new credentials from ${page.name}, and try again.",
@@ -508,7 +618,7 @@ class ServicePageViewModel(
                     if (page.isBudgetApp && page.budgetsInUse.isEmpty()) readBudgets(keptMessage = null)
                 }
                 // A1: use case continues at step 2; the form stays open.
-                CredentialOutcome.Refused -> show(page, entering = true)
+                is CredentialOutcome.Refused -> show(page, entering = true)
                 // A2, A5: use case ends.
                 is CredentialOutcome.NotReached, is CredentialOutcome.RequestLimitReached, is CredentialOutcome.NotSent,
                 is CredentialOutcome.WaitingForProvider,
@@ -562,7 +672,7 @@ class ServicePageViewModel(
             return
         }
         mutableState.value = current.copy(requestLimitEditor = editor.copy(value = text, error = null, saving = true), message = null)
-        viewModelScope.launch { showSetting(PageSetting.RequestLimit, services.providerSettings.changeRequestLimit(service, value), value) }
+        viewModelScope.launch { showSetting(PageSetting.RequestLimit, orWhenNotStored(SettingOutcome.NotStored) { services.providerSettings.changeRequestLimit(service, value) }, value) }
     }
 
     /** UC-010 A11: back to the default its part declares. */
@@ -573,7 +683,7 @@ class ServicePageViewModel(
         if (editor?.saving == true) return
         mutableState.value = current.copy(requestLimitEditor = editor?.copy(error = null, saving = true), message = null)
         viewModelScope.launch {
-            showSetting(PageSetting.RequestLimit, services.providerSettings.resetRequestLimit(service), limit.defaultRequests)
+            showSetting(PageSetting.RequestLimit, orWhenNotStored(SettingOutcome.NotStored) { services.providerSettings.resetRequestLimit(service) }, limit.defaultRequests)
         }
     }
 
@@ -634,7 +744,7 @@ class ServicePageViewModel(
             return
         }
         mutableState.value = current.copy(fetchCooldownEditor = editor.copy(value = text, error = null, saving = true), message = null)
-        viewModelScope.launch { showSetting(PageSetting.FetchCooldown, services.providerSettings.changeFetchCooldown(service, value), value) }
+        viewModelScope.launch { showSetting(PageSetting.FetchCooldown, orWhenNotStored(SettingOutcome.NotStored) { services.providerSettings.changeFetchCooldown(service, value) }, value) }
     }
 
     /** UC-010 A10: back to the default its part declares. */
@@ -644,7 +754,7 @@ class ServicePageViewModel(
         val editor = current.fetchCooldownEditor
         if (editor?.saving == true) return
         mutableState.value = current.copy(fetchCooldownEditor = editor?.copy(error = null, saving = true), message = null)
-        viewModelScope.launch { showSetting(PageSetting.FetchCooldown, services.providerSettings.resetFetchCooldown(service), default) }
+        viewModelScope.launch { showSetting(PageSetting.FetchCooldown, orWhenNotStored(SettingOutcome.NotStored) { services.providerSettings.resetFetchCooldown(service) }, default) }
     }
 
     /** UC-010 step 2: the Operator cancels; the value stays, and its line says so. While it is being stored, Cancel waits. */
@@ -656,6 +766,51 @@ class ServicePageViewModel(
         val default = shown?.defaultFetchCooldownMinutes
         fetchCooldownAnswer = if (minutes != null && default != null) notChanged(PageSetting.FetchCooldown, minutes, default) else null
         mutableState.value = current.copy(fetchCooldownEditor = null, fetchCooldownAnswer = fetchCooldownAnswer)
+    }
+
+    // ---- UC-010 A9: Upload as Cleared --------------------------------------------------------------------------------
+
+    /** A9 step 1: what a change of Upload as Cleared means, said beside the switch before it is changed. */
+    private fun clearedStatement(budgetAppName: String): String =
+        "A change applies only to Upload Plans prepared from now on and changes nothing already in $budgetAppName. While it is " +
+            "off, Slussen marks nothing Cleared, Transfer Counterparts included, and clearing is left to you in $budgetAppName."
+
+    /** A9, steps 2, 4, 6: the switch shows "Switching off…" or "Switching on…" until the answer is at it. */
+    fun switchUploadAsCleared(on: Boolean) {
+        val shown = page ?: return
+        val stored = shown.uploadAsCleared ?: return
+        if (clearedPending != null || on == stored) return
+        clearedPending = if (on) "Switching on…" else "Switching off…"
+        clearedAnswer = null
+        show(shown)
+        viewModelScope.launch {
+            val outcome = try {
+                services.generalSettings.switch(SwitchSetting.UploadAsCleared, on)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                SwitchOutcome.NotStored
+            }
+            clearedPending = null
+            val still = if (stored) "Still on, the default." else "Still off."
+            clearedAnswer = when (outcome) {
+                is SwitchOutcome.Stored -> AnswerUi(
+                    (if (outcome.on) "Saved: on, the default. " else "Saved: off (on by default). ") +
+                        "Applies to Upload Plans prepared from now on." + if (shown.journalOn) " Recorded in the Decision Journal." else "",
+                    AnswerKind.Done,
+                )
+                is SwitchOutcome.Unchanged -> AnswerUi("Not changed: s${still.drop(1)}", AnswerKind.Unchanged)
+                SwitchOutcome.NotStored -> AnswerUi("Not saved: Slussen could not store it. $still", AnswerKind.Failed, "Tap the switch to try again.")
+                is SwitchOutcome.Unavailable -> AnswerUi("Not changed: ${Texts.refusal(outcome.reason)} $still", AnswerKind.Failed)
+            }
+            if (outcome is SwitchOutcome.Stored) {
+                reloadOrSay()
+                // A page that could not be read again still shows the value stored.
+                page?.takeIf { it.uploadAsCleared != outcome.on }?.let { show(it.copy(uploadAsCleared = outcome.on), message = PAGE_NOT_READ_AGAIN) }
+            } else {
+                show(shown)
+            }
+        }
     }
 
     /** The Operator Settings of a Data Provider's page, each answering at its own line (NFR-023, UX-22). */
@@ -699,18 +854,18 @@ class ServicePageViewModel(
         }
         when (outcome) {
             is SettingOutcome.Stored -> {
-                val shown = pageWithSections()
+                val shown = pageOrNull()
                 val applies = if (setting == PageSetting.FetchCooldown) "Applies from the next Fetch." else "Applies from the next request."
                 answer(
                     AnswerUi(
                         "Saved: ${valueText(setting, outcome.value)}" +
                             (if (outcome.value == default) ", the default." else " ($default by default).") + " $applies" +
-                            if (shown.journalOn) " Recorded in the Decision Journal." else "",
+                            if (shown?.journalOn == true) " Recorded in the Decision Journal." else "",
                         AnswerKind.Done,
                     ),
                     retry = null,
                 )
-                show(shown)
+                showPageAgain(shown)
             }
             // A1: refused at the field with the allowed range; the editor stays open (use case continues at step 2).
             is SettingOutcome.OutsideRange -> mutableState.value = withEditor(
@@ -732,34 +887,62 @@ class ServicePageViewModel(
                     ),
                     retry = value.toString(),
                 )
-                show(pageWithSections())
+                showPageAgain(pageOrNull())
             }
-            SettingOutcome.NotAnOperatorSetting -> show(pageWithSections(), message = "Published by the Data Provider · not a setting")
+            is SettingOutcome.Unchanged -> {
+                answer(notChanged(setting, before, default), retry = null)
+                showPageAgain(pageOrNull())
+            }
+            SettingOutcome.NotAnOperatorSetting -> showPageAgain(pageOrNull(), message = "Published by the Data Provider · not a setting")
             is SettingOutcome.Unavailable -> mutableState.value = withEditor(Texts.refusal(outcome.reason))
         }
     }
 
     /** UC-001 step 1: the Operator starts a Fetch of this Data Provider, when the page offers it (P9-13) and no Fetch runs (P9-16). */
     fun fetch() {
-        if (mutableState.value?.fetchButton?.enabled == true) startFetch(confirmedDespiteWarning = false)
+        if (mutableState.value?.fetchButton?.enabled == true) startFetch(confirmedDespiteWarning = false, confirmedUnattended = false)
     }
 
-    /** UC-001 A16 step 2: the Operator confirms the Fetch despite the warning. */
-    fun confirmFetch() = startFetch(confirmedDespiteWarning = true)
+    /** UC-001 A16, A22 step 2: the Operator confirms the Fetch despite the warning, or at a Bank that counts it as unattended. */
+    fun confirmFetch() {
+        val question = mutableState.value?.fetchWarning ?: return
+        startFetch(confirmedDespiteWarning = question.confirmsWarning, confirmedUnattended = question.confirmsUnattended)
+    }
 
     /** UC-001 A16 step 2: the Operator cancels; nothing is sent. */
     fun cancelFetch() {
         mutableState.value = mutableState.value?.copy(fetchWarning = null)
     }
 
-    private fun startFetch(confirmedDespiteWarning: Boolean) {
+    private fun startFetch(confirmedDespiteWarning: Boolean, confirmedUnattended: Boolean) {
         val tap = ++taps
         // P9-16: the result of the earlier tap goes while this one runs.
         fetchResult = null
         mutableState.value = mutableState.value?.copy(fetchResult = null, message = null)
         viewModelScope.launch {
-            val start = services.fetch.fetch(service, confirmedDespiteWarning)
-            val page = pageWithSections()
+            val start = orWhenNotStored<FetchStart?>(null) { services.fetch.fetch(service, confirmedDespiteWarning, confirmedUnattended) }
+            if (start == null) {
+                // NFR-023 (review 6): it may have stopped after storing part of what it read, so the answer says only that it stopped.
+                fetchResult = FetchResultUi(
+                    "The Fetch stopped: Slussen could not use the data stored on this device",
+                    "Fetch again; Recent Fetches shows what was stored.",
+                    FetchResultKind.Failed,
+                    tap,
+                )
+                showPageAgain(pageOrNull())
+                return@launch
+            }
+            val page = pageOrNull() ?: run {
+                val report = (start as? FetchStart.Ran)?.reports?.singleOrNull()
+                fetchResult = when {
+                    start is FetchStart.Unavailable -> FetchResultUi(Texts.refusal(start.reason), null, FetchResultKind.NotFetched, tap)
+                    report != null && report !is FetchReport.WarningToConfirm && report !is FetchReport.UnattendedToConfirm ->
+                        Texts.fetchResult(report, services.formats, tap)
+                    else -> null
+                }
+                showPageAgain(null)
+                return@launch
+            }
             when (start) {
                 is FetchStart.Unavailable -> {
                     fetchResult = FetchResultUi(Texts.refusal(start.reason), null, FetchResultKind.NotFetched, tap)
@@ -767,6 +950,8 @@ class ServicePageViewModel(
                 }
                 is FetchStart.Ran -> when (val report = start.reports.single()) {
                     is FetchReport.WarningToConfirm -> show(page, fetchWarning = Texts.fetchWarning(report, services.formats))
+                    // A22 step 1: asked as A16 is, before anything is sent.
+                    is FetchReport.UnattendedToConfirm -> show(page, fetchWarning = Texts.fetchWarning(report))
                     else -> {
                         fetchResult = Texts.fetchResult(report, services.formats, tap)
                         show(page)
@@ -779,6 +964,7 @@ class ServicePageViewModel(
     /** A3 step 1: ask the Operator to confirm, stating that the service is not contacted until new credentials are entered. */
     fun requestRemoval() {
         val current = mutableState.value ?: return
+        if (removing) return
         mutableState.value = current.copy(
             removalQuestion = "Remove ${current.name} credentials? ${current.name} is not contacted until you enter new ones.",
         )
@@ -789,18 +975,28 @@ class ServicePageViewModel(
         mutableState.value = mutableState.value?.copy(removalQuestion = null)
     }
 
-    /** A3 steps 2-5: the Operator confirms. */
+    /**
+     * A3 steps 2-5: the Operator confirms. NFR-023 (`connections.html#local-action-states`): Remove shows "Removing…"
+     * before anything is deleted, and the answer is at the credentials, where the removal started: removed, why it is
+     * unavailable, or that the credentials could not be removed and are kept (issue #33).
+     */
     fun confirmRemoval() {
+        val current = mutableState.value ?: return
+        if (removing) return
+        removing = true
+        credentialAnswer = null
+        mutableState.value = current.copy(removalQuestion = null, removing = true, credentialAnswer = null, message = null)
         viewModelScope.launch {
-            val outcome = services.credentials.remove(service)
-            val page = pageWithSections()
-            // NFR-023: the answer is at the credentials, where the removal started.
+            val outcome = orWhenNotStored(RemovalOutcome.NotRemoved) { services.credentials.remove(service) }
+            removing = false
+            val page = pageOrNull()
             credentialAnswer = when (outcome) {
                 RemovalOutcome.Removed ->
-                    AnswerUi(if (page.journalOn) "Removed · recorded in the Decision Journal" else "Removed", AnswerKind.Done)
+                    AnswerUi(if (page?.journalOn == true) "Removed · recorded in the Decision Journal" else "Removed", AnswerKind.Done)
                 is RemovalOutcome.Unavailable -> AnswerUi(Texts.refusal(outcome.reason), AnswerKind.Unchanged)
+                RemovalOutcome.NotRemoved -> AnswerUi("Not removed · credentials kept · try again", AnswerKind.Failed)
             }
-            show(page)
+            if (page != null) show(page) else showAsItIs(PAGE_NOT_READ_AGAIN)
         }
     }
 
@@ -811,7 +1007,10 @@ class ServicePageViewModel(
 
     private suspend fun readBudgets(keptMessage: String?) {
         val name = page?.name.orEmpty()
-        val message = when (val read = services.connect.readBudgets()) {
+        val read = orWhenNotStored<BudgetsRead?>(null) { services.connect.readBudgets() }
+        val message = when (read) {
+            // NFR-023 (review 6): the stored data could not be used; a read of the Budgets stores nothing.
+            null -> "Budgets not read: Slussen could not use the data stored on this device · Budgets unchanged · try again"
             is BudgetsRead.Listed -> {
                 listed = read.budgets
                 chosen.clear()
@@ -824,20 +1023,23 @@ class ServicePageViewModel(
             is BudgetsRead.CouldNotRead -> "$name could not be read: ${Texts.failure(read.kind)} · Budgets unchanged"
             is BudgetsRead.Unavailable -> Texts.refusal(read.reason)
         }
-        reload(message)
+        reloadOrSay(message)
     }
 
     /** Step 3: the Operator ticks or unticks a Budget. */
     fun toggleBudget(reference: String) {
         if (!chosen.remove(reference)) chosen += reference
         budgetsSection = budgetsSection?.copy(choosing = budgetLines())
-        mutableState.value = mutableState.value?.copy(budgets = budgetsSection)
+        mutableState.value = mutableState.value?.copy(budgets = budgetsWithAnswers())
     }
 
     /** Steps 3-4, A2: the ticked Budgets are served; refused while a Budget left out has mapped Bank Accounts. */
     fun serveBudgets() {
         viewModelScope.launch {
-            val message = when (val choice = services.connect.chooseBudgets(listed, chosen.toSet())) {
+            val choice = orWhenNotStored<BudgetChoice?>(null) { services.connect.chooseBudgets(listed, chosen.toSet()) }
+            val message = when (choice) {
+                // NFR-023 (review 6): the Budgets are stored in one operation, so the Budgets in use stay as they were.
+                null -> "Not stored: Slussen could not store the chosen Budgets · the Budgets in use stay as they were · try again"
                 BudgetChoice.Stored -> {
                     choosing = false
                     null
@@ -846,88 +1048,233 @@ class ServicePageViewModel(
                     "${choice.budgetName} has mapped Bank Accounts ${choice.bankAccountNames.joinToString(", ")} · remove their Account Mappings first"
                 is BudgetChoice.Unavailable -> Texts.refusal(choice.reason)
             }
-            reload(message)
+            reloadOrSay(message)
         }
     }
 
     fun cancelChoosing() {
         choosing = false
-        viewModelScope.launch { reload() }
+        budgetsSection = budgetsSection?.copy(choosing = null)
+        viewModelScope.launch { reloadOrSay() }
     }
 
-    /** A9, BR-014: "Receives from Slussen" switched off marks the Budget Account at once, with no dialog; on unmarks it. */
+    /**
+     * A9, BR-014: "Receives from Slussen" switched off marks the Budget Account at once, with no dialog; on unmarks it.
+     * NFR-023: its line shows that it is being stored, then its answer (issue #33).
+     */
     fun setReceives(budgetAccountId: Long, receives: Boolean) {
-        viewModelScope.launch { applyReceives(budgetAccountId, receives) }
+        val key = SwitchKey.Receives(budgetAccountId)
+        switchLine(key, if (receives) SWITCHING_ON else SWITCHING_OFF) { applyReceives(key, budgetAccountId, receives) }
     }
 
-    private suspend fun applyReceives(budgetAccountId: Long, receives: Boolean) {
-        val name = services.connect.servedBudgetAccounts().flatMap { it.budgetAccounts }.firstOrNull { it.budgetAccountId == budgetAccountId }?.name.orEmpty()
-        var message: String? = null
-        when (val outcome = services.connect.setReceivesFromSlussen(budgetAccountId, receives)) {
+    private suspend fun applyReceives(key: SwitchKey, budgetAccountId: Long, receives: Boolean) {
+        val name = budgetsSection?.budgetAccounts?.flatMap { it.lines }?.firstOrNull { it.budgetAccountId == budgetAccountId }?.name.orEmpty()
+        when (val outcome = orWhenNotStored(KeepOutcome.NotStored) { services.connect.setReceivesFromSlussen(budgetAccountId, receives) }) {
             KeepOutcome.Marked -> {
                 snack = SnackUi("$name kept by hand · not offered for pairing", SnackAction.Undo)
-                undoAction = { applyReceives(budgetAccountId, receives = true) }
+                undoAction = { setReceives(budgetAccountId, receives = true) }
             }
-            KeepOutcome.Unmarked -> {
-                snack = SnackUi("$name receives from Slussen again · offered for pairing", null)
-                undoAction = null
-            }
-            is KeepOutcome.StillReceives -> message = "$name receives ${outcome.bankAccountName} · not kept by hand"
+            KeepOutcome.Unmarked -> snack = SnackUi("$name receives from Slussen again · offered for pairing", null)
+            is KeepOutcome.StillReceives ->
+                answerAt(key, AnswerUi("Not kept by hand: it receives from ${outcome.bankAccountName} through its Account Mapping", AnswerKind.Unchanged))
             KeepOutcome.NotFree, KeepOutcome.NotManuallyKept -> Unit
-            is KeepOutcome.Unavailable -> message = Texts.refusal(outcome.reason)
+            is KeepOutcome.Unavailable -> answerAt(key, AnswerUi(Texts.refusal(outcome.reason), AnswerKind.Unchanged))
+            KeepOutcome.NotStored -> answerAt(key, AnswerUi(if (receives) STILL_KEPT_BY_HAND else STILL_RECEIVES, AnswerKind.Failed))
         }
-        reload(message)
     }
 
-    /** Steps 6-7, A10, BR-012: the import switch of one Offered Bank Account: off leaves it out at once, on brings it back. */
+    /**
+     * Steps 6-7, A10, BR-012: the import switch of one Offered Bank Account: off leaves it out at once, on brings it back.
+     * NFR-023: its line shows that it is being stored, then its answer (issue #33).
+     */
     fun switchImport(offered: OfferedLineUi, on: Boolean) {
-        viewModelScope.launch {
-            if (on) {
-                offered.leftOutBankAccountId?.let { switchOn(it) }
-                return@launch
-            }
-            val offeredBankAccountId = offered.offeredBankAccountId ?: return@launch
-            var message: String? = null
-            when (val outcome = services.connect.switchImportOff(offeredBankAccountId)) {
-                is ImportSwitchedOff.LeftOut -> {
-                    snack = SnackUi("${outcome.name} not imported · never read", SnackAction.Undo)
-                    undoAction = { switchOn(outcome.leftOutBankAccountId) }
+        val key = SwitchKey.Offered(offered.offeredBankAccountId, offered.leftOutBankAccountId)
+        if (on) {
+            val leftOutBankAccountId = offered.leftOutBankAccountId ?: return
+            switchLine(key, SWITCHING_ON) { switchOn(key, leftOutBankAccountId) }
+        } else {
+            val offeredBankAccountId = offered.offeredBankAccountId ?: return
+            switchLine(key, SWITCHING_OFF) { switchOff(key, offeredBankAccountId) }
+        }
+    }
+
+    private suspend fun switchOff(key: SwitchKey, offeredBankAccountId: Long) {
+        when (val outcome = orWhenNotStored(ImportSwitchedOff.NotStored) { services.connect.switchImportOff(offeredBankAccountId) }) {
+            is ImportSwitchedOff.LeftOut -> {
+                val leftOutBankAccountId = outcome.leftOutBankAccountId
+                // Stored but not read back: without its id there is no Undo; its line's switch brings it back.
+                snack = SnackUi("${outcome.name} not imported · never read", if (leftOutBankAccountId != null) SnackAction.Undo else null)
+                undoAction = leftOutBankAccountId?.let { id ->
+                    {
+                        val undoKey = SwitchKey.Offered(offeredBankAccountId, id)
+                        switchLine(undoKey, SWITCHING_ON) { switchOn(undoKey, id) }
+                    }
                 }
-                ImportSwitchedOff.NoSwitch -> Unit
-                is ImportSwitchedOff.Unavailable -> message = Texts.refusal(outcome.reason)
             }
-            reload(message)
+            ImportSwitchedOff.NoSwitch -> Unit
+            is ImportSwitchedOff.Unavailable -> answerAt(key, AnswerUi(Texts.refusal(outcome.reason), AnswerKind.Unchanged))
+            ImportSwitchedOff.NotStored -> answerAt(key, AnswerUi(STILL_IMPORTED, AnswerKind.Failed))
         }
     }
 
     // UC-013 BR-011: Switching the import of a Left-Out Bank Account on again brings it back; it is imported and to map.
-    private suspend fun switchOn(leftOutBankAccountId: Long) {
-        var message: String? = null
-        when (val outcome = services.connect.bringBack(leftOutBankAccountId)) {
-            is BroughtBack.Offered -> {
-                snack = if (outcome.offeredNow) {
-                    SnackUi("${outcome.name} imported · to map in Account Mappings", SnackAction.Map)
-                } else {
-                    SnackUi("${outcome.name} imported from the next delivery that holds it", null)
-                }
-                undoAction = null
+    private suspend fun switchOn(key: SwitchKey, leftOutBankAccountId: Long) {
+        when (val outcome = orWhenNotStored(BroughtBack.NotStored) { services.connect.bringBack(leftOutBankAccountId) }) {
+            is BroughtBack.Offered -> snack = if (outcome.offeredNow) {
+                SnackUi("${outcome.name} imported · to map in Account Mappings", SnackAction.Map)
+            } else {
+                SnackUi("${outcome.name} imported from the next delivery that holds it", null)
             }
             BroughtBack.NotFound -> Unit
-            is BroughtBack.Unavailable -> message = Texts.refusal(outcome.reason)
+            is BroughtBack.Unavailable -> answerAt(key, AnswerUi(Texts.refusal(outcome.reason), AnswerKind.Unchanged))
+            BroughtBack.NotStored -> answerAt(key, AnswerUi(STILL_NOT_IMPORTED, AnswerKind.Failed))
         }
-        reload(message)
+    }
+
+    /**
+     * NFR-023: [change] of the line [key] shows [pending] at the line before anything is stored, takes no second tap of that
+     * line meanwhile, and ends with the page read again. The snack of an earlier switch goes, since Undo would no longer
+     * undo the last switch.
+     */
+    private fun switchLine(key: SwitchKey, pending: String, change: suspend () -> Unit) {
+        if (switching.any { it.first.sameLine(key) }) return
+        lineAnswers.removeAll { it.first.sameLine(key) }
+        snack = null
+        undoAction = null
+        switching += key to pending
+        showAsItIs()
+        viewModelScope.launch {
+            change()
+            switching.removeAll { it.first == key }
+            try {
+                reload()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                // NFR-023: the answer of the switch stays at its line; the page itself says that it could not be read again.
+                showAsItIs(PAGE_NOT_READ_AGAIN)
+            }
+        }
+    }
+
+    private fun answerAt(key: SwitchKey, answer: AnswerUi) {
+        lineAnswers.removeAll { it.first.sameLine(key) }
+        lineAnswers += key to answer
     }
 
     /** The action of the last switch: Undo switches it back. */
     fun undo() {
         val action = undoAction ?: return
         undoAction = null
-        viewModelScope.launch { action() }
+        action()
     }
 
     fun dismissSnack() {
         snack = null
         undoAction = null
         mutableState.value = mutableState.value?.copy(snack = null)
+    }
+
+    /** NFR-023 (review 6): [page] as read again, or, when it could not be read, the page as it is with its editors closed. */
+    private fun showPageAgain(page: ServicePage?, message: String? = null) {
+        if (page != null) {
+            show(page, message = message)
+        } else {
+            showAsItIs(PAGE_NOT_READ_AGAIN)
+            mutableState.value = mutableState.value?.copy(fetchCooldownEditor = null, requestLimitEditor = null)
+        }
+    }
+
+    /** The page as it is shown, with the state of this ViewModel: lines, snack and answers, and [message] on top. */
+    private fun showAsItIs(message: String? = mutableState.value?.message) {
+        mutableState.value = mutableState.value?.copy(
+            budgets = if (page?.isBudgetApp == true) budgetsWithAnswers() else null,
+            offered = if (page?.isBudgetApp == false) offeredWithAnswers() else null,
+            snack = snack,
+            removing = removing,
+            credentialAnswer = credentialAnswer,
+            fetchCooldownAnswer = fetchCooldownAnswer,
+            requestLimitAnswer = requestLimitAnswer,
+            fetchResult = fetchResult,
+            message = message,
+        )
+    }
+
+    private fun pendingOf(onLine: (SwitchKey) -> Boolean): String? = switching.firstOrNull { onLine(it.first) }?.second
+
+    private fun answerOf(onLine: (SwitchKey) -> Boolean): AnswerUi? = lineAnswers.lastOrNull { onLine(it.first) }?.second
+
+    private fun offeredWithAnswers(): OfferedSectionUi? = offeredSection?.let { section ->
+        fun withAnswer(line: OfferedLineUi): OfferedLineUi {
+            val onLine = { key: SwitchKey -> key.sameLine(SwitchKey.Offered(line.offeredBankAccountId, line.leftOutBankAccountId)) }
+            return line.copy(pending = pendingOf(onLine), answer = answerOf(onLine))
+        }
+        section.copy(banks = section.banks.map { bank -> bank.copy(rows = bank.rows.map(::withAnswer)) }, notDelivered = section.notDelivered.map(::withAnswer))
+    }
+
+    private fun budgetsWithAnswers(): BudgetsSectionUi? = budgetsSection?.let { section ->
+        section.copy(
+            budgetAccounts = section.budgetAccounts.map { group ->
+                group.copy(
+                    lines = group.lines.map { line ->
+                        val onLine = { key: SwitchKey -> key == SwitchKey.Receives(line.budgetAccountId) }
+                        line.copy(pending = pendingOf(onLine), answer = answerOf(onLine))
+                    },
+                )
+            },
+        )
+    }
+
+    /** The page read again, or null when the stored data cannot be read (NFR-023). */
+    private suspend fun pageOrNull(): ServicePage? =
+        try {
+            pageWithSections()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            null
+        }
+
+    /**
+     * NFR-023 (issue #33): the outcome of [call], or [notStored] when it throws. The core answers a storage that cannot be
+     * read or written within the change as its own outcome; what still throws here comes from reading whether the change
+     * may run, before anything is stored.
+     */
+    private suspend fun <T> orWhenNotStored(notStored: T, call: suspend () -> T): T =
+        try {
+            call()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            notStored
+        }
+
+    /** A line of the page with a switch: an Offered Bank Account by either of its ids, or a Budget Account. */
+    private sealed interface SwitchKey {
+        fun sameLine(other: SwitchKey): Boolean
+
+        data class Offered(val offeredBankAccountId: Long?, val leftOutBankAccountId: Long?) : SwitchKey {
+            override fun sameLine(other: SwitchKey): Boolean = other is Offered &&
+                ((offeredBankAccountId != null && offeredBankAccountId == other.offeredBankAccountId) ||
+                    (leftOutBankAccountId != null && leftOutBankAccountId == other.leftOutBankAccountId))
+        }
+
+        data class Receives(val budgetAccountId: Long) : SwitchKey {
+            override fun sameLine(other: SwitchKey): Boolean = other == this
+        }
+    }
+
+    private companion object {
+        const val SWITCHING_OFF = "Switching off…"
+        const val SWITCHING_ON = "Switching on…"
+        const val STILL_IMPORTED = "Still imported · could not be stored, try again"
+        const val STILL_NOT_IMPORTED = "Still not imported · could not be stored, try again"
+        const val STILL_RECEIVES = "Still receives from Slussen · could not be stored, try again"
+        const val STILL_KEPT_BY_HAND = "Still kept by hand · could not be stored, try again"
+        const val PAGE_NOT_OPENED = "This page could not be opened: the data stored on this device could not be read, and nothing was " +
+            "changed. Tap Try again, or go back and open it again."
+        /** UC-014 A1 (E4 review item 3): the part's own check refused this optional value, before anything was sent. */
+        const val REFUSED_AT_FIELD = "Refused by its own check before anything was sent · correct it, or leave it empty, which is allowed"
+        const val PAGE_NOT_READ_AGAIN = "This page could not be read again from the data stored on this device. Open it again to see it as stored."
     }
 }

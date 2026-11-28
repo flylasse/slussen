@@ -1,5 +1,6 @@
 package slussen.architecture
 
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.objectweb.asm.ClassReader
@@ -15,7 +16,7 @@ import slussen.architecture.Sources.requireScope
 import java.io.File
 
 /**
- * The bytecode rules B-01 to B-07 of ADR-001 §6.3, read with ASM from the compiled classes of the main source sets of
+ * The bytecode rules B-01 to B-08 of ADR-001 §6.3, read with ASM from the compiled classes of the main source sets of
  * every production module (every module except `:testing` and `:architecture-tests`), which build-logic hands to this
  * test task as inputs (ADR-001 §6.4). They see resolved references: fully qualified calls, inlined functions and calls
  * through `kotlin.io` extensions alike. Every rule first asserts that its scope holds at least one class.
@@ -131,6 +132,25 @@ class BytecodeRulesTest {
     }
 
     @Test
+    @DisplayName("B-08: Secret.sha256, the one one-way derivation of a Secret, is invoked only from slussen.core.identity")
+    fun b08() {
+        requireScope("B-08", Classes.all.filter { it.name.startsWith("slussen/core/identity/") })
+        failOn("B-08", b08Violations(Classes.all))
+    }
+
+    @Test
+    @DisplayName("B-08 finds a planted call of Secret.sha256 outside slussen.core.identity, and passes the one inside it")
+    fun b08FindsAPlantedViolation() {
+        val inside = ClassFacts("core", "slussen/core/identity/ConsentStateValue").apply { invocations += SECRET to "sha256" }
+        val outside = ClassFacts("core", "slussen/core/consent/Planted").apply { invocations += SECRET to "sha256" }
+        val plugin = ClassFacts("provider-simplefin", "slussen/provider/simplefin/Planted").apply { invocations += SECRET to "sha256" }
+        assertEquals(
+            listOf("slussen/core/consent/Planted calls $SECRET.sha256", "slussen/provider/simplefin/Planted calls $SECRET.sha256"),
+            b08Violations(listOf(inside, outside, plugin)),
+        )
+    }
+
+    @Test
     @DisplayName("B-07: within :core, MessageDigest only in slussen.core.identity")
     fun b07() {
         val scope = requireScope("B-07", Classes.all.filter { it.module == "core" })
@@ -142,6 +162,14 @@ class BytecodeRulesTest {
         )
     }
 }
+
+private const val SECRET = "slussen/pluginapi/value/Secret"
+
+/** B-08 (ADR-006 §2, S-B-52): every class outside `slussen/core/identity/` that invokes `Secret.sha256`. */
+fun b08Violations(classes: List<ClassFacts>): List<String> =
+    classes.filterNot { it.name.startsWith("slussen/core/identity/") }.flatMap { cls ->
+        cls.invocations.filter { (owner, name) -> owner == SECRET && name == "sha256" }.map { (owner, name) -> "${cls.name} calls $owner.$name" }
+    }
 
 /** What the bytecode rules need to know of one compiled class. */
 class ClassFacts(val module: String, val name: String) {

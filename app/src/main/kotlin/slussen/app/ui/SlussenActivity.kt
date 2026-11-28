@@ -1,8 +1,26 @@
 package slussen.app.ui
 
+import android.Manifest
+import android.content.ActivityNotFoundException
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
+import slussen.app.platform.document.ChosenTransactionFile
+import slussen.app.platform.document.PickedDocument
+import slussen.app.ui.fileimport.FileImportActions
+import slussen.app.ui.fileimport.FileImportControl
+import slussen.app.ui.fileimport.FileImportTexts
+import slussen.app.ui.fileimport.ImportPlace
+import slussen.app.ui.fileimport.TransactionFileImportViewModel
+import slussen.app.ui.fileimport.control
+import slussen.app.ui.journal.JournalExportScreen
+import slussen.app.ui.journal.JournalExportViewModel
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -15,7 +33,10 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -24,6 +45,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import slussen.app.SlussenApplication
+import slussen.app.ui.bankaccount.BankAccountScreen
+import slussen.app.ui.bankaccount.BankAccountViewModel
+import slussen.app.ui.bankaccount.reviewActionsOf
+import slussen.app.ui.budget.RemedyAction
+import slussen.app.ui.mappings.mappingChangeActionsOf
+import slussen.app.ui.transfers.transferDecisionActionsOf
+import slussen.core.status.TransactionKey
 import slussen.app.ui.budget.BudgetScreen
 import slussen.app.ui.budget.BudgetViewModel
 import slussen.app.ui.components.Muted
@@ -35,7 +63,9 @@ import slussen.app.ui.mappings.AccountMappingsScreen
 import slussen.app.ui.mappings.AccountMappingsViewModel
 import slussen.app.ui.mappings.cardActionsOf
 import slussen.app.ui.overview.OverviewScreen
+import slussen.app.ui.overview.NotificationQuestion
 import slussen.app.ui.overview.OverviewViewModel
+import slussen.app.ui.components.NotShown
 import slussen.app.ui.service.ConnectActions
 import slussen.app.ui.service.PageSettingActions
 import slussen.app.ui.service.ServicePageScreen
@@ -43,9 +73,27 @@ import slussen.app.ui.service.ServicePageViewModel
 import slussen.app.ui.settings.EntryPage
 import slussen.app.ui.settings.SettingsScreen
 import slussen.app.ui.settings.SettingsViewModel
+import slussen.app.ui.settings.TransferDescriptionsScreen
+import slussen.app.ui.settings.TransferDescriptionsViewModel
+import slussen.app.ui.settings.descriptionActionsOf
+import slussen.app.ui.settings.StartOverActions
+import slussen.app.ui.settings.StartOverViewModel
+import slussen.app.ui.settings.StartedOverNotice
 import slussen.app.ui.theme.SlussenColors
+import slussen.app.ui.transfers.TransfersScreen
+import slussen.app.ui.transfers.TransfersViewModel
 import slussen.app.ui.theme.SlussenTheme
+import slussen.app.ui.consent.BankConsentsSection
+import slussen.app.ui.consent.BankConsentsViewModel
+import slussen.app.ui.consent.ConsentAnswers
+import slussen.app.ui.consent.ConsentBanner
+import slussen.app.ui.consent.ConsentBannerTexts
+import slussen.app.ui.consent.bankConsentActionsOf
+import slussen.app.platform.browser.ConsentBrowser
 import slussen.core.port.ServiceKey
+import kotlinx.coroutines.delay
+import java.time.Duration
+import java.util.Locale
 
 /** The launcher Activity: the screens of this build on the core's services, once the composition root has started. */
 class SlussenActivity : ComponentActivity() {
@@ -55,13 +103,27 @@ class SlussenActivity : ComponentActivity() {
         setContent {
             SlussenTheme {
                 val services by application.services.collectAsState()
+                val startingOver by application.appState.startingOver.collectAsState()
+                val startFailure by application.appState.startFailure.collectAsState()
                 Box(Modifier.fillMaxSize().background(SlussenColors.Background).safeDrawingPadding()) {
                     val started = services
-                    if (started == null) Muted("Opening Slussen…") else SlussenScreens(started)
+                    // ADR-002 §3 O-17 steps 3, 6: Start Over recorded, or a start that could not finish, is all any screen shows.
+                    when (application.appState.root(servicesStarted = started != null).also { startingOver; startFailure }) {
+                        RootScreen.StartingOver -> AppNotice(AppTexts.STARTING_OVER)
+                        RootScreen.StartNotFinished -> AppNotice(startFailure.orEmpty())
+                        RootScreen.Opening -> Muted("Opening Slussen…")
+                        RootScreen.Screens -> SlussenScreens(started!!, application.consentAnswers, application.startedOver)
+                    }
                 }
             }
         }
     }
+}
+
+/** The only thing shown while Slussen is starting over or could not finish its start (`settings.html#starting-over`, `#start-over-not-finished`). */
+@Composable
+private fun AppNotice(text: String) {
+    Box(Modifier.fillMaxSize().padding(24.dp)) { Text(text, color = SlussenColors.Text) }
 }
 
 /** The screen the Operator is on. */
@@ -69,6 +131,18 @@ sealed interface Screen {
     data object Overview : Screen
 
     data class Budget(val budgetId: Long, val name: String) : Screen
+
+    /**
+     * UC-008 step 5: one Bank Account of the Budget [budgetId], reached from its card on the Budget tab, or from a Transfer
+     * whose Transfer Leg [openTransaction] waits for its Review Decision (UC-005 A9), with that line open.
+     */
+    data class BankAccount(val bankAccountId: Long, val budgetId: Long, val openTransaction: Long? = null) : Screen
+
+    /**
+     * UC-005 step 1: the Transfers of the Budget [budgetId], from its tab, or from a Transfer Leg on the Bank Account screen
+     * with the Transfer of the Bank Transaction [selectLeg] open.
+     */
+    data class Transfers(val budgetId: Long, val selectLeg: Long?) : Screen
 
     data object RecentFetches : Screen
 
@@ -79,6 +153,12 @@ sealed interface Screen {
     data class FileFormat(val fileFormatId: Long) : Screen
 
     data object AccountMappings : Screen
+
+    /** UC-010 A7, A8: the Card Payment Descriptions and Bank Transfer Descriptions, from Settings. */
+    data object TransferDescriptions : Screen
+
+    /** UC-011: Export the Decision Journal, from Settings. */
+    data object JournalExport : Screen
 }
 
 /**
@@ -87,21 +167,89 @@ sealed interface Screen {
  * Settings, whose entries open the service pages, the File Format pages and the Account Mappings (UC-013 BR-008, S-40).
  */
 @Composable
-fun SlussenScreens(services: UiServices) {
-    val stack = remember { mutableStateListOf<Screen>(Screen.Overview) }
+fun SlussenScreens(services: UiServices, consentAnswers: ConsentAnswers, startedOver: StartedOverNotice = StartedOverNotice()) {
+    // A12 step 4 of UC-010 (`settings.html#started-over`): after Start Over, Slussen opens on Settings with the card naming the Banks.
+    val stack = remember { mutableStateListOf<Screen>(if (startedOver.card.value != null) Screen.Settings else Screen.Overview) }
+    val startedOverCard by startedOver.card.collectAsState()
     val current = stack.last()
-    fun go(screen: Screen) = stack.add(screen)
+    // Review B6 F7: the screen that back returned to, so that it shows again what was open on it; null after go and tab.
+    var returnedTo by remember { mutableStateOf<Screen?>(null) }
+    fun go(screen: Screen) {
+        returnedTo = null
+        stack.add(screen)
+    }
     fun tab(screen: Screen) {
+        returnedTo = null
         stack.clear()
         stack.add(screen)
     }
     fun back() {
-        if (stack.size > 1) stack.removeAt(stack.lastIndex)
+        if (stack.size > 1) {
+            stack.removeAt(stack.lastIndex)
+            returnedTo = stack.last()
+        }
     }
     BackHandler(enabled = stack.size > 1) { back() }
+    // A6 of UC-008: a remedy starts its use case, on a service's page or in Account Mappings (UC-009).
+    fun remedy(action: RemedyAction) {
+        if (action.accountMappings) go(Screen.AccountMappings) else action.service?.let { go(Screen.Service(it)) }
+    }
 
     val overview: OverviewViewModel = viewModel(key = "overview") { OverviewViewModel(services) }
     val overviewUi by overview.state.collectAsState()
+
+    // The device's one question about notifications (`overview.html#notification-ask`, NotificationQuestion), asked when
+    // the Overview opens; nothing is stored about it: the device keeps the answer, and one closed without an answer is
+    // asked at the next opening.
+    val activity = LocalActivity.current
+    var askedThisOpening by rememberSaveable { mutableStateOf(false) }
+    val notificationQuestion = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val fetchSchedule = overviewUi?.fetchSchedule
+    LaunchedEffect(current, fetchSchedule) {
+        if (current != Screen.Overview || askedThisOpening || fetchSchedule == null || activity == null) return@LaunchedEffect
+        val deviceAsks = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        if (!deviceAsks) return@LaunchedEffect
+        val deviceHasAnswer = activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+        if (NotificationQuestion.ask(fetchSchedule, services.notificationsAllowed(), deviceAsks, deviceHasAnswer)) {
+            askedThisOpening = true
+            notificationQuestion.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    // Import a Transaction File (UC-002): one import for the whole app, so that no second one starts and no answer is lost when a screen is left.
+    val fileImport: TransactionFileImportViewModel = viewModel(key = "transaction-file-import") { TransactionFileImportViewModel(services) }
+    val fileImportUi by fileImport.state.collectAsState()
+    val resolver = LocalContext.current.contentResolver
+    // Steps 2-3 of UC-002: Android's document dialog (`ACTION_OPEN_DOCUMENT`, no permission needed); no file chosen is A1.
+    val documentDialog = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) fileImport.noFileChosen() else fileImport.import(ChosenTransactionFile(resolver, uri))
+    }
+    fun openDocumentDialog() {
+        // NFR-023: a device with no app to choose a file is answered at the control, never a crash.
+        try {
+            documentDialog.launch(arrayOf("*/*"))
+        } catch (noApp: ActivityNotFoundException) {
+            fileImport.noFileCanBeChosen()
+        }
+    }
+    fun fileImportActions(onImport: () -> Unit) = FileImportActions(
+        onImport = onImport,
+        onChoose = { if (fileImport.choose(it)) openDocumentDialog() },
+        onCancelChoice = fileImport::cancelChoice,
+        onWithdraw = fileImport::withdraw,
+        onAccountMappings = { go(Screen.AccountMappings) },
+    )
+    // UC-007 BR-003: the Overview's Renew (UC-008 BR-002) opens the sheet of that Bank on its Data Provider's page.
+    var renewRequest by remember { mutableStateOf<Pair<ServiceKey, Long>?>(null) }
+    val consentState by consentAnswers.state.collectAsState()
+    // A10 of UC-007: when a waiting Consent Request's lifetime ends, it is read again, and one without a result is said to be not granted.
+    val nextExpiry = consentState.waiting.minOfOrNull { it.expiresAt }
+    LaunchedEffect(nextExpiry) {
+        val at = nextExpiry ?: return@LaunchedEffect
+        val wait = Duration.between(services.clock.instant(), at).toMillis().coerceAtLeast(0) + 1_000
+        delay(wait)
+        consentAnswers.readWaiting()
+    }
     Scaffold(
         containerColor = SlussenColors.Background,
         bottomBar = {
@@ -109,7 +257,9 @@ fun SlussenScreens(services: UiServices) {
                 NavigationBarItem(selected = current == Screen.Overview, onClick = { tab(Screen.Overview) }, icon = { Text("◎") }, label = { Text("Overview") })
                 overviewUi?.budgets.orEmpty().forEach { budget ->
                     NavigationBarItem(
-                        selected = (current as? Screen.Budget)?.budgetId == budget.budgetId,
+                        selected = (current as? Screen.Budget)?.budgetId == budget.budgetId ||
+                            (current as? Screen.BankAccount)?.budgetId == budget.budgetId ||
+                            (current as? Screen.Transfers)?.budgetId == budget.budgetId,
                         onClick = { tab(Screen.Budget(budget.budgetId, budget.name)) },
                         icon = { Text(budget.currency) },
                         label = { Text(budget.name) },
@@ -120,9 +270,21 @@ fun SlussenScreens(services: UiServices) {
         },
     ) { padding ->
         Column(Modifier.padding(padding).padding(top = 8.dp)) {
+            // Review D4 items 1-2: a Consent Request under way, or its result, is seen whichever screen the Operator returns to.
+            ConsentBannerTexts.of(consentState, services, (current as? Screen.Service)?.service)?.let { banner ->
+                ConsentBanner(
+                    banner,
+                    onOpen = { service -> go(Screen.Service(service)) },
+                    onCancel = consentAnswers::cancel,
+                    onDismiss = consentAnswers::dismiss,
+                )
+            }
             when (current) {
                 Screen.Overview -> {
                     LaunchedEffect(current) { overview.load() }
+                    val overviewNotOpened = overview.notOpened.collectAsState().value
+                    // NFR-023: an Overview whose stored status cannot be read says so, with Try again.
+                    if (overviewUi == null && overviewNotOpened != null) NotShown(overviewNotOpened, onTryAgain = overview::load)
                     overviewUi?.let { ui ->
                         OverviewScreen(
                             ui = ui,
@@ -133,29 +295,102 @@ fun SlussenScreens(services: UiServices) {
                             onFetchAll = overview::fetchAll,
                             onConfirmFetch = overview::confirmFetch,
                             onCancelFetch = overview::cancelFetch,
+                            onReadAgain = overview::readAgain,
+                            onRemedy = ::remedy,
+                            onRenew = { service, bankId ->
+                                renewRequest = service to bankId
+                                go(Screen.Service(service))
+                            },
                         )
                     }
                 }
                 is Screen.Budget -> {
                     val vm: BudgetViewModel = viewModel(key = "budget-${current.budgetId}") { BudgetViewModel(services, current.budgetId) }
                     LaunchedEffect(current) { vm.load() }
-                    vm.state.collectAsState().value?.let { ui ->
+                    // Review D4 items 1-2: leaving the tab ends a choice of the Bank Account and an answer of an import shown on it.
+                    DisposableEffect(current) {
+                        onDispose { fileImport.left { it is ImportPlace.Source && it.budgetId == current.budgetId } }
+                    }
+                    val budgetUi = vm.state.collectAsState().value
+                    val budgetFailure = vm.failure.collectAsState().value
+                    // NFR-023: a Budget whose stored status cannot be read says so on its tab.
+                    if (budgetUi == null && budgetFailure != null) Muted(budgetFailure)
+                    budgetUi?.let { ui ->
                         BudgetScreen(
                             ui,
-                            onRemedy = { action -> action.service?.let { go(Screen.Service(it)) } },
+                            onRemedy = ::remedy,
                             onStartFirstUploadMatching = { overview.startFirstUploadMatching() },
+                            onReadAgain = vm::readAgain,
+                            onBankAccount = { id -> go(Screen.BankAccount(id, current.budgetId)) },
+                            onTransfers = { go(Screen.Transfers(current.budgetId, selectLeg = null)) },
+                            fileImport = { entry ->
+                                FileImportControl(
+                                    fileImportUi.control(entry.place),
+                                    fileImportActions { fileImport.start(entry.place, entry.bankAccounts)?.let { openDocumentDialog() } },
+                                )
+                            },
                         )
                     }
+                }
+                is Screen.BankAccount -> {
+                    val vm: BankAccountViewModel = viewModel(key = "bank-account-${current.bankAccountId}") {
+                        BankAccountViewModel(services, current.bankAccountId)
+                    }
+                    LaunchedEffect(current) { vm.load(current.openTransaction?.let { TransactionKey(unreadable = false, id = it) }, returning = returnedTo == current) }
+                    // NFR-023 (review B6 F1): a decision on its way when the screen is left is shown with its answer on return.
+                    DisposableEffect(current) { onDispose { vm.left() } }
+                    BankAccountScreen(
+                        state = vm.state.collectAsState().value,
+                        onBack = ::back,
+                        onOpen = vm::open,
+                        onStatuses = vm::openStatuses,
+                        onClose = vm::close,
+                        onRemedy = ::remedy,
+                        onTransfer = { leg -> go(Screen.Transfers(current.budgetId, leg)) },
+                        review = reviewActionsOf(vm),
+                    )
+                }
+                is Screen.Transfers -> {
+                    val vm: TransfersViewModel = viewModel(key = "transfers-${current.budgetId}") { TransfersViewModel(services, current.budgetId) }
+                    LaunchedEffect(current) { vm.load(current.selectLeg, returning = returnedTo == current) }
+                    DisposableEffect(current) { onDispose { vm.left() } }
+                    TransfersScreen(
+                        state = vm.state.collectAsState().value,
+                        onBack = ::back,
+                        onOpen = vm::open,
+                        onClose = vm::close,
+                        decisions = transferDecisionActionsOf(
+                            vm,
+                            // A9 step 2 of UC-005: to the Review Decision of the Transfer Leg that waits for it.
+                            onReviewLeg = { leg -> go(Screen.BankAccount(leg.bankAccountId, current.budgetId, leg.storedBankTransaction)) },
+                            // A8 step 1 of UC-005: a Funded By that no longer applies is changed or cleared in Account Mappings.
+                            onAccountMappings = { go(Screen.AccountMappings) },
+                        ),
+                    )
                 }
                 Screen.RecentFetches -> {
                     val vm: RecentFetchesViewModel = viewModel(key = "fetches") { RecentFetchesViewModel(services) }
                     LaunchedEffect(current) { vm.load() }
-                    vm.state.collectAsState().value?.let { RecentFetchesScreen(it, ::back) }
+                    RecentFetchesScreen(
+                        state = vm.state.collectAsState().value,
+                        onBack = ::back,
+                        onOpen = vm::open,
+                        onClose = vm::close,
+                        onFetchAll = { tab(Screen.Overview) },
+                        onRemedy = ::remedy,
+                    )
                 }
                 Screen.Settings -> {
                     val vm: SettingsViewModel = viewModel(key = "settings") { SettingsViewModel(services) }
+                    // A12 of UC-010: Start Over at the end of Settings, run in the process's own scope.
+                    val startOverVm: StartOverViewModel = viewModel(key = "start-over") { StartOverViewModel(services) }
+                    val startOverUi by startOverVm.state.collectAsState()
                     LaunchedEffect(current) { vm.load() }
-                    vm.state.collectAsState().value?.let { ui ->
+                    val notOpened = vm.notOpened.collectAsState().value
+                    val settingsUi = vm.state.collectAsState().value
+                    // NFR-023: Settings whose stored data cannot be read says so, with Try again.
+                    if (settingsUi == null && notOpened != null) NotShown(notOpened, onTryAgain = vm::load)
+                    settingsUi?.let { ui ->
                         SettingsScreen(
                             ui = ui,
                             onEntry = { page ->
@@ -166,10 +401,13 @@ fun SlussenScreens(services: UiServices) {
                             },
                             onAccountMappings = { go(Screen.AccountMappings) },
                             onRecentFetches = { go(Screen.RecentFetches) },
-                            onEditFetchPeriod = vm::startEditingFetchPeriod,
-                            onFetchPeriodValue = vm::editFetchPeriod,
-                            onSaveFetchPeriod = vm::saveFetchPeriod,
-                            onCancelFetchPeriod = vm::cancelFetchPeriod,
+                            actions = vm.actions(),
+                            onTransferDescriptions = { go(Screen.TransferDescriptions) },
+                            onJournalExport = { go(Screen.JournalExport) },
+                            startedOver = startedOverCard,
+                            onCloseStartedOver = startedOver::close,
+                            startOver = startOverUi.takeIf { services.startOver != null },
+                            startOverActions = StartOverActions(startOverVm::open, startOverVm::cancel, startOverVm::confirm),
                         )
                     }
                 }
@@ -178,7 +416,30 @@ fun SlussenScreens(services: UiServices) {
                         ServicePageViewModel(services, current.service)
                     }
                     LaunchedEffect(current) { vm.load() }
-                    vm.state.collectAsState().value?.let { ui ->
+                    // UC-007 BR-008: the Bank Consents of a Data Provider that needs one, on its page.
+                    val context = LocalContext.current
+                    val browser = remember(context) { ConsentBrowser(context) }
+                    val consents: BankConsentsViewModel = viewModel(key = "bank-consents-${current.service.dataProviderId}") {
+                        BankConsentsViewModel(services, current.service, consentAnswers, Locale.getDefault().country, browser::available)
+                    }
+                    LaunchedEffect(current) {
+                        val renew = renewRequest?.takeIf { it.first == current.service }?.second
+                        if (renew != null) renewRequest = null
+                        consents.load(renew = renew)
+                    }
+                    // Review D4 items 1-2: leaving the page ends an open choice, and an answer shown on it.
+                    DisposableEffect(current) { onDispose { consents.left() } }
+                    val toOpen by consents.toOpen.collectAsState()
+                    // Step 4 of UC-007: the Bank's page opens in the browser once; no browser is answered at the control (A11), never a crash.
+                    LaunchedEffect(toOpen) {
+                        toOpen?.let { open -> consents.opened(browser.open(open.address.address)) }
+                    }
+                    val consentsUi = consents.state.collectAsState().value
+                    val pageUi = vm.state.collectAsState().value
+                    val pageNotOpened = vm.notOpened.collectAsState().value
+                    // NFR-023: a page whose stored data cannot be read says so, with Try again and Back.
+                    if (pageUi == null && pageNotOpened != null) NotShown(pageNotOpened, onTryAgain = vm::load, onBack = ::back)
+                    pageUi?.let { ui ->
                         ServicePageScreen(
                             ui = ui,
                             onBack = ::back,
@@ -214,6 +475,10 @@ fun SlussenScreens(services: UiServices) {
                             onFetch = vm::fetch,
                             onConfirmFetch = vm::confirmFetch,
                             onCancelFetch = vm::cancelFetch,
+                            onUploadAsCleared = vm::switchUploadAsCleared,
+                            bankConsents = consentsUi?.let { section ->
+                                { BankConsentsSection(section, bankConsentActionsOf(consents) { go(Screen.AccountMappings) }) }
+                            },
                         )
                     }
                 }
@@ -222,7 +487,21 @@ fun SlussenScreens(services: UiServices) {
                         FileFormatViewModel(services, current.fileFormatId)
                     }
                     LaunchedEffect(current) { vm.load() }
+                    val place = ImportPlace.FileFormatPage(current.fileFormatId)
+                    // A7 of UC-002: leaving the page ends its answer, and no file choice it asked for opens at a later visit.
+                    DisposableEffect(current) {
+                        onDispose {
+                            vm.left()
+                            fileImport.left { it == place }
+                        }
+                    }
                     vm.state.collectAsState().value?.let { ui ->
+                        // A7 step 2 of UC-002: once the Bank Account is added, the import is started first, then the request consumed.
+                        LaunchedEffect(ui.importFor) {
+                            if (ui.importFor != null) {
+                                vm.goOnWithImport { added -> fileImport.start(place, listOf(added))?.also { openDocumentDialog() } != null }
+                            }
+                        }
                         FileFormatScreen(
                             ui = ui,
                             onBack = ::back,
@@ -230,12 +509,30 @@ fun SlussenScreens(services: UiServices) {
                             onCancelForm = vm::cancelForm,
                             onChoose = vm::choose,
                             onAdd = vm::add,
+                            fileImport = { showButton ->
+                                FileImportControl(
+                                    fileImportUi.control(place, FileImportTexts.IMPORT_FIRST),
+                                    fileImportActions(onImport = vm::openFormToImport),
+                                    showButton = showButton,
+                                )
+                            },
                         )
                     }
                 }
+                Screen.TransferDescriptions -> {
+                    val vm: TransferDescriptionsViewModel = viewModel(key = "transfer-descriptions") { TransferDescriptionsViewModel(services) }
+                    LaunchedEffect(current) { vm.load() }
+                    val listsUi = vm.state.collectAsState().value
+                    val listsNotOpened = vm.notOpened.collectAsState().value
+                    // NFR-023: lists whose stored data cannot be read say so, with Try again and Back.
+                    if (listsUi == null && listsNotOpened != null) NotShown(listsNotOpened, onTryAgain = vm::load, onBack = ::back)
+                    listsUi?.let { ui -> TransferDescriptionsScreen(ui, onBack = ::back, actions = descriptionActionsOf(vm)) }
+                }
+                Screen.JournalExport -> JournalExportRoute(services, onBack = ::back)
                 Screen.AccountMappings -> {
                     val vm: AccountMappingsViewModel = viewModel(key = "account-mappings") { AccountMappingsViewModel(services) }
                     LaunchedEffect(current) { vm.load() }
+                    DisposableEffect(current) { onDispose { vm.left() } }
                     vm.state.collectAsState().value?.let { ui ->
                         AccountMappingsScreen(
                             ui = ui,
@@ -249,10 +546,51 @@ fun SlussenScreens(services: UiServices) {
                             onConfirmClearing = vm::confirmClearing,
                             onCancelClearing = vm::cancelClearing,
                             onCancelTypeAndBank = vm::cancelTypeAndBank,
+                            changes = mappingChangeActionsOf(vm),
                         )
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * UC-011 steps 1-2: the Journal Export screen with Android's save dialog (`ACTION_CREATE_DOCUMENT`, no permission needed),
+ * proposing the name of BR-007; no place chosen is A1, a place chosen starts the export to that document.
+ */
+@Composable
+private fun JournalExportRoute(services: UiServices, onBack: () -> Unit) {
+    val vm: JournalExportViewModel = viewModel(key = "journal-export") { JournalExportViewModel(services) }
+    LaunchedEffect(Unit) { vm.load() }
+    val resolver = LocalContext.current.contentResolver
+    var proposed by rememberSaveable { mutableStateOf("") }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri == null) {
+            vm.noPlaceChosen()
+        } else {
+            val document = PickedDocument(resolver, uri)
+            // The document's name is asked of its provider off the main thread.
+            vm.export(document, proposed) { document.name() }
+        }
+    }
+    // ADR-007 §1: leaving the screen while the export still waits for the lane withdraws it; once it reads, it goes on.
+    DisposableEffect(Unit) { onDispose { vm.withdraw() } }
+    JournalExportScreen(
+        ui = vm.state.collectAsState().value,
+        onBack = onBack,
+        onCodes = vm::setCodes,
+        onChoose = {
+            vm.choosePlace()?.let { name ->
+                proposed = name
+                // NFR-023: a device with no app to choose a place is answered at the control, never a crash.
+                try {
+                    picker.launch(name)
+                } catch (noApp: ActivityNotFoundException) {
+                    vm.noPlaceCanBeChosen()
+                }
+            }
+        },
+        onWithdraw = vm::withdraw,
+    )
 }

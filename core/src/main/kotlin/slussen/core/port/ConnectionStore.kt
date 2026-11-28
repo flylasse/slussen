@@ -187,6 +187,14 @@ interface ConnectionStore {
     /** The Bank named [name], stored when it is new (`BANK.name` is unique). */
     suspend fun bankNamed(name: String): StoredBank
 
+    /**
+     * Deletes the Bank [bankId] in one transaction of `slussen.db`, only when no Bank Account names it (by `bank_id` or
+     * `provider_bank_id`) and no Back-off does; returns whether it deleted it. The rows of `device.db` that name a Bank
+     * (a Bank Consent, an Offered Bank Account) are checked by the core before (ADR-002 §2), so that an attempt to grant
+     * a Bank Consent that did not store one leaves no Bank behind (ADR-002 §3 O-10, UC-007 A1-A4, A8).
+     */
+    suspend fun removeBankIfUnreferenced(bankId: Long): Boolean
+
     /** The Left-Out Bank Accounts of every Data Provider (UC-013 BR-011). */
     suspend fun leftOutBankAccounts(): List<StoredLeftOutBankAccount>
 
@@ -205,14 +213,132 @@ interface ConnectionStore {
      * while the Budget Account receives through an Account Mapping.
      */
     suspend fun setManuallyKept(budgetAccountId: Long, manuallyKept: Boolean): KeptOutcome
+
+    /**
+     * UC-009 step 1, BR-003: for each Bank Account with a Sent Record of one of its Bank Transactions, what was sent
+     * through its Account Mapping, counted by [SentThrough.of] from the `sent_record` rows of its Bank Transactions; a
+     * Bank Account none of whose Bank Transactions has a Sent Record is not in the map.
+     */
+    suspend fun sentThroughMappings(): Map<Long, SentThrough>
 }
 
-/** O-13 `MappingStore` (ADR-002 §3): the changes of UC-009, each one transaction on `slussen.db`. */
+/**
+ * UC-009 BR-003, BR-007: what was sent through the Account Mapping of one Bank Account, counted in Bank Transactions, as
+ * a move, a removal or a new identification states it. [sent] are those with a Sent Record whose outcome is Written,
+ * Already Present, Not Yet Known or Unknown in the Budget Account the Account Mapping names now, also one sent through
+ * an earlier Account Mapping of the Bank Account to that Budget Account; they stay where they are and are never sent
+ * again. [rejected] are the others that the Budget App rejected: nothing of them was written, and their next send goes to
+ * the Budget Account of the current Account Mapping (UC-006 BR-020).
+ */
+data class SentThrough(val sent: Int, val rejected: Int) {
+    // UC-009 BR-003: Once a transaction sent through the Account Mapping has the outcome Written, Already Present, Not Yet Known or Unknown, it is moved or removed only by an action the Operator confirms; while every one was rejected, without that confirmation.
+    /** Whether a move or a removal of the Account Mapping, or a new identification of its Bank Account, needs the Operator's confirmation. */
+    val needsConfirmation: Boolean get() = sent > 0
+
+    companion object {
+        val NONE = SentThrough(sent = 0, rejected = 0)
+
+        // UC-009 BR-003: A transaction counts as sent through the Account Mapping when it was sent from the Bank Account to the Budget Account the Account Mapping now names, also through an earlier Account Mapping of the Bank Account to that Budget Account; a rejected one is counted apart.
+        /**
+         * The count for one Bank Account from [records], the Sent Records of its own Bank Transactions, for the Budget
+         * Account [budgetAccountId] its Account Mapping names, as a move or a removal states it. With null, every Budget
+         * Account it sent to counts: what a new identification states, mapped or not, so that it is never stored
+         * without the confirmation while something the Bank Account sent was written anywhere (the conservative reading
+         * of BR-007 the orchestrator chose after the review of build-out phase B5).
+         */
+        fun of(records: List<StoredSentRecord>, budgetAccountId: Long?): SentThrough {
+            val byTransaction = records.groupBy { it.storedBankTransaction }
+            val sent = byTransaction.filterValues { sends ->
+                sends.any { it.outcome != SentRecordOutcome.Rejected && (budgetAccountId == null || it.budgetAccountId == budgetAccountId) }
+            }.keys
+            val rejected = byTransaction.filter { (transaction, sends) -> transaction !in sent && sends.any { it.outcome == SentRecordOutcome.Rejected } }
+            return SentThrough(sent.size, rejected.size)
+        }
+    }
+}
+
+/**
+ * How the Source identifies a Bank Account from now on (UC-009 step 6): the reference and the fingerprint of the
+ * Offered Bank Account the Operator confirmed, with the Bank that Data Provider names for it (`provider_bank_id`, S-33),
+ * and the time of the confirmation (`identified_at`).
+ */
+data class NewIdentification(
+    val providerReference: String,
+    val bankAccountFingerprint: String?,
+    val providerBankId: Long?,
+    val identifiedAt: Instant,
+)
+
+/** What O-13 did with a new identification of a Bank Account (UC-009 steps 4-6, A1, A2, A6, A7). */
+sealed interface IdentificationStored {
+    /** Stored with `identified_at`. */
+    data object Stored : IdentificationStored
+
+    /**
+     * BR-007: refused, nothing stored: something sent through the Account Mapping was written, and the call carried no
+     * confirmation of [sentThrough], the numbers as they are now.
+     */
+    data class ToConfirm(val sentThrough: SentThrough) : IdentificationStored
+
+    /** A2, BR-004: refused, nothing stored: the Bank Account [bankAccountName] is identified by that reference or fingerprint already. */
+    data class AlreadyUsed(val bankAccountName: String) : IdentificationStored
+
+    /** BR-004: refused, nothing stored: the reference is a Left-Out Bank Account's (UC-013 BR-011). */
+    data object LeftOut : IdentificationStored
+
+    /** Refused, nothing stored: no Bank Account has this id, or it is one of a File Format, which no Data Provider identifies. */
+    data object NotFound : IdentificationStored
+}
+
+/** What O-13 did with a move, a new Account Mapping or a removal (UC-009 A8, A11). */
+sealed interface MappingStored {
+    /** Stored. */
+    data object Stored : MappingStored
+
+    /**
+     * BR-003: refused, nothing stored: something sent through the Account Mapping was written, and the call carried no
+     * confirmation of [sentThrough], the numbers as they are now.
+     */
+    data class ToConfirm(val sentThrough: SentThrough) : MappingStored
+
+    /**
+     * Refused, nothing stored: the Budget Account is not one the Bank Account can be mapped to (of a served Budget in
+     * its currency, receiving through no Account Mapping, not a Manually Kept Account: A8 step 1, UC-013 BR-014), or the
+     * Bank Account has an Account Mapping where a new one is asked for, or none where one is moved or removed.
+     */
+    data object NotAllowed : MappingStored
+
+    /** No Bank Account has this id. */
+    data object NotFound : MappingStored
+}
+
+/** What O-13 did with a Funded By or a Transfer Partner (ADR-002 §3; UC-009 A9, BR-008). */
+enum class OtherSideStored {
+    /** Stored, or cleared. */
+    Stored,
+
+    /** Refused, nothing stored: the entity model's `BANK_ACCOUNT` constraints do not allow this value (UC-005 BR-014). */
+    NotAllowed,
+
+    /** No Bank Account has this id. */
+    NotFound,
+}
+
+/**
+ * O-13 `MappingStore` (ADR-002 §3): the changes of UC-009, each one transaction on `slussen.db` that raises
+ * `coordinator_state.state_version` when it stores something (ADR-007 §6 step 2). A change that UC-009 BR-015 follows with
+ * statuses given again and Transfers detected again (the type, retiring and restoring, the Start Date, a Funded By or
+ * Transfer Partner, moving, storing or removing an Account Mapping) sets `coordinator_state.comparison_pending` in the
+ * same transaction, so that no Upload Plan is prepared before the conclusions follow through O-5, within the same
+ * operation or at the next start (ADR-007 §3a). A move, a removal and a new identification check the locks of UC-009
+ * BR-003 and BR-007 against the `sent_record` rows inside their own transaction.
+ */
 interface MappingStore {
     /**
      * UC-009 A14: the Bank Account type and the Bank (stored first when it is a new one) of [bankAccountId], clearing
-     * its Funded By when [clearFundedBy] and its Transfer Partner when [clearTransferPartner], in one transaction.
-     * It changes no Account Mapping, identification, `provider_bank_id` or Sent Record (UC-009 BR-012).
+     * its Funded By when [clearFundedBy] and its Transfer Partner when [clearTransferPartner], in one transaction, with
+     * the Comparison marker. It changes no Account Mapping, identification, `provider_bank_id` or Sent Record (UC-009
+     * BR-012).
      */
     suspend fun changeTypeAndBank(
         bankAccountId: Long,
@@ -221,4 +347,83 @@ interface MappingStore {
         clearFundedBy: Boolean,
         clearTransferPartner: Boolean,
     )
+
+    /**
+     * UC-009 A4, A5: marks [bankAccountId] as a Retired Account, or restores it, with the Comparison marker, and returns
+     * whether it stored that; false, with nothing changed, when no Bank Account has this id or it already is so. It
+     * changes nothing else: the identification, the Account Mapping, the Start Date and the history are kept (BR-005).
+     */
+    suspend fun setRetired(bankAccountId: Long, retired: Boolean): Boolean
+
+    /**
+     * UC-009 A12: the name of [bankAccountId] and nothing else, without the Comparison marker, since no Transaction
+     * Status depends on a name (BR-011); returns whether a Bank Account has this id.
+     */
+    suspend fun rename(bankAccountId: Long, name: String): Boolean
+
+    /**
+     * UC-009 A13: the Start Date of [bankAccountId], null to clear it, with the Comparison marker; returns whether a Bank
+     * Account has this id.
+     */
+    suspend fun setStartDate(bankAccountId: Long, startDate: LocalDate?): Boolean
+
+    /**
+     * UC-009 A9: the Funded By or the Transfer Partner ([kind]) of [bankAccountId], null to clear it, with the Comparison
+     * marker. Refused, storing nothing, when [kind] does not fit the Bank Account type (a Funded By belongs only to a
+     * credit card, a Transfer Partner only to another Bank Account), and unless [budgetAccountId] is in the Budget of the
+     * Bank Account's own Account Mapping, differs from its own Budget Account, is no Manually Kept Account and receives
+     * through an Account Mapping of a Bank Account that is not a Retired Account (UC-005 BR-014, entity model
+     * `BANK_ACCOUNT` constraints).
+     */
+    suspend fun setOtherSide(bankAccountId: Long, kind: OtherSideKind, budgetAccountId: Long?): OtherSideStored
+
+    /** BR-003: what was sent through the Account Mapping of [bankAccountId] ([SentThrough.of] for its Budget Account); none when there is no such Bank Account. */
+    suspend fun sentThrough(bankAccountId: Long): SentThrough
+
+    /**
+     * BR-007: what a new identification of [bankAccountId] states: its written sends to any Budget Account, mapped or
+     * not ([SentThrough.of] with no Budget Account); none when there is no such Bank Account.
+     */
+    suspend fun sentForIdentification(bankAccountId: Long): SentThrough
+
+    /**
+     * UC-009 steps 4-6, A1, A6, A7: records [identification] as how the Source identifies [bankAccountId], with
+     * `identified_at`, in one transaction that raises `state_version`; no Transaction Status depends on it, so the
+     * Comparison marker is left as it is (BR-015 names no identification). Refused, storing nothing, when another Bank
+     * Account of the same Data Provider has that reference or fingerprint, or reports its balance (A2, BR-004), when the
+     * reference is left out (BR-004), and, when the reference or the fingerprint changes, while
+     * [SentThrough.needsConfirmation] holds for [sentForIdentification] and [confirmed] is not that count as it is now
+     * (BR-007, entity model `ACCOUNT_MAPPING`). The Account Mapping,
+     * `first_sent_at` and every Sent Record stay.
+     */
+    suspend fun identify(bankAccountId: Long, identification: NewIdentification, confirmed: SentThrough?): IdentificationStored
+
+    /**
+     * UC-009 A8: moves the Account Mapping of [bankAccountId] to [budgetAccountId] with `first_sent_at` emptied, in one
+     * transaction that raises `state_version` and sets the Comparison marker (BR-015). When the new Budget Account is in
+     * another Budget, the Bank Transactions of the Bank Account are not compared yet (their status emptied), so that none
+     * keeps a status the old Budget gave it until the new one is read (BR-015, UC-003 A1). Refused, storing nothing,
+     * when the Bank Account has no Account Mapping, unless the Budget Account is of a served Budget in the Bank Account's
+     * currency, receives through no Account Mapping and is no Manually Kept Account, and while
+     * [SentThrough.needsConfirmation] holds and [confirmed] is not the count as it is now (BR-003). Every Sent Record
+     * keeps its Budget Account.
+     */
+    suspend fun move(bankAccountId: Long, budgetAccountId: Long, confirmed: SentThrough?): MappingStored
+
+    /**
+     * UC-009 A8 for a Bank Account without an Account Mapping (A11): a new Account Mapping to [budgetAccountId] with
+     * `first_sent_at` empty, without a confirmation, in one transaction with `state_version`, the Comparison marker and
+     * the statuses of its Bank Transactions emptied (not compared yet), as in [move]: they were given before the
+     * Account Mapping was removed and are given again only by the Budget it is mapped into now. Refused, storing
+     * nothing, when the Bank Account has an Account Mapping, and for a Budget Account a move refuses.
+     */
+    suspend fun mapAgain(bankAccountId: Long, budgetAccountId: Long): MappingStored
+
+    /**
+     * UC-009 A11: removes the Account Mapping of [bankAccountId], in one transaction with `state_version` and the
+     * Comparison marker; the Bank Account keeps its identification, its Bank Transactions with their statuses and every
+     * Sent Record. Refused, storing nothing, when it has none, and while [SentThrough.needsConfirmation] holds and
+     * [confirmed] is not the count as it is now (BR-003).
+     */
+    suspend fun remove(bankAccountId: Long, confirmed: SentThrough?): MappingStored
 }

@@ -27,8 +27,11 @@ sealed interface ServiceStatus {
     /** Credentials accepted; for a Data Provider with the time of its last Fetch, for the Budget App the Budgets in use. */
     data class Connected(val lastFetchAt: Instant?, val budgetsInUse: Int?) : ServiceStatus
 
-    /** The nearest expiry of a Bank Consent of the Data Provider within the consent warning lead time (UC-008 BR-002). */
-    data class BankConsentExpires(val expiresAt: Instant) : ServiceStatus
+    /**
+     * The nearest expiry of a Bank Consent of the Data Provider within the consent warning lead time (UC-008 BR-002), or
+     * the time the Bank refused one before its expiry, from which it is expired ([refusedByBank], UC-001 A9).
+     */
+    data class BankConsentExpires(val expiresAt: Instant, val refusedByBank: Boolean = false) : ServiceStatus
 
     data object CredentialsRefused : ServiceStatus
 
@@ -58,8 +61,8 @@ sealed interface EntryStatus {
     /** How many of a Data Provider's Offered Bank Accounts are imported or added, with the time of its last Fetch. */
     data class Imported(val imported: Int, val of: Int, val lastFetchAt: Instant?) : EntryStatus
 
-    /** The nearest expiry of a Bank Consent of the Data Provider within the consent warning lead time (UC-008 BR-002). */
-    data class BankConsentExpires(val expiresAt: Instant) : EntryStatus
+    /** The nearest expiry of a Bank Consent of the Data Provider, or its refusal by the Bank ([refusedByBank]), as [ServiceStatus.BankConsentExpires]. */
+    data class BankConsentExpires(val expiresAt: Instant, val refusedByBank: Boolean = false) : EntryStatus
 
     /** A File Format with the number of its Bank Accounts. */
     data class FileFormatBankAccounts(val count: Int) : EntryStatus
@@ -153,6 +156,8 @@ data class ServicePage(
     val credentialsRefusedAt: Instant? = null,
     /** Whether a change on this page is recorded in the Decision Journal (UC-010 step 6, postconditions). */
     val journalOn: Boolean = true,
+    /** UC-010 A9, BR-010: Upload as Cleared as stored, on the Budget App's page when it supports the Cleared marker; null otherwise. */
+    val uploadAsCleared: Boolean? = null,
 )
 
 /**
@@ -277,7 +282,7 @@ class SettingsOverview(
             ServiceStatus.NotSetUp -> EntryStatus.NotSetUp
             ServiceStatus.CredentialsMissing -> EntryStatus.CredentialsMissing(bankAccounts)
             ServiceStatus.CredentialsRefused -> EntryStatus.CredentialsRefused
-            is ServiceStatus.BankConsentExpires -> EntryStatus.BankConsentExpires(status.expiresAt)
+            is ServiceStatus.BankConsentExpires -> EntryStatus.BankConsentExpires(status.expiresAt, status.refusedByBank)
             is ServiceStatus.Connected -> if (offeredStates.isEmpty()) {
                 EntryStatus.NothingOffered(provider.stored.needsBankConsent)
             } else {
@@ -313,6 +318,8 @@ class SettingsOverview(
                 budgetsInUse = served.map { BudgetInUse(it.id, it.name, it.currency) },
                 supportsClearedMarker = plugins.budgetApp.profile.supportsClearedMarker,
                 journalOn = settings.current().journalOn,
+                // UC-010 BR-010: Upload as Cleared is shown with the Budget App, only when it supports the Cleared marker.
+                uploadAsCleared = if (plugins.budgetApp.profile.supportsClearedMarker) settings.current().uploadAsCleared else null,
             )
         }
         val provider = plugins.dataProvider(service)
@@ -385,9 +392,9 @@ class SettingsOverview(
         val leadTime = Duration.ofDays(settings.current().consentWarningDays.toLong())
         return importStatus.bankConsents()
             .filter { it.dataProviderId == provider.stored.id }
-            .map { it.expiresAt }
-            .filter { !it.isAfter(now.plus(leadTime)) }
-            .minOrNull()
-            ?.let { ServiceStatus.BankConsentExpires(it) }
+            // A Bank Consent the Bank refused counts as expired from the time it was refused (UC-001 A9, entity model BANK_CONSENT).
+            .filter { !it.expiredFrom.isAfter(now.plus(leadTime)) }
+            .minByOrNull { it.expiredFrom }
+            ?.let { ServiceStatus.BankConsentExpires(it.expiredFrom, it.refusedByBank) }
     }
 }

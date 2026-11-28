@@ -3,6 +3,8 @@ package slussen.pluginapi.testfixtures
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -14,6 +16,13 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import slussen.pluginapi.budgetapp.BudgetApp
 import slussen.pluginapi.budgetapp.BudgetAppReader
+import slussen.pluginapi.budgetapp.BudgetAppTransactionRead
+import slussen.pluginapi.budgetapp.BudgetAppWriter
+import slussen.pluginapi.budgetapp.ClearResult
+import slussen.pluginapi.budgetapp.CreateItem
+import slussen.pluginapi.budgetapp.CreateResult
+import slussen.pluginapi.budgetapp.ItemOutcome
+import slussen.pluginapi.budgetapp.TransactionLookup
 import slussen.pluginapi.budgetapp.BudgetRead
 import slussen.pluginapi.budgetapp.ChangeCursor
 import slussen.pluginapi.budgetapp.ChangeSet
@@ -25,6 +34,7 @@ import slussen.pluginapi.credential.CredentialCapability
 import slussen.pluginapi.credential.CredentialCheck
 import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.diagnostic.SlussenLog
+import slussen.pluginapi.fileformat.ConversionResult
 import slussen.pluginapi.fileformat.FilePreprocessor
 import slussen.pluginapi.provider.BankAccountResult
 import slussen.pluginapi.provider.BankAccountSelection
@@ -36,9 +46,12 @@ import slussen.pluginapi.provider.ProviderTransaction
 import slussen.pluginapi.provider.SourceOutcome
 import slussen.pluginapi.provider.UnreadableReason
 import slussen.pluginapi.provider.RequestLimitDeclaration
+import slussen.pluginapi.request.Admission
 import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.request.RefusalReason
+import slussen.pluginapi.request.RequestGate
 import slussen.pluginapi.request.RequestKind
+import slussen.pluginapi.request.RequestSummary
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.Secret
 import java.time.Duration
@@ -58,13 +71,13 @@ public class ReadScenario(
 )
 
 /** A short invented request timeout for the cases where the test server never answers. */
-private val shortTimeout: Duration = Duration.ofSeconds(1)
+internal val shortTimeout: Duration = Duration.ofSeconds(1)
 
 /** Enough time for a call that is not cancelled or timed out to be seen as still running. */
-private val longTimeout: Duration = Duration.ofSeconds(30)
+internal val longTimeout: Duration = Duration.ofSeconds(30)
 
 /** How long a check may take beyond the request timeout before the contract test calls it hung. */
-private val slack: Duration = Duration.ofSeconds(4)
+internal val slack: Duration = Duration.ofSeconds(4)
 
 /**
  * The credential checks of ADR-001 §4.4 and §4.5, shared by the Data Provider and Budget App contract tests. The
@@ -614,10 +627,35 @@ public class ChangesScenario(
     public val from: LocalDate,
 )
 
+/** One write the contract tests run: the writer under test, the stored credential and what it is handed. */
+public class WriteScenario(
+    public val writer: BudgetAppWriter,
+    public val credential: Secret,
+    public val budgetReference: String,
+    public val items: List<CreateItem>,
+)
+
+/** One clearing the contract tests run: the writer under test, the stored credential and the counterpart. */
+public class ClearScenario(
+    public val writer: BudgetAppWriter,
+    public val credential: Secret,
+    public val budgetReference: String,
+    public val counterpartReference: String,
+)
+
+/** One read of a single transaction the contract tests run. */
+public class LookupScenario(
+    public val reader: BudgetAppReader,
+    public val credential: Secret,
+    public val budgetReference: String,
+    public val transactionReference: String,
+)
+
 /**
  * The Budget App contract test of ADR-001 §4.4: the credential checks of §4.5, the length check of ADR-008 §6, the
- * reading of Budgets and of changes of §4.2.3 (F-3, F-4, F-8). F-1, F-2, F-5 and F-7 come with the slice that builds
- * UC-006.
+ * reading of Budgets, of changes and of one transaction of §4.2.3 (F-1, F-3, F-4, F-8), and no planted value in a log
+ * line or a read's `toString()`. Every Budget App's writer passes [BudgetAppWriterContractTest] too (F-2, F-5, F-8).
+ * F-7 (pairing with a Typed Entry) is the Budget App's own behaviour: only the live tests of ADR-005 §7 (E-10) prove it.
  */
 public abstract class BudgetAppContractTest : CredentialContractTest() {
     protected abstract fun budgetApp(log: SlussenLog): BudgetApp
@@ -832,18 +870,142 @@ public abstract class BudgetAppContractTest : CredentialContractTest() {
         assertEquals(0, requestsReceived())
     }
 
+    /** The Budget App answers a read of one transaction with the transaction of [expectedLookup]. */
+    protected abstract fun lookupFound(): LookupScenario
+
+    /** What [lookupFound] must return: a transaction created with an Import Identifier, one side of a linked transfer. */
+    protected abstract fun expectedLookup(): BudgetAppTransactionRead
+
+    /** The Budget App answers that it holds no such transaction. */
+    protected abstract fun lookupNotFound(): LookupScenario
+
+    /** The Budget App answers a read of one transaction that the stored credential is not valid. */
+    protected abstract fun lookupCredentialRefused(): LookupScenario
+
+    /** The Budget App accepts the connection of a read of one transaction and never answers. */
+    protected abstract fun lookupNeverAnswering(): LookupScenario
+
+    /**
+     * The values planted in this test's recorded answers of reads that no log line and no `toString()` of a read's
+     * result may show (ADR-006 §2, NFR-007, NFR-008): payees, memos, amounts as text, Budget and Budget Account names,
+     * Import Identifiers and the Budget App's references.
+     */
+    protected abstract fun plantedReadValues(): List<String>
+
+    private fun lookup(scenario: LookupScenario, context: TestRequestContext): ReadResult<TransactionLookup> =
+        runBlocking(Dispatchers.Default) {
+            scenario.reader.readTransaction(scenario.budgetReference, scenario.transactionReference, context)
+        }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-020"])
+    @DisplayName("ADR-001 §4.2.1 F-1, F-3: readTransaction returns the one transaction with every field, its Import Identifier and its transfer link, admitted by the gate as a read")
+    public fun oneTransactionIsRead() {
+        val gate = RecordingRequestGate()
+        val scenario = lookupFound()
+        val result = lookup(scenario, TestRequestContext(gate, credential = scenario.credential))
+        assertEquals(ReadResult.Answered(TransactionLookup.Found(expectedLookup())), result)
+        assertTrue(expectedLookup().importIdentifier != null, "the looked-up transaction keeps its Import Identifier (F-1)")
+        assertTrue(expectedLookup().transferLink != null, "the looked-up transaction is one side of a linked transfer")
+        assertEquals(requestsReceived(), gate.requests.size)
+        assertTrue(gate.requests.all { it.kind == RequestKind.BudgetAppRead }, "${gate.requests}")
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.2.3: a transaction the Budget App does not hold is NotFound")
+    public fun missingTransactionIsNotFound() {
+        val scenario = lookupNotFound()
+        assertEquals(ReadResult.Answered(TransactionLookup.NotFound), lookup(scenario, TestRequestContext(credential = scenario.credential)))
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.2.1 F-8: refused credentials of a read of one transaction are a typed result")
+    public fun refusedCredentialsOfALookupAreTyped() {
+        val scenario = lookupCredentialRefused()
+        assertEquals(ReadResult.CredentialsRefused, lookup(scenario, TestRequestContext(credential = scenario.credential)))
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.0: a read of one transaction the Budget App never answers ends in TransientFailure(Timeout) within the request timeout; one refused by the gate sends nothing")
+    public fun unansweredLookupTimesOut() {
+        val scenario = lookupNeverAnswering()
+        val started = System.nanoTime()
+        val result = lookup(scenario, TestRequestContext(timeout = shortTimeout, credential = scenario.credential))
+        assertEquals(ReadResult.TransientFailure(FailureKind.Timeout), result)
+        assertTrue(Duration.ofNanos(System.nanoTime() - started) < shortTimeout.plus(slack))
+        val before = requestsReceived()
+        val refused = lookupFound()
+        val stopped = lookup(refused, TestRequestContext(RecordingRequestGate.refusing(), credential = refused.credential))
+        assertTrue(stopped is ReadResult.StoppedByGate, "was $stopped")
+        assertEquals(before, requestsReceived())
+    }
+
+    @Test
+    @DisplayName("ADR-006 §2, NFR-008 (C2 review item 7): no log line, with Detailed Logging on or off, and no toString() of a read's result (a Budget, a Budget Account, a transaction, its transfer link, a merged state) shows a planted value")
+    public fun noReadRevealsAPlantedValue() {
+        val shown = mutableListOf<String>()
+        listOf(false, true).forEach { detailed ->
+            log.detailed = detailed
+            val budgets = budgetsAnswered()
+            val read = runBlocking(Dispatchers.Default) { budgets.reader.readBudgets(TestRequestContext(credential = budgets.credential)) }
+            shown += read.toString()
+            (read as? ReadResult.Answered)?.value?.forEach { budget -> shown += budget.toString(); shown += budget.budgetAccounts.map { it.toString() } }
+            val changes = changesAnswered()
+            val changed = readChanges(changes, TestRequestContext(credential = changes.credential))
+            shown += changed.toString()
+            (changed as? ReadResult.Answered)?.value?.transactions?.forEach { t -> shown += listOf(t.toString(), t.transferLink.toString(), t.state.toString()) }
+            val looked = lookupFound()
+            shown += lookup(looked, TestRequestContext(credential = looked.credential)).toString()
+        }
+        log.detailed = true
+        shown += log.written
+        assertTrue(plantedReadValues().isNotEmpty(), "the test plants no value")
+        (plantedReadValues() + plantedValues()).forEach { planted ->
+            shown.forEach { text -> assertFalse(planted in text, "a log line or toString() shows a planted value: $text") }
+        }
+    }
+
     private companion object {
         /** ADR-008 §6: version 1 of the Import Identifier protocol produces 31 characters. */
         const val IMPORT_IDENTIFIER_V1_LENGTH = 31
+
     }
 }
 
 /**
- * The File Pre-processor contract test of ADR-001 §4.4. This slice holds the declaration check; the conversion checks
- * come with the slice that builds UC-002.
+ * An invented file in the File Pre-processor's format that holds one line it cannot convert, for the rejection check
+ * of ADR-001 §4.4. What an implementer must give:
+ *
+ * - [file]: the whole file, in which exactly one line cannot be converted;
+ * - [unreadableLine]: that line exactly as it is written in [file], without its line end;
+ * - [valuesOfTheFile]: the values written in the file that a `Rejected.reason` must never hold (ADR-001 §4.3,
+ *   NFR-007). It must not be empty and must hold every value of [unreadableLine] (each of its amounts, dates, payees,
+ *   memos and other texts, the one that cannot be converted included) and should hold those of the other lines too.
+ *   Values short enough to occur by chance in any English sentence (a single digit, a word such as `Cash` that the
+ *   format itself names) are better made distinctive in the invented file than left out.
+ *
+ * The contract test checks that the list is not empty, that each listed value of the unreadable line occurs in it,
+ * and that the reason holds neither the line nor any listed value.
+ */
+public class RejectedFileScenario(
+    public val file: ByteArray,
+    public val unreadableLine: String,
+    public val valuesOfTheFile: List<String>,
+)
+
+/**
+ * The File Pre-processor contract test of ADR-001 §4.4: the declarations, a file with one unreadable line rejected
+ * with a reason that holds no value of the file, every reference non-empty, and the same bytes converted twice giving
+ * equal results (pure, B-01). A File Pre-processor declares no number (no Upload Window, §4.3), so no range is checked.
  */
 public abstract class FilePreprocessorContractTest {
     protected abstract fun filePreprocessor(log: SlussenLog): FilePreprocessor
+
+    /** An invented file in the format that converts into at least one transaction. */
+    protected abstract fun convertedFile(): ByteArray
+
+    /** An invented file in the format in which exactly one line cannot be converted. */
+    protected abstract fun fileWithOneUnreadableLine(): RejectedFileScenario
 
     @Test
     @DisplayName("ADR-001 §4.3: the File Pre-processor declares a name and a source key")
@@ -852,20 +1014,69 @@ public abstract class FilePreprocessorContractTest {
         assertTrue(profile.name.isNotBlank(), "name")
         assertTrue(profile.sourceKey.isNotBlank(), "source key")
     }
+
+    @Test
+    @DisplayName("ADR-001 §4.4: a file with one unreadable line is Rejected as a whole, with a reason that holds no value of the file")
+    public fun aFileWithOneUnreadableLineIsRejected() {
+        val scenario = fileWithOneUnreadableLine()
+        assertTrue(scenario.valuesOfTheFile.isNotEmpty(), "the scenario lists no value of the file")
+        assertTrue(scenario.valuesOfTheFile.none { it.isEmpty() }, "a listed value of the file is empty")
+        assertTrue(scenario.unreadableLine.isNotEmpty(), "the unreadable line is not given")
+        assertTrue(String(scenario.file, Charsets.UTF_8).contains(scenario.unreadableLine), "the unreadable line is not in the file")
+        val ofTheLine = scenario.valuesOfTheFile.filter { scenario.unreadableLine.contains(it) }
+        assertTrue(ofTheLine.isNotEmpty(), "the scenario lists no value of the unreadable line")
+        val result = filePreprocessor(WrittenLog()).convert(scenario.file.copyOf())
+        assertTrue(result is ConversionResult.Rejected, "was ${result::class.simpleName}")
+        val reason = (result as ConversionResult.Rejected).reason
+        assertTrue(reason.isNotBlank(), "the reason is empty")
+        assertFalse(reason.contains(scenario.unreadableLine), "the reason holds the unreadable line")
+        val revealed = scenario.valuesOfTheFile.filter { reason.contains(it) }
+        assertTrue(revealed.isEmpty(), "the reason holds ${revealed.size} value(s) of the file")
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.4: every reference of a converted file is non-empty")
+    public fun everyReferenceIsNonEmpty() {
+        val result = filePreprocessor(WrittenLog()).convert(convertedFile())
+        assertTrue(result is ConversionResult.Converted, "was ${result::class.simpleName}")
+        val transactions = (result as ConversionResult.Converted).file.transactions
+        assertTrue(transactions.isNotEmpty(), "the converted file holds no transaction")
+        assertTrue(transactions.all { it.reference.isNotEmpty() }, "a reference is empty")
+    }
+
+    @Test
+    @DisplayName("ADR-001 §4.4, B-01: converting the same bytes twice, by one File Pre-processor and by another, gives equal results and leaves the bytes as they were")
+    public fun theSameBytesGiveEqualResults() {
+        listOf(convertedFile(), fileWithOneUnreadableLine().file).forEach { file ->
+            val given = file.copyOf()
+            val preprocessor = filePreprocessor(WrittenLog())
+            val first = preprocessor.convert(given)
+            val second = preprocessor.convert(given)
+            val byAnother = filePreprocessor(WrittenLog()).convert(file.copyOf())
+            assertEquals(first, second)
+            assertEquals(first, byAnother)
+            assertTrue(given.contentEquals(file), "convert changed the bytes it was given")
+        }
+    }
 }
 
 /**
  * ADR-001 §4.0 (S-36): no exception of a request ended a thread it ran on; on Android such an exception ends the app.
  * The message names each exception's type only.
  */
-private fun assertNoUncaughtException(threads: RecordingRequestThreads) {
+private fun assertNoUncaughtException(threads: RecordingRequestThreads) = assertNoUncaughtExceptionOn(threads)
+
+internal fun assertNoUncaughtExceptionOn(threads: RecordingRequestThreads) {
     val uncaught = threads.uncaught
     assertTrue(uncaught.isEmpty(), "an exception ended a request thread: ${uncaught.map { it::class.java.name }}")
 }
 
-/** A log that keeps every line it is given as text, detail messages included, as with Detailed Logging on. */
-public class WrittenLog : SlussenLog {
-    private val lines = mutableListOf<String>()
+/**
+ * A log that keeps every line it is given as text. While [detailed] is true, as with Detailed Logging on, detail
+ * messages are run and kept too; while it is false they are not run, as in the default mode (ADR-006 §1).
+ */
+public class WrittenLog(public var detailed: Boolean = true) : SlussenLog {
+    private val lines = java.util.concurrent.CopyOnWriteArrayList<String>()
 
     public val written: List<String> get() = lines.toList()
 
@@ -874,7 +1085,7 @@ public class WrittenLog : SlussenLog {
     }
 
     override fun detail(event: slussen.pluginapi.diagnostic.LogEvent, message: () -> String) {
-        lines += "$event ${message()}"
+        if (detailed) lines += "$event ${message()}"
     }
 }
 

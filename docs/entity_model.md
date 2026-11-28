@@ -17,7 +17,6 @@ erDiagram
     BUDGET_ACCOUNT ||--o| ACCOUNT_MAPPING : "receives through"
     BANK ||--o{ BANK_CONSENT : "grants"
     DATA_PROVIDER ||--o{ BANK_CONSENT : "reads with"
-    BANK ||--o{ CONSENT_REQUEST : "is asked by"
     DATA_PROVIDER ||--o{ CONSENT_REQUEST : "starts"
     BANK_CONSENT ||--o| BANK_SESSION : "opens"
     DATA_PROVIDER |o--o| SERVICE_CREDENTIAL : "is reached with"
@@ -40,7 +39,7 @@ erDiagram
     BANK_TRANSACTION ||--o| REVIEW_DECISION : "is decided by"
     BUDGET_ACCOUNT |o--o{ REVIEW_DECISION : "holds the chosen transaction of"
     TRANSFER |o--|{ BANK_TRANSACTION : "has as Transfer Leg"
-    BUDGET_ACCOUNT ||--o{ TRANSFER : "is the outflow side of"
+    BUDGET_ACCOUNT |o--o{ TRANSFER : "is the outflow side of"
     BUDGET_ACCOUNT ||--o{ TRANSFER : "is the inflow side of"
     BUDGET ||--o{ UPLOAD_PLAN : "is written by"
     BANK_ACCOUNT |o--o{ UPLOAD_PLAN : "limits"
@@ -205,6 +204,7 @@ One of the Operator's or a household member's Bank Accounts at a Bank, as expose
 - Two Bank Accounts of the same Data Provider never have the same `provider_reference` or the same `bank_account_fingerprint`.
 - `funded_by_budget_account_id` and `transfer_partner_budget_account_id` belong to the same Budget as the Bank Account's own Account Mapping, differ from its own Budget Account, and are each a Budget Account that Slussen fetches, that is, one that a Bank Account the Operator added that is not a Retired Account is mapped to through an Account Mapping; never a Manually Kept Account (UC-005 BR-014).
 - When that Budget Account loses its last Account Mapping of a Bank Account that is not a Retired Account, the value is kept but no longer applies: it is not used to detect Transfers and is shown as not applying until the Operator changes or clears it or such a Bank Account is mapped to it again.
+- When the Bank Account's own Account Mapping is moved or removed (UC-009 A8, A11), the value is kept too: it does not apply while it is not a Budget Account of the Budget the Bank Account is mapped into, or is the Bank Account's own Budget Account, and applies again without any change when it is (UC-005 BR-014).
 - `funded_by_budget_account_id` is filled only when `bank_account_type` is Credit Card; `transfer_partner_budget_account_id` is filled only when `bank_account_type` is not Credit Card.
 - Neither has a default; both start empty and every change is recorded in the Decision Journal.
 - A Retired Account keeps its identification, Account Mapping and history and can be restored.
@@ -291,10 +291,12 @@ The Bank's permission, granted by the Operator through Strong Customer Authentic
 | data_provider_id | Data Provider that reads with the consent         | Long      | 19               | Not Null, Foreign Key (DATA_PROVIDER.id) |
 | granted_at       | Time the Operator granted or renewed the consent  | DateTime  | -                | Not Null                                 |
 | expires_at       | Expiry date the Bank or Data Provider reported when the consent was granted | DateTime  | -                | Not Null                                 |
+| refused_at       | Time the Data Provider first reported that the Bank no longer accepts the consent, empty until then (UC-001 A9) | DateTime  | -                | Optional                                 |
 
 #### Constraints
 
 - `expires_at` is after `granted_at`; Slussen assumes no fixed consent length.
+- A Bank Consent is valid while `refused_at` is empty and `expires_at` lies in the future; once `refused_at` is filled it counts as expired from that time, covers no Bank Account in a Fetch (UC-001 A4) and is shown as an expired Bank Consent, with that time and that the Bank refused it, until a grant or renewal replaces it (UC-008 BR-006); `expires_at` is kept as reported.
 - A Bank has at most one Bank Consent per Data Provider; renewing replaces it.
 - A Bank Consent covers each `BANK_ACCOUNT` whose `provider_bank_id` is its `bank_id` and whose `data_provider_id` or `balance_data_provider_id` is its `data_provider_id`, whatever the Bank Account's `bank_id` (UC-007 BR-009).
 - Revoking a Bank Consent removes it together with its Bank Session (`BANK_SESSION`), also when the Data Provider does not confirm the end of the consent.
@@ -308,7 +310,7 @@ The session at a Data Provider that a granted Bank Consent opens and through whi
 |-------------------|--------------------------------------------------------------------------------------|-----------|------------------|-----------------------------------------|
 | id                | Unique identifier                                                                    | Long      | 19               | Primary Key, Sequence                   |
 | bank_consent_id   | Bank Consent that opened the session                                                 | Long      | 19               | Not Null, Foreign Key (BANK_CONSENT.id) |
-| session_reference | Identifier the Data Provider gives the session, used in every read of the Bank's Bank Accounts | String    | 200              | Not Null                                |
+| session_reference | Identifier the Data Provider gives the session, with what its part keeps to read the session's Bank Accounts by their lasting reference (ADR-001 §4.1), used in every read of the Bank's Bank Accounts | String    | 4000             | Not Null                                |
 | opened_at         | Time the Data Provider opened the session                                            | DateTime  | -                | Not Null                                |
 
 #### Constraints
@@ -341,7 +343,7 @@ One attempt to grant or renew the Bank Consent of a Bank, started with a Data Pr
 | Attribute        | Description                                                    | Data Type | Length/Precision | Validation Rules                         |
 |------------------|----------------------------------------------------------------|-----------|------------------|------------------------------------------|
 | id               | Unique identifier                                              | Long      | 19               | Primary Key, Sequence                    |
-| bank_id          | Bank whose Bank Consent is requested                           | Long      | 19               | Not Null, Foreign Key (BANK.id)          |
+| bank_reference   | Reference the Data Provider gives the Bank whose Bank Consent is requested, its name and country (ADR-001 §4.1) | String    | 100              | Not Null                                 |
 | data_provider_id | Data Provider with which the request was started               | Long      | 19               | Not Null, Foreign Key (DATA_PROVIDER.id) |
 | started_at       | Time Slussen started the request                               | DateTime  | -                | Not Null                                 |
 | expires_at       | Time after which an answer to the request is rejected          | DateTime  | -                | Not Null                                 |
@@ -351,6 +353,7 @@ One attempt to grant or renew the Bank Consent of a Bank, started with a Data Pr
 
 - `expires_at` is `OPERATOR_SETTINGS.consent_request_minutes` after `started_at`.
 - Only the most recent Consent Request of a Bank and Data Provider can be answered; starting a new one makes the earlier ones unanswerable.
+- It names its Bank by `bank_reference` and refers to no `BANK`: the `BANK` whose `name` is that reference is found or created only when the Bank Consent is granted, right before it is stored (ADR-002 §3 O-10), so that a refused or abandoned attempt leaves no Bank behind; a renewal takes the reference from the `BANK.name` of the Bank Consent it renews.
 - A Consent Request is never included in device backups and is not restored after a reinstall.
 
 ### FETCH
@@ -363,11 +366,11 @@ One read of transactions and balances from a Data Provider, started by the Opera
 | data_provider_id | Data Provider that was read                   | Long      | 19               | Not Null, Foreign Key (DATA_PROVIDER.id) |
 | started_at       | Time the Fetch started                        | DateTime  | -                | Not Null                                 |
 | started_by       | Whether the Operator started the Fetch, with the Operator present, or the Fetch Schedule started it, unattended | String    | 20               | Not Null, Values: Operator, Schedule     |
-| outcome          | What the Fetch achieved                       | String    | 30               | Not Null, Values: Fetched, Served From Fetch Cooldown, Waiting For Back-off, Request Limit Reached, Failed, Not Consented, Credentials Refused |
+| outcome          | What the Fetch achieved                       | String    | 30               | Not Null, Values: Fetched, Served From Fetch Cooldown, Waiting For Back-off, Request Limit Reached, Failed, Not Consented, Credentials Refused, Access Limit Reached |
 
 #### Constraints
 
-- Only the most recent Fetches are kept, as many as `OPERATOR_SETTINGS.fetch_history_size`.
+- Only the most recent Fetches are kept, as many as `OPERATOR_SETTINGS.fetch_history_size`; after that value is lowered, the older ones are removed when the next Fetch is stored and are no longer shown from the change on (UC-010 step 4).
 
 ### FETCH_RESULT
 
@@ -416,14 +419,14 @@ One request Slussen sent to a Data Provider, kept so that the Request Limit and 
 | data_provider_id | Data Provider the request was sent to                                                       | Long      | 19               | Not Null, Foreign Key (DATA_PROVIDER.id) |
 | bank_account_id  | Bank Account the request read, empty for a request that reads no single Bank Account        | Long      | 19               | Optional                                 |
 | request_kind     | What the request read                                                                       | String    | 20               | Not Null, Values: Transactions, Balance, Other |
-| unattended       | True when a Scheduled Fetch sent the request without the Operator present                   | Boolean   | 1                | Not Null                                 |
+| unattended       | True when the request was sent without showing the Bank that the Operator is present: every request of a Scheduled Fetch, and a request of a Fetch the Operator started that could not show it (UC-001 BR-012) | Boolean   | 1                | Not Null                                 |
 | sent_at          | Time Slussen sent the request                                                               | DateTime  | -                | Not Null                                 |
 
 #### Constraints
 
 - A Provider Request is kept for at least 24 hours after `sent_at`, the window of the Data Providers' own limits and of C-006, and survives a restart of the app.
-- For a Data Provider that needs a Bank Consent, the unattended Provider Requests of one Bank Account sent in the preceding 24 hours number at most 4 with `request_kind` Transactions and at most 4 with `request_kind` Balance (C-006).
-- A Provider Request of a Fetch the Operator started is never `unattended`.
+- For a Data Provider that needs a Bank Consent, a Scheduled Fetch sends an unattended Provider Request of one Bank Account with `request_kind` Transactions, or with `request_kind` Balance, only while fewer than 4 of that kind, the limit PSD2 sets (C-006), were sent in the preceding 24 hours, one sent exactly 24 hours before included; a Fetch the Operator started may add more (UC-001 BR-012).
+- A Provider Request of a Fetch the Operator started is `unattended` only when the request could not show the Bank that the Operator is present (UC-001 BR-012); a request of a Bank Consent operation never is.
 
 ### ACCOUNT_BALANCE
 
@@ -453,8 +456,8 @@ A file of transactions that the Operator downloaded from a Bank and imported for
 | file_format_id    | File Format the file was read with                             | Long      | 19               | Not Null, Foreign Key (FILE_FORMAT.id)   |
 | imported_at       | Time the Operator imported the file                            | DateTime  | -                | Not Null                                 |
 | outcome           | Whether the file was taken in as a whole or rejected as a whole | String    | 20               | Not Null, Values: Imported, Rejected     |
-| transaction_count | Number of Bank Transactions the file delivered                 | Integer   | 10               | Not Null                                 |
-| rejection_reason  | Reason shown to the Operator when the file was rejected        | String    | 200              | Optional                                 |
+| transaction_count | Number of Bank Transactions the file delivered: its booked transactions with an amount other than zero, those already stored included (UC-002 step 7); 0 for a rejected file | Integer   | 10               | Not Null                                 |
+| rejection_reason  | Reason shown to the Operator when the file was rejected, its first 200 characters, never a value of the file (ADR-001 §4.3) | String    | 200              | Optional                                 |
 
 #### Constraints
 
@@ -480,7 +483,7 @@ One booked, non-zero transaction of a Bank Account as delivered by a Data Provid
 | memo              | Memo as delivered by the Source, in full                                                            | String    | 500              | Optional                                |
 | first_seen_at     | Time Slussen first received the transaction                                                         | DateTime  | -                | Not Null                                |
 | status            | Transaction Status from the latest Comparison, empty until a Comparison has read its Budget (UC-003 A1) | String    | 40               | Optional, Values: New, Match For Typed Entry, Already In Budget App, Possible Import By Other Path, Deferred, Deleted In Budget App, Merged In Budget App, Decision No Longer Holds, Needs Review, Before Start Date, Too Old, In The Future, Outcome Unknown, Transfer Leg, Guessed Transfer, Held Transfer, Arrived As Transfer Counterpart, Transfer Counterpart Changed |
-| transfer_id       | Transfer the transaction is a Transfer Leg of, empty for an ordinary transaction                    | Long      | 19               | Optional, Foreign Key (TRANSFER.id)     |
+| transfer_id       | Transfer the transaction is a Transfer Leg of, also while the decision of that Transfer is Split; empty for every other ordinary transaction | Long      | 19               | Optional, Foreign Key (TRANSFER.id)     |
 
 #### Constraints
 
@@ -536,7 +539,11 @@ The Operator's current choice for one doubtful Bank Transaction, which can be ch
 - A Bank Transaction has at most one Review Decision.
 - `chosen_budget_app_reference`, `chosen_budget_account_id` and `chosen_amount` are filled exactly when choice is Already Present.
 - An Already Present decision no longer holds when the chosen transaction is deleted in the Budget App, is in another Budget Account than `chosen_budget_account_id`, or has an amount other than `chosen_amount`.
-- The decision cannot be changed once the Bank Transaction has a Sent Record with `outcome` Written.
+- The decision cannot be changed or cleared while the Bank Transaction has a Sent Record with `outcome` Written or Already Present and its `status` is Already In Budget App. A sent Bank Transaction whose `status` is Deleted In Budget App or Merged In Budget App can be decided again with Re-upload, and one whose `status` is Outcome Unknown can be decided while it waits for a decision (UC-004 BR-004).
+- That the decision of its `TRANSFER` cannot be changed does not lock the decision of a Transfer Leg by itself: it cannot be changed or cleared only while that Transfer Leg's own `status` is Already In Budget App through such a Sent Record, or Arrived As Transfer Counterpart. A Transfer Leg of a Transfer whose `decision` is Split that has no Sent Record is never locked (UC-004 BR-004).
+- While the `decision` of its `TRANSFER` is Held, a Transfer Leg cannot be decided Re-upload, and a decision Re-upload it already has gives it no `status` New (UC-004 BR-009, UC-005 BR-007).
+- A decision Re-upload covers only the send it caused: it applies until a Sent Record of the Bank Transaction for a Re-upload sent after `decided_at` has `outcome` Written or Already Present, and counts as no decision after that; when the Budget App deletes or merges that transaction too, the `status` is Deleted In Budget App or Merged In Budget App again, and only a new choice of the Operator, which sets `decided_at`, sends the Bank Transaction once more (UC-004 BR-003).
+- The decision is kept while a rule that stands before it in the order of the Comparison gives the Bank Transaction its `status` (Before Start Date, Too Old or In The Future), and applies again when that rule no longer does (UC-004 BR-006).
 
 ### TRANSFER
 
@@ -545,7 +552,7 @@ A movement of money between two of the Operator's Bank Accounts in the same Budg
 | Attribute                  | Description                                                                         | Data Type | Length/Precision | Validation Rules                          |
 |----------------------------|-------------------------------------------------------------------------------------|-----------|------------------|-------------------------------------------|
 | id                         | Unique identifier                                                                   | Long      | 19               | Primary Key, Sequence                     |
-| outflow_budget_account_id  | Budget Account of the outflow side                                                  | Long      | 19               | Not Null, Foreign Key (BUDGET_ACCOUNT.id) |
+| outflow_budget_account_id  | Budget Account of the outflow side, empty only for a Guessed Transfer for which Slussen proposes no paying Budget Account (UC-005 A8) | Long      | 19               | Optional, Foreign Key (BUDGET_ACCOUNT.id) |
 | inflow_budget_account_id   | Budget Account of the inflow side                                                   | Long      | 19               | Not Null, Foreign Key (BUDGET_ACCOUNT.id) |
 | amount                     | Amount moved, in the Budget's currency                                              | Decimal   | 12,3             | Not Null                                  |
 | transfer_type              | Whether the Transfer is a Card Payment or a move between Bank Accounts              | String    | 20               | Not Null, Values: Card Payment, Bank Transfer |
@@ -555,14 +562,21 @@ A movement of money between two of the Operator's Bank Accounts in the same Budg
 
 #### Constraints
 
-- `outflow_budget_account_id` and `inflow_budget_account_id` differ and belong to the same Budget.
+- `outflow_budget_account_id` and `inflow_budget_account_id` differ and belong to the same Budget when both are filled.
+- `outflow_budget_account_id` is empty only for a Transfer with `transfer_type` Card Payment, `guessed` true and exactly one Transfer Leg, the inflow to a credit card Bank Account without a Funded By that applies, for which Slussen proposes no Budget Account (UC-005 A8), and only while `decision` is Proposed, Split or Held. It is filled as soon as Slussen proposes a Budget Account while `decision` is Proposed, or the Operator chooses one; the decisions Confirmed and Budget Account Chosen need both sides filled. `inflow_budget_account_id` is always filled.
+- For a Transfer whose `outflow_budget_account_id` is empty, the decision Split means that its one Transfer Leg is compared as an ordinary Bank Transaction, and the decision Held that it has `status` Held Transfer and is in no Upload Plan; while it has either decision, no Bank Transaction joins it as a second Transfer Leg.
 - A Transfer has one or two Transfer Legs; with one it is a Lonely Transfer.
-- The two Transfer Legs have equal and opposite amounts, lie in the Bank Accounts mapped to the outflow and inflow Budget Accounts, and are dated at most `OPERATOR_SETTINGS.transfer_pairing_days` apart.
-- A Lonely Transfer whose other Transfer Leg has not arrived within `OPERATOR_SETTINGS.lonely_transfer_grace_days` becomes an ordinary transaction.
+- The two Transfer Legs have equal and opposite amounts, lie in the Bank Accounts mapped to the outflow and inflow Budget Accounts, and are dated at most `OPERATOR_SETTINGS.transfer_pairing_days` apart when Slussen pairs them; a later change of that Operator Setting dissolves no Transfer whose `decision` is other than Proposed (UC-005 BR-015).
+- A Lonely Transfer whose `decision` is Proposed, whose Transfer Leg has no Sent Record with an `outcome` other than Rejected, and whose other Transfer Leg has not arrived within `OPERATOR_SETTINGS.lonely_transfer_grace_days` becomes an ordinary transaction. One whose `decision` is Confirmed, Held or Budget Account Chosen stays a Lonely Transfer with its decision, and the Bank Transaction of its other side joins it as its second Transfer Leg when it arrives: one that has no Sent Record with an `outcome` other than Rejected and is a Transfer Leg of no Transfer that has a `decision` other than Proposed or a Transfer Leg with such a Sent Record; a Transfer whose `decision` is Proposed that it leaves is removed and its other Transfer Leg released for a new detection. A Bank Transaction that could join more than one such Transfer joins the one whose Transfer Leg has the nearest `booked_date`, then the one with the earliest `decided_at` (UC-005 BR-005).
+- A Bank Transaction with a Sent Record whose `outcome` is other than Rejected and whose `sent_as_transfer` is false is a Transfer Leg of no Transfer, except of the Transfer whose `decision` Split sent it so, or of a Transfer one of whose Transfer Legs already has such a Sent Record with `sent_as_transfer` true, which is never removed or changed (a Re-upload after the Budget App deleted or merged a Transfer Leg sent as a linked transfer, UC-005 BR-010). When the Bank Account of the missing side of a Lonely Transfer holds such a Bank Transaction with the opposite amount, dated at most `OPERATOR_SETTINGS.transfer_pairing_days` from its Transfer Leg, and none can join, the Transfer is removed unless its `decision` is Split or Held, and its Transfer Leg is an ordinary transaction (UC-005 BR-005, UC-005 BR-015).
 - A Confirmed or Budget Account Chosen decision clears `guessed`.
 - A Transfer whose `guessed` is true is never uploaded while its `decision` is Proposed.
-- A Transfer with a Transfer Leg whose `status` is Needs Review or Possible Import By Other Path and that has no Review Decision is in no Upload Plan, from either side, until each such Transfer Leg has a Review Decision (UC-005 BR-013).
-- The decision cannot be changed once a Transfer Leg has a Sent Record with `outcome` Written.
+- A Transfer with a Transfer Leg whose `status` is Needs Review or Possible Import By Other Path and that has no Review Decision, or whose `status` is Decision No Longer Holds, is in no Upload Plan, from either side, until each such Transfer Leg has a Review Decision that holds (UC-005 BR-013).
+- The decision cannot be changed once a Transfer Leg has a Sent Record with an `outcome` other than Rejected (Written, Already Present, Not Yet Known or Unknown), whether it was sent as a linked transfer or, after Split, as an ordinary transaction (UC-005 BR-008).
+- While `decision` is Split, the Transfer is kept with its Transfer Legs, each of which gets its `status` as an ordinary Bank Transaction and is a Transfer Leg of no other Transfer (UC-005 BR-010).
+- A Transfer whose `decision` is Confirmed or Budget Account Chosen and none of whose Transfer Legs has such a Sent Record is removed, and its Transfer Legs released for a new detection, only when its own sides are no longer valid: the Bank Account of a Transfer Leg has no Account Mapping or is mapped to another Budget Account than the side names; the Budget Account of a side without a Transfer Leg receives through no Account Mapping any more; `transfer_type` no longer fits the `bank_account_type` of the Bank Accounts of its sides; or the other side of a Lonely Transfer was already sent as an ordinary transaction, as the constraint above says. The removal is recorded in the Decision Journal with the decision and the reason. A Transfer whose `decision` is Split or Held is never removed for such a reason: it is kept as decided until the Operator changes the decision (UC-005 BR-015).
+- While the Bank Account of one of its sides is a Retired Account, a Transfer whose `decision` is other than Proposed is kept with its decision, its Transfer Legs and its Budget Accounts and is in no Upload Plan, from either side; when the Bank Account is restored, it is the Transfer the Operator decided again. A Transfer whose `decision` is Proposed and none of whose Transfer Legs has such a Sent Record is removed when a Bank Account of its sides is retired (UC-005 BR-015).
+- When the Operator chooses another Budget Account, the Bank Transaction that becomes the other Transfer Leg has no such Sent Record and belongs to no Transfer, or is taken from a Transfer whose `decision` is Proposed and none of whose Transfer Legs has such a Sent Record, which is then removed; it is never taken from a Transfer with another `decision` or with a Transfer Leg that has such a Sent Record, and the choice is refused when only such Bank Transactions, or ones that have such a Sent Record themselves, could be the other side (UC-005 BR-016).
 
 ### UPLOAD_PLAN
 
@@ -575,7 +589,7 @@ The reviewed statement of exactly what Slussen will write to one Budget, or to o
 | bank_account_id       | Bank Account the plan is limited to, empty for a plan for the whole Budget          | Long      | 19               | Optional                          |
 | prepared_at           | Time the plan was prepared                                                          | DateTime  | -                | Not Null                          |
 | expires_at            | Time after which confirming the plan writes nothing                                 | DateTime  | -                | Not Null                          |
-| new_count             | Number of transactions the plan creates                                             | Integer   | 10               | Not Null                          |
+| new_count             | Number of transactions the plan creates, a resend of an earlier send included        | Integer   | 10               | Not Null                          |
 | match_count           | Number of transactions the plan sends as a match for a Typed Entry                  | Integer   | 10               | Not Null                          |
 | counterpart_count     | Number of Transfer Counterparts the plan marks Cleared, 0 while Upload as Cleared is off | Integer   | 10               | Not Null                          |
 | total_inflow          | Sum of the inflows the plan writes, in the Budget's currency                        | Decimal   | 12,3             | Not Null                          |
@@ -620,7 +634,7 @@ Slussen's own durable record of one transaction it sent to the Budget App, which
 | upload_plan_id       | Confirmed Upload Plan the send belonged to                                                      | Long      | 19               | Not Null, Foreign Key (UPLOAD_PLAN.id)      |
 | budget_account_id    | Budget Account the transaction was sent to                                                      | Long      | 19               | Not Null, Foreign Key (BUDGET_ACCOUNT.id)   |
 | import_identifier    | Import Identifier sent with the transaction, which the Budget App uses to refuse a second copy   | String    | 36               | Not Null                                    |
-| occurrence           | 0 for the first send, raised by one for each deliberate Re-upload                               | Integer   | 10               | Not Null                                    |
+| occurrence           | 0 for a send under the Bank Transaction's own Import Identifier, raised by one for each deliberate Re-upload | Integer   | 10               | Not Null                                    |
 | booked_date          | Date sent with the transaction                                                                  | Date      | -                | Not Null                                    |
 | amount               | Amount sent with the transaction                                                                | Decimal   | 12,3             | Not Null                                    |
 | sent_as_transfer     | True when the transaction was sent as a linked Transfer                                         | Boolean   | 1                | Not Null                                    |
@@ -631,12 +645,12 @@ Slussen's own durable record of one transaction it sent to the Budget App, which
 #### Constraints
 
 - Within one `budget_account_id`, two Sent Records never have the same `import_identifier`.
-- The `import_identifier` of the first send (`occurrence` 0) equals the Bank Transaction's `import_identifier`; each Re-upload uses a new `import_identifier` derived from it and the occurrence (FR-074).
+- The `import_identifier` of the first send (`occurrence` 0) equals the Bank Transaction's `import_identifier`; each Re-upload uses a new `import_identifier` derived from it and the occurrence (FR-074). A Re-upload of a Bank Transaction that has no Sent Record yet, decided for the `status` Decision No Longer Holds (UC-004 A5), is sent with `occurrence` 1, like any first Re-upload.
 - A Bank Transaction with a Sent Record whose `outcome` is Written or Already Present is not sent again, except by a Re-upload Review Decision.
-- A Sent Record with `outcome` Not Yet Known or Unknown keeps its `import_identifier` and `budget_account_id`, so that sending it again goes to the same Budget Account under the same Import Identifier. It is sent again automatically only when the Budget App refuses a reused Import Identifier (NFR-015), and otherwise only after the Operator's Review Decision Import Anyway.
+- A Sent Record with `outcome` Not Yet Known or Unknown keeps its `import_identifier` and `budget_account_id`, so that sending it again goes to the same Budget Account under the same Import Identifier, only in an Upload Plan whose `budget_id` is that Budget Account's Budget (UC-006 BR-007). It is sent again automatically only when the Budget App refuses a reused Import Identifier (NFR-015), and otherwise only after the Operator's Review Decision Import Anyway.
 - A Sent Record with `outcome` Rejected keeps its `import_identifier`; it is sent again to the Budget Account of the Bank Account's current Account Mapping, and that send sets its `budget_account_id` to that Budget Account, also after a move, because the Budget App holds nothing of it (UC-006 BR-020).
-- An `outcome` Not Yet Known or Unknown becomes Written when a later read of the Budget App finds the `import_identifier` in `budget_account_id`.
-- `budget_app_reference` is filled only when `outcome` is Written or Already Present.
+- An `outcome` Not Yet Known, Unknown or Rejected becomes Written when a later read of the Budget App finds the `import_identifier` in `budget_account_id` (UC-003 BR-017).
+- `budget_app_reference` is filled only when `outcome` is Written or Already Present; an Already Present answer may carry none, and the next Comparison that finds the `import_identifier` fills it (UC-003 BR-017).
 - A Sent Record keeps its `budget_account_id` when the Operator moves or removes the Account Mapping it was sent through. When its `outcome` is Written or Already Present, its Bank Transaction is never sent again, except by a Re-upload Review Decision, which sends it to the Budget Account of the current Account Mapping under a new `import_identifier`; when it is Not Yet Known or Unknown, any later send goes to the recorded `budget_account_id` (UC-009 BR-003); when it is Rejected, the next send goes to the current Account Mapping (UC-006 BR-020).
 
 ### TRANSFER_COUNTERPART
@@ -697,9 +711,12 @@ One event in the Decision Journal: what Slussen fetched or concluded, what the O
 
 - An entry refers to a Bank Transaction only through `bank_account_name` and `import_identifier`, never as a dependency, so that clearing or losing the Decision Journal changes nothing else.
 - `bank_account_name` is filled exactly when `import_identifier` is filled, because an Import Identifier is unique only within one Bank Account.
+- A Transfer Decision, a change to it and a Transfer Decision that Slussen drops (UC-005 BR-011, UC-005 BR-015) are recorded with `event_type` Operator Decision, one entry for each Transfer Leg of the Transfer with its `bank_account_name` and `import_identifier`; the `details` of a dropped one say that Slussen dropped it and why.
 - `details` never holds credentials, Bank Consent data, Bank Account numbers or identifiers Data Providers give Bank Accounts.
-- The Decision Journal stays within the size limit the Operator sets (`OPERATOR_SETTINGS.journal_size_limit_mb`) by dropping its oldest entries.
-- No entry is recorded while the Decision Journal is switched off (`OPERATOR_SETTINGS.journal_on`).
+- `details` is written in Slussen's own words and never holds the payee or memo of a Bank Transaction or a Budget App Transaction, so that a Journal Export whose payee and memo text are replaced by codes holds no such text (UC-011 BR-005).
+- The Decision Journal stays within the size limit the Operator sets (`OPERATOR_SETTINGS.journal_size_limit_mb`) by dropping its oldest entries, only while its size is above that limit (UC-010 BR-003).
+- No entry is recorded while the Decision Journal is switched off (`OPERATOR_SETTINGS.journal_on`); switching it off is recorded as the last entry before, handed to the Decision Journal before `journal_on` is stored and never refused for `journal_on` being false, and switching it on as the first entry after.
+- A change of an Operator Setting, a description list included, and switching the Decision Journal off or on are recorded with `event_type` Configuration Change; a clearing of the Decision Journal with Journal Control (UC-010 A3).
 
 ### OPERATOR_SETTINGS
 
@@ -754,5 +771,6 @@ One entry of the Operator's Card Payment Descriptions or Bank Transfer Descripti
 
 - Within one `kind`, no two entries have the same `text` when compared without regard to case and accents.
 - An entry matches a Bank Transaction when its `text` occurs anywhere in the payee or memo, compared without regard to case and accents, with `*` matching any characters; no other character has a special meaning.
-- The entries start as the default lists that ship with the build (UC-010 BR-007); restoring a default list replaces every entry of that `kind`.
-- Adding, changing, removing or restoring entries changes only Transfers none of whose Transfer Legs has a Sent Record with `outcome` Written.
+- The entries start as the default lists that ship with the build (UC-010 BR-007); restoring a default list replaces every entry of that `kind`. Whether an entry was added by the Operator is not stored: it is one that equals no entry of the default list of its `kind` (UC-010 BR-007).
+- `text` has no spaces at its start or end and holds at least one character other than `*` (UC-010 BR-008).
+- Adding, changing, removing or restoring entries changes only Transfers whose `decision` is Proposed and none of whose Transfer Legs has a Sent Record with an `outcome` other than Rejected (UC-005 BR-008, UC-005 BR-015, UC-010 BR-009).

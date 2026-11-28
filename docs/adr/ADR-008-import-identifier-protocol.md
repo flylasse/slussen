@@ -167,13 +167,15 @@ collision that still occurs is detected, as NFR-020 and UC-003 BR-002 require:
   review, never merged and never uploaded (UC-001 A17, BR-016, UC-004 BR-007). From a Transaction File, the whole file
   is rejected with that reason and nothing of it is stored (UC-002 A6, BR-001).
 - **Re-uploads.** When preparing a Re-upload, the next occurrence is the highest `SENT_RECORD.occurrence` of the Bank
-  Transaction plus one. If its Import Identifier is already held in the Budget Account, by a Sent Record or by a Budget
-  App Transaction in Slussen's stored copy, that occurrence is skipped and the next one is tried. The occurrence that
-  is used is stored with the Sent Record at confirmation and is never given to another send; skipped occurrences are
-  never used later.
+  Transaction plus one; a Bank Transaction that has no Sent Record yet (a Re-upload decided for Decision No Longer
+  Holds, UC-004 A5) takes occurrence 1, the first of kind `U`, as the constraints of `SENT_RECORD` say. If the Import
+  Identifier of that occurrence is already held in the Budget Account, by a Sent Record or by a Budget App Transaction
+  in Slussen's stored copy, that occurrence is skipped and the next one is tried. The occurrence that is used is stored
+  with the Sent Record at confirmation and is never given to another send; skipped occurrences are never used later.
 - **Occurrence numbers.** `occurrence_number` of a transaction without a Stable Reference is allocated inside the same
   storage operation that stores it: the number of stored identical transactions of the Bank Account plus one, in the
-  order the Source delivered them (UC-002 BR-003). Once stored it never changes, also when an earlier identical
+  order the Source delivered them (UC-002 BR-003). A stored transaction with a Stable Reference is not one of the
+  identical transactions it counts; which transactions of a file are new at all is UC-002 BR-003's rule. Once stored it never changes, also when an earlier identical
   transaction is later deferred or no longer delivered.
 - A collision is recorded in the Decision Journal as a Status Changed event, and a planted-collision test forces one through a
   test-only digest.
@@ -315,3 +317,5 @@ field(the Bank's reference as the Data Provider delivers it, empty when it names
   there is no generated Build Configuration any more), Consequences.
 - Phase 9 acceptance (2026-10-24): S-41 (P9-17, O-P2-75; the glossary term Recovery Check renamed First Upload
   Matching): Consequences renamed; the table `recovery_check` in §7 keeps its name (ADR-002 §2).
+- Build-out, phase W2-0 (2026-11-26): S-B-14: §5 (a Re-upload of a Bank Transaction that was never sent takes the
+  first Re-upload occurrence, kind `U`, never the Bank Transaction's own Import Identifier).

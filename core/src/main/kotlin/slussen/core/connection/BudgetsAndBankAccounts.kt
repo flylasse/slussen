@@ -7,6 +7,7 @@ import slussen.core.journal.DecisionJournal
 import slussen.core.operation.OperationCoordinator
 import slussen.core.operation.OperationKind
 import slussen.core.operation.OperationResult
+import slussen.core.operation.unlessStorageFails
 import slussen.core.plugin.RegisteredPlugins
 import slussen.core.port.AddOutcome
 import slussen.core.port.BankAccountType
@@ -170,7 +171,7 @@ class BudgetsAndBankAccounts(
     suspend fun setReceivesFromSlussen(budgetAccountId: Long, receives: Boolean): KeepOutcome {
         val result = coordinator.run(OperationKind.BudgetAndBankAccountChange, StartedBy.Operator) {
             // UC-013 BR-014: Switched off, the Budget Account is marked as a Manually Kept Account; switched on again, it is unmarked and offered for pairing again.
-            apart.setManuallyKept(store.budgets(), budgetAccountId, manuallyKept = !receives, store::setManuallyKept)
+            apart.setManuallyKept(budgetAccountId, manuallyKept = !receives, store::budgets, store::setManuallyKept)
         }
         return when (result) {
             is OperationResult.Ran -> result.value
@@ -237,18 +238,25 @@ class BudgetsAndBankAccounts(
     /** Steps 6-7, BR-011, BR-012: the import of one Offered Bank Account switched off makes it a Left-Out Bank Account at once. */
     suspend fun switchImportOff(offeredBankAccountId: Long): ImportSwitchedOff {
         val result = coordinator.run(OperationKind.BudgetAndBankAccountChange, StartedBy.Operator) {
-            val snapshot = reads.snapshot()
-            val offer = snapshot.offered.firstOrNull { it.id == offeredBankAccountId } ?: return@run ImportSwitchedOff.NoSwitch
-            // UC-013 BR-012: Only an imported Offered Bank Account has a switch that leaves it out; an added one, a proposed match, a balance source or one already left out has none.
-            if (reads.stateOf(offer, snapshot) != ImportState.ToMap) return@run ImportSwitchedOff.NoSwitch
-            val name = proposedName(offer, reads.sourceName(offer.dataProviderId))
-            // UC-013 BR-012: Switching the import off makes it a Left-Out Bank Account at once, with no confirmation and no statement of numbers.
-            val stored = store.leaveOut(listOf(NewLeftOutBankAccount(offer.dataProviderId, offer.providerReference, name, clock.instant())))
-            if (!stored) return@run ImportSwitchedOff.NoSwitch
+            // NFR-023: stored data that cannot be read or written leaves nothing out and records nothing; it stays imported.
+            val (offer, name) = unlessStorageFails(notStored = null) {
+                val snapshot = reads.snapshot()
+                val offer = snapshot.offered.firstOrNull { it.id == offeredBankAccountId } ?: return@run ImportSwitchedOff.NoSwitch
+                // UC-013 BR-012: Only an imported Offered Bank Account has a switch that leaves it out; an added one, a proposed match, a balance source or one already left out has none.
+                if (reads.stateOf(offer, snapshot) != ImportState.ToMap) return@run ImportSwitchedOff.NoSwitch
+                val name = proposedName(offer, reads.sourceName(offer.dataProviderId))
+                // UC-013 BR-012: Switching the import off makes it a Left-Out Bank Account at once, with no confirmation and no statement of numbers.
+                val stored = store.leaveOut(listOf(NewLeftOutBankAccount(offer.dataProviderId, offer.providerReference, name, clock.instant())))
+                if (!stored) return@run ImportSwitchedOff.NoSwitch
+                offer to name
+            } ?: return@run ImportSwitchedOff.NotStored
             // UC-013 BR-011: A Left-Out Bank Account is remembered by its Data Provider and reference and recorded by its name, never by the reference.
             apart.recordLeftOut(name, offer.dataProviderId)
-            val leftOut = store.leftOutBankAccounts().single { it.dataProviderId == offer.dataProviderId && it.providerReference == offer.providerReference }
-            ImportSwitchedOff.LeftOut(leftOut.id, name)
+            // It is stored; when it cannot be read back, the answer says so without the Undo that needs its id.
+            val leftOutId = unlessStorageFails(notStored = null) {
+                store.leftOutBankAccounts().single { it.dataProviderId == offer.dataProviderId && it.providerReference == offer.providerReference }.id
+            }
+            ImportSwitchedOff.LeftOut(leftOutId, name)
         }
         return when (result) {
             is OperationResult.Ran -> result.value

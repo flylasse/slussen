@@ -10,11 +10,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import slussen.app.ui.components.BlockedReasonLine
+import slussen.app.ui.components.BudgetAppLine
+import slussen.app.ui.components.Banner
 import slussen.app.ui.components.FirstUploadMatchingBanner
 import slussen.app.ui.components.Muted
+import slussen.app.ui.components.NavigationLine
 import slussen.app.ui.components.ScreenTitle
 import slussen.app.ui.components.SectionTitle
 import slussen.app.ui.components.SlussenCard
+import slussen.app.ui.Texts
+import slussen.app.ui.fileimport.FileImportEntry
+import slussen.app.ui.transfers.TransfersTexts
 import slussen.app.ui.theme.SlussenColors
 
 /**
@@ -24,14 +30,35 @@ import slussen.app.ui.theme.SlussenColors
  * (A8, BR-009, `#recovery-blocked`), and what this build does not show yet (P9-15).
  */
 @Composable
-fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit, onStartFirstUploadMatching: () -> Unit) {
+fun BudgetScreen(
+    ui: BudgetUi,
+    onRemedy: (RemedyAction) -> Unit,
+    onStartFirstUploadMatching: () -> Unit,
+    onReadAgain: () -> Unit = {},
+    onBankAccount: (Long) -> Unit = {},
+    onTransfers: () -> Unit = {},
+    /** UC-002 step 1 (`budget.html#care-fund`): the control of Import Transaction File on a Transaction File Source. */
+    fileImport: @Composable (FileImportEntry) -> Unit = {},
+) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
             ScreenTitle(ui.title, ui.subtitle)
             // UC-008 BR-009: First Upload Matching is shown as information or a caution, never in an error colour (`budget.html#recovery-blocked`).
             ui.firstUploadMatching?.let { FirstUploadMatchingBanner(it, onStartFirstUploadMatching) }
+            // UC-003 BR-016: Until that read of the Budget, its Transaction Statuses stay as the latest Comparison that read it left them, and the Budget shows that a read of the Budget App is owed and why (`budget.html#period-read-owed`).
+            ui.periodReadOwed?.let { (title, detail) -> Banner(title, detail) }
+            // FR-040, NFR-023 (`budget.html`, the states of Read again): the line of the Budget App, whose Read again answers on it.
+            BudgetAppLine(ui.budgetAppLine, onReadAgain, onRemedy)
             Muted(ui.counts)
+            // A1 step 2 of UC-003: statuses never shown as current when the read since failed.
+            ui.statuses?.let { Muted(it) }
+            ui.notComparedYet?.let { Muted(it) }
+            ui.readAgainNote?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
             if (ui.note != null) Muted(ui.note)
+            // For UC-004, UC-005: where the transactions waiting for a decision are decided.
+            ui.decide?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
+            // Step 1 of UC-005 (`budget.html` → `transfers.html#list`): the entry to the Transfers, whose counts agree with its list (UX-27).
+            SlussenCard { NavigationLine(TransfersTexts.OPEN_TRANSFERS, ui.transfers, onTransfers) }
             SectionTitle("Sources")
         }
         items(ui.sources) { source ->
@@ -42,6 +69,8 @@ fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit, onStartFirstUpl
                 Muted(source.freshness)
                 source.counts?.let { Muted(it) }
                 source.blocked.forEach { BlockedReasonLine(it.text, it.action, onRemedy, it.advice) }
+                // S-B-34: later files are imported from the Transaction File Source, for one of its Bank Accounts of this Budget.
+                source.fileImport?.takeIf { it.bankAccounts.isNotEmpty() }?.let { fileImport(it) }
             }
         }
         item { SectionTitle("Bank Accounts") }
@@ -53,8 +82,15 @@ fun BudgetScreen(ui: BudgetUi, onRemedy: (RemedyAction) -> Unit, onStartFirstUpl
                 Muted(account.freshness)
                 Text(account.balance, color = SlussenColors.Text, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
                 // A21 of UC-001 (`bank-account.html#balance-other-currency`): both currencies, nothing converted.
+                // A2 of UC-008 (UX-24): an outdated Account Balance names its remedy.
+                account.balanceRemedy?.let { Muted(it) }
                 account.balanceNotice?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
                 account.blocked.forEach { BlockedReasonLine(it.text, it.action, onRemedy, it.advice) }
+                // Step 5 of UC-008 (`bank-account.html`): the way to the Bank Account's own screen with its Bank Transactions.
+                // For UC-004: where it has transactions waiting for a decision, the line says so; they are decided there.
+                NavigationLine(account.opens, null) { onBankAccount(account.bankAccountId) }
+                // Review B6 F8: its Guessed Transfers are decided in the Transfers (UC-005).
+                account.inTransfers?.let { NavigationLine(it, null, onTransfers) }
             }
         }
     }

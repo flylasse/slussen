@@ -85,6 +85,12 @@ the opt-in annotation `@SensitiveApi` (Kotlin `@RequiresOptIn`):
   or store a Bank Session or consent handle) may opt in,
   and a file that opts in may not reference `SlussenLog` (L-04). B-06 (ADR-001 §6.3) checks the calls of `reveal()` on
   bytecode.
+- The one exception to "the content is read only through `reveal()`" is a one-way digest: `Secret.sha256()`, annotated
+  with its own opt-in `@OneWayDigestApi`, which only `slussen.core.identity` uses, to digest the `state` of a Consent
+  Request that a plug-in read from an answer (ADR-001 §4.1); B-08 (ADR-001 §6.3) checks its callers on bytecode. It is
+  safe only for a value of high entropy, as the `state`'s 256 random bits are: the digest of a value with few possible
+  values, such as a short credential, could be found by trying each of them, so no other value is digested this way
+  (S-B-52).
 
 ### 3. Where logs go
 

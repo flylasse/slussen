@@ -20,7 +20,7 @@ import slussen.core.firstupload.FirstUploadMatchingTone
  * UC-008 A8, A9, BR-006, BR-009 (`overview.html#first-added`, `#recovery`, `#damaged-critical`,
  * `budget.html#recovery-blocked`, `first-upload-matching.html`): the Blocked Reason [title], the [explanation], one
  * reason line per cause ([reasons]), the action [action], shown in [tone]: plain information or a caution, never an
- * error. [buildNote] says why the action is unavailable while the Comparison (UC-003) is not built (O-P2-09).
+ * error. [buildNote] says why the action is unavailable while its confirmation (UC-008 A9) waits for Uploads, and that no action is needed.
  */
 data class FirstUploadMatchingUi(
     val title: String,

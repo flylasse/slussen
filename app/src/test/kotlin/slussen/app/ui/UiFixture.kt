@@ -21,23 +21,61 @@ class UiFixture(
     startKind: StartKind = StartKind.Normal,
     unreadableParts: List<UnreadablePart> = emptyList(),
     appVersion: AppVersion = AppVersion.of(packageName = "slussen.app", versionName = "9.8.7"),
+    /** The Import Identifiers the slice computes; a test passes a test-only digest to plant a collision (ADR-008 §5). */
+    identify: (slussen.core.identity.ImportIdentifierInput) -> String = slussen.core.identity.ImportIdentifierProtocol::importIdentifier,
 ) {
-    val slice = TestSlice(startKind, unreadableParts)
+    val slice = TestSlice(startKind, unreadableParts, identify)
     val zone: ZoneId = ZoneId.of("Europe/Stockholm")
+
+    /** The device's periodic work of the Fetch Schedule, replaced for the JVM (UC-001 BR-013). */
+    val scheduleWork = slussen.app.schedule.FakeFetchScheduleWork(slice.clock)
+
+    /** What each restart of the process for Start Over was handed (UC-010 A12, ADR-002 §3 O-17 step 3). */
+    val restarted = mutableListOf<slussen.core.settings.StartOverResult>()
+
+    /** Makes the restart for Start Over fail, as an app that cannot be started again would. */
+    var restartFails: Boolean = false
+
+    /** Whether the device allows Slussen's notifications (UC-001 BR-014); a test switches it. */
+    var notificationsAllowed: Boolean = true
+
     val services = UiServices(
         credentials = slice.credentials,
         settingsOverview = slice.settingsOverview,
         connect = slice.connect,
         providerSettings = slice.providerSettings,
         generalSettings = slice.generalSettings,
+        descriptionLists = slice.descriptionLists,
+        journalControl = slice.journalControl,
+        journalExport = slice.journalExport,
         mappings = slice.mappings,
         status = slice.status,
+        bankAccountTransactions = slice.bankAccountTransactions,
+        transfers = slice.budgetTransfers,
         fetch = slice.fetch,
+        fileImport = slice.fileImport,
+        review = slice.review,
+        transferDecisions = slice.transferDecisions,
         comparison = slice.comparison,
         formats = Formats(zone),
         clock = slice.clock,
         appVersion = appVersion,
         running = slice.coordinator.running,
+        ended = slice.coordinator.ended,
+        budgetAppName = slice.plugins.budgetApp.profile.name,
+        fetchSchedule = slussen.app.schedule.FetchSchedule(scheduleWork) { slice.settings.current().scheduledFetchesPerDay },
+        notificationsAllowed = { notificationsAllowed },
+        bankConsents = slice.bankConsents,
+        consentProviders = slice.plugins.dataProviders.filter { it.stored.needsBankConsent }
+            .map { slussen.app.ui.consent.ConsentProvider(it.key, it.stored.name) },
+        applicationReturnAddress = slussen.testing.ExampleData.CONSENT_RETURN_ADDRESS,
+        startOver = slice.startOver,
+        processScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
+        restartForStartOver = { result ->
+            if (restartFails) error("invented: the app could not be started again")
+            restarted += result
+            kotlinx.coroutines.awaitCancellation()
+        },
     )
 }
 

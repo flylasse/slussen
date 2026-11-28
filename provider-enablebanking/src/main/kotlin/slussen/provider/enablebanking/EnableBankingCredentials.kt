@@ -18,12 +18,15 @@ import slussen.pluginapi.request.RequestKind
 import slussen.pluginapi.request.RequestSummary
 import slussen.pluginapi.value.Secret
 import slussen.pluginapi.value.SensitiveApi
+import java.net.URI
+import java.net.URISyntaxException
 import java.time.Clock
 
 /**
  * Enable Banking's credentials (UC-014 BR-002, ADR-001 §4.5, C-008): the application id and the private key file of the
  * household's own registered Enable Banking application. [check] signs a request with the key and asks Enable Banking
- * for the application; what Slussen keeps is both values together.
+ * for the application; what Slussen keeps is both values together, with the return address registered with the
+ * application when the Operator entered one (S-B-51).
  */
 internal class EnableBankingCredentials(
     private val base: HttpUrl,
@@ -42,6 +45,13 @@ internal class EnableBankingCredentials(
                 kind = FieldKind.File,
                 description = "Private key file · of that application, chosen with the device's file picker",
             ),
+            // UC-014 BR-002: The return address registered with the application is optional; empty means the application's own (UC-007 BR-011, S-B-51).
+            CredentialField(
+                key = RETURN_ADDRESS,
+                kind = FieldKind.Text,
+                description = "Return address · optional, the one registered with that application; empty for Slussen's own",
+                optional = true,
+            ),
         ),
     )
 
@@ -49,9 +59,12 @@ internal class EnableBankingCredentials(
     override suspend fun check(input: CredentialInput, context: RequestContext): CredentialCheck {
         val applicationId = input.values[APPLICATION_ID]?.reveal()?.trim().orEmpty()
         val pem = input.values[PRIVATE_KEY]?.reveal().orEmpty()
+        val returnAddress = input.values[RETURN_ADDRESS]?.reveal()?.trim().orEmpty()
         val key = PrivateKeyFile.read(pem)
         if (applicationId.isEmpty() || key == null) return CredentialCheck.Refused
-        val admission = context.gate.admit(RequestSummary(RequestKind.Other, null, null))
+        // UC-014 BR-002: A return address that is not an address with a scheme and without whitespace cannot be valid, and is refused without contacting Enable Banking.
+        if (returnAddress.isNotEmpty() && !isAddress(returnAddress)) return CredentialCheck.Refused
+        val admission = context.gate.admit(RequestSummary(RequestKind.Other, null, null, unattended = false))
         // UC-014 BR-002: When the gate refuses the check, as at the Request Limit, nothing is sent and the refusal is returned, never a failure to reach the service.
         if (admission is Admission.Refused) return CredentialCheck.StoppedByGate(admission.reason)
         val token = SignedRequestToken.sign(applicationId, key, clock.instant())
@@ -67,6 +80,7 @@ internal class EnableBankingCredentials(
                         buildJsonObject {
                             put(APPLICATION_ID, applicationId)
                             put(PRIVATE_KEY, pem)
+                            if (returnAddress.isNotEmpty()) put(RETURN_ADDRESS, returnAddress)
                         }.toString(),
                     ),
                 )
@@ -82,8 +96,21 @@ internal class EnableBankingCredentials(
         }
     }
 
+    /** An address with a scheme and without whitespace: the application's kind (`<application id>://consent`) or https. */
+    private fun isAddress(text: String): Boolean =
+        ADDRESS.matches(text) && try {
+            URI(text).scheme != null
+        } catch (e: URISyntaxException) {
+            false
+        }
+
     companion object {
+        private val ADDRESS = Regex("""[A-Za-z][A-Za-z0-9+.\-]*:\S+""")
+
         const val APPLICATION_ID = "applicationId"
         const val PRIVATE_KEY = "privateKey"
+
+        /** The return address registered with the application, kept with the credential although it is not secret (S-B-51). */
+        const val RETURN_ADDRESS = "returnAddress"
     }
 }

@@ -92,6 +92,30 @@ class StartSequenceTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A1: Stored Data Cannot Be Read", requirements = ["NFR-005"])
+    @DisplayName("A1, ADR-002 §8 step 5: a database set aside takes the -wal and -shm an earlier build left beside it, so the original is kept whole and no log is replayed into the new one")
+    fun aDatabaseSetAsideTakesItsWriteAheadLogWithIt() {
+        files.main.writeText("good transactions")
+        files.installationId.writeText("marker")
+        files.journal.writeText("GARBAGE journal")
+        File(noBackup, "journal.db-wal").writeText("log of an earlier build")
+        File(noBackup, "journal.db-shm").writeText("index of an earlier build")
+        files.device.writeText("GARBAGE device")
+        File(noBackup, "device.db-wal").writeText("device log")
+
+        sequence().run()
+
+        val left = noBackup.listFiles()!!.map { it.name }
+        assertFalse("journal.db-wal" in left, "$left")
+        assertFalse("journal.db-shm" in left, "$left")
+        assertFalse("device.db-wal" in left, "$left")
+        val suffix = left.single { it.startsWith("journal.db.unreadable-") }.removePrefix("journal.db")
+        assertEquals("log of an earlier build", File(noBackup, "journal.db-wal$suffix").readText())
+        assertEquals("index of an earlier build", File(noBackup, "journal.db-shm$suffix").readText())
+        assertTrue(left.any { it.startsWith("device.db-wal.unreadable-") })
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A1: Stored Data Cannot Be Read", requirements = ["NFR-005"])
     @DisplayName("A1: damage to the Decision Journal or to device.db is only named; it opens no First Upload Matching")
     fun damagedJournalOrDeviceDataOpensNoFirstUploadMatching() {
         files.main.writeText("good transactions")

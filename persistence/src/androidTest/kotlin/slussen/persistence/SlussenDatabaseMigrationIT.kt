@@ -17,18 +17,28 @@ import slussen.core.port.FetchResultOutcome
 import slussen.core.port.NewAccountBalance
 import slussen.core.port.NewLeftOutBankAccount
 import slussen.core.port.StoredFetchResult
+import slussen.core.port.StoredTransfer
+import slussen.core.port.TransferDecision
+import slussen.core.port.TransferType
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
+import slussen.testing.InMemoryConsentStore
+import slussen.persistence.main.ReviewDecisionEntity
+import slussen.persistence.main.SentRecordEntity
 import slussen.persistence.main.SlussenDatabase
 import slussen.persistence.main.SlussenMigrations
+import slussen.persistence.main.TransferEntity
+import slussen.persistence.main.UploadPlanEntity
 import java.time.Instant
+import java.time.LocalDate
 
 /**
  * Evidence E-06 of ADR-005 §7 (ADR-002 §7, S-39): `slussen.db` created at every committed schema version with Room's
  * `MigrationTestHelper` from the committed schema files, with invented rows in every table, migrated with the
- * hand-written Migrations to the current version and validated by Room, keeping every row and value; a version 1, 2
- * and 3 `slussen.db`, as the Operator's phone held and holds it, opened by the app's own [SlussenDatabases.openMain]
- * and read back; and a new `slussen.db`, which starts with the default Description lists (UC-010 BR-007).
+ * hand-written Migrations to the current version and validated by Room, keeping every row and value; a version 1, 2,
+ * 3 and 5 `slussen.db`, as the Operator's phone held and holds it, opened by the app's own [SlussenDatabases.openMain]
+ * and read back, the Transfers of version 5 with their Transfer Legs, whose table the Migration 5 to 6 rebuilds; and a
+ * new `slussen.db`, which starts with the default Description lists (UC-010 BR-007).
  * Instrumented, on API 26 and the phone; the same migration also runs on the JVM in `SlussenDatabaseMigrationTest`.
  */
 class SlussenDatabaseMigrationIT {
@@ -94,7 +104,7 @@ class SlussenDatabaseMigrationIT {
         helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
             assertEquals(before, db.everything(version1Tables))
             assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
-            assertTrue(db.tables().containsAll(listOf("left_out_bank_account", "account_balance", "fetch_result") + NEW_IN_VERSION_4 + NEW_IN_VERSION_5))
+            assertTrue(db.tables().containsAll(listOf("left_out_bank_account", "account_balance", "fetch_result") + NEW_IN_VERSION_4 + NEW_IN_VERSION_5 + NEW_IN_VERSION_6))
             assertEquals(DEFAULT_DESCRIPTIONS, db.select("SELECT kind, text FROM transfer_description ORDER BY id"))
         }
     }
@@ -113,7 +123,7 @@ class SlussenDatabaseMigrationIT {
         helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
             assertEquals(before, db.everything(version2Tables))
             assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
-            assertEquals((listOf("account_balance", "fetch_result") + NEW_IN_VERSION_4 + NEW_IN_VERSION_5).sorted(), db.tables() - version2Tables.toSet())
+            assertEquals((listOf("account_balance", "fetch_result") + NEW_IN_VERSION_4 + NEW_IN_VERSION_5 + NEW_IN_VERSION_6).sorted(), db.tables() - version2Tables.toSet())
             assertEquals(DEFAULT_DESCRIPTIONS, db.select("SELECT kind, text FROM transfer_description ORDER BY id"))
         }
     }
@@ -139,7 +149,7 @@ class SlussenDatabaseMigrationIT {
         helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
             assertEquals(before, db.everything(version3Tables))
             assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
-            assertEquals((NEW_IN_VERSION_4 + NEW_IN_VERSION_5).sorted(), db.tables() - version3Tables.toSet())
+            assertEquals((NEW_IN_VERSION_4 + NEW_IN_VERSION_5 + NEW_IN_VERSION_6).sorted(), db.tables() - version3Tables.toSet())
             assertEquals(DEFAULT_DESCRIPTIONS, db.select("SELECT kind, text FROM transfer_description ORDER BY id"))
             (NEW_IN_VERSION_4 - "transfer_description").forEach { assertEquals(listOf(listOf("0")), db.select("SELECT COUNT(*) FROM `$it`"), it) }
         }
@@ -175,8 +185,132 @@ class SlussenDatabaseMigrationIT {
         helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
             assertEquals(before, db.everything(version4Tables))
             assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
-            assertEquals(NEW_IN_VERSION_5, db.tables() - version4Tables.toSet())
+            assertEquals((NEW_IN_VERSION_5 + NEW_IN_VERSION_6).sorted(), db.tables() - version4Tables.toSet())
             assertEquals(listOf(listOf("0")), db.select("SELECT COUNT(*) FROM budget_read_state"))
+        }
+    }
+
+    /**
+     * Invented rows in every table of version 5: those of version 4, a read cursor, a second Bank Account with its Account
+     * Mapping, and Transfers with their Transfer Legs: a pair (Transfer 1), a Lonely Transfer that is a Guessed Transfer
+     * (2), a pair the Operator confirmed (5), and one that was removed again (9), so that the identifiers of the Transfers
+     * have gaps and the last one given names no stored Transfer. Bank Transaction 6 is an ordinary one, in no Transfer.
+     */
+    private fun SupportSQLiteDatabase.inventedVersion5Data() {
+        inventedVersion4Data()
+        listOf(
+            "INSERT INTO budget_read_state VALUES (1, '4182', 0)",
+            "INSERT INTO bank_account VALUES (2, '7a2d3b5f-1c8e-4d2f-8b66-3f9f4c2d1e5b', 1, 1, 1, NULL, NULL, 'Kestrel Reserve', 'USD', " +
+                "'Savings', NULL, 'acct-0907', 'fp-acct-0907', NULL, 1760529600000, 0, NULL, NULL)",
+            "INSERT INTO account_mapping VALUES (2, 2, 2, NULL)",
+            "INSERT INTO transfer VALUES (2, 1, 2, 98760, 'Card Payment', 1, 'Proposed', NULL)",
+            "INSERT INTO transfer VALUES (5, 2, 1, 5000, 'Bank Transfer', 0, 'Confirmed', 1760540000000)",
+            "INSERT INTO transfer VALUES (9, 1, 2, 1000, 'Bank Transfer', 0, 'Proposed', NULL)",
+            "DELETE FROM transfer WHERE id = 9",
+            "INSERT INTO bank_transaction VALUES (2, 2, 'TX-0102', 'Supplied', 1, 'SLS1-bbbbbbbbbbbbbbbbbbbbbbbbbb', 20376, 42500, 'USD', " +
+                "'From Kestrel Checking', NULL, 1760533200000, 'Transfer Leg', 1)",
+            "INSERT INTO bank_transaction VALUES (3, 2, 'TX-0103', 'Supplied', 1, 'SLS1-cccccccccccccccccccccccccc', 20378, 98760, 'USD', " +
+                "'AUTOPAY', 'PLANTED-MEMO', 1760533200000, 'Guessed Transfer', 2)",
+            "INSERT INTO bank_transaction VALUES (4, 2, 'TX-0104', 'Derived', 1, 'SLS1-dddddddddddddddddddddddddd', 20379, -5000, 'USD', " +
+                "'XFER', NULL, 1760536800000, 'Transfer Leg', 5)",
+            "INSERT INTO bank_transaction VALUES (5, 1, 'TX-0105', 'Supplied', 1, 'SLS1-eeeeeeeeeeeeeeeeeeeeeeeeee', 20380, 5000, 'USD', " +
+                "'XFER', NULL, 1760536800000, 'Transfer Leg', 5)",
+            "INSERT INTO bank_transaction VALUES (6, 1, NULL, 'None', 2, 'SLS1-ffffffffffffffffffffffffff', 20376, -1500, 'USD', " +
+                "NULL, NULL, 1760533200000, 'Needs Review', NULL)",
+        ).forEach(::execSQL)
+    }
+
+    /** Every Transfer Leg with the Transfer its `transfer_id` names, every value of that Transfer included: a lost reference loses its line. */
+    private fun SupportSQLiteDatabase.transferLegsWithTheirTransfers(): List<List<String?>> = select(
+        "SELECT bt.id, bt.import_identifier, t.id, t.outflow_budget_account_id, t.inflow_budget_account_id, t.amount, t.transfer_type, " +
+            "t.guessed, t.decision, t.decided_at FROM bank_transaction bt JOIN transfer t ON t.id = bt.transfer_id ORDER BY bt.id",
+    )
+
+    @Test
+    @DisplayName("NFR-017: E-06, slussen.db at version 5, as the Operator's phone holds it, with rows in every table and Transfers with their Transfer Legs migrates to the current version, Room validates it, every row and value and every reference from a Transfer Leg to its Transfer is kept, and the seven tables of version 6 start empty (entity model TRANSFER; ADR-002 §7)")
+    fun version5MigratesKeepingEveryValue() {
+        val name = "migration-version-5.db"
+        data class Before(val tables: List<String>, val everything: Map<String, List<List<String?>>>, val legs: List<List<String?>>)
+        val before = helper.createDatabase(name, 5).use { db ->
+            db.inventedVersion5Data()
+            val tables = db.tables()
+            assertTrue(tables.all { db.select("SELECT COUNT(*) FROM `$it`").single().single() != "0" }, "every table holds a row")
+            Before(tables, db.everything(tables), db.transferLegsWithTheirTransfers())
+        }
+        assertEquals(listOf("1", "2", "3", "4", "5"), before.legs.map { it.first() })
+
+        helper.runMigrationsAndValidate(name, CURRENT_VERSION, true, *SlussenMigrations.ALL).use { db ->
+            assertEquals(before.everything, db.everything(before.tables))
+            assertEquals(before.legs, db.transferLegsWithTheirTransfers())
+            assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
+            assertEquals(listOf(listOf("ok")), db.select("PRAGMA integrity_check"))
+            assertEquals(NEW_IN_VERSION_6, db.tables() - before.tables.toSet())
+            NEW_IN_VERSION_6.forEach { assertEquals(listOf(listOf("0")), db.select("SELECT COUNT(*) FROM `$it`"), it) }
+            assertTrue(db.select("SELECT name FROM sqlite_master WHERE name LIKE '%new_transfer%'").isEmpty())
+            assertEquals(listOf(listOf("9")), db.select("SELECT seq FROM sqlite_sequence WHERE name = 'transfer'"))
+        }
+    }
+
+    @Test
+    @DisplayName("NFR-017: E-06, a version 5 slussen.db as the Operator's phone holds it is upgraded by the app itself, never cleared: every Transfer is read back with its sides, decision and Transfer Legs; the rebuilt table still refuses a Transfer Leg of no stored Transfer and the removal of a Transfer with Transfer Legs; a Transfer may now lack its outflow side and gets an identifier above every earlier one; and the new tables are usable (entity model TRANSFER; ADR-002 §7)")
+    fun theAppUpgradesAnInstalledVersion5() = runBlocking {
+        helper.createDatabase(SlussenDatabases.MAIN_FILE, 5).use { it.inventedVersion5Data() }
+
+        val main = SlussenDatabases.openMain(DeviceFiles.context)
+        try {
+            val connections = RoomConnectionStore(main.connections())
+            val data = RoomComparisonStore(main, connections).comparisonDataOf(setOf(1))
+            assertEquals(listOf("Kestrel Checking", "Kestrel Reserve"), connections.bankAccounts().map { it.name })
+            assertEquals(
+                listOf(
+                    StoredTransfer(1, 1, 2, Amount(150000), TransferType.BankTransfer, guessed = false, TransferDecision.Proposed, decidedAt = null),
+                    StoredTransfer(2, 1, 2, Amount(98760), TransferType.CardPayment, guessed = true, TransferDecision.Proposed, decidedAt = null),
+                    StoredTransfer(5, 2, 1, Amount(5000), TransferType.BankTransfer, guessed = false, TransferDecision.Confirmed, Instant.ofEpochMilli(1760540000000)),
+                ),
+                data.transfers.sortedBy { it.id },
+            )
+            assertEquals(
+                listOf(1L to 1L, 2L to 1L, 3L to 2L, 4L to 5L, 5L to 5L, 6L to null),
+                data.bankTransactions.sortedBy { it.id }.map { it.id to it.transferId },
+            )
+            val db = main.openHelper.writableDatabase
+            fun transferLeg(importIdentifier: String, transfer: Long) =
+                "INSERT INTO bank_transaction (bank_account_id, stable_reference, reference_kind, occurrence_number, import_identifier, booked_date, " +
+                    "amount, currency, payee, memo, first_seen_at, status, transfer_id) VALUES (2, NULL, 'None', 1, '$importIdentifier', 20381, 98760, " +
+                    "'USD', 'AUTOPAY', NULL, 1760536800000, NULL, $transfer)"
+            assertTrue(runCatching { db.execSQL(transferLeg("SLS1-gggggggggggggggggggggggggg", transfer = 9)) }.isFailure, "a Transfer Leg of no stored Transfer")
+            assertTrue(runCatching { db.execSQL("DELETE FROM transfer WHERE id = 5") }.isFailure, "a Transfer with Transfer Legs removed")
+            val withoutOutflow = main.budgetAppCopy().insertTransfer(
+                TransferEntity(outflowBudgetAccountId = null, inflowBudgetAccountId = 2, amount = 98760, transferType = "Card Payment", guessed = true, decision = "Proposed", decidedAt = null),
+            )
+            assertEquals(10L, withoutOutflow)
+            db.execSQL(transferLeg("SLS1-hhhhhhhhhhhhhhhhhhhhhhhhhh", transfer = withoutOutflow))
+            assertEquals(null, RoomComparisonStore(main, connections).comparisonDataOf(setOf(1)).transfers.single { it.id == withoutOutflow }.outflowBudgetAccountId)
+            assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
+
+            val uploads = main.uploads()
+            val planId = uploads.insertPlan(
+                UploadPlanEntity(
+                    budgetId = 1, bankAccountId = null, preparedAt = Instant.ofEpochMilli(1760540000000), expiresAt = Instant.ofEpochMilli(1760540600000),
+                    newCount = 1, matchCount = 0, counterpartCount = 0, totalInflow = 0, totalOutflow = 42500, state = "Confirmed",
+                ),
+            )
+            val sent = uploads.insertSentRecord(
+                SentRecordEntity(
+                    bankTransaction = 1, uploadPlanId = planId, budgetAccountId = 1, importIdentifier = "SLS1-aaaaaaaaaaaaaaaaaaaaaaaaaa", occurrence = 0,
+                    bookedDate = LocalDate.ofEpochDay(20375), amount = -42500, sentAsTransfer = false, sentAt = Instant.ofEpochMilli(1760540100000),
+                    outcome = "Written", budgetAppReference = "ynab-tx-0101",
+                ),
+            )
+            main.reviewDecisions().store(
+                ReviewDecisionEntity(bankTransaction = 6, choice = "Defer", chosenBudgetAppReference = null, chosenBudgetAccountId = null, chosenAmount = null, decidedAt = Instant.ofEpochMilli(1760540000000)),
+            )
+            assertEquals(listOf(sent), uploads.sentRecordsOf(1).map { it.id })
+            assertEquals(listOf("Defer"), main.reviewDecisions().all().map { it.choice })
+            assertTrue(db.select("PRAGMA foreign_key_check").isEmpty())
+            assertEquals(listOf(listOf("ok")), db.select("PRAGMA integrity_check"))
+        } finally {
+            main.close()
         }
     }
 
@@ -192,7 +326,7 @@ class SlussenDatabaseMigrationIT {
             assertEquals(listOf("acct-2290"), connections.leftOutBankAccounts().map { it.providerReference })
             val fetches = RoomFetchStore(main.fetches())
             assertEquals(listOf(StoredFetchResult(1, FetchResultOutcome.Fetched, 3)), fetches.fetchesOf(1).single().results)
-            assertEquals(listOf(Amount(5135280)), RoomImportStatusStore(main.fetches(), RoomConnectionStore(main.connections())).accountBalances().map { it.amount })
+            assertEquals(listOf(Amount(5135280)), RoomImportStatusStore(main.fetches(), RoomConnectionStore(main.connections()), main.transactionFiles(), InMemoryConsentStore()).accountBalances().map { it.amount })
             val db = main.openHelper.writableDatabase
             assertEquals(DEFAULT_DESCRIPTIONS, db.select("SELECT kind, text FROM transfer_description ORDER BY id"))
             db.execSQL(
@@ -228,7 +362,7 @@ class SlussenDatabaseMigrationIT {
             assertEquals(listOf("Kestrel Checking"), connections.bankAccounts().map { it.name })
             assertEquals(listOf("acct-2290"), connections.leftOutBankAccounts().map { it.providerReference })
             val fetches = RoomFetchStore(main.fetches())
-            val status = RoomImportStatusStore(main.fetches(), RoomConnectionStore(main.connections()))
+            val status = RoomImportStatusStore(main.fetches(), RoomConnectionStore(main.connections()), main.transactionFiles(), InMemoryConsentStore())
             assertEquals(listOf(FetchOutcome.Fetched), fetches.fetchesOf(1).map { it.outcome })
             assertTrue(status.accountBalances().isEmpty())
             fetches.storeBankAccountDelivery(
@@ -243,7 +377,12 @@ class SlussenDatabaseMigrationIT {
 
     private companion object {
         /** The schema version of `slussen.db` this build creates and migrates to (ADR-002 §7). */
-        const val CURRENT_VERSION = 5
+        const val CURRENT_VERSION = 6
+
+        /** The tables version 6 adds (entity model; ADR-002 §1, §2; build-out plan §3). */
+        val NEW_IN_VERSION_6 = listOf(
+            "eligible_transaction", "review_decision", "sent_record", "transaction_file", "transfer_counterpart", "upload_plan", "upload_plan_item",
+        )
 
         /** The table version 5 adds (ADR-002 §2; transactions plan Phase 7a). */
         val NEW_IN_VERSION_5 = listOf("budget_read_state")

@@ -24,10 +24,12 @@ import slussen.pluginapi.provider.DataProvider
 import slussen.pluginapi.provider.DataProviderProfile
 import slussen.pluginapi.provider.FetchRequest
 import slussen.pluginapi.provider.FetchResponse
+import slussen.pluginapi.provider.OperatorPresence
 import slussen.pluginapi.provider.ReadKind
 import slussen.pluginapi.provider.SourceOutcome
 import slussen.pluginapi.request.Admission
 import slussen.pluginapi.request.RequestContext
+import slussen.pluginapi.request.RequestGate
 import slussen.pluginapi.request.RequestKind
 import slussen.pluginapi.request.RequestSummary
 import slussen.pluginapi.value.Secret
@@ -61,7 +63,7 @@ class ScriptedCredentials(
         contexts += context
         beforeAnswer()
         if (refusesUnsent) return CredentialCheck.Refused
-        val admission = context.gate.admit(RequestSummary(requestKind, null, null))
+        val admission = context.gate.admit(RequestSummary(requestKind, null, null, unattended = false))
         if (admission is Admission.Refused) return CredentialCheck.StoppedByGate(admission.reason)
         requestsSent++
         return answer
@@ -88,17 +90,33 @@ class ScriptedBudgetAppReader(var readBudgetsAnswer: ReadResult<List<BudgetRead>
 
     override suspend fun readBudgets(context: RequestContext): ReadResult<List<BudgetRead>> {
         contexts += context
-        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null))
+        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null, unattended = false))
         if (admission is Admission.Refused) return ReadResult.StoppedByGate(admission.reason)
         budgetReads++
         return readBudgetsAnswer
     }
 
+    /** Every read of one transaction the gate let out, as (Budget reference, transaction reference), in order. */
+    val transactionReads = mutableListOf<Pair<String, String>>()
+
+    /**
+     * What the Budget App answers to a read of one transaction once the gate admitted it (ADR-001 §4.2.3, ADR-007 §6
+     * step 8). Without a scripted answer, a test that reads one fails, as nothing but an Upload reads one.
+     */
+    var transactionAnswer: (budgetReference: String, transactionReference: String) -> ReadResult<TransactionLookup> =
+        { _, _ -> error("No answer to a read of one transaction is scripted (UC-006).") }
+
     override suspend fun readTransaction(
         budgetReference: String,
         transactionReference: String,
         context: RequestContext,
-    ): ReadResult<TransactionLookup> = error("No slice of Phase 7 reads one transaction (UC-006).")
+    ): ReadResult<TransactionLookup> {
+        contexts += context
+        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null, unattended = false))
+        if (admission is Admission.Refused) return ReadResult.StoppedByGate(admission.reason)
+        transactionReads += budgetReference to transactionReference
+        return transactionAnswer(budgetReference, transactionReference)
+    }
 
     override suspend fun readChanges(
         budgetReference: String,
@@ -107,7 +125,7 @@ class ScriptedBudgetAppReader(var readBudgetsAnswer: ReadResult<List<BudgetRead>
         context: RequestContext,
     ): ReadResult<ChangeSet> {
         contexts += context
-        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null))
+        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null, unattended = false))
         if (admission is Admission.Refused) return ReadResult.StoppedByGate(admission.reason)
         val read = ChangesRead(budgetReference, since, from)
         changeReads += read
@@ -155,7 +173,8 @@ class FakeBudgetApp(
 
 /**
  * A fake Data Provider with invented declarations. Its [fetch] asks the gate before its one request, like a part whose
- * Data Provider answers every Bank Account in one request (ADR-001 §4.0), and then answers with [fetchAnswer]; a test
+ * Data Provider answers every Bank Account in one request (ADR-001 §4.0), naming the Bank Account it reads when it
+ * reads exactly one, and then answers with [fetchAnswer]; a test
  * that scripts no answer fails when it is asked, as opening Slussen must not fetch (UC-008 BR-001). Every request and
  * context it was given is kept for assertions.
  */
@@ -166,6 +185,8 @@ class FakeDataProvider(
         RequestKind.Other,
         CredentialCheck.Accepted(Secret(ExampleData.EXCHANGED_ACCESS_CREDENTIAL)),
     ),
+    /** The Bank Consent operations, given exactly when [profile] needs a Bank Consent (ADR-001 §4.1). */
+    override val bankConsent: BankConsentCapability? = null,
 ) : DataProvider {
     /** How often [fetch] was called, whether or not the gate let its request out. */
     var fetches = 0
@@ -181,16 +202,27 @@ class FakeDataProvider(
     /** What the Data Provider answers once the gate admitted the request. */
     var fetchAnswer: (FetchRequest) -> FetchResponse = { error("No Fetch answer scripted (UC-001).") }
 
+    /** False for a part whose requests cannot show the Bank that the Operator is present, so that each is unattended (S-B-46). */
+    var showsPresence: Boolean = true
+
     /** Runs after the gate admitted the request and before [fetchAnswer]: a test can hold the Fetch here while it looks at the screen. */
     var beforeAnswer: suspend () -> Unit = {}
 
-    override val bankConsent: BankConsentCapability? = null
+    /**
+     * When set, the fake reads as a part that needs a Bank Consent does (ADR-001 §4.1.1): it sends no request of its own
+     * and answers what this reader answers, which asks the gate before each request itself, Bank Account by Bank Account
+     * and page by page. [fetchAnswer] is then not used.
+     */
+    var readsEachBankAccount: (suspend (FetchRequest, RequestGate) -> FetchResponse)? = null
 
     override suspend fun fetch(request: FetchRequest, context: RequestContext): FetchResponse {
         fetches++
         fetchRequests += request
         fetchContexts += context
-        val admission = context.gate.admit(RequestSummary(kindOf(request), null, null))
+        readsEachBankAccount?.let { return it(request, context.gate) }
+        val admission = context.gate.admit(
+            RequestSummary(kindOf(request), null, readsOne(request), unattended = request.presence == OperatorPresence.Unattended || !showsPresence),
+        )
         if (admission is Admission.Refused) {
             return FetchResponse(SourceOutcome.StoppedByGate(admission.reason), emptyList(), emptyList())
         }
@@ -198,6 +230,10 @@ class FakeDataProvider(
         beforeAnswer()
         return fetchAnswer(request)
     }
+
+    /** The one Bank Account the request reads, when it selects exactly one; a request for several names none. */
+    private fun readsOne(request: FetchRequest): String? =
+        (request.bankAccounts as? BankAccountSelection.Selected)?.bankAccounts?.singleOrNull()?.providerReference
 
     private fun kindOf(request: FetchRequest): RequestKind = when (val selection = request.bankAccounts) {
         is BankAccountSelection.AllForIdentification ->
@@ -207,11 +243,21 @@ class FakeDataProvider(
     }
 }
 
-/** A fake File Pre-processor with invented declarations; Phase 7 converts no file (UC-002). */
+/**
+ * A fake File Pre-processor with invented declarations (UC-002). A test fills [answer] with what it converts a file to;
+ * one that fills nothing fails when a file is converted. Every file it was given is kept for assertions.
+ */
 class FakeFilePreprocessor : slussen.pluginapi.fileformat.FilePreprocessor {
     override val profile: slussen.pluginapi.fileformat.FileFormatProfile =
         slussen.pluginapi.fileformat.FileFormatProfile(name = "Harbor Health statement", sourceKey = "example-format")
 
-    override fun convert(file: ByteArray): slussen.pluginapi.fileformat.ConversionResult =
-        error("No Transaction File is imported in this slice (UC-002).")
+    /** What [convert] answers for the file it is given. */
+    var answer: (ByteArray) -> slussen.pluginapi.fileformat.ConversionResult = { error("No conversion scripted (UC-002).") }
+
+    val files = mutableListOf<ByteArray>()
+
+    override fun convert(file: ByteArray): slussen.pluginapi.fileformat.ConversionResult {
+        files += file
+        return answer(file)
+    }
 }

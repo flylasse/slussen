@@ -29,6 +29,13 @@ public data class RequestSummary(
     val bankReference: String?,
     /** The Bank Account it reads, when it reads one. */
     val bankAccountReference: String?,
+    /**
+     * As the request is sent: true unless it shows the Bank that the Operator is present (ADR-001 §4.0, S-B-46). True for
+     * every request of an `Unattended` Fetch, and for a request of a Fetch the Operator started that carries nothing that
+     * tells the Bank he is present; the gate counts an unattended request against the Unattended Access limit whatever
+     * started it. A request of a Bank Consent operation or a credential check is made with the Operator present.
+     */
+    val unattended: Boolean,
 )
 
 public enum class RequestKind { Transactions, Balance, Other, BudgetAppRead, BudgetAppWrite }
@@ -70,4 +77,31 @@ public enum class FailureKind {
 
     /** A paged read did not finish (UC-001 A8). */
     Incomplete,
+
+    /** The Bank does not give the fetch period asked for (UC-001 A8, S-B-55); nothing is asked again with another period. */
+    PeriodNotGiven,
+
+    /**
+     * The Bank Account cannot be read through its Bank Session: its Bank has more Bank Accounts than Slussen keeps for one
+     * Bank Consent (UC-001 A8, S-B-55).
+     */
+    NotHeldByBankSession,
+
+    // The service refused the request for a reason of its own that is not about the credentials (ADR-001 §4.2.5
+    // Refusals, S-B-79): one kind for each reason of a closed set, so that the Operator is told which.
+
+    /** The service refused the request: the subscription of the service's account has lapsed. */
+    RefusedSubscriptionLapsed,
+
+    /** The service refused the request: the trial of the service's account has ended. */
+    RefusedTrialEnded,
+
+    /** The service refused the request: it would exceed a data limit of the service. */
+    RefusedDataLimitReached,
+
+    /** The service refused the request: the email address of the service's account is not confirmed. */
+    RefusedAddressUnconfirmed,
+
+    /** The service refused the request for another reason, or one whose kind cannot be read; not of the credentials. */
+    RefusedOtherReason,
 }

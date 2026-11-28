@@ -22,7 +22,7 @@ import slussen.pluginapi.testfixtures.UseCase
 import slussen.testing.ExampleData
 
 @OptIn(ExperimentalTestApi::class)
-@DisplayName("UC-009: Manage Account Mappings, the Bank Account type and the Bank, Not imported and Kept by hand on a device")
+@DisplayName("UC-009: Manage Account Mappings, the sheet of the Bank Account, the Bank Account type and the Bank, retiring, Not imported and Kept by hand on a device")
 class UC009ManageAccountMappingsScreenIT {
     @JvmField
     @RegisterExtension
@@ -32,7 +32,7 @@ class UC009ManageAccountMappingsScreenIT {
 
     @Test
     @UseCase(id = "UC-009", scenario = "A14: Change the Bank Account Type or the Bank", businessRules = ["BR-012"])
-    @DisplayName("A14: a Bank Account opens the sheet of its type and Bank, and Save stores another type")
+    @DisplayName("Step 2, A14 (#sheet, #type-and-bank): a Bank Account opens its sheet, whose Bank Account type and Bank opens that sheet, and Save stores another type")
     fun typeIsChangedOnTheSheet() = compose.use {
         val fixture = ScreenFixture()
         val slice = fixture.slice
@@ -56,11 +56,50 @@ class UC009ManageAccountMappingsScreenIT {
         setContent { SlussenTheme { AccountMappings(viewModel) } }
 
         onNodeWithText("Kestrel Bank · Checking · Kestrel Feeds").performClick()
+        onNodeWithText("Bank Account type and Bank").performClick()
         onNodeWithText("Savings").performClick()
         onNodeWithText("Save").performClick()
 
         onNodeWithText("Kestrel Checking: Savings · Kestrel Bank · stored").assertExists()
         onNodeWithText("Kestrel Bank · Savings · Kestrel Feeds").assertExists()
+    }
+
+    @Test
+    @UseCase(id = "UC-009", scenario = "A4: Retire a Bank Account", businessRules = ["BR-005", "BR-015"])
+    @DisplayName("A4 (#map, #sheet, #retire): a line shows its Transfer Partner and state; its sheet's Retire asks first, and Retire stores it, answers above the list and lists it among the Retired Accounts")
+    fun retiringAsksFirst() = compose.use {
+        val fixture = ScreenFixture()
+        val slice = fixture.slice
+        runBlocking {
+            slice.enterCredentials()
+            val read = slice.connect.readBudgets() as BudgetsRead.Listed
+            slice.connect.chooseBudgets(read.budgets, setOf("budget-household"))
+            val bank = slice.connectionStore.bankNamed("Kestrel Bank").id
+            slice.offeredStore.replaceOffered(
+                slice.feedsId,
+                null,
+                listOf(ExampleData.offered("acct-4410", "CHK", "checking", ExampleData.USD, "4410", null, bank, slice.clock.instant())),
+            )
+            val checking = slice.connectionStore.budgets().single().budgetAccounts.first().id
+            slice.connect.add(
+                slice.offeredStore.offered().single().id, checking, "Kestrel Checking", BankAccountType.Checking, BankChoice.Known(bank), null,
+            )
+        }
+        val viewModel = AccountMappingsViewModel(fixture.services)
+        onMain { viewModel.load() }
+        setContent { SlussenTheme { AccountMappings(viewModel) } }
+
+        onNodeWithText("Transfer Partner: not set").assertExists()
+        onNodeWithText("Nothing sent yet · identified").assertExists()
+        onNodeWithText("Kestrel Bank · Checking · Kestrel Feeds").performClick()
+        onNodeWithText("Retire Bank Account…").performClick()
+        onNodeWithText("Retire Kestrel Checking?").assertExists()
+        assertEquals(false, runBlocking { slice.connectionStore.bankAccounts().single().retired })
+        onNodeWithText("Retire").performClick()
+
+        onNodeWithText("Kestrel Checking: retired · stored · the Transaction Statuses are given again").assertExists()
+        onNodeWithText("RETIRED ACCOUNTS").assertExists()
+        assertEquals(true, runBlocking { slice.connectionStore.bankAccounts().single().retired })
     }
 
     @Test

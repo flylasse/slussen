@@ -219,6 +219,7 @@ data class RequestSummary(
     val kind: RequestKind,                              // Transactions, Balance, Other (PROVIDER_REQUEST.request_kind); BudgetAppRead, BudgetAppWrite
     val bankReference: String?,                         // the Bank the request concerns, when it concerns one
     val bankAccountReference: String?,                  // the Bank Account it reads, when it reads one
+    val unattended: Boolean,                            // as the request is sent: true unless it shows the Bank that the Operator is present (S-B-46)
 )
 
 sealed interface Admission {
@@ -230,19 +231,32 @@ enum class RefusalScope { BankAccount, Bank, Source }  // Source = the whole Dat
 
 - The plug-in calls `gate.admit` before **every** request it sends, including each page of a paged read and every
   request of a Bank Consent operation (A-12). On `Refused` it sends nothing in that scope and goes on with what is
-  outside it (§4.1); a credential check returns `StoppedByGate` (§4.5). It never counts, waits or retries on its own.
+  outside it (§4.1); a credential check returns `StoppedByGate` (§4.5). A refusal of scope BankAccount for the
+  Unattended Access limit ends only the read it refused, the Bank Account's transactions or its balance, and its other
+  read goes on (S-B-56). It never counts, waits or retries on its own.
 - For a Data Provider, the core's gate stores the Provider Request (`PROVIDER_REQUEST`, UC-001 BR-007) durably before
   it answers `Allowed`, so a crash after admission counts the request rather than losing it. It refuses with scope
   Source for a reached Request Limit or a Back-off of the Data Provider, scope Bank for a Back-off of one Bank, and
-  scope BankAccount for a reached Unattended Access limit (C-006, UC-001 BR-004, BR-012). Requests of Bank Consent
-  operations are counted as `request_kind` Other, with the Operator present.
+  scope BankAccount for a reached Unattended Access limit, in a Scheduled Fetch only, counted for each kind of read
+  apart, the transactions and the balance, at the time the Fetch started (C-006, UC-001 BR-004, BR-012, S-B-56). Requests of Bank Consent
+  operations are counted as `request_kind` Other, with the Operator present. The gate stores `unattended` and the Bank
+  Account of `bankAccountReference` with the Provider Request, and counts an unattended request against the
+  Unattended Access limit whatever started it (UC-001 BR-012). A plug-in sends `unattended` true for every request of
+  an `Unattended` Fetch, and also, for a Data Provider that needs a Bank Consent (S-B-53), for a request of a Fetch
+  the Operator started when the request carries nothing that tells the Bank the Operator is present (§4.1.1). One read of a Bank Account's transactions, however many pages it
+  takes, and one read of its balance are each one access: the first request of a read has its kind, each further page
+  of the same read has kind Other, so that the count of Unattended Accesses counts reads while the Request Limit counts
+  every request (S-B-46).
 - For the Budget App, the gate counts nothing (the specification sets no limit), but refuses every request once the
   operation that admitted it (ADR-007 §1) has ended or been cancelled, so that no request leaves after its operation.
 - **Timeout and cancellation.** The plug-in gives each request a call timeout equal to `timeout` (OkHttp
   `callTimeout`) and cancels the underlying call when the calling coroutine is cancelled
   (`suspendCancellableCoroutine` with `invokeOnCancellation { call.cancel() }`). A request that times out or is
-  cancelled ends as `TransientFailure(Timeout)` for a read and as `Unknown` for every item of a write (UC-006 A8). The
-  contract tests of §4.4 prove both against a test server that never answers.
+  cancelled ends as `TransientFailure(Timeout)` for a read and as `Unknown` for every item of a write (UC-006 A8). In a
+  Fetch through a Data Provider that needs a Bank Consent, which reads Bank Account by Bank Account, such a failure, and a
+  lost connection below, keeps what the Fetch read completely before it, and every Bank Account not read yet is `Failed`
+  with that kind and not contacted (§4.1.1, S-B-55). The contract tests of §4.4 prove both against a test server that
+  never answers.
 - **A request the device cannot send (S-36, NFR-004).** A request that fails before or while it is sent for a reason
   the device gives (no connection, an address that does not resolve, network access the device refuses) ends as a
   lost connection: `TransientFailure(ConnectionLost)` for a read and a credential check, `Unknown` for every item of a
@@ -348,7 +362,18 @@ sealed interface ProviderTransaction {
 - **Offered Bank Accounts (S-08, A-15).** `bankAccounts` lists every Bank Account the Data Provider delivered, with
   the description UC-009 step 3 shows. The core replaces the stored Offered Bank Accounts of that Data Provider (or of
   one Bank through it) with this list in one storage operation (ADR-002 §3, O-2), keeping only `last_four_digits` and
-  the fingerprint of each number (UC-009 BR-009).
+  the fingerprint of each number (UC-009 BR-009). A Data Provider that needs a Bank Consent delivers a Bank's Bank
+  Accounts with the grant or renewal of that Bank's Bank Consent (`ConsentCompletion.Completed`); in a Fetch it lists
+  only the Bank Accounts it was asked to read, and the core replaces no Offered Bank Account from such a Fetch, so that
+  a Fetch that skipped a Bank or read part of it removes none of that Bank's Offered Bank Accounts (S-B-42).
+- **References that last (S-B-42).** `providerReference` is the same for the same Bank Account in every answer of its
+  Data Provider, across Bank Sessions, renewals and reinstalls (UC-009 BR-004, UC-013 BR-011). A Data Provider whose
+  own identifier of a Bank Account lasts only for one session gives as `providerReference` an identifier that lasts and
+  resolves the session's own identifier itself, from what it keeps in the `ConsentSession`, without a further request.
+  A Bank Account for which it has no identifier that lasts is not delivered; it is never delivered under a reference
+  that may change. `bankReference` names exactly one Bank of the Data Provider, also where two Banks of one name are in
+  two countries, is the same in the Bank list, in every Bank Account delivered and in every `BankOutcome`, and is the
+  name Slussen shows for the Bank (`BANK.name`), so the core needs no other key for a Bank.
 - **The time of a balance (S-T-04, issue #16).** `Read.balanceReportedAt` is the time the Data Provider says the
   balance was reported (SimpleFIN `balance-date`), or null when it gives none; the core stores it as
   `ACCOUNT_BALANCE.reported_at`, or the time it received the answer when it is null. A balance in another currency
@@ -373,16 +398,46 @@ sealed interface ProviderTransaction {
 
 ```kotlin
 interface BankConsentCapability {
+    suspend fun banks(country: String, context: RequestContext): BankList      // S-B-42
+        // Listed(banks: List<BankChoice(bankReference, name)>) | Refused(kind) | TransientFailure(kind) | StoppedByGate(reason)
     suspend fun startConsentRequest(bank: String, returnAddress: String, state: Secret, context: RequestContext): ConsentStart
-        // Started(consentAddress, handle: Secret?) | Refused(kind) | TransientFailure(kind)
+        // Started(consentAddress, handle: Secret?) | Refused(kind) | TransientFailure(kind) | StoppedByGate(reason)
+    fun stateOf(answer: ConsentAnswer): Secret?                                 // S-B-42; sends nothing
     suspend fun completeConsent(answer: ConsentAnswer, handle: Secret?, context: RequestContext): ConsentCompletion
-        // Completed(expiresAt, bankAccounts: List<DeliveredBankAccount>, session: ConsentSession) | NotConfirmed(kind) | TransientFailure(kind)
-    suspend fun revoke(session: ConsentSession, context: RequestContext): RevokeResult   // Ended | NotConfirmed
+        // Completed(expiresAt, bankAccounts: List<DeliveredBankAccount>, session: ConsentSession) | NotCompleted
+        // | NotConfirmed(kind) | TransientFailure(kind) | StoppedByGate(reason)
+    suspend fun revoke(session: ConsentSession, context: RequestContext): RevokeResult
+        // Ended | EndedAtDataProvider | NotConfirmed | StoppedByGate(reason)
+    fun showsPresence(session: ConsentSession): Boolean                       // S-B-46; sends nothing
+    fun registeredReturnAddress(credential: Secret?): String?                  // S-B-51; sends nothing
 }
 ```
 
+- **The Banks (S-B-42; UC-007 BR-010).** `banks` lists the Banks the Data Provider reaches in one country (ISO 3166
+  two-letter code), each with its `bankReference` and the name to show; it is one request of kind Other through the
+  gate, attended, and is sent when the Operator opens the choice of a Bank or chooses another country, never stored.
+  `bank` in `startConsentRequest` is one of these references.
+- **The answer (S-B-42).** `stateOf` reads the `state` value from the answer as the Data Provider returns it (the
+  core's return address with what the Data Provider added), or gives null when it carries none; the core digests it
+  and finds the Consent Request by that digest only. `NotCompleted` is the answer of a Strong Customer Authentication
+  the Operator cancelled or the Bank refused (UC-007 A1); the plug-in tells it from an unreadable answer, which is
+  `NotConfirmed(AnswerNotUnderstood)` (A2).
+- **Presence and the return address (S-B-46, S-B-51).** `showsPresence` says whether a request of a Fetch the
+  Operator starts can show this Bank that the Operator is present, from what the plug-in keeps in the Bank Session; the
+  core asks it before such a Fetch (UC-001 A22). `registeredReturnAddress` gives the return address the Operator
+  entered with the Data Provider's credentials (§4.5), or null when he entered none; the core then uses the
+  application's own (UC-007 BR-011) and passes the address it uses as `returnAddress`.
+- **Validity (S-B-42; C-007, UC-007 BR-004).** The plug-in asks for the longest Bank Consent the Data Provider declares
+  for that Bank, never a length of Slussen's own, and `expiresAt` is the expiry the Data Provider reports with the
+  completion.
+- **Refusals (S-B-42).** `ConsentFailureKind` gains `ReturnAddressRefused`: the Data Provider does not accept the
+  return address (UC-007 BR-011, A3). `StoppedByGate` answers a refusal of the gate, with no request sent in its scope.
+  `EndedAtDataProvider` means the Data Provider ended its session and says it ends the consent at the Bank only where
+  the Bank allows it; `Ended` means it confirmed the end at the Bank (UC-007 A7).
 - The core, not the plug-in, creates the `state` value (256 bits from `RandomSource`, ADR-008 §7) and stores only its SHA-256 digest with
-  the Consent Request, together with the plug-in's opaque `handle`, in `device.db` (ADR-002 §1, §2). The answer from
+  the Consent Request; it digests the `state` that `stateOf` returns through `Secret.sha256()`, the one one-way derivation
+  of a `Secret`, behind its own opt-in `@OneWayDigestApi` that only `slussen.core.identity` uses (ADR-006 §2, B-08;
+  S-B-52), so that the core never reveals it, together with the plug-in's opaque `handle`, in `device.db` (ADR-002 §1, §2). The answer from
   the Bank's Strong Customer Authentication is matched by the digest of the `state` it carries. Checking that it is
   the most recent Consent Request of the Bank and Data Provider, within the Consent Request lifetime counted to the
   moment the answer arrived, and not answered before, and marking it answered, is one storage operation (O-10
@@ -395,6 +450,143 @@ interface BankConsentCapability {
   Limit, refuses `startConsentRequest` and `completeConsent` with the reason shown; `revoke` is then not sent, and the
   core still deletes the stored Bank Consent, its Bank Session and every Consent Request of the Bank, and tells the
   Operator the Data Provider was not contacted (UC-007 A7, BR-007).
+
+#### 4.1.1 The Enable Banking part (S-B-42, S-B-46, S-B-47)
+
+What `:provider-enablebanking` sends and how it reads the answers. Source: Enable Banking's API reference
+(https://enablebanking.com/docs/api/reference/, with its OpenAPI description `enablebanking-api.yaml`) and FAQ
+(https://enablebanking.com/docs/faq/), read on 2026-11-28. Where they are silent, the rule below takes the reading
+that guesses nothing; such rules are marked "not documented". Every request goes through the gate (§4.0); every
+error is read from the answer's `error` code, not from its HTTP status, as the FAQ advises.
+
+**Banks and their reference.** A Bank is an ASPSP, which Enable Banking identifies by its name and country together
+(FAQ "Is there a unique ASPSP identifier?"). `bankReference` is the ASPSP's `name`, a space and its `country` in
+parentheses (`Example Bank (FI)`); the plug-in reads the name and country back from the last parentheses. `banks` is
+one `GET /aspsps` with `country`, `psu_type` personal and `service` AIS; the reference describes no paging of the answer. A Bank whose
+reference is longer than `BANK.name` holds is left out of the list.
+
+**Starting.** `startConsentRequest` sends `GET /aspsps` for the Bank's country again, so that a renamed Bank is
+refused instead of started under an old name (FAQ, rebrands), then `POST /auth` with `aspsp` (name and country),
+`psu_type` personal, `redirect_url` the return address, `state` the core's value, and `access.valid_until` the
+Bank's `maximum_consent_validity` (seconds, declared per ASPSP) counted from the moment the request is sent, less the
+request timeout (NFR-016), so that it never exceeds the maximum when the request arrives. The `handle` holds the
+`authorization_id` and the Bank's `required_psu_headers`. `consentAddress` is the answer's `url`; it carries a value
+of the session and is never logged (UC-007 BR-006). A Bank missing from the list is `Refused(RefusedByDataProvider)`;
+`REDIRECT_URI_NOT_ALLOWED` is `Refused(ReturnAddressRefused)`, which the core shows with the address it sent (UC-007 BR-011); `WRONG_ASPSP_PROVIDED` and `WRONG_REQUEST_PARAMETERS`
+are `Refused(RefusedByDataProvider)`; `UNAUTHORIZED_ACCESS` and `AUTHORIZATION_NOT_PROVIDED` are
+`Refused(CredentialsRefused)`. How long the `url` stays usable is not documented: the Consent Request lifetime
+decides (UC-007 BR-002). Whether a custom-scheme `redirect_url` is accepted is not documented; the application must
+list the address among its redirect URLs (Control Panel, "URLs whitelisted"); where it refuses the
+application's own address, the Operator registers an https address there and enters it with the credentials (§4.5).
+
+**The answer.** Enable Banking adds `code` and `state`, or `error` and `error_description`, to the query of the return
+address (reference, its first flow diagram). `stateOf` reads `state`. An answer with `error` and no `code` is
+`NotCompleted`: a cancellation (`access_denied`) and a refusal by the Bank are not told apart, both are UC-007 A1. An
+answer with neither `code` nor `error`, or with both, is `NotConfirmed(AnswerNotUnderstood)`, and nothing is sent (S-B-53).
+
+**Completing.** `completeConsent` sends `POST /sessions` with the `code`. `expiresAt` is the answer's
+`access.valid_until`: Enable Banking keeps the session exactly as long as asked, also when the Bank adjusts its own
+consent (reference, `Access.valid_until`), and the session may still end earlier (FAQ, `EXPIRED_SESSION`), which
+UC-001 A9 handles. `EXPIRED_AUTHORIZATION_CODE`, `WRONG_AUTHORIZATION_CODE` and `ALREADY_AUTHORIZED` are
+`NotConfirmed(AnswerNotUnderstood)` (UC-007 A2); `UNAUTHORIZED_ACCESS` and `AUTHORIZATION_NOT_PROVIDED` are
+`NotConfirmed(CredentialsRefused)`; another refusal is `NotConfirmed(RefusedByDataProvider)` (A4). A completion
+Enable Banking accepted whose validity, Bank or `accounts` cannot be used is a failure in transit (A8), and its session
+is ended at the Data Provider, once and through the gate, when its `session_id` is known (S-B-53). How
+long a `code` is valid is not documented. Each delivered Bank Account comes from one entry of `accounts`:
+`providerReference` is its `identification_hash`, which Enable Banking gives for matching an entry across sessions (reference, `AccountResource`; FAQ "How should re-authorisation be performed"), never its `uid`, which is
+valid only while the session is authorised; `name` its `details`, else its `product`, never `name`, which is the
+holder's name; `kind` from `cash_account_type` (`CACC` current, `SVGS` savings, `CARD` credit card, any other code as
+delivered); `currency` its `currency`, none when it is `XXX` (unknown or several, FAQ); `number` its
+`account_id.iban`, else `account_id.other.identification`. An entry without `identification_hash` is not delivered.
+Two entries with the same `identification_hash` are delivered as they are, and the core stops for both (UC-009
+BR-004). No balance is asked for at completion. A restricted production application receives only the entries linked
+to it in Enable Banking's Control Panel (FAQ): a completion may cover no Bank Account. The `ConsentSession` holds the
+`session_id`, the Bank's required PSU headers from the `handle` and, for each delivered Bank Account, its `uid` by its
+`providerReference` (`BANK_SESSION.session_reference`, ADR-002 §2), so that a Fetch sends no request to learn them.
+An entry without `uid` (Enable Banking leaves it out when the
+entry cannot be read, for example a closed one) is
+delivered to be offered and identified, never as a Bank Account that can be read: the session holds no `uid` for it,
+so a Fetch that selects it gives `Failed(UnreadableAnswer)`.
+
+**Revoking.** `revoke` sends `DELETE /sessions/{session_id}`. Its success is `EndedAtDataProvider`: Enable Banking
+closes the Bank's consent "automatically if possible" (reference, "Delete session"). Any error, also for a session
+that has already ended, is `NotConfirmed`.
+
+**The Operator's presence (S-B-46; C-006, UC-001 BR-012).** A request counts at the Bank as made with the Operator
+present only when it carries a PSU header, and a Bank that declares `required_psu_headers` accepts either all of them
+or none (FAQ, "What are the PSU headers … used for?", `PSU_HEADER_NOT_PROVIDED`). The headers Slussen can give truly
+are `Psu-User-Agent` (the application's name, `Slussen`: a plug-in is given neither the application id nor the version, §5;
+S-B-55) and `Psu-Accept-Language` (the device's language). It
+never sends `Psu-Ip-Address`: the device does not know the address the Bank would see without asking a third party,
+which Slussen does not do, since that would tell a third party each time the Operator fetches, and the address it
+has on its own network is not that one.
+It never sends `Psu-Geo-Location` (no such permission, NFR-022). So a request of a Fetch the Operator started carries
+those two headers when the Bank requires none or only those; otherwise it carries none and its `RequestSummary` is
+`unattended`: such a request is an Unattended Access at the Bank whoever started it, Slussen counts it so, and
+`showsPresence` is false for that Bank. A request of an `Unattended` Fetch carries no PSU header, as the FAQ asks for
+data fetching the application starts itself.
+
+**Fetching (S-B-47).** `FetchRequest.sessions` holds the Bank Session of each Bank with a Bank Consent that is valid
+(UC-001 A4); the plug-in reads only the selected Bank Accounts of those Banks and sends nothing for a Bank without a
+session, and nothing at all when no Bank Account is selected. For each selected Bank Account it sends, by the `uid`
+its `ConsentSession` holds, `GET /accounts/{uid}/balances` when the balance is to be read and `GET
+/accounts/{uid}/transactions` with `date_from` and `date_to` the fetch period (dates in UTC, as Enable Banking assumes)
+and no `transaction_status` filter, when the transactions are to be read. A selected Bank Account whose reference the
+session does not hold is `Failed(UnreadableAnswer)`, or `Failed(NotHeldByBankSession)` when the session could not keep
+every Bank Account of its Bank (S-B-55). It sends no `GET /sessions/{session_id}` and no request for an entry's details:
+whether those contact the Bank is not documented. Each page of the transactions is a request through the gate:
+while the answer has a `continuation_key`, also with an empty page, it asks again with that key and the same other
+parameters (FAQ, continuation key), as kind Other (§4.0); a page the gate refuses, a `WRONG_CONTINUATION_KEY`, or a
+`continuation_key` already used in the same read ends that Bank Account as `Failed(Incomplete)` (§4.1), and the
+Request Limit bounds the rest.
+
+**The balance (S-B-47; risk R5 of the survey).** Of the `balances` given, the Account Balance is the one with
+`balance_type` `ITBD` (interim booked), else `CLBD` (closing booked), each a booked balance as the booked transactions
+are; never an available, expected, opening, earlier, value-date, informational or other balance, which can hold a
+credit limit, pending items or another day. Of several of the chosen type, the one in the Bank Account's currency;
+when that is not exactly one, or none of the two types is given, the plug-in gives no balance. Its amount is taken
+with its own sign, a minus being money the Operator owes. For an entry whose `cash_account_type` is `CARD` it gives
+no balance: how a card's balance is signed is not documented. `balanceReportedAt` is `last_change_date_time`, else the
+start of `reference_date` in UTC, else null.
+
+**Transactions (S-B-47; UC-001 BR-002, BR-016).** Each entry of `transactions` becomes one `ProviderTransaction`,
+exactly as follows; nothing missing is taken from another field:
+- `booked`: true for `status` `BOOK`; false for `PDNG`, `HOLD`, `SCHD`, `CNCL` and `RJCT`, which the core leaves out
+  (BR-002); for `OTHR` or no `status` the entry is `Uninterpretable` with `booked` null and `UnreadableStructure`.
+- `bookedDate`: `booking_date`, never `value_date` or `transaction_date`; missing is `MissingDate`, not a date is
+  `UnreadableDate`.
+- `amount`: `transaction_amount.amount` without a sign, with the sign of `credit_debit_indicator`: with `CRDT` an
+  inflow, with `DBIT` an outflow. Whether the amount carries a sign of its own is not documented, so an amount with a
+  minus sign is `UnreadableAmount` whatever the indicator (UC-001 BR-016); so are an amount without an indicator, one
+  with more decimals than thousandths and one that is not a number; a missing amount is `MissingAmount`.
+- `currency`: `transaction_amount.currency`; missing is `MissingCurrency`.
+- `payee`: for `DBIT` `creditor.name`, for `CRDT` `debtor.name`, exactly as delivered; none when it is missing.
+- `memo`: the lines of `remittance_information` in their order, joined by one space, each exactly as delivered; none
+  when there is no line. The payee and memo enter the Import Identifier of kind `F` (ADR-008 §2), so this form never
+  changes once a build has sent one.
+- `stableReference`: null, also when `entry_reference` is given (§4.1 table; plan §6 Q-05, issue #7). The FAQ says
+  `entry_reference` is unique and lasting for most Banks but missing or duplicated at some; the Operator decided that a
+  Bank's references are trusted only after he has seen real ones.
+
+**Errors in a Fetch (S-B-47).** `ASPSP_RATE_LIMIT_EXCEEDED` is `BankOutcome.AskedToWait` for that Bank with no end
+(the FAQ's advice of 6 hours is not a period the answer names, so the default wait applies, UC-001 BR-004); another
+answer 429 is `SourceOutcome.AskedToWait` with no end. `EXPIRED_SESSION`, `REVOKED_SESSION`, `CLOSED_SESSION` and
+`SESSION_DOES_NOT_EXIST` are `BankOutcome.ConsentRefused` for that Bank (UC-001 A9). `UNAUTHORIZED_ACCESS` and
+`AUTHORIZATION_NOT_PROVIDED` are `SourceOutcome.CredentialsRefused`. `ASPSP_ERROR` and `ASPSP_TIMEOUT` are
+`Failed(ServiceUnavailable)` for that Bank Account, with no Back-off and no retry (UC-001 BR-005). Any other error,
+`PSU_HEADER_NOT_PROVIDED` and `PSU_HEADER_INVALID` included, is `Failed(UnreadableAnswer)` for the Bank Account the
+request read. `WRONG_TRANSACTIONS_PERIOD` is `Failed(PeriodNotGiven)` for that Bank Account: the Bank does not give the
+fetch period asked for, and nothing is asked again with another period (S-B-55). The status that asks to wait, 429 as the
+reference gives it, decides whatever code comes with it: with `ASPSP_RATE_LIMIT_EXCEEDED` it is that Bank's request to wait, with any other code or none the whole
+Data Provider's. A code names a failure also with a status of the 500s; such an answer without a readable code is the
+Data Provider's own failing. A failure of the balances request that concerns only that Bank Account (a code above that
+fails one Bank Account, or an answer without a code that cannot be read) gives no balance, and its transactions are still
+read; one of the Bank or of the whole Data Provider keeps its meaning (S-B-55).
+
+**A failure in transit (S-B-55).** What a Fetch read completely is delivered, whatever stops the rest. A request that got
+no answer at all (a timeout, a lost connection, a request the device refuses) or the Data Provider's own failing ends the
+Fetch for every Bank Account not read yet: each is `Failed` with that kind, `sourceOutcome` is that `TransientFailure`, and
+nothing more is sent. A failure the Data Provider names for one Bank or one Bank Account stops only that one (above).
 
 #### 4.2 Budget App (`slussen.pluginapi.budgetapp`)
 
@@ -507,13 +699,123 @@ data class BudgetAppTransactionRead(
   already shortened by the core (UC-006 BR-015), `cleared`, and, for a linked transfer, the other Budget Account. Every
   created transaction awaits approval (F-5); there is no parameter for it. It returns one F-2 result per item. The
   `reason` of a rejection is the Budget App's text, shown to the Operator (UC-006 A9) and never written to the
-  Decision Journal or a log in the default mode.
+  Decision Journal or a log in the default mode, nor stored. `Rejected` is answered only for an item the Budget App
+  refused by itself; an item of a list the Budget App refused as a whole is never `Rejected` because of that list's
+  answer, since the plug-in cannot know from it what was stored (§4.2.5 says how the YNAB part settles it), and an item
+  the plug-in cannot settle is `Unknown`. An item refused because its Budget Account is not in the Budget the call names
+  is `Unknown`, never `Rejected`, so that it never follows a moved Account Mapping into another Budget; the core plans
+  no such item (UC-006 BR-007), so the case cannot arise from a plan. `CredentialsRefused` and `StoppedByGate` are answered only when nothing of
+  the call was written; once one item of the call was sent, a later refusal makes every item not answered yet
+  `Unknown`. The plug-in never sends an item again after an answer that leaves it `Unknown`.
+- **Shortening (UC-006 BR-015).** The core shortens a payee or memo longer than `payeeMaxLength` or `memoMaxLength`
+  by cutting it at a code point boundary, never inside a surrogate pair, so that it holds at most the declared number
+  of UTF-16 code units, which is also at most that many code points. The stored Bank Transaction keeps the full text,
+  and the Import Identifier is computed from the full text (ADR-008 §2).
 - `BudgetAppWriter.markCleared(budgetReference, counterpartReference, context)` returns `Cleared`, `NotCleared` or
   `Unknown` and is the only change to an existing
   Budget App Transaction the contract offers (FR-055, UC-006 BR-011).
 - At composition the core checks `importIdentifierMaxLength` against ADR-008 §6 and every number against its range;
   a failure is a defect of this build's Budget App part, which its contract test catches before release; at run time
   every Upload is refused and the import status shows why.
+
+##### 4.2.5 The YNAB part (S-B-62)
+
+What `:budgetapp-ynab` sends to write and how it reads the answers. Source: YNAB's API documentation
+(https://api.ynab.com/, the sections Best Practices, Errors, Data Formats, Delta Requests and Rate Limiting, and the
+Changelog up to v1.92.0) and its OpenAPI description (https://api.ynab.com/papi/open_api_spec.yaml, version 1.92.0),
+read on 2026-11-28. Where they are silent, the rule takes the reading under which a transaction waits for the Operator
+or is sent again only under its own Import Identifier; such rules are marked "not documented", and the live tests of
+ADR-005 §7, E-10, must prove them before the first real Upload. Every request goes through the gate (§4.0), a read
+with kind `BudgetAppRead` and a write with kind `BudgetAppWrite`, with the access token as a bearer token. A Budget is
+a YNAB plan, a Budget Account a YNAB `Account` (OpenAPI); amounts are YNAB's milliunits, the thousandths of `Amount`.
+
+- **Paths.** The writer uses the paths the part's reads use today, under `https://api.ynab.com/v1/budgets/{budget_id}`.
+  YNAB still answers them, though since v1.79.0 its documentation names the same resources `/plans/{plan_id}`
+  (Changelog v1.79.0: the earlier `/budgets/{budget_id}` paths "continue to work"); the paths and answers below are written in
+  the documented form, and each `/plans/{plan_id}` stands for `/budgets/{budget_id}`. The reads are not moved in this
+  wave; moving them is the Operator's question (`docs/build_out_plan.md` §6, G-44), with a live test that the two paths
+  name the same thing.
+- **Refusals.** Only an answer that means the access token is not accepted is refused credentials: `401` (a token
+  missing, invalid, revoked or expired) and `403` with YNAB's code `403.3` (`unauthorized_scope`). They are
+  `CredentialsRefused` for a read, for a `create` call when nothing of it was written, and `NotCleared` for
+  `markCleared`. Every other documented `403` is the Budget App's refusal with its reason, not of the credentials:
+  `403.1` (`subscription_lapsed`), `403.2` (`trial_expired`), `403.4` (`data_limit_reached`) and `403.5`
+  (`email_unconfirmed`), and a `403` whose code cannot be read, are for a read and a credential check a failure of
+  its own kind that names the reason from a closed set (`FailureKind` RefusedSubscriptionLapsed, RefusedTrialEnded,
+  RefusedDataLimitReached, RefusedAddressUnconfirmed, and RefusedOtherReason for any other `403` or one whose code
+  cannot be read; S-B-79), which the Operator is told in Slussen's words, are answered for a write as a refused list
+  or a refused single send below, the single send's `Rejected` carrying that kind, and are `NotCleared` for
+  `markCleared`. The rules below follow this one wherever they name `401`
+  or `403`; it holds for the reads built before this section too.
+- **The Budget Accounts of the Budget (S-B-79).** Before it sends anything of a `create` call, the part sends one
+  `GET /plans/{plan_id}/accounts`. An item whose Budget Account is missing from the answer or `deleted` is not sent and
+  is `Unknown`, never `Rejected`, so that the rule of §4.2.4 for a Budget Account that is not in the Budget named does
+  not rest on an answer of YNAB, which documents none for it; the other items are sent. When that read gets no usable
+  answer, every item of the call is `Unknown` and nothing is sent. A refusal of the token to that read is
+  `CredentialsRefused` and a refusal by the gate `StoppedByGate`, with nothing written.
+- **The transfer payee.** YNAB links a transfer when the sent transaction's `payee_id` is the `transfer_payee_id` of
+  the other Budget Account (OpenAPI, `payee_id`, `Account.transfer_payee_id`), read from the same answer. An item whose
+  other Budget Account is missing from the answer, `deleted`, `closed` or without a `transfer_payee_id` is `Rejected`
+  with that reason and not sent, as §4.2.2 says of a Budget App that cannot link it.
+- **Creating a list.** The items of one Budget Account are sent in one `POST /plans/{plan_id}/transactions` with a
+  `transactions` array, each with `account_id`, `date`, `amount`, `memo` (or null), `cleared` `cleared` or
+  `uncleared` as the item says, `approved` false (YNAB's default too: "If not supplied, transaction will be
+  unapproved by default"), and `import_id`; an ordinary item carries `payee_name` (or null), a linked transfer
+  `payee_id` the other Budget Account's transfer payee and no `payee_name`. No category, flag or split is sent. The answer
+  `201` lists the saved transactions in `data.transactions`, and in `data.duplicate_import_ids` the `import_id` of
+  each item YNAB did not create because the same Budget Account already holds a transaction with it. An item whose `import_id` is
+  that of a saved transaction in the item's Budget Account is `Created` with that transaction's `id`; one among the duplicates
+  is `AlreadyPresent(null)`, its reference filled by the next Comparison (UC-003 BR-017); any other item, and every item
+  of an answer that cannot be read, is `Unknown`.
+- **A refused list, sent again one by one (Q-08).** To an answer `400`, `404`, `409` or a `403` that is not a refusal
+  of the token to the list, the part sends
+  each item of that list alone, in the order of the items, in one `POST` with a `transaction` object, so that only an
+  item YNAB refuses by itself is `Rejected`. Whether a refused list stored part of its items is not documented; the
+  single sends settle it, since an item already stored is refused by its `import_id`. To a single send, `201` is
+  `Created` with `data.transaction.id` when `data.transaction.import_id` is the item's, and `Unknown` otherwise; `409` (the OpenAPI description: the Budget Account already holds a transaction with the same `import_id`) is
+  `AlreadyPresent(null)`; `400` and a `403` that is not a refusal of the token are `Rejected` with the answer's
+  `error.detail`; `404` is `Unknown`, since it can mean that the Budget Account is not in the Budget the request names
+  (§4.2.4). The first answer of any other kind (a refusal of the token, `429`, a status of the 500s, an answer that cannot be read, a timeout, a lost
+  connection or a cancellation) or a refusal by the gate ends the sending: that item and every item not sent yet are
+  `Unknown`. The sending is bounded by the items: at most one list request and one single request per item of the
+  call, never a second request for the same item.
+- **Every other answer to a list.** A refusal of the token is `CredentialsRefused` when nothing of the call was
+  written, `429` ("too many requests"), a status of the 500s, a
+  timeout, a lost connection and a cancellation make every item of the request `Unknown` (§4.0), and the part sends
+  none of them again.
+- **Dates.** YNAB refuses a future date ("Future dates (scheduled transactions) are not permitted") and gives every
+  date in UTC ("All dates use UTC as the timezone"). The core's In The Future uses the device's date (UC-003 BR-011),
+  so a transaction booked on the device's today ahead of UTC can be refused; it is `Rejected` with YNAB's reason and
+  stays available for the next Upload Plan (UC-006 A9). Whether YNAB refuses an old date, and from what age, is not
+  documented; such a refusal is `Rejected` the same way.
+- **Lengths.** `import_id` at most 36, `payee_name` at most 200 and `memo` at most 500 characters (OpenAPI
+  `maxLength`), the profile's numbers (C-009). What YNAB does with a longer text is not needed: the core shortens
+  (§4.2.4).
+- **What YNAB does with what it receives.** YNAB matches a transaction created with an `import_id` to a
+  transaction entered by hand in the same Budget Account with the same amount and a date at most 10 days before or after
+  it (OpenAPI, `import_id`), the Matching Date Window of the profile, and renames its payee by the Operator's payee rename rules
+  (Changelog v1.92.0); nothing in Slussen compares a payee of its own uploads. An `import_id` is unique within one Budget Account (OpenAPI, `import_id`):
+  the refusal of a reused Import Identifier holds within one Budget Account only (UC-003 BR-003). Not documented, and
+  each for E-10: that a deleted transaction keeps its `import_id` refused; what YNAB creates on the other side of a
+  transfer (no `import_id`, its `cleared` and `approved`); how a match and the merge that follows it are reported in a
+  read by `last_knowledge_of_server` (the reader takes a deleted transaction named by another's
+  `matched_transaction_id` in the same answer as merged into it, and otherwise as deleted); that deleting one side of a
+  transfer deletes the other; that a closed Budget Account refuses a new transaction; that a server knowledge stays usable.
+- **Marking Cleared.** `markCleared` sends one `PATCH /plans/{plan_id}/transactions` with one transaction holding only
+  `id` and `cleared` `cleared`. `200` with that transaction `cleared` or `reconciled` is `Cleared`; `200` without it,
+  `400`, `404` and every `403` are `NotCleared`, and the next read meets a refusal of the token; every
+  other answer, a timeout, a lost connection and a cancellation are `Unknown`. That such a request changes nothing
+  else of the transaction is not documented (E-10).
+- **Reading one transaction.** `readTransaction` sends `GET /plans/{plan_id}/transactions/{transaction_id}` and reads
+  the answer as `readChanges` reads a transaction; `transfer_transaction_id` and `transfer_account_id` give the
+  `transferLink` from which ADR-007 §6 step 8 resolves the Transfer Counterpart. `404` is `NotFound`; a refusal of the token
+  is `CredentialsRefused`, another `403` as **Refusals** says; every other failure is `TransientFailure` of its kind.
+- **Rate limit.** YNAB lets an access token make up to 200 requests per hour, in a rolling window, and answers a
+  request beyond it with `429`. The gate counts nothing for the Budget App (§4.0); a `429` is `Unknown` for a write,
+  `Unknown` for a clearing and a failed read (UC-003 A1) for a read, and nothing is retried. One Upload costs, for
+  its Budget: the read before the plan (UC-006 step 2), the read of the check before writing (ADR-007 §6 step 4), for
+  each Budget Account one read of the Budget Accounts and one write and, after a refused list, one write per item, one
+  read and one write per Transfer Counterpart cleared, and the read of the Comparison after.
 
 #### 4.3 File Pre-processor (`slussen.pluginapi.fileformat`)
 
@@ -546,7 +848,107 @@ amount: Amount, currency: CurrencyCode?, payee: String?, memo: String?, booked: 
 file layout: nothing is written to disk in it. Every transaction has a non-empty `reference` (UC-002 BR-002,
 FR-085). `convert` returns `Rejected` when any part of the file cannot be converted (UC-002 BR-001). Deciding that
 transactions sharing a reference have no Stable Reference (UC-002 A4), leaving out pending and zero amounts, the
-occurrence numbers and the all-or-nothing store (ADR-002 §3 O-3) are core rules.
+occurrence numbers and the all-or-nothing store (ADR-002 §3 O-3) are core rules. A `currency` left empty is the Bank
+Account's currency; a transaction in another currency rejects the whole file (UC-002 A2), since a file has no
+Unreadable Transactions.
+
+A `Rejected.reason` says where the file fails (a line number, counted from 1, and the column) and what is wrong, in
+English like the rest of the app, and never holds a value of the file (no amount, date, payee, memo or text of a
+line), because it is shown, stored in `TRANSACTION_FILE.rejection_reason` and backed up with `slussen.db`. The core
+shows and stores at most the first 200 characters of it (the length of `rejection_reason`) and logs it only while
+Detailed Logging is on (NFR-007), since another File Pre-processor may break this rule.
+
+##### 4.3.1 The HSA CSV export (S-B-29)
+
+`:fileformat-hsa-csv` reads the history export of Fidelity for an HSA, one file per Bank Account, as
+the Operator described it from a sample (the build-out plan, Q-01); the sample is not in the repository, and every
+value below is invented. The rules that make a reference (the fields of a transaction and the recipe) are final once a
+file was imported, because an Import Identifier is permanent (ADR-008 §4): changing the recipe, the payee or memo
+below or the Source Key `hsa-csv` would bring every earlier transaction in again as a new one. The other rules decide
+only which files are accepted; they can be widened later without changing the reference of any transaction accepted
+now. Where the description leaves a point open, the file is rejected, never guessed.
+
+**Layout.** Anything else rejects the whole file (UC-002 A2, BR-001):
+
+1. The file is UTF-8, with or without the byte order mark (`EF BB BF`) at its start. Its lines end with LF or with
+   CRLF, one kind in a file; a CR not followed by LF, or both kinds in one file, rejects it. The last line of the file
+   may lack its line end. A line end is never part of a value.
+2. Lines 1 and 2 are empty; line 3 is the header, exactly
+   `Run Date,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Cash Balance ($),Settlement Date`.
+3. Every line from line 4 up to the first empty line is a transaction line, newest first. The first empty line may
+   follow the header at once; the file then holds no transaction (UC-002 A3).
+4. After that empty line comes text that is not read. Only its presence is required, so that a file cut short is
+   rejected: there is at least one line after the empty line, and the last line that is not empty begins with
+   `Date downloaded`. A file whose text after that empty line holds the header line again, or a line that gives
+   exactly the header's fields with a first field of the form `MM/DD/YYYY`, is rejected: it holds transaction lines
+   that would not be read (two exports in one file, or an empty line among the transaction lines).
+
+**A transaction line** is split into fields at commas as CSV does: a field in double quotes may hold commas, two
+double quotes inside it stand for one, the enclosing quotes are not part of the value, and `""` is an empty value. A
+line that does not give exactly the header's fields, or holds a quote that is not closed or stands inside a field
+without enclosing quotes, rejects the file. Of each line:
+
+- `Run Date` is `MM/DD/YYYY` with exactly those digits and a real calendar date, on or before the `Run Date` of the
+  line above it (newest first).
+- `Action` ends with ` (Cash)`, with at least one character before it; `Type` is `Cash`. Any other line (buying or
+  selling another fund, for example) rejects the file.
+- `Amount ($)` and `Cash Balance ($)` are a number: an optional `-`, one or more digits, and optionally a point with
+  one or two digits; nothing else (no `+`, no thousands separator, no space). `Cash Balance ($)` is the cash balance
+  after the line.
+- `Symbol` and `Description` are any text, also empty. `Price ($)`, `Quantity`, `Commission ($)`, `Fees ($)`,
+  `Accrued Interest ($)` and `Settlement Date` are not read.
+
+**The cash balance and the reinvestment.** For each transaction line but the last (the oldest), its `Cash Balance ($)`
+minus that of the line below it is either its `Amount ($)` (the line moved the cash balance: a transaction) or 0. A
+line with a difference of 0 and an amount other than 0 is a reinvestment into the cash position, not a transaction of
+the Bank Account, and is left out, only when its `Action` begins with `REINVESTMENT `; any other line with a
+difference of 0 and an amount other than 0, and any other difference, rejects the file. The last line has no line
+below it: it is a transaction, unless its `Action` begins with `REINVESTMENT `, which rejects the file, since whether
+it moved the cash balance cannot be told. The cash balance itself is never part of a transaction or its reference.
+
+**The Standard Import Format of a line** (every line that is not left out, also one with an amount of 0, which the
+core leaves out, UC-001 BR-003):
+
+| Field | Value |
+|---|---|
+| `bookedDate` | `Run Date` |
+| `amount` | `Amount ($)`, negative for an outflow |
+| `currency` | USD, as the header's `($)` names it; a Bank Account in another currency rejects every file (UC-002 A2) |
+| `payee` | `Action` without its ending ` (Cash)` |
+| `memo` | from `Description` (taken as empty when it is exactly `No Description`) and `Symbol`: with both, the description, a space and the symbol in parentheses (`EXAMPLE GOVERNMENT CASH RESERVES (EXMPX)`); with the description alone, the description (`Office visit`); with the symbol alone, the symbol in parentheses (`(EXMPX)`); with neither, absent |
+| `booked` | true: the description names no pending line and no column that marks one |
+| `reference`, `referenceKind` | the recipe below, Derived |
+
+**The reference recipe, version 1 (final).** The reference of a line is the lower-case hexadecimal SHA-256 digest (64
+characters) of the UTF-8 bytes of
+
+```text
+field("hsa-csv-reference") field("1") field(bookedDate) field(amount) field(payee) field(memo)
+```
+
+with ADR-008 §2's `field` encoding, date, amount and text rules: the date as `YYYY-MM-DD`, the amount as the signed
+whole number of thousandths, payee and memo in Unicode Normalization Form C, and an absent memo like an empty one. So
+the run date, action, symbol, description and amount of a line make its reference, as Q-01 proposed; its position in
+the file, the cash balance and the time of the download never do, so an overlapping later export of the same Bank
+Account gives the same references to the same transactions. The reference is made from exactly the fields that decide
+whether two transactions are identical in date, amount, payee and memo (ADR-008 §2), so two transactions have the same
+reference exactly when they are identical; the core counts a later file against the stored Bank Transactions on that
+(UC-002 BR-003). Two lines that differ only in what the payee and memo leave out share a reference and go to review
+(UC-002 A4); nothing is merged. Test vectors, invented:
+
+| Line | Canonical input | Reference |
+|---|---|---|
+| `11/25/2026,DEBIT CARD PURCHASE HARBOR PHARMACY (Cash),"",No Description,Cash,"",0,"","","","-12.34",1987.66,""` | `17:hsa-csv-reference1:110:2026-11-256:-1234035:DEBIT CARD PURCHASE HARBOR PHARMACY0:` | `3a3874d3bb5b7a579326adf332596a3bc66bb62230da6e56aefe73dd8fa043d8` |
+| `11/23/2026,PARTIC CONTR CURRENT PARTICIPANT CUR YR (Cash),"",No Description,Cash,"",0,"","","",150,2000,""` | `17:hsa-csv-reference1:110:2026-11-236:15000039:PARTIC CONTR CURRENT PARTICIPANT CUR YR0:` | `7d31efe6e3271c3897da5bafc623363089b84ebeea68f23190987a30e502916c` |
+| `10/30/2026,DIVIDEND RECEIVED EXAMPLE GOVERNMENT CASH RESERVES (EXMPX) (Cash),EXMPX,EXAMPLE GOVERNMENT CASH RESERVES,Cash,"",0,"","","",4.5,1850,""` | `17:hsa-csv-reference1:110:2026-10-304:450058:DIVIDEND RECEIVED EXAMPLE GOVERNMENT CASH RESERVES (EXMPX)40:EXAMPLE GOVERNMENT CASH RESERVES (EXMPX)` | `e42b53158002d2fab3cfa8d965b197087ac51587bf48f6c4920bf06f492b3e2d` |
+| `10/02/2026,DISTRIBUTION EXAMPLE CLINIC (Cash),"",Office visit,Cash,"",0,"","","","-25",1825.5,""` (a description alone) | `17:hsa-csv-reference1:110:2026-10-026:-2500027:DISTRIBUTION EXAMPLE CLINIC12:Office visit` | `1cb30abe4c821e4e021a4690d89335cf4c781d2e6946fa8b1437d92c908cf507` |
+| `09/30/2026,INTEREST EARNED (Cash),EXMPX,No Description,Cash,"",0,"","","",1.2,1850.5,""` (a symbol alone) | `17:hsa-csv-reference1:110:2026-09-304:120015:INTEREST EARNED7:(EXMPX)` | `5545f3fc35921c80ae682cfcab51ef97d72a7149fad2812d0f1436a94e9cec67` |
+
+In a file that holds the first three lines newest first, with the line
+`10/30/2026,REINVESTMENT EXAMPLE GOVERNMENT CASH RESERVES (EXMPX) (Cash),EXMPX,EXAMPLE GOVERNMENT CASH RESERVES,Cash,1,4.5,"","","","-4.5",1850,""`
+between the second and the third, that line is left out (its cash balance equals the dividend's below it), and the
+three others are transactions. The last two vectors stand alone: each shows one form of the memo. `:fileformat-hsa-csv` commits the vectors as a test resource that is never changed, as
+ADR-008 §3 does for Import Identifiers.
 
 #### 4.4 Contract tests
 
@@ -572,7 +974,8 @@ invented recorded answers served by a local test server. They check at least:
   declared `requestLimit` and `defaultFetchCooldownMinutes` lie in their ranges: a `Published` limit within 1 to 1000
   with a non-empty `source`, a `NotPublished` range within 1 to 1000 that holds its default (§4.1, §4.5);
 - for a File Pre-processor: a file with one unreadable line is `Rejected`; converting the same bytes twice gives equal
-  results; every declared number lies in its range.
+  results; every declared number lies in its range; every reference is non-empty; a `Rejected.reason` holds no value
+  of the file it rejects (§4.3).
 
 #### 4.5 Service credentials (`slussen.pluginapi.credential`; S-24)
 
@@ -586,7 +989,7 @@ interface CredentialCapability {
     suspend fun check(input: CredentialInput, context: RequestContext): CredentialCheck
 }
 data class CredentialForm(val fields: List<CredentialField>)
-data class CredentialField(val key: String, val kind: FieldKind, val description: String)  // kind: Text, Secret, File (chosen with the device's file picker)
+data class CredentialField(val key: String, val kind: FieldKind, val description: String, val optional: Boolean = false)  // kind: Text, Secret, File (chosen with the device's file picker); optional: may be left empty (S-B-51)
 sealed interface CredentialCheck {
     data class Accepted(val credential: Secret) : CredentialCheck  // what the core stores, encrypted
     data object Refused : CredentialCheck                         // UC-014 A1
@@ -600,7 +1003,9 @@ sealed interface CredentialCheck {
   and returns the credential Slussen keeps, which need not be what the Operator typed. This build: YNAB, a personal
   access token, checked by listing the Budgets; SimpleFIN, a setup token, which `check` exchanges once for the access
   credential, returns that credential and discards the setup token; Enable Banking, the application id and the private
-  key file of the household's own registered application, checked with a signed request (UC-014 BR-002, C-008).
+  key file of the household's own registered application, checked with a signed request (UC-014 BR-002, C-008), and,
+  optional, the return address registered with that application, a Text field kept in the credential although it is
+  not secret, empty meaning the application's own address (UC-007 BR-011; S-B-51).
 - Before it calls the gate, `check` tests what it can test without the service: an input that cannot be valid, such
   as a malformed setup token or a key file that holds no private key, is answered `Refused` without calling the gate,
   so nothing is sent, no Provider Request is counted and nothing is stored (UC-014 A1, BR-002).
@@ -672,11 +1077,28 @@ of its own module (§4.5); there is no template to add (UC-012 A2-A4). It touche
 export receive only the reader; `slussen.core.upload` receives the writer and wraps it at once in
 `AdmittedBudgetAppWriter` (ADR-007 §7).
 
-**Device permissions (S-36, NFR-022).** `app/src/main/AndroidManifest.xml` declares `android.permission.INTERNET`
-and no other permission. The merged manifest of every variant may hold only that one and the signature-level
-permission AndroidX declares for the app's own receivers (`<applicationId>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`),
-which asks the device for nothing; the permission check of §6.4 fails on any other, so a library that brings a
-permission is seen before it ships. A use case that needs another permission adds it to NFR-022 and to this list.
+**Device permissions (S-36, NFR-022; S-B-37).** The merged manifest of every variant may hold only these
+permissions, each for what it is listed with:
+
+| Permission | For |
+|---|---|
+| `android.permission.INTERNET` | the requests to the Data Providers and the Budget App |
+| `android.permission.ACCESS_NETWORK_STATE` | starting a Scheduled Fetch only while the device has a network connection (UC-001 A12) |
+| `android.permission.WAKE_LOCK` | keeping the device awake while a Scheduled Fetch runs |
+| `android.permission.RECEIVE_BOOT_COMPLETED` | keeping the Fetch Schedule after the device restarts (UC-001 BR-013) |
+| `android.permission.POST_NOTIFICATIONS` | showing the New Transaction Notification (UC-001 BR-014); the device asks the Operator for it |
+| `<applicationId>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | the signature-level permission AndroidX declares for the app's own receivers; it asks the device for nothing |
+
+The permission check of §6.4 (`build-logic`, run before every packaging task and in `check`, also for the release
+variant) holds exactly this list and fails on any other permission, so a library that brings one is seen before it
+ships. A permission a library brings that no use case needs is removed from the merged manifest, never added to the
+list: WorkManager's `android.permission.FOREGROUND_SERVICE`, since a Scheduled Fetch runs no foreground work. The
+check's list is changed only together with NFR-022 and this table, never on its own to make a build pass.
+The return address of a Bank Consent (UC-007 BR-011) is an intent filter of the app's own activity for the scheme
+`<applicationId>`, and the check that the device has a browser is a `<queries>` element; neither is a permission, so
+this list does not change for UC-007 (S-B-43). `slussen.app.di` forms the return address from the build's
+`applicationId` and hands it to the core; no Data Provider's name is in it, in the manifest or in any text of the
+screens (K-04).
 
 UI: one ViewModel per screen in `slussen.app.ui.<screen>`; composables receive state and callbacks only. Background
 work: the Scheduled Fetch runs as a WorkManager periodic worker in `slussen.app.schedule`, which asks the coordinator
@@ -743,6 +1165,7 @@ the fakes of the contracts, which must implement and reference them freely; it i
 | B-05 | Classes in `slussen/app/schedule/` reference no class in `slussen/core/upload/` |
 | B-06 | `Secret.reveal` and `ConsentSession.reveal` are invoked only from classes of plug-in modules and `:persistence` (ADR-006 L-04) |
 | B-07 | Within `:core`, `java/security/MessageDigest` is referenced only from `slussen/core/identity/` (Import Identifier, `bank_account_fingerprint`, Consent Request `state` digest) |
+| B-08 | `Secret.sha256`, the one one-way derivation of a `Secret`, is invoked only from classes in `slussen/core/identity/` (ADR-006 §2, S-B-52) |
 
 Every bytecode rule first asserts that its scope holds at least one class.
 
@@ -975,3 +1398,13 @@ or the Budget App, or writes, runs through the coordinator in `:core` `operation
   §4.1 `Read.balanceReportedAt`.
 - Transactions plan, Phase 4 (2026-10-28): S-T-12: §4.1 an error the Data Provider reports for a listed Bank Account
   that was not read replaces `NotRead(NotSelected, balance)`.
+- Build-out, phase W4-0 (2026-11-28): S-B-62: §4.2.4 (`Rejected` only for an item refused by itself, never from the
+  answer to a refused list; `CredentialsRefused` and `StoppedByGate` only when nothing of the call was written; no item
+  sent again after `Unknown`; the reason not stored), new §4.2.5 (the YNAB part: each request and what its answer
+  means, the resend one by one after a refused list and its bound, the transfer payee, never approved, dates, lengths,
+  rate limit, each from YNAB's documentation read on 2026-11-28 or marked not documented for E-10); S-B-75: §4.2.4
+  (shortening at a code point boundary).
+- Build-out, the review of phase W4-0 (2026-11-28): §4.2.4 (a refusal because the Budget Account is not in the Budget
+  named is `Unknown`), §4.2.5 (the writer on the paths the reads use; only a refusal of the token is refused
+  credentials, the other `403` kinds with their reason; a single send's `import_id` checked; `404` to a single send
+  `Unknown`).

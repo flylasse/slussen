@@ -94,7 +94,7 @@ import java.time.Duration
 @DisplayName("UC-001: Fetch Transactions")
 class UC001FetchTransactionsTest {
     private val slice = TestSlice()
-    private val request = RequestSummary(RequestKind.Transactions, bankReference = null, bankAccountReference = null)
+    private val request = RequestSummary(RequestKind.Transactions, bankReference = null, bankAccountReference = null, unattended = false)
 
     /** Asks the gate of [service] [times] times within one operation and returns each answer. */
     private suspend fun admit(service: ServiceKey, times: Int = 1): List<Admission> {
@@ -379,6 +379,23 @@ class UC001FetchTransactionsTest {
         slice.clock.advance(Duration.ofMinutes(40))
         assertInstanceOf(FetchReport.Fetched::class.java, fetchFeeds())
         assertEquals(today.minusDays(14), slice.feeds.fetchRequests.last().periodFrom)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", businessRules = ["BR-012"])
+    @DisplayName("BR-012: a request the part sends without showing the Bank that the Operator is present is kept as unattended, also in an operation the Operator started (S-B-46)")
+    fun requestWithoutPresenceIsKeptUnattended() = runTest {
+        val reads = FetchReads(mapOf("acct-4410" to 41L), scheduled = false)
+        val result = slice.coordinator.run(OperationKind.ServiceCredentialChange, StartedBy.Operator) { permit ->
+            val gate = slice.credentials.gate(slice.feedsKey, permit, reads)
+            gate.admit(request.copy(bankAccountReference = "acct-4410", unattended = true))
+            gate.admit(request.copy(bankAccountReference = "acct-4410"))
+        }
+
+        assertEquals(Admission.Allowed, (result as OperationResult.Ran).value)
+        val kept = slice.providerRequests.requests.filter { it.dataProviderId == slice.feedsId }
+        assertEquals(listOf(true, false), kept.map { it.unattended })
+        assertEquals(listOf(41L, null), kept.map { it.bankAccountId })
     }
 
     @Test
@@ -1037,16 +1054,44 @@ class UC001FetchTransactionsTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
-    @DisplayName("BR-008: a Data Provider that needs a Bank Consent contacts no Bank without a valid one; this build grants none yet, so it is not contacted")
+    @DisplayName("BR-008: a Data Provider that needs a Bank Consent contacts no Bank without a valid one; with no Bank Consent and no Bank Account, it is not contacted")
     fun dataProviderNeedingABankConsentIsNotContacted() = runTest {
         ready()
         slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
 
         val report = (slice.fetch.fetch(slice.openBankingKey) as FetchStart.Ran).reports.single()
 
-        assertEquals(FetchReport.NeedsBankConsent(slice.openBankingKey, "Aurora Open Banking"), report)
+        assertEquals(FetchReport.NothingToRead(slice.openBankingKey, "Aurora Open Banking"), report)
         assertEquals(0, slice.openBanking.fetches)
         assertTrue(slice.importStatusStore.fetches.isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
+    @DisplayName("BR-008 (phase E5): with a granted Bank Consent but no Bank Account added for it, nothing is read through a Data Provider that needs one: nothing is sent, nothing stored, the Bank Consent unchanged")
+    fun aGrantedBankConsentWithoutBankAccountsIsNotRead() = runTest {
+        ready()
+        slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        slice.bankConsent.startAnswer = { slussen.pluginapi.provider.ConsentStart.Started("https://aurora.example/sca", null) }
+        slice.bankConsent.completeAnswer = { _, _ ->
+            slussen.pluginapi.provider.ConsentCompletion.Completed(
+                slice.clock.instant().plus(java.time.Duration.ofDays(90)), emptyList(), slussen.pluginapi.provider.ConsentSession("session-e4"),
+            )
+        }
+        slice.bankConsents.start(slice.openBankingKey, "Aurora Bank (FI)", browserAvailable = true)
+        val state = slice.bankConsent.stateTexts().last()
+        val granted = slice.bankConsents.complete(slussen.testing.ScriptedBankConsent.answer(ExampleData.CONSENT_RETURN_ADDRESS, "code=c&state=$state"))
+        assertTrue(granted is slussen.core.consent.CompletionOutcome.Granted)
+        val sentBefore = slice.bankConsent.sent.size
+        val consentsBefore = slice.consentStore.bankConsents()
+
+        val reports = (slice.fetch.fetch(slice.openBankingKey) as FetchStart.Ran).reports
+
+        assertEquals(listOf(FetchReport.NothingToRead(slice.openBankingKey, "Aurora Open Banking", bankConsentGranted = true)), reports)
+        assertEquals(0, slice.openBanking.fetches)
+        assertEquals(sentBefore, slice.bankConsent.sent.size)
+        assertTrue(slice.importStatusStore.fetches.isEmpty())
+        assertEquals(consentsBefore, slice.consentStore.bankConsents())
     }
 
     @Test

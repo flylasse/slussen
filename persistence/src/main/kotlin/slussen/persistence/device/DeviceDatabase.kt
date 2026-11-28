@@ -15,16 +15,32 @@ import slussen.persistence.StorageConverters
 import java.time.Instant
 
 /**
- * `device.db` (ADR-002 §1): what stays on this installation and is never backed up or transferred. Phase 7 holds
- * `service_credential` (ADR-002 §2a) and `offered_bank_account`; the tables of Bank Consents, Bank Sessions and Consent
- * Requests come with the slice that builds UC-007, within schema version 1 until the first release.
+ * `device.db` (ADR-002 §1): what stays on this installation and is never backed up or transferred. Version 1, committed
+ * and final (ADR-002 §7), holds `service_credential` (ADR-002 §2a) and `offered_bank_account`; version 2 (S-B-45) adds
+ * the Bank Consents, Bank Sessions and Consent Requests with their correlation ([ConsentDao]), through the
+ * hand-written [DeviceMigrations.MIGRATION_1_2].
  */
-@Database(entities = [ServiceCredentialEntity::class, OfferedBankAccountEntity::class], version = 1, exportSchema = true)
+@Database(
+    entities = [
+        ServiceCredentialEntity::class,
+        OfferedBankAccountEntity::class,
+        BankConsentEntity::class,
+        BankSessionEntity::class,
+        ConsentRequestEntity::class,
+        ConsentRequestCorrelationEntity::class,
+    ],
+    version = 2,
+    exportSchema = true,
+)
 @TypeConverters(StorageConverters::class)
 abstract class DeviceDatabase : RoomDatabase() {
     abstract fun serviceCredentials(): ServiceCredentialDao
 
     abstract fun offeredBankAccounts(): OfferedBankAccountDao
+
+    abstract fun consents(): ConsentDao
+
+    abstract fun banks(): DeviceBanksDao
 }
 
 /**

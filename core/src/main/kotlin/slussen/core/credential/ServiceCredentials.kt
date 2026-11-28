@@ -6,6 +6,7 @@ import slussen.core.operation.OperationKind
 import slussen.core.operation.OperationPermit
 import slussen.core.operation.OperationRefusal
 import slussen.core.operation.OperationResult
+import slussen.core.operation.unlessStorageFails
 import slussen.core.plugin.RegisteredPlugins
 import slussen.core.port.CredentialVault
 import slussen.core.port.FetchStore
@@ -16,6 +17,7 @@ import slussen.core.port.ServiceKey
 import slussen.core.port.StartedBy
 import slussen.core.request.BudgetAppGate
 import slussen.core.request.DataProviderGate
+import slussen.core.request.FetchReads
 import slussen.core.request.requestLimitFreesUpAt
 import slussen.core.request.requestToWaitUntil
 import slussen.core.request.ServiceRequestContext
@@ -54,8 +56,11 @@ sealed interface CredentialOutcome {
     /** Step 4-6: stored, encrypted, in place of the earlier ones. */
     data class Accepted(val acceptedAt: Instant) : CredentialOutcome
 
-    /** A1: nothing stored, the earlier credentials unchanged. */
-    data object Refused : CredentialOutcome
+    /**
+     * A1: nothing stored, the earlier credentials unchanged. [atFields] are the optional fields the part's own check
+     * refused before anything was sent (E4 review item 3); empty for a refusal by the service, said of the credentials.
+     */
+    data class Refused(val atFields: Set<String> = emptySet()) : CredentialOutcome
 
     /** A2: the service did not answer within the request timeout or was unavailable; nothing stored. */
     data class NotReached(val kind: FailureKind) : CredentialOutcome
@@ -87,6 +92,9 @@ sealed interface RemovalOutcome {
     data object Removed : RemovalOutcome
 
     data class Unavailable(val reason: OperationRefusal) : RemovalOutcome
+
+    /** The credentials could not be deleted: they stay stored and accepted, and nothing is recorded (NFR-023). */
+    data object NotRemoved : RemovalOutcome
 }
 
 /**
@@ -143,26 +151,32 @@ class ServiceCredentials(
     /** Records that [service] refused the stored credentials (UC-014 BR-005, UC-013 A1). */
     fun markRefused(service: ServiceKey) = refusals.markRefused(service)
 
-    /** The gate of a request to [service] within the operation that holds [permit] (ADR-001 §4.0). */
-    fun gate(service: ServiceKey, permit: OperationPermit): RequestGate =
+    /**
+     * The gate of a request to [service] within the operation that holds [permit] (ADR-001 §4.0); [reads] for the
+     * requests of a Fetch (UC-001 BR-012, BR-013).
+     */
+    fun gate(service: ServiceKey, permit: OperationPermit, reads: FetchReads? = null): RequestGate =
         if (service == ServiceKey.budgetApp) {
             BudgetAppGate(permit)
         } else {
-            DataProviderGate(plugins.dataProvider(service).stored, providerRequests, fetches, clock, permit)
+            DataProviderGate(plugins.dataProvider(service).stored, providerRequests, fetches, clock, permit, reads)
         }
 
     /** The request context of a call to [service], with the request timeout Operator Setting (NFR-016). */
-    suspend fun context(service: ServiceKey, permit: OperationPermit, credential: Secret?): RequestContext =
+    suspend fun context(service: ServiceKey, permit: OperationPermit, credential: Secret?, reads: FetchReads? = null): RequestContext =
         ServiceRequestContext(
-            gate = gate(service, permit),
+            gate = gate(service, permit, reads),
             timeout = RequestTimeout(Duration.ofSeconds(settings.current().requestTimeoutSeconds.toLong())),
             credential = credential,
         )
 
     suspend fun enter(service: ServiceKey, input: CredentialInput): CredentialOutcome {
         val result = coordinator.run(OperationKind.ServiceCredentialChange, StartedBy.Operator) { permit ->
+            val context = context(service, permit, credential = null)
+            val asked = AskedGate(context.gate)
+            val capability = capability(service)
             // UC-014 BR-002: The credentials are checked with the service the way its part declares.
-            when (val check = capability(service).check(input, context(service, permit, credential = null))) {
+            when (val check = capability.check(input, ServiceRequestContext(asked, context.timeout, null))) {
                 is CredentialCheck.Accepted -> {
                     val acceptedAt = clock.instant()
                     // UC-014 BR-003: Credentials are stored only on the device, encrypted with a key that never leaves the device.
@@ -175,7 +189,7 @@ class ServiceCredentials(
                     CredentialOutcome.Accepted(acceptedAt)
                 }
                 // UC-014 BR-005: Refused credentials replace nothing; the earlier ones stay unchanged.
-                CredentialCheck.Refused -> CredentialOutcome.Refused
+                CredentialCheck.Refused -> CredentialOutcome.Refused(RefusedFields.of(capability, input, context.timeout, sentAnything = asked.asked))
                 is CredentialCheck.TransientFailure -> CredentialOutcome.NotReached(check.kind)
                 is CredentialCheck.StoppedByGate -> heldBack(service, check.reason)
             }
@@ -204,13 +218,32 @@ class ServiceCredentials(
 
     suspend fun remove(service: ServiceKey): RemovalOutcome {
         val result = coordinator.run(OperationKind.ServiceCredentialChange, StartedBy.Operator) {
-            vault.remove(service)
-            refusals.clear(service)
-            journal.record(JournalEventKind.ConfigurationChange, "Service credentials of ${plugins.nameOf(service)} removed")
+            // NFR-023: credentials that cannot be deleted stay stored and accepted; nothing is recorded.
+            unlessStorageFails(notStored = false) {
+                vault.remove(service)
+                true
+            }.also { removed ->
+                if (removed) {
+                    refusals.clear(service)
+                    journal.record(JournalEventKind.ConfigurationChange, "Service credentials of ${plugins.nameOf(service)} removed")
+                }
+            }
         }
         return when (result) {
-            is OperationResult.Ran -> RemovalOutcome.Removed
+            is OperationResult.Ran -> if (result.value) RemovalOutcome.Removed else RemovalOutcome.NotRemoved
             is OperationResult.Refused -> RemovalOutcome.Unavailable(result.reason)
         }
+    }
+}
+
+/** A gate that remembers whether the part asked it for a request, so that a refusal before anything was sent is known. */
+private class AskedGate(private val gate: slussen.pluginapi.request.RequestGate) : slussen.pluginapi.request.RequestGate {
+    @Volatile
+    var asked = false
+        private set
+
+    override suspend fun admit(request: slussen.pluginapi.request.RequestSummary): slussen.pluginapi.request.Admission {
+        asked = true
+        return gate.admit(request)
     }
 }
