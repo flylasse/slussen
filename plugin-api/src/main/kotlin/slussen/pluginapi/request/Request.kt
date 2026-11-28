@@ -29,6 +29,13 @@ public data class RequestSummary(
     val bankReference: String?,
     /** The Bank Account it reads, when it reads one. */
     val bankAccountReference: String?,
+    /**
+     * As the request is sent: true unless it shows the Bank that the Operator is present (ADR-001 §4.0, S-B-46). True for
+     * every request of an `Unattended` Fetch, and for a request of a Fetch the Operator started that carries nothing that
+     * tells the Bank he is present; the gate counts an unattended request against the Unattended Access limit whatever
+     * started it. A request of a Bank Consent operation or a credential check is made with the Operator present.
+     */
+    val unattended: Boolean,
 )
 
 public enum class RequestKind { Transactions, Balance, Other, BudgetAppRead, BudgetAppWrite }

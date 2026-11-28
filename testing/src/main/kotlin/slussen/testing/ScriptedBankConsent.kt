@@ -52,7 +52,7 @@ class ScriptedBankConsent : BankConsentCapability {
 
     private suspend fun admitted(context: RequestContext, bank: String?): Admission {
         contexts += context
-        val request = RequestSummary(RequestKind.Other, bank, null)
+        val request = RequestSummary(RequestKind.Other, bank, null, unattended = false)
         asked += request
         val admission = context.gate.admit(request)
         if (admission == Admission.Allowed) sent += request

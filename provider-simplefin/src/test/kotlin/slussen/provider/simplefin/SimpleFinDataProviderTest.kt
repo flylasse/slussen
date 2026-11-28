@@ -439,8 +439,20 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
         assertNull(sent.requestUrl!!.queryParameter("balances-only"))
         assertNull(sent.requestUrl!!.queryParameter("account"))
         assertEquals("2", sent.requestUrl!!.queryParameter("version"))
-        assertEquals(listOf(RequestSummary(RequestKind.Transactions, null, null)), gate.requests)
+        assertEquals(listOf(RequestSummary(RequestKind.Transactions, null, null, unattended = false)), gate.requests)
         assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", businessRules = ["BR-012"])
+    @DisplayName("BR-012: the request of an unattended Fetch is admitted as unattended (ADR-001 §4.0, S-B-46)")
+    fun unattendedFetchIsAdmittedAsUnattended() {
+        val gate = RecordingRequestGate()
+        val answered = fetchAnswered()
+
+        fetch(FetchScenario(answered.dataProvider, answered.request.copy(presence = OperatorPresence.Unattended), answered.credential), gate)
+
+        assertEquals(listOf(RequestSummary(RequestKind.Transactions, null, null, unattended = true)), gate.requests)
     }
 
     @Test
@@ -461,7 +473,7 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
             assertNull(sent.requestUrl!!.queryParameter("start-date"))
             assertNull(sent.requestUrl!!.queryParameter("end-date"))
             assertEquals("2", sent.requestUrl!!.queryParameter("version"), "$selection")
-            assertEquals(listOf(RequestSummary(RequestKind.Balance, null, null)), gate.requests)
+            assertEquals(listOf(RequestSummary(RequestKind.Balance, null, null, unattended = false)), gate.requests)
         }
     }
 

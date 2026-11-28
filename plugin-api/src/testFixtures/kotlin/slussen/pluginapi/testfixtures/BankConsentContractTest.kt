@@ -94,6 +94,7 @@ public abstract class BankConsentContractTest {
         assertTrue(requestsReceived() >= 1, "the service was not asked")
         assertEquals(requestsReceived(), gate.requests.size, "every request is admitted by the gate first")
         assertTrue(gate.requests.all { it.kind == RequestKind.Other }, "a Bank Consent request is of kind Other: ${gate.requests}")
+        assertTrue(gate.requests.none { it.unattended }, "a Bank Consent request is made with the Operator present: ${gate.requests}")
     }
 
     @Test

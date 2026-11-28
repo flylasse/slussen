@@ -94,7 +94,7 @@ import java.time.Duration
 @DisplayName("UC-001: Fetch Transactions")
 class UC001FetchTransactionsTest {
     private val slice = TestSlice()
-    private val request = RequestSummary(RequestKind.Transactions, bankReference = null, bankAccountReference = null)
+    private val request = RequestSummary(RequestKind.Transactions, bankReference = null, bankAccountReference = null, unattended = false)
 
     /** Asks the gate of [service] [times] times within one operation and returns each answer. */
     private suspend fun admit(service: ServiceKey, times: Int = 1): List<Admission> {
@@ -379,6 +379,20 @@ class UC001FetchTransactionsTest {
         slice.clock.advance(Duration.ofMinutes(40))
         assertInstanceOf(FetchReport.Fetched::class.java, fetchFeeds())
         assertEquals(today.minusDays(14), slice.feeds.fetchRequests.last().periodFrom)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", businessRules = ["BR-012"])
+    @DisplayName("BR-012: a request the part sends without showing the Bank that the Operator is present is kept as unattended, also in an operation the Operator started (S-B-46)")
+    fun requestWithoutPresenceIsKeptUnattended() = runTest {
+        val result = slice.coordinator.run(OperationKind.ServiceCredentialChange, StartedBy.Operator) { permit ->
+            val gate = slice.credentials.gate(slice.feedsKey, permit)
+            gate.admit(request.copy(unattended = true))
+            gate.admit(request)
+        }
+
+        assertEquals(Admission.Allowed, (result as OperationResult.Ran).value)
+        assertEquals(listOf(true, false), slice.providerRequests.requests.filter { it.dataProviderId == slice.feedsId }.map { it.unattended })
     }
 
     @Test

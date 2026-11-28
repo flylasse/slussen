@@ -37,7 +37,7 @@ internal class YnabCredentials(private val base: HttpUrl, private val http: OkHt
         val token = input.values[TOKEN]
         if (token == null || token.reveal().isBlank()) return CredentialCheck.Refused
         // UC-014 BR-002: The YNAB token is checked by listing the Budgets; a request the gate refuses is not sent.
-        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null))
+        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null, unattended = false))
         if (admission is Admission.Refused) return CredentialCheck.StoppedByGate(admission.reason)
         val request = Request.Builder().url(base.resolve("budgets")!!).bearer(token).build()
         return when (val answer = http.send(request, context.timeout)) {

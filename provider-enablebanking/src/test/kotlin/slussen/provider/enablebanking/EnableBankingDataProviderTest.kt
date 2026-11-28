@@ -118,7 +118,11 @@ class EnableBankingDataProviderTest : DataProviderContractTest() {
     fun applicationIsCheckedWithASignedRequest() {
         val credentials = provider().credentials
         assertEquals(
-            listOf(EnableBankingCredentials.APPLICATION_ID to FieldKind.Text, EnableBankingCredentials.PRIVATE_KEY to FieldKind.File),
+            listOf(
+                EnableBankingCredentials.APPLICATION_ID to FieldKind.Text,
+                EnableBankingCredentials.PRIVATE_KEY to FieldKind.File,
+                EnableBankingCredentials.RETURN_ADDRESS to FieldKind.Text,
+            ),
             credentials.form.fields.map { it.key to it.kind },
         )
         server.enqueue(MockResponse().setBody("""{"name":"Invented household app"}"""))

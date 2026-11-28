@@ -24,6 +24,7 @@ import slussen.pluginapi.provider.DataProvider
 import slussen.pluginapi.provider.DataProviderProfile
 import slussen.pluginapi.provider.FetchRequest
 import slussen.pluginapi.provider.FetchResponse
+import slussen.pluginapi.provider.OperatorPresence
 import slussen.pluginapi.provider.ReadKind
 import slussen.pluginapi.provider.SourceOutcome
 import slussen.pluginapi.request.Admission
@@ -61,7 +62,7 @@ class ScriptedCredentials(
         contexts += context
         beforeAnswer()
         if (refusesUnsent) return CredentialCheck.Refused
-        val admission = context.gate.admit(RequestSummary(requestKind, null, null))
+        val admission = context.gate.admit(RequestSummary(requestKind, null, null, unattended = false))
         if (admission is Admission.Refused) return CredentialCheck.StoppedByGate(admission.reason)
         requestsSent++
         return answer
@@ -88,7 +89,7 @@ class ScriptedBudgetAppReader(var readBudgetsAnswer: ReadResult<List<BudgetRead>
 
     override suspend fun readBudgets(context: RequestContext): ReadResult<List<BudgetRead>> {
         contexts += context
-        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null))
+        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null, unattended = false))
         if (admission is Admission.Refused) return ReadResult.StoppedByGate(admission.reason)
         budgetReads++
         return readBudgetsAnswer
@@ -107,7 +108,7 @@ class ScriptedBudgetAppReader(var readBudgetsAnswer: ReadResult<List<BudgetRead>
         context: RequestContext,
     ): ReadResult<ChangeSet> {
         contexts += context
-        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null))
+        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null, unattended = false))
         if (admission is Admission.Refused) return ReadResult.StoppedByGate(admission.reason)
         val read = ChangesRead(budgetReference, since, from)
         changeReads += read
@@ -191,7 +192,7 @@ class FakeDataProvider(
         fetches++
         fetchRequests += request
         fetchContexts += context
-        val admission = context.gate.admit(RequestSummary(kindOf(request), null, readsOne(request)))
+        val admission = context.gate.admit(RequestSummary(kindOf(request), null, readsOne(request), unattended = request.presence == OperatorPresence.Unattended))
         if (admission is Admission.Refused) {
             return FetchResponse(SourceOutcome.StoppedByGate(admission.reason), emptyList(), emptyList())
         }

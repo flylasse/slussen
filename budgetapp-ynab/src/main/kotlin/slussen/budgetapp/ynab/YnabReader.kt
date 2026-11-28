@@ -43,7 +43,7 @@ internal class YnabReader(private val base: HttpUrl, private val http: OkHttpCli
     @OptIn(SensitiveApi::class)
     override suspend fun readBudgets(context: RequestContext): ReadResult<List<BudgetRead>> {
         val credential = requireNotNull(context.credential) { "The core contacts YNAB only with stored credentials." }
-        when (val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null))) {
+        when (val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null, unattended = false))) {
             is Admission.Refused -> return ReadResult.StoppedByGate(admission.reason)
             Admission.Allowed -> Unit
         }
@@ -81,7 +81,7 @@ internal class YnabReader(private val base: HttpUrl, private val http: OkHttpCli
         context: RequestContext,
     ): ReadResult<ChangeSet> {
         val credential = requireNotNull(context.credential) { "The core contacts YNAB only with stored credentials." }
-        when (val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null))) {
+        when (val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null, unattended = false))) {
             is Admission.Refused -> return ReadResult.StoppedByGate(admission.reason)
             Admission.Allowed -> Unit
         }

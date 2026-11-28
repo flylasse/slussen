@@ -20,6 +20,7 @@ import slussen.pluginapi.provider.DeliveredBankAccount
 import slussen.pluginapi.provider.FetchRequest
 import slussen.pluginapi.provider.FetchResponse
 import slussen.pluginapi.provider.NotReadCause
+import slussen.pluginapi.provider.OperatorPresence
 import slussen.pluginapi.provider.ProviderTransaction
 import slussen.pluginapi.provider.ReadKind
 import slussen.pluginapi.provider.SourceOutcome
@@ -65,7 +66,7 @@ internal class SimpleFinFetch(private val http: OkHttpClient, private val allowP
             ?: return stopped(SourceOutcome.CredentialsRefused)
         val readsTransactions = readsTransactions(request.bankAccounts)
         val kind = if (readsTransactions) RequestKind.Transactions else RequestKind.Balance
-        val admission = context.gate.admit(RequestSummary(kind, bankReference = null, bankAccountReference = null))
+        val admission = context.gate.admit(RequestSummary(kind, bankReference = null, bankAccountReference = null, unattended = request.presence == OperatorPresence.Unattended))
         if (admission is Admission.Refused) return stopped(SourceOutcome.StoppedByGate(admission.reason))
         val call = Request.Builder()
             .url(accountsAddress(access, request, readsTransactions))

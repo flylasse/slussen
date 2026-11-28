@@ -101,7 +101,8 @@ class DataProviderGate(
             dataProviderId = dataProvider.id,
             bankAccountId = unattended?.let { reads -> request.bankAccountReference?.let(reads.bankAccountIds::get) },
             kind = kindOf(request.kind),
-            unattended = unattended != null,
+            // UC-001 BR-012: A request that does not show the Bank that the Operator is present is unattended, whatever started it (S-B-46).
+            unattended = unattended != null || request.unattended,
             sentAt = now,
         )
         // The Unattended Access limit of A13 (BR-012) is counted here, for a Data Provider that needs a Bank Consent, when its Bank Sessions are built.
