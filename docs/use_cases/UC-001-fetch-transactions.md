@@ -146,7 +146,7 @@
 **Flow:**
 
 1. Slussen runs steps 2 to 9 for each Data Provider in turn as A11 describes, without the Operator present, so that every request to a Data Provider that needs a Bank Consent is an Unattended Access (BR-012).
-2. Slussen compares the stored Bank Transactions with the Budget App (UC-003) and records each Fetch as started by the Fetch Schedule, with its outcome for each Bank Account.
+2. Slussen records each Fetch as started by the Fetch Schedule, with its outcome for each Bank Account, and, when at least one Data Provider was read or was served from the Fetch Cooldown, compares the stored Bank Transactions with the Budget App (UC-003), as after a Fetch the Operator started (A11); when none was, nothing was fetched and the Budget App is not read.
 3. Slussen updates the New Transaction Notification with the number of unprocessed Bank Transactions, or removes it when that number is 0 (BR-014).
 4. Slussen prepares no Upload Plan and writes nothing to the Budget App (BR-013).
 5. Use case ends.
