@@ -39,13 +39,18 @@ import slussen.core.port.StartedBy
 import slussen.core.port.StoredBackOff
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredDataProvider
+import slussen.core.consent.bankWaitUntil
+import slussen.core.port.ConsentStore
+import slussen.core.request.BankBackOffGate
 import slussen.core.request.FetchReads
+import slussen.core.request.ServiceRequestContext
 import slussen.core.request.requestLimitFreesUpAt
 import slussen.core.request.requestLimitWarningAt
 import slussen.core.request.requestToWaitUntil
 import slussen.pluginapi.provider.BankAccountResult
 import slussen.pluginapi.provider.BankAccountSelection
 import slussen.pluginapi.provider.BankAccountToRead
+import slussen.pluginapi.provider.BankOutcome
 import slussen.pluginapi.provider.DeliveredBankAccount
 import slussen.pluginapi.provider.FetchRequest
 import slussen.pluginapi.provider.FetchResponse
@@ -89,6 +94,11 @@ class FetchTransactions(
     private val notices: FetchNotices = FetchNotices(),
     /** Step 10: the Comparison with the Budget App (UC-003) that follows the Fetch within the same operation. */
     private val comparison: Comparison? = null,
+    /**
+     * O-10 (UC-007): the Bank Consents and Bank Sessions through which a Data Provider that needs a Bank Consent is read
+     * (A4, A9); without it no Bank of such a Data Provider is contacted (BR-008).
+     */
+    private val consents: ConsentStore? = null,
 ) {
     /** A Fetch Cooldown that holds: from the last successful Fetch at [lastFetchAt] to [endsAt]. */
     private data class Cooldown(val lastFetchAt: Instant, val endsAt: Instant)
@@ -97,9 +107,12 @@ class FetchTransactions(
     private data class Selected(val bankAccount: StoredBankAccount, val read: BankAccountToRead)
 
     // UC-001 BR-001: Slussen contacts a Data Provider only in a Fetch the Operator starts, never when the app is opened.
-    /** Step 1: the Operator starts a Fetch of the Data Provider [service]; [confirmedDespiteWarning] answers A16. */
-    suspend fun fetch(service: ServiceKey, confirmedDespiteWarning: Boolean = false): FetchStart =
-        admitted { permit -> listOf(fetchOne(plugins.dataProvider(service), permit, confirmedDespiteWarning)) }
+    /**
+     * Step 1: the Operator starts a Fetch of the Data Provider [service]; [confirmedDespiteWarning] answers A16, and
+     * [confirmedUnattended] A22.
+     */
+    suspend fun fetch(service: ServiceKey, confirmedDespiteWarning: Boolean = false, confirmedUnattended: Boolean = false): FetchStart =
+        admitted { permit -> listOf(fetchOne(plugins.dataProvider(service), permit, confirmedDespiteWarning, confirmedUnattended = confirmedUnattended)) }
 
     /** A11: the Operator starts a Fetch of all Data Providers in use, each in turn under its own gate (BR-010). */
     suspend fun fetchAll(): FetchStart = admitted { permit ->
@@ -190,6 +203,7 @@ class FetchTransactions(
         permit: OperationPermit,
         confirmedDespiteWarning: Boolean,
         startedBy: StartedBy = StartedBy.Operator,
+        confirmedUnattended: Boolean = false,
     ): FetchReport {
         val key = provider.key
         val stored = provider.stored
@@ -200,9 +214,6 @@ class FetchTransactions(
         val credential = credentials.stored(key) ?: return FetchReport.CredentialsMissing(key, name)
         // UC-014 BR-005: A Data Provider that refused Slussen's credentials is not contacted until new ones are accepted.
         if (refusedCredentials(provider)) return FetchReport.CredentialsRefused(key, name)
-        // The Unattended Access limit of A13 (BR-012) comes with the Bank Sessions: per Bank Account at step 3 here, and in the request gate.
-        // UC-001 BR-008: No Bank is contacted without a valid Bank Consent; with one, the read through its Bank Session is not in this build yet, so nothing is sent.
-        if (stored.needsBankConsent) return FetchReport.NeedsBankConsent(key, name)
         val startedAt = clock.instant()
         val backOffs = fetches.backOffsOf(stored.id)
         // UC-001 BR-004: While a Back-off with cause Request To Wait holds, the Data Provider is not contacted, whoever starts the Fetch.
@@ -217,7 +228,11 @@ class FetchTransactions(
                 return FetchReport.WaitingForProvider(key, name, warning.endsAt)
             }
         }
-        val selected = selected(stored)
+        val all = selectedBankAccounts(connections.bankAccounts(), stored.id)
+        // A4, A10, BR-004, BR-008: through a Data Provider that needs a Bank Consent, only the Bank Accounts of a Bank with a valid Bank Consent that covers them and asks no wait are read.
+        val consented = if (stored.needsBankConsent) ConsentedSelection.of(stored.id, all, consents, connections, offered, backOffs, startedAt) else null
+        val selected = consented?.readable?.map { Selected(it.bankAccount, it.read) } ?: all.map { (bankAccount, read) -> Selected(bankAccount, read) }
+        if (consented != null && selected.isEmpty()) return nothingToRead(provider, consented, all.isNotEmpty(), startedAt, startedBy)
         val cooldown = cooldownOf(stored, startedAt)
         val toRead = if (cooldown == null) selected else notReadSinceIdentified(stored, selected)
         if (cooldown != null && toRead.isEmpty()) {
@@ -238,10 +253,20 @@ class FetchTransactions(
         if (warning != null && !confirmedDespiteWarning) {
             return FetchReport.WarningToConfirm(key, name, RequestLimitWarningShown(warning.startsAt, warning.endsAt))
         }
+        // UC-001 BR-012: Before a Fetch the Operator starts reads a Bank whose requests cannot show that he is present, Slussen says so, with the Unattended Accesses used, and asks (A22).
+        if (consented != null && startedBy == StartedBy.Operator && !confirmedUnattended) {
+            val capability = provider.plugin.bankConsent
+            val unattended = capability?.let { consented.unattendedBanks(toRead.map { it.read }, it, providerRequests, startedAt) }.orEmpty()
+            if (unattended.isNotEmpty()) return FetchReport.UnattendedToConfirm(key, name, unattended, warningConfirmed = warning != null)
+        }
         // UC-001 BR-013: Every request a Scheduled Fetch sends is kept as an unattended Provider Request, with the Bank Account it reads when it reads one.
         val reads = FetchReads(toRead.associate { it.read.providerReference to it.bankAccount.id }, scheduled = startedBy == StartedBy.Schedule)
-        val response = provider.plugin.fetch(request(toRead, startedAt, startedBy), credentials.context(key, permit, credential, reads))
-        return answered(provider, response, toRead, startedAt, cooldown, backOffs, startedBy)
+        val context = credentials.context(key, permit, credential, reads).let { base ->
+            // UC-001 BR-004: a Back-off of one Bank, also one it asks for during this Fetch, holds for every request to that Bank.
+            if (consented == null) base else ServiceRequestContext(BankBackOffGate(base.gate, stored.id, consented.bankIds, fetches, clock), base.timeout, base.credential)
+        }
+        val response = provider.plugin.fetch(request(toRead, startedAt, startedBy, consented), context)
+        return answered(provider, response, toRead, startedAt, cooldown, backOffs, startedBy, consented)
     }
 
     /**
@@ -249,7 +274,7 @@ class FetchTransactions(
      * the balance of each selected Bank Account, only the balance of one whose transactions come from Transaction Files
      * (see [selected]).
      */
-    private suspend fun request(toRead: List<Selected>, now: Instant, startedBy: StartedBy): FetchRequest {
+    private suspend fun request(toRead: List<Selected>, now: Instant, startedBy: StartedBy, consented: ConsentedSelection?): FetchRequest {
         val today = LocalDate.ofInstant(now, clock.zone)
         return FetchRequest(
             // Step 4: with no Bank Account to read, the Bank Accounts the Data Provider offers are asked for, with their balances.
@@ -263,17 +288,38 @@ class FetchTransactions(
             periodTo = today,
             // UC-001 BR-012: A Fetch the Operator starts is made with the Operator present; a Scheduled Fetch is unattended.
             presence = if (startedBy == StartedBy.Schedule) OperatorPresence.Unattended else OperatorPresence.OperatorPresent,
-            sessions = emptyMap(),
+            // A4 (S-B-47): the Bank Session of each Bank read, and none of a Bank without a valid Bank Consent.
+            sessions = consented?.sessions(toRead.map { it.read }).orEmpty(),
         )
     }
 
     /**
-     * Step 3: every Bank Account the Operator added for the Data Provider, and, for its balance only, every one whose
-     * transactions come from Transaction Files and whose balance it reports, that has an Account Mapping and is not a
-     * Retired Account.
+     * A4, A1 for one Bank, A10: through a Data Provider that needs a Bank Consent no selected Bank Account can be read,
+     * so no Bank is contacted (BR-008). When Bank Accounts were selected, the Fetch is recorded, as Waiting For Back-off
+     * when only Back-offs of Banks held them, otherwise as Not Consented, with the outcome of each one left out; with
+     * none selected, nothing is recorded.
      */
-    private suspend fun selected(stored: StoredDataProvider): List<Selected> =
-        selectedBankAccounts(connections.bankAccounts(), stored.id).map { (bankAccount, read) -> Selected(bankAccount, read) }
+    private suspend fun nothingToRead(
+        provider: RegisteredDataProvider,
+        consented: ConsentedSelection,
+        anySelected: Boolean,
+        startedAt: Instant,
+        startedBy: StartedBy,
+    ): FetchReport {
+        val stored = provider.stored
+        if (anySelected) {
+            val onlyWaiting = consented.missingConsent.isEmpty() && consented.notRecognised.isEmpty()
+            val fetchId = record(stored, startedAt, if (onlyWaiting) FetchOutcome.WaitingForBackOff else FetchOutcome.NotConsented, startedBy)
+            consented.leftOutResults(fetchId).forEach { fetches.storeBankAccountDelivery(it) }
+        }
+        return FetchReport.NothingToRead(
+            provider.key,
+            stored.name,
+            missingConsent = consented.missingConsent.map { it.name },
+            notRecognised = consented.notRecognised.map { it.name },
+            banksWaiting = consented.waiting,
+        )
+    }
 
     // UC-001 BR-006: Within the Fetch Cooldown a Bank Account is read until it has a Fetch Result Fetched since it was added or identified again.
     /**
@@ -297,8 +343,12 @@ class FetchTransactions(
         // UC-001 BR-006: A Fetch Cooldown of 0 is switched off; otherwise it is the Operator's value, whose default the part declares.
         if (stored.fetchCooldownMinutes == 0) return null
         val last = fetches.fetchesOf(stored.id).firstOrNull { it.outcome == FetchOutcome.Fetched } ?: return null
-        // UC-001 BR-006: A Fetch that delivered no Bank Account does not start a Fetch Cooldown.
-        val delivered = offered.offered().any { it.dataProviderId == stored.id && !it.offeredAt.isBefore(last.startedAt) }
+        // UC-001 BR-006: A Fetch that delivered no Bank Account does not start a Fetch Cooldown; through a Data Provider that needs a Bank Consent, it delivered one when it read at least one Bank Account.
+        val delivered = if (stored.needsBankConsent) {
+            last.results.any { it.outcome == FetchResultOutcome.Fetched }
+        } else {
+            offered.offered().any { it.dataProviderId == stored.id && !it.offeredAt.isBefore(last.startedAt) }
+        }
         if (!delivered) return null
         val endsAt = last.startedAt.plus(Duration.ofMinutes(stored.fetchCooldownMinutes.toLong()))
         return if (now.isBefore(endsAt)) Cooldown(last.startedAt, endsAt) else null
@@ -312,16 +362,25 @@ class FetchTransactions(
         cooldown: Cooldown?,
         backOffs: List<StoredBackOff>,
         startedBy: StartedBy,
+        consented: ConsentedSelection?,
     ): FetchReport {
         val key = provider.key
         val stored = provider.stored
         val name = stored.name
-        // Per-Bank outcomes (A5 for one Bank, A9) concern only Data Providers that need a Bank Consent, which come with UC-007.
-        return when (val outcome = response.sourceOutcome) {
-            SourceOutcome.Completed, is SourceOutcome.AskedToWait, SourceOutcome.RequestLimitWarning -> {
+        val outcome = response.sourceOutcome
+        // ADR-001 §4.1: a refusal of the gate for the whole Data Provider ends what was still to read; what was read before it is kept.
+        val stoppedAfterReading = outcome is SourceOutcome.StoppedByGate &&
+            (response.bankAccounts.any { it.result is BankAccountResult.Read || it.result is BankAccountResult.Failed } || response.bankOutcomes.isNotEmpty())
+        // A5 for one Bank, A9: what each Bank answered for itself holds for that Bank only (BR-010), whatever stopped the rest.
+        val banks = consented?.let { bankOutcomes(stored, response, it, startedAt) } ?: BankAnswers()
+        return when {
+            outcome == SourceOutcome.Completed || outcome is SourceOutcome.AskedToWait || outcome == SourceOutcome.RequestLimitWarning || stoppedAfterReading -> {
                 val waitingUntil = (outcome as? SourceOutcome.AskedToWait)?.let { startWait(stored, it.until, startedAt) }
                 val warning = if (outcome == SourceOutcome.RequestLimitWarning) startWarning(stored, backOffs, startedAt) else null
-                if (waitingUntil != null && response.bankAccounts.isEmpty()) {
+                // A5: nothing was delivered while the whole Data Provider asks to wait; through Bank Sessions, nothing was read.
+                val nothingRead = response.bankAccounts.isEmpty() ||
+                    (consented != null && response.bankAccounts.all { it.result is BankAccountResult.NotRead } && banks.consentRefused.isEmpty())
+                if (waitingUntil != null && nothingRead) {
                     record(stored, startedAt, FetchOutcome.WaitingForBackOff, startedBy)
                     return FetchReport.WaitingForProvider(key, name, waitingUntil)
                 }
@@ -334,11 +393,31 @@ class FetchTransactions(
                 // UC-001 BR-006: A read within the Fetch Cooldown is recorded as served from it, so it neither starts nor extends it.
                 val fetchId = record(stored, startedAt, if (cooldown == null) FetchOutcome.Fetched else FetchOutcome.ServedFromFetchCooldown, startedBy)
                 // A2 step 3: a Fetch Served From Fetch Cooldown carries the outcome of each Bank Account it read.
-                val fetched = storeDeliveries(fetchId, stored, usable, shared, toRead, startedAt, answeredAt, waiting = waitingUntil != null).let { outcomes ->
+                val refusedBanks = banks.consentRefused.toSet()
+                val fetched = storeDeliveries(
+                    fetchId, stored, usable, shared, toRead, startedAt, answeredAt, waiting = waitingUntil != null,
+                    // A9 step 2: the Bank Accounts of a Bank that refused its Bank Consent, not read, record Not Consented.
+                    notConsented = { bankAccount -> consented?.bankOf(bankAccount) in refusedBanks },
+                ).let { outcomes ->
                     kept.copy(
                         notDelivered = outcomes.notDelivered,
                         signInNeeded = outcomes.signInNeeded,
                         balancesInOtherCurrency = outcomes.balancesInOtherCurrency,
+                    )
+                }.let { fetched ->
+                    if (consented == null) return@let fetched
+                    // A4, A10: the Bank Accounts left out before anything was sent, each with its outcome; nothing of them changes.
+                    consented.leftOutResults(fetchId).forEach { fetches.storeBankAccountDelivery(it) }
+                    val failedKinds = usable.mapNotNull { one -> (one.result as? BankAccountResult.Failed)?.let { one.providerReference to it.kind } }.toMap()
+                    fetched.copy(
+                        failedWith = toRead.mapNotNull { s -> failedKinds[s.read.providerReference]?.let { s.bankAccount.name to it } }.toMap(),
+                        missingConsent = consented.missingConsent.map { it.name },
+                        notRecognised = consented.notRecognised.map { it.name },
+                        consentRefused = banks.consentRefused,
+                        banksWaiting = consented.waiting + banks.waiting,
+                        stoppedByGate = (outcome as? SourceOutcome.StoppedByGate)?.reason,
+                        requestLimitFreesUpAt = (outcome as? SourceOutcome.StoppedByGate)?.takeIf { it.reason == RefusalReason.RequestLimitReached }
+                            ?.let { requestLimitFreesUpAt(providerRequests, stored, clock.instant()) },
                     )
                 }
                 if (cooldown == null) {
@@ -348,18 +427,52 @@ class FetchTransactions(
                 }
             }
             // UC-001 BR-005: A timeout, an outage or an unreadable answer starts no Back-off; the Operator can fetch again at any time, and a Scheduled Fetch that meets it is not repeated (A14).
-            is SourceOutcome.TransientFailure -> {
+            outcome is SourceOutcome.TransientFailure -> {
                 record(stored, startedAt, FetchOutcome.Failed, startedBy)
                 FetchReport.Failed(key, name, outcome.kind, startedAt)
             }
             // UC-014 BR-005: A Data Provider that refuses Slussen's credentials is not contacted until new ones are accepted.
-            SourceOutcome.CredentialsRefused -> {
+            outcome == SourceOutcome.CredentialsRefused -> {
                 credentials.markRefused(key)
                 record(stored, startedAt, FetchOutcome.CredentialsRefused, startedBy)
                 FetchReport.CredentialsRefused(key, name)
             }
-            is SourceOutcome.StoppedByGate -> stoppedByGate(stored, key, outcome.reason, startedAt, startedBy)
+            else -> stoppedByGate(stored, key, (outcome as SourceOutcome.StoppedByGate).reason, startedAt, startedBy)
         }
+    }
+
+    /** What the Banks answered for themselves in one Fetch (A5 for one Bank, A9), by the Bank's name. */
+    private data class BankAnswers(val waiting: List<BankWaiting> = emptyList(), val consentRefused: List<String> = emptyList())
+
+    /**
+     * A5 for one Bank: a Back-off with cause Request To Wait of that Bank only, for the period it names or the default
+     * wait (BR-004); a refusal of the gate for one Bank is such a Back-off already. A9: the Bank Consent of a Bank that
+     * no longer accepts it is treated as expired from now on, by storing the time of the refusal with it, and no Back-off
+     * starts for it. Only the Banks this Fetch handed a Bank Session for are taken.
+     */
+    private suspend fun bankOutcomes(stored: StoredDataProvider, response: FetchResponse, consented: ConsentedSelection, now: Instant): BankAnswers {
+        val handed = consented.readable.map { it.bankName }.toSet()
+        val waiting = mutableListOf<BankWaiting>()
+        val refused = mutableListOf<String>()
+        response.bankOutcomes.filter { it.bankReference in handed }.distinctBy { it.bankReference to it::class }.forEach { answer ->
+            val bankId = consented.bankIds.getValue(answer.bankReference)
+            val ofBank = consented.readable.filter { it.bankName == answer.bankReference }.map { it.bankAccount.name }
+            when (answer) {
+                is BankOutcome.AskedToWait -> {
+                    // UC-001 BR-004: A request to wait lasts the period the Bank names, or the default wait, an Operator Setting, when it names none.
+                    val endsAt = answer.until?.takeIf { it.isAfter(now) } ?: now.plus(Duration.ofHours(settings.current().defaultWaitHours.toLong()))
+                    fetches.startBackOff(NewBackOff(stored.id, bankId, BackOffCause.RequestToWait, now, endsAt))
+                    waiting += BankWaiting(answer.bankReference, endsAt, ofBank)
+                }
+                is BankOutcome.ConsentRefused -> {
+                    // UC-001 A9: treated as expired from now on, and no Back-off starts for that Bank.
+                    consents?.markRefused(bankId, stored.id, now)
+                    refused += answer.bankReference
+                }
+                is BankOutcome.StoppedByGate -> fetches.backOffsOf(stored.id).bankWaitUntil(bankId, now)?.let { waiting += BankWaiting(answer.bankReference, it, ofBank) }
+            }
+        }
+        return BankAnswers(waiting, refused)
     }
 
     /** The gate refused the request after step 2 had let it through: recorded as A1 or A3 would record it. */
@@ -412,9 +525,12 @@ class FetchTransactions(
         val offeredAt = clock.instant()
         val leftOut = connections.leftOutBankAccounts().filter { it.dataProviderId == stored.id }.map { it.providerReference }.toSet()
         // UC-009 BR-009: The Offered Bank Accounts of a Data Provider are replaced by those of its latest delivery, of the number only the last four digits and the fingerprint.
-        val kept = delivered.map { offeredOf(stored, it, offeredAt, it.providerReference in leftOut) }
-        val proposals = proposedMatches(stored, kept, leftOut)
-        offered.replaceOffered(stored.id, null, kept.map { it.copy(proposedBankAccountId = proposals[it.providerReference]) })
+        val kept = if (stored.needsBankConsent) emptyList() else delivered.map { offeredOf(stored, it, offeredAt, it.providerReference in leftOut) }
+        // ADR-001 §4.1 (S-B-42): a Fetch through a Data Provider that needs a Bank Consent replaces no Offered Bank Account; they come with the Bank Consent.
+        if (!stored.needsBankConsent) {
+            val proposals = proposedMatches(stored, kept, leftOut)
+            offered.replaceOffered(stored.id, null, kept.map { it.copy(proposedBankAccountId = proposals[it.providerReference]) })
+        }
         val references = delivered.map { it.providerReference }.toSet()
         // UC-001 BR-011: A Bank Account is identified with certainty by the identifier its Data Provider gives it, a file-imported one by the identifier its balance Data Provider gives it.
         val identified = toRead.filter { it.read.providerReference in references }.map { it.bankAccount.name }
@@ -468,6 +584,7 @@ class FetchTransactions(
         startedAt: Instant,
         answeredAt: Instant,
         waiting: Boolean,
+        notConsented: (StoredBankAccount) -> Boolean = { false },
     ): DeliveryOutcomes {
         val byReference = delivered.associateBy { it.providerReference }
         val notDelivered = mutableListOf<String>()
@@ -497,7 +614,9 @@ class FetchTransactions(
                         signInNeeded += bankAccount.name
                         BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.SignInNeeded, 0, balance = null)
                     }
-                    is BankAccountResult.NotRead -> null
+                    // A9 step 2: a Bank Account of a Bank that refused its Bank Consent keeps its stored data and records Not Consented.
+                    is BankAccountResult.NotRead ->
+                        if (notConsented(bankAccount)) BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.NotConsented, 0, balance = null) else null
                 }
             }
             // UC-001 BR-010: A failure of one Bank Account leaves the others' storage unaffected: each is its own storage operation.

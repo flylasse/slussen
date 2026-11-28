@@ -439,6 +439,17 @@ class UC007EnableBankingConsentTest {
     }
 
     @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", requirements = ["NFR-008"])
+    @DisplayName("Phase E5 (ADR-001 §4.1.1 \"The balance\"): the Bank Session keeps the currency a Fetch chooses each readable Bank Account's balance in, none for a card or an unknown currency")
+    fun sessionKeepsTheCurrencyOfEachBalance() {
+        server.answer("POST", "/sessions", ConsentServer.session)
+
+        val completed = call { consent.completeConsent(granting, handle, context()) } as ConsentCompletion.Completed
+
+        assertEquals(mapOf(HASH_1 to "EUR", HASH_5 to "EUR"), BankSessionValue.read(completed.session)!!.balanceCurrencies)
+    }
+
+    @Test
     @UseCase(id = "UC-007", scenario = "Main Success Scenario", businessRules = ["BR-009"])
     @DisplayName("Step 8: two entries with one lasting reference are both delivered and neither can be read; what does not fit the Bank Session's length is offered but not readable")
     fun sessionStaysWithinItsLength() {

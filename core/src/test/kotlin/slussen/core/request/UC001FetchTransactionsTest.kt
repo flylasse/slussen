@@ -1054,22 +1054,22 @@ class UC001FetchTransactionsTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
-    @DisplayName("BR-008: a Data Provider that needs a Bank Consent contacts no Bank without a valid one; this build grants none yet, so it is not contacted")
+    @DisplayName("BR-008: a Data Provider that needs a Bank Consent contacts no Bank without a valid one; with no Bank Consent and no Bank Account, it is not contacted")
     fun dataProviderNeedingABankConsentIsNotContacted() = runTest {
         ready()
         slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
 
         val report = (slice.fetch.fetch(slice.openBankingKey) as FetchStart.Ran).reports.single()
 
-        assertEquals(FetchReport.NeedsBankConsent(slice.openBankingKey, "Aurora Open Banking"), report)
+        assertEquals(FetchReport.NothingToRead(slice.openBankingKey, "Aurora Open Banking"), report)
         assertEquals(0, slice.openBanking.fetches)
         assertTrue(slice.importStatusStore.fetches.isEmpty())
     }
 
     @Test
     @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
-    @DisplayName("BR-008 (phase E4): with a granted Bank Consent, this build still reads no Bank Account through a Data Provider that needs one: nothing is sent, nothing stored, the Bank Consent unchanged")
-    fun aGrantedBankConsentIsNotReadInThisBuild() = runTest {
+    @DisplayName("BR-008 (phase E5): with a granted Bank Consent but no Bank Account added for it, nothing is read through a Data Provider that needs one: nothing is sent, nothing stored, the Bank Consent unchanged")
+    fun aGrantedBankConsentWithoutBankAccountsIsNotRead() = runTest {
         ready()
         slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
         slice.bankConsent.startAnswer = { slussen.pluginapi.provider.ConsentStart.Started("https://aurora.example/sca", null) }
@@ -1087,7 +1087,7 @@ class UC001FetchTransactionsTest {
 
         val reports = (slice.fetch.fetch(slice.openBankingKey) as FetchStart.Ran).reports
 
-        assertEquals(listOf(FetchReport.NeedsBankConsent(slice.openBankingKey, "Aurora Open Banking")), reports)
+        assertEquals(listOf(FetchReport.NothingToRead(slice.openBankingKey, "Aurora Open Banking")), reports)
         assertEquals(0, slice.openBanking.fetches)
         assertEquals(sentBefore, slice.bankConsent.sent.size)
         assertTrue(slice.importStatusStore.fetches.isEmpty())

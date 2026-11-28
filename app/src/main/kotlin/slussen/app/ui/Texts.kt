@@ -45,13 +45,6 @@ import java.time.Instant
 /** The texts the screens show for the core's results, in Slussen's glossary terms. */
 object Texts {
     /**
-     * P9-13 (phase E4): Bank Consents are granted in this build (UC-007), but a Data Provider that needs one is not read
-     * yet: said plainly wherever its Fetch would act, with nothing sent and no action needed (NFR-023).
-     */
-    fun notReadInThisBuild(dataProviderName: String): String =
-        "Bank Accounts through $dataProviderName are not read in this build yet · nothing is sent, the Bank Consents stay as they are, no action is needed"
-
-    /**
      * P9-14 (`overview.html#open-this-build`): what a Fetch does, since UC-001 step 10 compares with the Budget App, and
      * the one part it does not reach yet, Uploads (UC-006), for which no action is needed.
      */
@@ -192,11 +185,54 @@ object Texts {
         is FetchReport.CredentialsRefused ->
             FetchResultUi("Not fetched: credentials refused · enter them again", null, FetchResultKind.Failed, tap)
         is FetchReport.CredentialsMissing -> FetchResultUi("Not fetched: credentials missing · enter them", null, FetchResultKind.NotFetched, tap)
-        // P9-13: said plainly; no Bank is contacted without a valid Bank Consent (UC-001 BR-008), and this build reads none through one yet.
-        is FetchReport.NeedsBankConsent ->
-            FetchResultUi("Not fetched: ${notReadInThisBuild(report.dataProviderName)}", null, FetchResultKind.NotFetched, tap)
+        // A4, A10, A1 for one Bank of UC-001: no Bank is contacted without a valid Bank Consent that covers the Bank Account (BR-008).
+        is FetchReport.NothingToRead -> nothingToRead(report, formats, tap)
         is FetchReport.WarningToConfirm -> FetchResultUi(fetchWarning(report, formats).title, null, FetchResultKind.NotFetched, tap)
+        is FetchReport.UnattendedToConfirm -> FetchResultUi(fetchWarning(report).title, null, FetchResultKind.NotFetched, tap)
         is FetchReport.NotSent -> FetchResultUi("Not fetched: ${gateRefusal(report.reason)}", null, FetchResultKind.NotFetched, tap)
+    }
+
+    /** A4, A10, A1 for one Bank of UC-001: nothing was sent, each Bank Account left out with its reason and action. */
+    private fun nothingToRead(report: FetchReport.NothingToRead, formats: Formats, tap: Int): FetchResultUi {
+        val reasons = consentDetails(report.missingConsent, report.notRecognised, emptyList(), report.banksWaiting, formats)
+        return if (reasons.isEmpty()) {
+            FetchResultUi(
+                "Not fetched: no Bank Account to read through ${report.dataProviderName} yet",
+                "Grant a Bank Consent on its page, then add its Bank Accounts · nothing was sent",
+                FetchResultKind.NotFetched,
+                tap,
+            )
+        } else {
+            FetchResultUi("Not fetched: nothing was sent", reasons.joinToString(" · "), FetchResultKind.NotFetched, tap)
+        }
+    }
+
+    /** UC-001 A4, A9, A10, A1 and A5 for one Bank, each with its Blocked Reason and the action that removes it (UC-008 BR-006). */
+    private fun consentDetails(
+        missingConsent: List<String>,
+        notRecognised: List<String>,
+        consentRefused: List<String>,
+        banksWaiting: List<slussen.core.fetch.BankWaiting>,
+        formats: Formats,
+    ): List<String> = listOfNotNull(
+        missingConsent.takeIf { it.isNotEmpty() }?.let { "missing consent: ${it.joinToString(", ")}, not read · grant a Bank Consent" },
+        consentRefused.takeIf { it.isNotEmpty() }?.let {
+            "the Bank refused its Bank Consent: ${it.joinToString(", ")} · expired from now on, stored data unchanged · renew it"
+        },
+        notRecognised.takeIf { it.isNotEmpty() }?.let { "unrecognised Bank Account: ${it.joinToString(", ")}, not read · identify it" },
+    ) + banksWaiting.map { "waiting for the provider: ${it.bankName} until ${formats.dateTime(it.until)}, stored data unchanged" }
+
+    /** A8 of UC-001: a failure of one Bank Account with its reason; through a Bank Consent, an unreadable one may be one its Bank Session cannot read (E3 review). */
+    private fun failedDetail(report: FetchReport.Fetched): String? {
+        if (report.failed.isEmpty()) return null
+        if (report.failedWith.isEmpty()) return "failed: ${report.failed.joinToString(", ")}, stored data unchanged"
+        return "failed: " + report.failed.joinToString(", ") { name ->
+            when (val kind = report.failedWith[name]) {
+                FailureKind.UnreadableAnswer -> "$name (its answer could not be read, or its Bank Consent cannot read it: renew the Bank Consent if it stays)"
+                null -> name
+                else -> "$name (${failure(kind)})"
+            }
+        } + ", stored data unchanged"
     }
 
     /** What a Fetch that read the Data Provider came to besides its time (UC-001 steps 6, 11, A5, A8, A15, A18). */
@@ -205,7 +241,7 @@ object Texts {
         report.identified.size.takeIf { it > 0 }?.let { "added and identified: $it" },
         report.notAdded.takeIf { it > 0 }?.let { "not added: $it" },
         report.sharedReference.takeIf { it > 0 }?.let { "not used, ${report.dataProviderName} gave them the same identifier: $it" },
-        report.failed.takeIf { it.isNotEmpty() }?.let { "failed: ${it.joinToString(", ")}, stored data unchanged" },
+        failedDetail(report),
         // A19 of UC-001: the Bank Accounts the answer did not contain, with the advice to check them at the Data Provider.
         report.notDelivered.takeIf { it.isNotEmpty() }?.let {
             "not delivered by ${report.dataProviderName}: ${it.joinToString(", ")}, stored data unchanged · check at " +
@@ -221,12 +257,17 @@ object Texts {
             notices.joinToString(" · ") { "${it.bankAccountName}: ${balanceInOtherCurrency(it)}, not stored" }
         },
         report.waitingUntil?.let { "Blocked: waiting for the provider · until ${formats.dateTime(it)}" },
+        // BR-007: the gate stopped the rest after part was read; the rest keeps its stored data.
+        report.stoppedByGate?.let { reason ->
+            "${gateRefusal(reason)}: the other Bank Accounts were not read, stored data unchanged" +
+                (report.requestLimitFreesUpAt?.let { " · frees up from ${formats.dateTime(it)}" } ?: "")
+        },
         report.warning?.let {
             "${report.dataProviderName} warned that Slussen is near its Request Limit · Scheduled Fetches leave it alone " +
                 "until ${formats.dateTime(it.endsAt)} · further requests can get Slussen's access to " +
                 "${report.dataProviderName} disabled"
         },
-    ).joinToString(" · ")
+    ).plus(consentDetails(report.missingConsent, report.notRecognised, report.consentRefused, report.banksWaiting, formats)).joinToString(" · ")
 
     fun refusal(reason: OperationRefusal): String = when (reason) {
         OperationRefusal.UploadPlanAwaitingConfirmation ->
@@ -441,6 +482,29 @@ object Texts {
                 "Scheduled Fetches leave it alone until ${shown.dateTime(report.warning.endsAt)} " +
                 "(the Request Limit warning pause, an Operator Setting).",
             risk = "Further requests can get Slussen's access to $name disabled.",
+        )
+    }
+
+    /**
+     * UC-001 A22 step 1, by the pattern of A16: the Bank counts the Fetch as unattended, with how many of the 4
+     * Unattended Accesses PSD2 allows (C-006) each of its Bank Accounts has used of its transactions and of its balance
+     * in the preceding 24 hours, and that the Bank may refuse, which is then a request to wait (A5).
+     */
+    fun fetchWarning(report: FetchReport.UnattendedToConfirm): FetchWarningUi {
+        val banks = report.banks
+        val names = banks.joinToString(" and ") { it.bankName }
+        val used = banks.flatMap { bank ->
+            bank.bankAccounts.map { "${it.bankAccountName}: transactions ${it.transactionsUsed} of ${bank.limit}, balance ${it.balanceUsed} of ${bank.limit}" }
+        }
+        return FetchWarningUi(
+            service = report.service,
+            title = "Fetch ${report.dataProviderName} at a Bank that counts it as unattended?",
+            text = "Slussen cannot show $names that you are present, so ${if (banks.size == 1) "it counts" else "they count"} " +
+                "each read as unattended. Used in the last 24 hours of the ${banks.first().limit} Unattended Accesses PSD2 allows: " +
+                used.joinToString("; ") + ".",
+            risk = "The Bank may refuse; Slussen then waits before asking it again.",
+            confirmsWarning = report.warningConfirmed,
+            confirmsUnattended = true,
         )
     }
 

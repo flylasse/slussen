@@ -308,9 +308,8 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
                 is FetchStart.Unavailable ->
                     fetchResults = listOf(FetchResultUi(Texts.refusal(start.reason), null, FetchResultKind.NotFetched, tap))
                 is FetchStart.Ran -> {
-                    fetchResults = start.reports.filterNot { it is FetchReport.WarningToConfirm }.map { onOverview(it, tap) }
-                    pendingWarnings = start.reports.filterIsInstance<FetchReport.WarningToConfirm>()
-                        .map { Texts.fetchWarning(it, services.formats) }
+                    fetchResults = start.reports.filterNot { it.asksFirst() }.map { onOverview(it, tap) }
+                    pendingWarnings = start.reports.mapNotNull { question(it) }
                 }
             }
             reload()
@@ -346,18 +345,34 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
         pendingWarnings = pendingWarnings.drop(1)
         val tap = ++taps
         viewModelScope.launch {
-            when (val start = stoppedOr { services.fetch.fetch(warning.service, confirmedDespiteWarning = true) }) {
+            val start = stoppedOr {
+                services.fetch.fetch(warning.service, confirmedDespiteWarning = warning.confirmsWarning, confirmedUnattended = warning.confirmsUnattended)
+            }
+            when (start) {
                 null -> fetchResults = fetchResults + stopped(tap)
                 is FetchStart.Unavailable ->
                     fetchResults = fetchResults + FetchResultUi(Texts.refusal(start.reason), null, FetchResultKind.NotFetched, tap)
-                is FetchStart.Ran -> fetchResults = fetchResults + start.reports.map { onOverview(it, tap) }
+                is FetchStart.Ran -> {
+                    fetchResults = fetchResults + start.reports.filterNot { it.asksFirst() }.map { onOverview(it, tap) }
+                    // A22 after A16: a Fetch confirmed despite the warning can still ask whether to read a Bank that counts it as unattended.
+                    pendingWarnings = start.reports.mapNotNull { question(it) } + pendingWarnings
+                }
             }
             reload()
-            mutableState.value = mutableState.value?.copy(fetchResults = fetchResults)
+            mutableState.value = mutableState.value?.copy(fetchResults = fetchResults, fetchWarning = pendingWarnings.firstOrNull())
         }
     }
 
-    /** UC-001 A16: the Operator cancels; that Data Provider is not fetched. */
+    /** UC-001 A16, A22 step 1: a report that asks the Operator before anything is sent. */
+    private fun FetchReport.asksFirst(): Boolean = this is FetchReport.WarningToConfirm || this is FetchReport.UnattendedToConfirm
+
+    private fun question(report: FetchReport): FetchWarningUi? = when (report) {
+        is FetchReport.WarningToConfirm -> Texts.fetchWarning(report, services.formats)
+        is FetchReport.UnattendedToConfirm -> Texts.fetchWarning(report)
+        else -> null
+    }
+
+    /** UC-001 A16, A22: the Operator cancels; that Data Provider is not fetched. */
     fun cancelFetch() {
         pendingWarnings = pendingWarnings.drop(1)
         mutableState.value = mutableState.value?.copy(fetchWarning = pendingWarnings.firstOrNull())

@@ -302,10 +302,10 @@ class UC001FetchTransactionsViewModelTest {
         assertEquals(
             listOf(
                 FetchResultUi("Kestrel Feeds · Fetched 14:00", "Bank Accounts offered: 3 · not added: 3", FetchResultKind.Fetched, tap = 1),
-                // P9-13: said plainly, without naming a feature this build does not have.
+                // A4 (phase E5): with no Bank Consent and no Bank Account added for it, nothing is sent, and the way on is said.
                 FetchResultUi(
-                    "Aurora Open Banking · Not fetched: Bank Accounts through Aurora Open Banking are not read in this build yet · nothing is sent, the Bank Consents stay as they are, no action is needed",
-                    null,
+                    "Aurora Open Banking · Not fetched: no Bank Account to read through Aurora Open Banking yet",
+                    "Grant a Bank Consent on its page, then add its Bank Accounts · nothing was sent",
                     FetchResultKind.NotFetched,
                     tap = 1,
                 ),
@@ -396,17 +396,110 @@ class UC001FetchTransactionsViewModelTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
-    @DisplayName("A4, BR-008 (P9-13, phase E4): the page of a Data Provider that needs a Bank Consent says plainly that its Bank Accounts are not read in this build yet, and its Fetch is unavailable with that reason")
-    fun bankConsentProviderCannotFetchInThisBuild() {
+    @DisplayName("A4, BR-008 (phase E5): the page of a Data Provider that needs a Bank Consent offers its Fetch; without a Bank Consent nothing is sent, and the result says how to go on")
+    fun bankConsentProviderFetchSendsNothingWithoutAConsent() {
         runBlocking { slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
         val page = page(slice.openBankingKey)
 
-        assertFalse(page.ui().canFetch)
-        assertEquals("Bank Accounts through Aurora Open Banking are not read in this build yet · nothing is sent, the Bank Consents stay as they are, no action is needed.", page.ui().fetchUnavailable)
+        assertTrue(page.ui().canFetch)
+        assertNull(page.ui().fetchUnavailable)
         assertEquals("None yet · a Bank Consent of a Bank lists its Bank Accounts here: grant one under Bank Consents", page.ui().offered!!.emptyText)
         page.fetch()
+        assertEquals(
+            FetchResultUi(
+                "Not fetched: no Bank Account to read through Aurora Open Banking yet",
+                "Grant a Bank Consent on its page, then add its Bank Accounts · nothing was sent",
+                FetchResultKind.NotFetched,
+                tap = 1,
+            ),
+            page.ui().fetchResult,
+        )
         assertEquals(0, slice.openBanking.fetches)
         assertNull(page(slice.feedsKey).ui().fetchUnavailable)
+    }
+
+    /** UC-007, UC-013: a Bank Consent of Aurora Sparbank granted, and its Bank Account added, mapped into the Summer House Budget. */
+    private fun aBankAccountThroughABankConsent(): Long = runBlocking {
+        slice.enterCredentials()
+        slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        val listed = ExampleData.budgetsRead().map { budget ->
+            slussen.core.port.BudgetToServe(
+                budget.reference, budget.name, budget.currency,
+                budget.budgetAccounts.map { slussen.core.port.BudgetAccountToStore(it.reference, it.name, it.balance) },
+            )
+        }
+        slice.connectionStore.serveBudgets(listed, setOf("budget-summer"), slice.clock.instant())
+        slice.bankConsent.startAnswer = { slussen.pluginapi.provider.ConsentStart.Started("https://aurora.example/sca", null) }
+        slice.bankConsent.completeAnswer = { _, _ ->
+            slussen.pluginapi.provider.ConsentCompletion.Completed(
+                slice.clock.instant().plus(Duration.ofDays(90)),
+                listOf(DeliveredBankAccount("aurora-household", AURORA, "Household", "current", ExampleData.EUR, null, BankAccountResult.NotRead(slussen.pluginapi.provider.NotReadCause.NotSelected))),
+                slussen.pluginapi.provider.ConsentSession("session-aurora"),
+            )
+        }
+        slice.bankConsents.start(slice.openBankingKey, AURORA, browserAvailable = true)
+        slice.bankConsents.complete(slussen.testing.ScriptedBankConsent.answer(ExampleData.CONSENT_RETURN_ADDRESS, "code=c&state=${slice.bankConsent.stateTexts().last()}"))
+        val bank = slice.connectionStore.bankNamed(AURORA).id
+        val current = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Current" }.id
+        (
+            slice.connectionStore.addBankAccount(
+                slussen.core.port.NewBankAccount(
+                    "00000000-0000-4000-8000-0000000a0001", slussen.core.port.BankChoice.Known(bank), bank, slice.openBankingId, null, null, null,
+                    "Household Current", ExampleData.EUR, slussen.core.port.BankAccountType.Checking, "aurora-household", null, slice.clock.instant(), null, current,
+                ),
+            ) as slussen.core.port.AddOutcome.Added
+            ).bankAccountId.also {
+            slice.openBanking.fetchAnswer = { FetchResponse(SourceOutcome.Completed, emptyList(), listOf(DeliveredBankAccount("aurora-household", AURORA, null, null, ExampleData.EUR, null, BankAccountResult.Read(emptyList(), null)))) }
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A22: Fetch at a Bank That Counts It as Unattended", businessRules = ["BR-012"], requirements = ["C-006"])
+    @DisplayName("A22 (by the pattern of A16): at a Bank that counts the Fetch as unattended the page says so with the Unattended Accesses used and asks; cancelling sends nothing, confirming fetches")
+    fun unattendedBankAsksToConfirm() {
+        aBankAccountThroughABankConsent()
+        slice.bankConsent.presence = { false }
+        val page = page(slice.openBankingKey)
+
+        page.fetch()
+
+        val question = page.ui().fetchWarning!!
+        assertEquals("Fetch Aurora Open Banking at a Bank that counts it as unattended?", question.title)
+        assertEquals(
+            "Slussen cannot show $AURORA that you are present, so it counts each read as unattended. Used in the last 24 hours " +
+                "of the 4 Unattended Accesses PSD2 allows: Household Current: transactions 0 of 4, balance 0 of 4.",
+            question.text,
+        )
+        assertEquals("The Bank may refuse; Slussen then waits before asking it again.", question.risk)
+        page.cancelFetch()
+        assertNull(page.ui().fetchWarning)
+        assertEquals(0, slice.openBanking.fetches)
+
+        page.fetch()
+        page.confirmFetch()
+
+        assertNull(page.ui().fetchWarning)
+        assertEquals(1, slice.openBanking.fetches)
+        assertEquals("Fetched 14:00", page.ui().fetchResult!!.text)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A22: Fetch at a Bank That Counts It as Unattended", businessRules = ["BR-012"])
+    @DisplayName("A11, A22: the Overview asks too before it reads such a Bank; confirming fetches that Data Provider")
+    fun overviewAsksBeforeAnUnattendedBank() {
+        aBankAccountThroughABankConsent()
+        answerFeeds()
+        slice.bankConsent.presence = { false }
+        val overview = OverviewViewModel(fixture.services).also { it.load() }
+
+        overview.fetchAll()
+        assertEquals("Fetch Aurora Open Banking at a Bank that counts it as unattended?", overview.state.value!!.fetchWarning!!.title)
+        assertEquals(0, slice.openBanking.fetches)
+        overview.confirmFetch()
+
+        assertNull(overview.state.value!!.fetchWarning)
+        assertEquals(1, slice.openBanking.fetches)
+        assertTrue(overview.state.value!!.fetchResults.any { it.text == "Aurora Open Banking · Fetched 14:00" }, "${overview.state.value!!.fetchResults}")
     }
 
     @Test
@@ -617,5 +710,9 @@ class UC001FetchTransactionsViewModelTest {
         assertEquals("The Fetch stopped: Slussen could not use the data stored on this device", result.text)
         assertEquals("Fetch again; Recent Fetches shows what was stored.", result.detail)
         assertEquals(slussen.app.ui.components.FetchResultKind.Failed, result.kind)
+    }
+
+    private companion object {
+        const val AURORA = "Aurora Sparbank (FI)"
     }
 }

@@ -2,7 +2,7 @@ package slussen.app.ui
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
@@ -65,8 +65,8 @@ class UC001FetchTransactionsScreenIT {
     }
     @Test
     @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
-    @DisplayName("A4, BR-008 (P9-13, phase E4): the page of a Data Provider that needs a Bank Consent shows its Fetch unavailable, saying plainly that its Bank Accounts are not read in this build yet")
-    fun bankConsentProviderCannotFetchInThisBuild() = compose.use {
+    @DisplayName("A4, BR-008 (phase E5): the page of a Data Provider that needs a Bank Consent offers its Fetch, and no text says its Bank Accounts are not read")
+    fun bankConsentProviderOffersItsFetch() = compose.use {
         val fixture = ScreenFixture()
         runBlocking { fixture.slice.credentials.enter(fixture.slice.openBankingKey, fixture.slice.input("setupKey" to ExampleData.SETUP_KEY)) }
         val viewModel = ServicePageViewModel(fixture.services, fixture.slice.openBankingKey)
@@ -77,8 +77,8 @@ class UC001FetchTransactionsScreenIT {
             }
         }
 
-        onNodeWithText("Fetch Aurora Open Banking").assertIsNotEnabled()
-        onNodeWithText("Bank Accounts through Aurora Open Banking are not read in this build yet · nothing is sent, the Bank Consents stay as they are, no action is needed.").assertExists()
+        onNodeWithText("Fetch Aurora Open Banking").assertIsEnabled()
+        onNodeWithText("not read in this build yet", substring = true).assertDoesNotExist()
         org.junit.jupiter.api.Assertions.assertEquals(0, fixture.slice.openBanking.fetches)
     }
 }

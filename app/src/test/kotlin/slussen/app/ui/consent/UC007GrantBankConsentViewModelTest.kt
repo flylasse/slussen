@@ -722,15 +722,13 @@ class UC007GrantBankConsentViewModelTest {
 
     @Test
     @UseCase(id = "UC-007", scenario = "Main Success Scenario", businessRules = ["BR-008"])
-    @DisplayName("Phase E4: the Fetch of a Data Provider that needs a Bank Consent says truthfully that its Bank Accounts are not read in this build yet, and its page offers Bank Consents")
+    @DisplayName("Phase E5: the page of a Data Provider that needs a Bank Consent offers its Fetch, with no text that its Bank Accounts are not read, and offers Bank Consents")
     fun theFetchSaysWhatThisBuildDoes() {
         accepted()
         val page = ServicePageViewModel(fixture.services, key).also { it.load() }
 
-        assertEquals(
-            "Bank Accounts through $provider are not read in this build yet · nothing is sent, the Bank Consents stay as they are, no action is needed.",
-            page.state.value!!.fetchUnavailable,
-        )
+        assertNull(page.state.value!!.fetchUnavailable)
+        assertTrue(page.state.value!!.canFetch)
         assertFalse(page.state.value!!.offered!!.emptyText!!.contains("not in this build"))
     }
 }

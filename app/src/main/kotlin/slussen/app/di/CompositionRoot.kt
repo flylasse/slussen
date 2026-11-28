@@ -165,7 +165,7 @@ class CompositionRoot(private val log: SlussenLog, private val detailedLogging: 
             ),
             fetch = FetchTransactions(
                 registered, credentials, storage.connections, storage.offered, storage.fetches, storage.providerRequests,
-                coordinator, storage.settings, journal, clock, fetchNotices, comparison,
+                coordinator, storage.settings, journal, clock, fetchNotices, comparison, storage.consents,
             ),
             // For UC-002: Import a Transaction File through the File Pre-processor of its File Format, with its Comparison (step 9).
             fileImport = ImportTransactionFile(

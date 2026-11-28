@@ -24,6 +24,7 @@ import slussen.core.port.StoredAccountBalance
 import slussen.core.port.StoredBackOff
 import slussen.core.port.StoredBank
 import slussen.core.port.StoredBankAccount
+import slussen.core.fetch.notCoveredBy
 import slussen.core.port.StoredBankConsent
 import slussen.core.port.StoredOfferedBankAccount
 import slussen.core.port.StoredBudget
@@ -498,10 +499,9 @@ class ImportStatus(
      * known, and no Bank Account of it is shown as unrecognised for that.
      */
     private fun notDeliveredWith(consent: StoredBankConsent, reader: StoredDataProvider, bankAccount: StoredBankAccount, snapshot: Snapshot): Boolean {
-        val kept = snapshot.offered.filter { it.dataProviderId == reader.id && it.bankId == consent.bankId && !it.offeredAt.isBefore(consent.grantedAt) }
-        if (kept.isEmpty()) return false
         val reference = if (bankAccount.dataProviderId == reader.id) bankAccount.providerReference else bankAccount.balanceProviderReference
-        return kept.none { it.providerReference == reference }
+        // The Fetch leaves such a Bank Account out by the same rule (UC-001 A10, E2 review item 4).
+        return notCoveredBy(consent, reader.id, reference, snapshot.offered)
     }
 
     private fun resultBlocked(

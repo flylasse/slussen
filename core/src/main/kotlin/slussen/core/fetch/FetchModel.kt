@@ -28,6 +28,12 @@ sealed interface FetchReport {
      * for, whose stored data stays unchanged (A8). [notDelivered] names the selected Bank Accounts the answer did not
      * contain at all (A19), [signInNeeded] those whose Bank's sign-in at the Data Provider is needed (A20), and
      * [balancesInOtherCurrency] those whose balance was reported in another currency and not stored (A21).
+     * Through a Data Provider that needs a Bank Consent: [failedWith] gives the kind of each failure of [failed];
+     * [missingConsent] names the selected Bank Accounts left out because their Bank has no valid Bank Consent (A4),
+     * [notRecognised] those its Bank Consent does not cover (A10, UC-007 A6), [consentRefused] the Banks that refused
+     * their Bank Consent during this Fetch (A9), and [banksWaiting] the Banks that asked to wait, before or during it
+     * (A1, A5). [stoppedByGate] is set when the request gate stopped the rest of the Fetch after part of it was read,
+     * [requestLimitFreesUpAt] when that was the Request Limit (BR-007), so the Bank Accounts not read yet keep their data.
      */
     data class Fetched(
         override val service: ServiceKey,
@@ -43,6 +49,13 @@ sealed interface FetchReport {
         val notDelivered: List<String> = emptyList(),
         val signInNeeded: List<String> = emptyList(),
         val balancesInOtherCurrency: List<BalanceInOtherCurrency> = emptyList(),
+        val failedWith: Map<String, FailureKind> = emptyMap(),
+        val missingConsent: List<String> = emptyList(),
+        val notRecognised: List<String> = emptyList(),
+        val consentRefused: List<String> = emptyList(),
+        val banksWaiting: List<BankWaiting> = emptyList(),
+        val stoppedByGate: RefusalReason? = null,
+        val requestLimitFreesUpAt: Instant? = null,
     ) : FetchReport
 
     /**
@@ -102,13 +115,30 @@ sealed interface FetchReport {
     ) : FetchReport
 
     /**
-     * A Data Provider that needs a Bank Consent is not read by this build, also when a Bank Consent is granted: its Fetch
-     * through the Bank Sessions comes with a later phase (S-B-47), and without a valid Bank Consent no Bank is contacted
-     * (BR-008). Nothing is sent and nothing stored; the Bank Consents stay as they are.
+     * A4, A1 for one Bank, A10 (S-B-47): through a Data Provider that needs a Bank Consent, no selected Bank Account can
+     * be read, so nothing is sent (BR-008): [missingConsent] names those whose Bank has no valid Bank Consent, with the
+     * action that grants it (UC-007), [notRecognised] those their Bank's Bank Consent does not cover, and [banksWaiting]
+     * the Banks that asked Slussen to wait, with when that ends. All empty: no Bank Account is added for it yet.
      */
-    data class NeedsBankConsent(
+    data class NothingToRead(
         override val service: ServiceKey,
         override val dataProviderName: String,
+        val missingConsent: List<String> = emptyList(),
+        val notRecognised: List<String> = emptyList(),
+        val banksWaiting: List<BankWaiting> = emptyList(),
+    ) : FetchReport
+
+    /**
+     * A22 step 1: the Fetch the Operator started would read Bank Accounts at [banks], whose requests cannot show that he
+     * is present, so each Bank counts the reads as unattended (BR-012); the Operator confirms the Fetch or cancels it.
+     * [warningConfirmed] is true when he confirmed a Request Limit warning for this Fetch before (A16), so that the
+     * confirmation answers both. Nothing was sent.
+     */
+    data class UnattendedToConfirm(
+        override val service: ServiceKey,
+        override val dataProviderName: String,
+        val banks: List<UnattendedBank>,
+        val warningConfirmed: Boolean,
     ) : FetchReport
 
     /** The gate refused a request because the operation had ended; nothing was sent and nothing recorded. */

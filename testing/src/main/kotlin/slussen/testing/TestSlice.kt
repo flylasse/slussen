@@ -115,7 +115,7 @@ class TestSlice(
     )
     val fetch = FetchTransactions(
         plugins, credentials, connectionStore, offeredStore, importStatusStore, providerRequests, coordinator, settings, journal,
-        clock, fetchNotices, comparison,
+        clock, fetchNotices, comparison, consentStore,
     )
     /** UC-002: Import a Transaction File, through the fake File Pre-processor [fileFormat] or the one given, with its Comparison (step 9). */
     val fileImport = ImportTransactionFile(

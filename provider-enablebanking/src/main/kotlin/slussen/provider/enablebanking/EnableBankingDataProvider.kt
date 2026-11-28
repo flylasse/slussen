@@ -13,18 +13,21 @@ import slussen.pluginapi.provider.FetchResponse
 import slussen.pluginapi.provider.RequestLimitDeclaration
 import slussen.pluginapi.request.RequestContext
 import java.time.Clock
+import java.util.Locale
 
 /**
  * The Enable Banking Data Provider (ADR-001 §1, §4.1), the only Data Provider of this build that needs a Bank Consent
  * (UC-007): its declarations (ADR-001 §4.1, O-P2-42, S-31) and its credentials (UC-014 BR-002, ADR-001 §4.5): the
  * application id and private key file of the household's own registered Enable Banking application (C-008), and its
- * Bank Consent operations (UC-007, ADR-001 §4.1.1). Its Fetch comes with the slice that builds UC-001 for it.
+ * Bank Consent operations (UC-007, ADR-001 §4.1.1), and its Fetch through the Bank Sessions (UC-001, ADR-001 §4.1.1).
  */
 class EnableBankingDataProvider internal constructor(
     private val log: SlussenLog,
     base: HttpUrl,
     http: OkHttpClient,
     clock: Clock,
+    /** The device's language, as `Psu-Accept-Language` gives it to a Bank (ADR-001 §4.1.1); read when a request is sent. */
+    language: () -> String = { Locale.getDefault().toLanguageTag() },
 ) : DataProvider {
     constructor(log: SlussenLog) : this(log, PUBLIC_INTERFACE.toHttpUrl(), OkHttpClient(), Clock.systemUTC())
 
@@ -53,8 +56,10 @@ class EnableBankingDataProvider internal constructor(
     /** The Bank Consent operations (UC-007; ADR-001 §4.1, §4.1.1): declared, since this part needs a Bank Consent. */
     override val bankConsent: BankConsentCapability = EnableBankingConsent(base, http, clock, ConsentLog(log))
 
-    override suspend fun fetch(request: FetchRequest, context: RequestContext): FetchResponse =
-        TODO("Built by the slice that builds UC-001 (ADR-001 §4.1).")
+    private val reading = EnableBankingFetch(base, http, clock, language, FetchLog(log))
+
+    /** The Fetch (UC-001; ADR-001 §4.1.1 "Fetching"): the selected Bank Accounts of the Banks whose Bank Sessions it is handed. */
+    override suspend fun fetch(request: FetchRequest, context: RequestContext): FetchResponse = reading.fetch(request, context)
 
     companion object {
         /** Enable Banking's public interface (C-008). */

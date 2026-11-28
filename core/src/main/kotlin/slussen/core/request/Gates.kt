@@ -35,6 +35,12 @@ class ServiceRequestContext(
 val REQUEST_LIMIT_WINDOW: Duration = Duration.ofHours(24)
 
 /**
+ * The Unattended Access limit: at most four accesses to a Bank Account's transactions, and four to its balance, in any
+ * 24 hours without the holder present, the limit PSD2 sets (C-006, UC-001 BR-012); not a Slussen choice.
+ */
+const val UNATTENDED_ACCESS_LIMIT: Int = 4
+
+/**
  * The gate of a Budget App request (ADR-001 §4.0): it counts nothing, because the specification sets no limit, but
  * refuses every request once the operation that admitted it has ended or been cancelled.
  */
@@ -107,7 +113,7 @@ class DataProviderGate(
             unattended = unattended,
             sentAt = now,
         )
-        // The Unattended Access limit of A13 (BR-012) is counted here, for a Data Provider that needs a Bank Consent, when its Bank Sessions are built.
+        // The place of UC-001 A13 (phase E6): in a Scheduled Fetch, a read of a Bank Account through a Data Provider that needs a Bank Consent that would exceed the Unattended Access limit is refused here with scope BankAccount, before it is stored.
         // UC-001 BR-007: Slussen sends a Data Provider at most its Request Limit in any rolling 24 hours.
         if (!requests.admitWithinLimit(stored, now.minus(REQUEST_LIMIT_WINDOW), dataProvider.requestLimit)) {
             return Admission.Refused(RefusalScope.Source, RefusalReason.RequestLimitReached)
@@ -119,5 +125,32 @@ class DataProviderGate(
         RequestKind.Transactions -> ProviderRequestKind.Transactions
         RequestKind.Balance -> ProviderRequestKind.Balance
         RequestKind.Other, RequestKind.BudgetAppRead, RequestKind.BudgetAppWrite -> ProviderRequestKind.Other
+    }
+}
+
+/**
+ * The gate of the requests of a Fetch through a Data Provider that needs a Bank Consent (ADR-001 §4.0; UC-001 BR-004,
+ * A5): it refuses with scope Bank a request to a Bank, named by its reference, whose Back-off with cause Request To Wait
+ * holds, so that nothing is sent to that Bank, also one that began during this Fetch; the other requests go to
+ * [dataProvider], the Data Provider's own gate. [bankIds] gives the `BANK` of each Bank's reference, its `BANK.name`.
+ */
+class BankBackOffGate(
+    private val dataProvider: RequestGate,
+    private val dataProviderId: Long,
+    private val bankIds: Map<String, Long>,
+    private val fetches: FetchStore,
+    private val clock: Clock,
+) : RequestGate {
+    override suspend fun admit(request: RequestSummary): Admission {
+        val bankId = request.bankReference?.let { bankIds[it] }
+        if (bankId != null) {
+            val now = clock.instant()
+            // UC-001 BR-004: A Back-off of one Bank holds for every request to that Bank.
+            val waits = fetches.backOffsOf(dataProviderId).any {
+                it.bankId == bankId && it.cause == BackOffCause.RequestToWait && it.endsAt.isAfter(now)
+            }
+            if (waits) return Admission.Refused(RefusalScope.Bank, RefusalReason.BackOff)
+        }
+        return dataProvider.admit(request)
     }
 }

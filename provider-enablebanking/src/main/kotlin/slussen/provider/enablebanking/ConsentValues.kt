@@ -86,15 +86,18 @@ internal class ConsentHandle(val bankReference: String, val requestId: String?, 
 
 /**
  * What the Bank Session holds (`BANK_SESSION.session_reference`, ADR-001 §4.1.1, S-B-42): Enable Banking's `session_id`,
- * the Bank's reference, the Bank's required PSU headers, and the session's own identifier (`uid`) of each delivered Bank
- * Account by its lasting reference (`identification_hash`), so that a Fetch sends no request to learn them. Masked in
- * [toString].
+ * the Bank's reference, the Bank's required PSU headers, the session's own identifier (`uid`) of each delivered Bank
+ * Account by its lasting reference (`identification_hash`), so that a Fetch sends no request to learn them, and, by the
+ * same reference, the currency of each such Bank Account whose balance a Fetch may give ([balanceCurrencies]: one whose
+ * `cash_account_type` is not `CARD` and whose currency is known), so that the Fetch chooses the Account Balance in the
+ * Bank Account's currency and asks no balance it cannot give. Masked in [toString].
  */
 internal class BankSessionValue(
     val sessionId: String,
     val bankReference: String,
     val psuHeaders: List<String>,
     val uids: Map<String, String>,
+    val balanceCurrencies: Map<String, String> = emptyMap(),
 ) {
     fun toSession(): ConsentSession = ConsentSession(encoded())
 
@@ -103,9 +106,13 @@ internal class BankSessionValue(
         put(BANK, bankReference)
         put(PSU_HEADERS, JsonArray(psuHeaders.map(::JsonPrimitive)))
         put(UIDS, JsonObject(uids.mapValues { JsonPrimitive(it.value) }))
+        put(BALANCE_CURRENCIES, JsonObject(balanceCurrencies.mapValues { JsonPrimitive(it.value) }))
     }.toString()
 
     override fun toString(): String = "BankSessionValue(****)"
+
+    /** One delivered Bank Account the session can read: its lasting reference, its `uid`, and the currency its balance is chosen in, if any. */
+    class Readable(val reference: String, val uid: String, val balanceCurrency: String?)
 
     companion object {
         /** `BANK_SESSION.session_reference` (entity model, S-B-45): 4000 characters. */
@@ -115,23 +122,30 @@ internal class BankSessionValue(
         private const val BANK = "bank"
         private const val PSU_HEADERS = "required_psu_headers"
         private const val UIDS = "uids"
+        private const val BALANCE_CURRENCIES = "balance_currencies"
 
         /**
-         * The Bank Session with as many of [uids], in their order, as fit within [MAX_LENGTH]; a Bank Account whose `uid`
-         * does not fit is delivered but cannot be read, as one without `uid` (ADR-001 §4.1.1). Null when not even the
-         * session itself fits.
+         * The Bank Session with as many of [readable], in their order, as fit within [MAX_LENGTH]; a Bank Account whose
+         * `uid` does not fit is delivered but cannot be read, as one without `uid` (ADR-001 §4.1.1). Null when not even
+         * the session itself fits.
          */
-        fun fitting(sessionId: String, bankReference: String, psuHeaders: List<String>, uids: List<Pair<String, String>>): BankSessionValue? {
+        fun fitting(sessionId: String, bankReference: String, psuHeaders: List<String>, readable: List<Readable>): BankSessionValue? {
             var kept = BankSessionValue(sessionId, bankReference, psuHeaders, emptyMap())
             if (kept.encoded().length > MAX_LENGTH) return null
-            for (uid in uids) {
-                val more = BankSessionValue(sessionId, bankReference, psuHeaders, kept.uids + uid)
+            for (account in readable) {
+                val more = BankSessionValue(
+                    sessionId, bankReference, psuHeaders, kept.uids + (account.reference to account.uid),
+                    account.balanceCurrency?.let { kept.balanceCurrencies + (account.reference to it) } ?: kept.balanceCurrencies,
+                )
                 if (more.encoded().length <= MAX_LENGTH) kept = more
             }
             return kept
         }
 
-        /** What [session] holds, or null when it holds no Bank Session this part made. */
+        /**
+         * What [session] holds, or null when it holds no Bank Session this part made. A session kept before the
+         * currencies were kept holds none, so a Fetch gives no balance through it until the Bank Consent is renewed.
+         */
         @OptIn(SensitiveApi::class)
         fun read(session: ConsentSession): BankSessionValue? {
             val kept = objectOf(session.reveal()) ?: return null
@@ -139,10 +153,22 @@ internal class BankSessionValue(
             val bank = kept[BANK].text()?.takeIf { BankReference.read(it) != null } ?: return null
             val headers = kept[PSU_HEADERS].texts() ?: return null
             val uids = kept[UIDS].asObject()?.mapValues { (_, uid) -> uid.text() ?: return null } ?: return null
-            return BankSessionValue(id, bank, headers, uids)
+            val currencies = kept[BALANCE_CURRENCIES]?.let { element ->
+                element.asObject()?.mapValues { (_, currency) -> currency.text() ?: return null } ?: return null
+            }.orEmpty()
+            return BankSessionValue(id, bank, headers, uids, currencies)
         }
     }
 }
+
+/** The headers of the Operator's presence Slussen can give truly (ADR-001 §4.1.1, S-B-46), in lower case. */
+internal val PRESENCE_HEADERS = setOf("psu-user-agent", "psu-accept-language")
+
+/**
+ * UC-001 BR-012 (S-B-46): a Bank's requests can show the Operator's presence only when every PSU header it requires is
+ * one Slussen can truly send; a Bank requires either all of its headers or none.
+ */
+internal fun showsPresence(requiredHeaders: List<String>): Boolean = requiredHeaders.all { it.lowercase() in PRESENCE_HEADERS }
 
 /**
  * The parameters Enable Banking adds to the query of the return address (ADR-001 §4.1.1: `code` and `state`, or `error`

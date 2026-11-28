@@ -279,8 +279,10 @@ internal class EnableBankingConsent(
         val lasting = entries.mapNotNull { entry -> entry["identification_hash"].text()?.takeIf { it.isNotEmpty() }?.let { it to entry } }
         val twice = lasting.groupingBy { it.first }.eachCount().filterValues { it > 1 }.keys
         // UC-007 BR-009: The session keeps each Bank Account's session identifier by its lasting reference; one without one, or of two with one reference, is offered but cannot be read.
-        val uids = lasting.filter { it.first !in twice }.mapNotNull { (reference, entry) -> entry["uid"].text()?.takeIf { it.isNotEmpty() }?.let { reference to it } }
-        val session = BankSessionValue.fitting(sessionId, started.bankReference, started.psuHeaders, uids) ?: return null
+        val readable = lasting.filter { it.first !in twice }.mapNotNull { (reference, entry) ->
+            entry["uid"].text()?.takeIf { it.isNotEmpty() }?.let { BankSessionValue.Readable(reference, it, balanceCurrencyOf(entry)) }
+        }
+        val session = BankSessionValue.fitting(sessionId, started.bankReference, started.psuHeaders, readable) ?: return null
         return ConsentCompletion.Completed(
             expiresAt = expiresAt,
             bankAccounts = lasting.map { (reference, entry) -> delivered(reference, entry, started.bankReference) },
@@ -302,6 +304,15 @@ internal class EnableBankingConsent(
         } catch (e: Exception) {
             // The completion's outcome stands whatever became of this request.
         }
+    }
+
+    /**
+     * The currency a Fetch chooses the Account Balance of [entry] in (ADR-001 §4.1.1 "The balance"), or null when it gives
+     * none: for a card (`CARD`), whose balance's sign is not documented, and for an unknown currency (`XXX`, or none).
+     */
+    private fun balanceCurrencyOf(entry: JsonObject): String? {
+        if (entry["cash_account_type"].text() == "CARD") return null
+        return entry["currency"].text()?.takeIf { it != "XXX" && CURRENCY.matches(it) }
     }
 
     private fun delivered(reference: String, entry: JsonObject, bank: String): DeliveredBankAccount {
@@ -351,7 +362,7 @@ internal class EnableBankingConsent(
 
     // UC-001 BR-012: A Bank's requests can show the Operator's presence only when it requires no PSU header Slussen cannot truly send (S-B-46).
     override fun showsPresence(session: ConsentSession): Boolean = try {
-        BankSessionValue.read(session)?.psuHeaders?.all { it.lowercase() in PRESENCE_HEADERS } ?: false
+        BankSessionValue.read(session)?.psuHeaders?.let(::showsPresence) ?: false
     } catch (e: Exception) {
         false
     }
@@ -425,6 +436,7 @@ internal class EnableBankingConsent(
 
     private companion object {
         val COUNTRY = Regex("[A-Z]{2}")
+        val CURRENCY = Regex("[A-Z]{3}")
         const val PSU_TYPE = "personal"
         val JSON = "application/json".toMediaType()
 
@@ -432,9 +444,6 @@ internal class EnableBankingConsent(
         val VALID_UNTIL: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSS'+00:00'").withZone(ZoneOffset.UTC)
 
         val CREDENTIALS_REFUSED = setOf("UNAUTHORIZED_ACCESS", "AUTHORIZATION_NOT_PROVIDED")
-
-        /** The headers of the Operator's presence Slussen can give truly (ADR-001 §4.1.1), in lower case. */
-        val PRESENCE_HEADERS = setOf("psu-user-agent", "psu-accept-language")
 
         /** Stands for a required header the list did not give readably, which no request can carry. */
         const val UNREADABLE_HEADER = "unreadable"

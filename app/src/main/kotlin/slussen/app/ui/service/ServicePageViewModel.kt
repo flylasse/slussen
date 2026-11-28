@@ -203,7 +203,18 @@ data class ServicePageUi(
 data class ClearedSwitchUi(val on: Boolean, val statement: String, val pending: String? = null, val answer: AnswerUi? = null)
 
 /** UC-001 A16 (`budget.html#request-limit-warning`): the warning, its end and the risk, before the Operator confirms. */
-data class FetchWarningUi(val service: ServiceKey, val title: String, val text: String, val risk: String)
+/**
+ * A question before a Fetch (UC-001 A16, A22): what it confirms when the Operator confirms it, the Request Limit warning
+ * ([confirmsWarning]) and the reads a Bank counts as unattended ([confirmsUnattended]).
+ */
+data class FetchWarningUi(
+    val service: ServiceKey,
+    val title: String,
+    val text: String,
+    val risk: String,
+    val confirmsWarning: Boolean = true,
+    val confirmsUnattended: Boolean = false,
+)
 
 /** A service's page, opened from its entry in Settings (UC-014, UC-013, UC-010 BR-010). */
 class ServicePageViewModel(
@@ -459,11 +470,11 @@ class ServicePageViewModel(
             budgets = if (page.isBudgetApp) budgetsWithAnswers() else null,
             offered = if (page.isBudgetApp) null else offeredWithAnswers(),
             snack = snack,
-            // UC-001 BR-008: No Bank is contacted without a valid Bank Consent; this build reads none through one yet, so the Fetch is unavailable (P9-13).
-            canFetch = !page.isBudgetApp && !page.needsBankConsent,
+            // UC-001 BR-008: a Data Provider that needs a Bank Consent is fetched too; the core contacts no Bank without a valid one (A4).
+            canFetch = !page.isBudgetApp,
             fetchWarning = fetchWarning,
-            fetchUnavailable = if (!page.isBudgetApp && page.needsBankConsent) "${Texts.notReadInThisBuild(page.name)}." else null,
-            fetchButton = fetchButton(page.name, canFetch = !page.isBudgetApp && !page.needsBankConsent, isBudgetApp = page.isBudgetApp),
+            fetchUnavailable = null,
+            fetchButton = fetchButton(page.name, canFetch = !page.isBudgetApp, isBudgetApp = page.isBudgetApp),
             fetchResult = fetchResult,
             // UC-014 BR-005: Refused or missing credentials lead first to the action that enters them here (UX-21).
             enterAction = when {
@@ -889,24 +900,27 @@ class ServicePageViewModel(
 
     /** UC-001 step 1: the Operator starts a Fetch of this Data Provider, when the page offers it (P9-13) and no Fetch runs (P9-16). */
     fun fetch() {
-        if (mutableState.value?.fetchButton?.enabled == true) startFetch(confirmedDespiteWarning = false)
+        if (mutableState.value?.fetchButton?.enabled == true) startFetch(confirmedDespiteWarning = false, confirmedUnattended = false)
     }
 
-    /** UC-001 A16 step 2: the Operator confirms the Fetch despite the warning. */
-    fun confirmFetch() = startFetch(confirmedDespiteWarning = true)
+    /** UC-001 A16, A22 step 2: the Operator confirms the Fetch despite the warning, or at a Bank that counts it as unattended. */
+    fun confirmFetch() {
+        val question = mutableState.value?.fetchWarning ?: return
+        startFetch(confirmedDespiteWarning = question.confirmsWarning, confirmedUnattended = question.confirmsUnattended)
+    }
 
     /** UC-001 A16 step 2: the Operator cancels; nothing is sent. */
     fun cancelFetch() {
         mutableState.value = mutableState.value?.copy(fetchWarning = null)
     }
 
-    private fun startFetch(confirmedDespiteWarning: Boolean) {
+    private fun startFetch(confirmedDespiteWarning: Boolean, confirmedUnattended: Boolean) {
         val tap = ++taps
         // P9-16: the result of the earlier tap goes while this one runs.
         fetchResult = null
         mutableState.value = mutableState.value?.copy(fetchResult = null, message = null)
         viewModelScope.launch {
-            val start = orWhenNotStored<FetchStart?>(null) { services.fetch.fetch(service, confirmedDespiteWarning) }
+            val start = orWhenNotStored<FetchStart?>(null) { services.fetch.fetch(service, confirmedDespiteWarning, confirmedUnattended) }
             if (start == null) {
                 // NFR-023 (review 6): it may have stopped after storing part of what it read, so the answer says only that it stopped.
                 fetchResult = FetchResultUi(
@@ -922,7 +936,8 @@ class ServicePageViewModel(
                 val report = (start as? FetchStart.Ran)?.reports?.singleOrNull()
                 fetchResult = when {
                     start is FetchStart.Unavailable -> FetchResultUi(Texts.refusal(start.reason), null, FetchResultKind.NotFetched, tap)
-                    report != null && report !is FetchReport.WarningToConfirm -> Texts.fetchResult(report, services.formats, tap)
+                    report != null && report !is FetchReport.WarningToConfirm && report !is FetchReport.UnattendedToConfirm ->
+                        Texts.fetchResult(report, services.formats, tap)
                     else -> null
                 }
                 showPageAgain(null)
@@ -935,6 +950,8 @@ class ServicePageViewModel(
                 }
                 is FetchStart.Ran -> when (val report = start.reports.single()) {
                     is FetchReport.WarningToConfirm -> show(page, fetchWarning = Texts.fetchWarning(report, services.formats))
+                    // A22 step 1: asked as A16 is, before anything is sent.
+                    is FetchReport.UnattendedToConfirm -> show(page, fetchWarning = Texts.fetchWarning(report))
                     else -> {
                         fetchResult = Texts.fetchResult(report, services.formats, tap)
                         show(page)
