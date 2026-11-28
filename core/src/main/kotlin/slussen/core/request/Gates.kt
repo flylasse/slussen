@@ -69,10 +69,11 @@ suspend fun requestLimitFreesUpAt(requests: ProviderRequestStore, dataProvider: 
 }
 
 /**
- * The requests of a Scheduled Fetch (UC-001 BR-013): each is kept as an unattended Provider Request, with the Bank
- * Account it reads when it names one, found by that Bank Account's reference at the Data Provider in [bankAccountIds].
+ * The Bank Accounts a Fetch reads, by their reference at the Data Provider in [bankAccountIds], so that an unattended
+ * request is kept with the Bank Account it reads (UC-001 BR-012). Every request of a [scheduled] Fetch is unattended
+ * (BR-013); in a Fetch the Operator starts, a request is unattended when it does not show the Bank that he is present.
  */
-class UnattendedReads(val bankAccountIds: Map<String, Long>)
+class FetchReads(val bankAccountIds: Map<String, Long>, val scheduled: Boolean)
 
 /**
  * The gate of a Data Provider request (ADR-001 §4.0): it refuses with scope Source while a Back-off holds for the whole
@@ -86,8 +87,8 @@ class DataProviderGate(
     private val fetches: FetchStore,
     private val clock: Clock,
     private val permit: OperationPermit,
-    /** Set for the requests of a Scheduled Fetch, null for a Fetch the Operator starts (UC-001 BR-012, BR-013). */
-    private val unattended: UnattendedReads? = null,
+    /** Set for the requests of a Fetch (UC-001 BR-012, BR-013), null for every other request. */
+    private val reads: FetchReads? = null,
 ) : RequestGate {
     override suspend fun admit(request: RequestSummary): Admission {
         if (!permit.active) return Admission.Refused(RefusalScope.Source, RefusalReason.OperationEnded)
@@ -96,13 +97,14 @@ class DataProviderGate(
         if (fetches.backOffsOf(dataProvider.id).requestToWaitUntil(now) != null) {
             return Admission.Refused(RefusalScope.Source, RefusalReason.BackOff)
         }
-        // UC-001 BR-013: Every request a Scheduled Fetch sends is kept as an unattended Provider Request, with the Bank Account it reads when it reads one.
+        // UC-001 BR-012: A request that does not show the Bank that the Operator is present is unattended, whatever started it (S-B-46).
+        val unattended = reads?.scheduled == true || request.unattended
+        // UC-001 BR-013: Every unattended request is kept as an unattended Provider Request, with the Bank Account it reads when it reads one, so that it is counted.
         val stored = NewProviderRequest(
             dataProviderId = dataProvider.id,
-            bankAccountId = unattended?.let { reads -> request.bankAccountReference?.let(reads.bankAccountIds::get) },
+            bankAccountId = if (unattended) request.bankAccountReference?.let { reads?.bankAccountIds?.get(it) } else null,
             kind = kindOf(request.kind),
-            // UC-001 BR-012: A request that does not show the Bank that the Operator is present is unattended, whatever started it (S-B-46).
-            unattended = unattended != null || request.unattended,
+            unattended = unattended,
             sentAt = now,
         )
         // The Unattended Access limit of A13 (BR-012) is counted here, for a Data Provider that needs a Bank Consent, when its Bank Sessions are built.

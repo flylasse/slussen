@@ -185,6 +185,9 @@ class FakeDataProvider(
     /** What the Data Provider answers once the gate admitted the request. */
     var fetchAnswer: (FetchRequest) -> FetchResponse = { error("No Fetch answer scripted (UC-001).") }
 
+    /** False for a part whose requests cannot show the Bank that the Operator is present, so that each is unattended (S-B-46). */
+    var showsPresence: Boolean = true
+
     /** Runs after the gate admitted the request and before [fetchAnswer]: a test can hold the Fetch here while it looks at the screen. */
     var beforeAnswer: suspend () -> Unit = {}
 
@@ -192,7 +195,9 @@ class FakeDataProvider(
         fetches++
         fetchRequests += request
         fetchContexts += context
-        val admission = context.gate.admit(RequestSummary(kindOf(request), null, readsOne(request), unattended = request.presence == OperatorPresence.Unattended))
+        val admission = context.gate.admit(
+            RequestSummary(kindOf(request), null, readsOne(request), unattended = request.presence == OperatorPresence.Unattended || !showsPresence),
+        )
         if (admission is Admission.Refused) {
             return FetchResponse(SourceOutcome.StoppedByGate(admission.reason), emptyList(), emptyList())
         }

@@ -236,6 +236,20 @@ class UC001ScheduledFetchTest {
     }
 
     @Test
+    @UseCase(id = "UC-001", businessRules = ["BR-012"])
+    @DisplayName("BR-012: a request of a Fetch the Operator starts that does not show the Bank he is present is kept as unattended with the Bank Account it reads, so that it is counted (S-B-46)")
+    fun operatorsFetchWithoutPresenceIsCounted() = runTest {
+        val checking = feedsWithChecking()
+        slice.feeds.showsPresence = false
+
+        slice.fetch.fetch(slice.feedsKey)
+
+        val request = slice.providerRequests.requests.single { it.dataProviderId == slice.feedsId && it.kind != ProviderRequestKind.Other }
+        assertTrue(request.unattended)
+        assertEquals(checking, request.bankAccountId)
+    }
+
+    @Test
     @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-012"])
     @DisplayName("BR-012: a Fetch the Operator starts is still made with the Operator present, and its requests are not unattended")
     fun operatorsFetchStaysAttended() = runTest {

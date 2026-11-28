@@ -385,14 +385,17 @@ class UC001FetchTransactionsTest {
     @UseCase(id = "UC-001", businessRules = ["BR-012"])
     @DisplayName("BR-012: a request the part sends without showing the Bank that the Operator is present is kept as unattended, also in an operation the Operator started (S-B-46)")
     fun requestWithoutPresenceIsKeptUnattended() = runTest {
+        val reads = FetchReads(mapOf("acct-4410" to 41L), scheduled = false)
         val result = slice.coordinator.run(OperationKind.ServiceCredentialChange, StartedBy.Operator) { permit ->
-            val gate = slice.credentials.gate(slice.feedsKey, permit)
-            gate.admit(request.copy(unattended = true))
-            gate.admit(request)
+            val gate = slice.credentials.gate(slice.feedsKey, permit, reads)
+            gate.admit(request.copy(bankAccountReference = "acct-4410", unattended = true))
+            gate.admit(request.copy(bankAccountReference = "acct-4410"))
         }
 
         assertEquals(Admission.Allowed, (result as OperationResult.Ran).value)
-        assertEquals(listOf(true, false), slice.providerRequests.requests.filter { it.dataProviderId == slice.feedsId }.map { it.unattended })
+        val kept = slice.providerRequests.requests.filter { it.dataProviderId == slice.feedsId }
+        assertEquals(listOf(true, false), kept.map { it.unattended })
+        assertEquals(listOf(41L, null), kept.map { it.bankAccountId })
     }
 
     @Test

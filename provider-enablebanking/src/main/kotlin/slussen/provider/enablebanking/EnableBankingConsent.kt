@@ -93,7 +93,8 @@ internal class EnableBankingConsent(
     }
 
     private sealed interface Listing {
-        class Read(val banks: List<ListedBank>) : Listing
+        /** [date] is the time Enable Banking gave with its answer, or null when it gave none readably. */
+        class Read(val banks: List<ListedBank>, val date: Instant?) : Listing
         class Refused(val kind: ConsentFailureKind) : Listing
         class Failed(val kind: FailureKind) : Listing
     }
@@ -106,8 +107,9 @@ internal class EnableBankingConsent(
             .addQueryParameter("service", "AIS")
             .build()
         return when (val reply = exchange(signed(address, signer).get().build(), context, EnableBankingConsentEvent.BanksNotListed)) {
-            is Reply.Ok -> (reply.body?.get("aspsps") as? JsonArray)?.let { entries -> Listing.Read(entries.mapNotNull(::bankOf)) }
+            is Reply.Ok -> (reply.body?.get("aspsps") as? JsonArray)?.let { entries -> Listing.Read(entries.mapNotNull(::bankOf), reply.date) }
                 ?: Listing.Failed(FailureKind.UnreadableAnswer)
+            is Reply.Declined -> Listing.Failed(FailureKind.UnreadableAnswer)
             is Reply.Refused -> Listing.Refused(
                 if (reply.code in CREDENTIALS_REFUSED) ConsentFailureKind.CredentialsRefused else ConsentFailureKind.RefusedByDataProvider,
             )
@@ -152,8 +154,9 @@ internal class EnableBankingConsent(
         val listAdmission = context.gate.admit(attended(bank))
         if (listAdmission is Admission.Refused) return ConsentStart.StoppedByGate(listAdmission.reason)
         // UC-007 BR-010: The Bank is looked up again, so that a renamed Bank is refused instead of started under an old name.
+        var listedAt: Instant? = null
         val listed = when (val listing = listedBanks(country, signer, context)) {
-            is Listing.Read -> listing.banks.filter { it.name == name && it.country == country }
+            is Listing.Read -> listing.banks.filter { it.name == name && it.country == country }.also { listedAt = listing.date }
             is Listing.Refused -> return ConsentStart.Refused(listing.kind)
             is Listing.Failed -> return ConsentStart.TransientFailure(listing.kind)
         }
@@ -164,8 +167,11 @@ internal class EnableBankingConsent(
         if (maximum <= context.timeout.duration.seconds) return ConsentStart.Refused(ConsentFailureKind.RefusedByDataProvider)
         val authAdmission = context.gate.admit(attended(bank))
         if (authAdmission is Admission.Refused) return ConsentStart.StoppedByGate(authAdmission.reason)
+        // The moment is the earlier of the device's clock and the time Enable Banking gave with the list just before, so that a clock that runs ahead does not ask for more than the maximum.
         // UC-007 BR-004: The validity asked is the Bank's declared maximum, counted from the moment the request is sent, less the request timeout, so that it never exceeds the maximum when the request arrives.
-        val validUntil = clock.instant().plusSeconds(maximum).minus(context.timeout.duration).truncatedTo(ChronoUnit.MICROS)
+        val now = clock.instant()
+        val sentAt = listedAt?.takeIf { it.isBefore(now) } ?: now
+        val validUntil = sentAt.plusSeconds(maximum).minus(context.timeout.duration).truncatedTo(ChronoUnit.MICROS)
         val body = buildJsonObject {
             putJsonObject("access") { put("valid_until", VALID_UNTIL.format(validUntil)) }
             putJsonObject("aspsp") {
@@ -184,6 +190,7 @@ internal class EnableBankingConsent(
                     ?: return ConsentStart.TransientFailure(FailureKind.UnreadableAnswer)
                 ConsentStart.Started(address, ConsentHandle(bank, reply.body?.get("authorization_id").text(), headers).toSecret())
             }
+            is Reply.Declined -> ConsentStart.TransientFailure(FailureKind.UnreadableAnswer)
             is Reply.Refused -> ConsentStart.Refused(
                 when (reply.code) {
                     // UC-007 BR-011: Enable Banking does not accept the return address; the core names the address it sent.
@@ -236,7 +243,13 @@ internal class EnableBankingConsent(
         val body = buildJsonObject { put("code", code) }
         val request = signed(base.newBuilder().addPathSegment("sessions").build(), signer).post(json(body)).build()
         return when (val reply = exchange(request, context, EnableBankingConsentEvent.ConsentNotCompleted)) {
-            is Reply.Ok -> reply.body?.let { completion(it, started) } ?: ConsentCompletion.TransientFailure(FailureKind.UnreadableAnswer)
+            is Reply.Ok -> reply.body?.let { completion(it, started) } ?: run {
+                // A8 of UC-007: a session Enable Banking opened that Slussen cannot use is ended there once, so that no consent stays open unknown (S-B-53).
+                reply.body?.get("session_id").text()?.takeIf { it.isNotEmpty() }?.let { endUnusable(it, started.bankReference, signer, context) }
+                ConsentCompletion.TransientFailure(FailureKind.UnreadableAnswer)
+            }
+            // A4 of UC-007: a refusal without a code, by a status that does not ask to wait: nothing was granted.
+            is Reply.Declined -> ConsentCompletion.NotConfirmed(ConsentFailureKind.RefusedByDataProvider)
             is Reply.Refused -> ConsentCompletion.NotConfirmed(
                 when (reply.code) {
                     // A2 of UC-007: an expired, wrong or used code is an answer the Data Provider does not accept.
@@ -273,6 +286,22 @@ internal class EnableBankingConsent(
             bankAccounts = lasting.map { (reference, entry) -> delivered(reference, entry, started.bankReference) },
             session = session.toSession(),
         )
+    }
+
+    /**
+     * Asks Enable Banking once, through the gate with the Operator present, to end the session [sessionId] of a completion
+     * that cannot be used. Its result changes nothing of the completion's outcome, and nothing of the session is kept.
+     */
+    private suspend fun endUnusable(sessionId: String, bank: String, signer: RequestSigner, context: RequestContext) {
+        try {
+            if (context.gate.admit(attended(bank)) is Admission.Refused) return
+            val address = base.newBuilder().addPathSegment("sessions").addPathSegment(sessionId).build()
+            exchange(signed(address, signer).delete().build(), context, EnableBankingConsentEvent.ConsentNotCompleted)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            // The completion's outcome stands whatever became of this request.
+        }
     }
 
     private fun delivered(reference: String, entry: JsonObject, bank: String): DeliveredBankAccount {
@@ -314,7 +343,7 @@ internal class EnableBankingConsent(
         // A7 of UC-007: Enable Banking ends its session and closes the Bank's consent only where it can; any error is not confirmed.
         return when (exchange(signed(address, signer).delete().build(), context, EnableBankingConsentEvent.SessionEndNotConfirmed)) {
             is Reply.Ok -> RevokeResult.EndedAtDataProvider
-            is Reply.Refused, is Reply.Failed -> RevokeResult.NotConfirmed
+            is Reply.Refused, is Reply.Declined, is Reply.Failed -> RevokeResult.NotConfirmed
         }
     }
 
@@ -336,8 +365,11 @@ internal class EnableBankingConsent(
     // ---- Requests ---------------------------------------------------------------------------------------------------
 
     private sealed interface Reply {
-        /** A successful answer without an error code; [body] is its JSON object, or null when it holds none. */
-        class Ok(val body: JsonObject?) : Reply
+        /** A successful answer without an error code; [body] is its JSON object, or null when it holds none; [date] its time. */
+        class Ok(val body: JsonObject?, val date: Instant?) : Reply
+
+        /** A refusal without an error code: a status in the 400s other than 429, which asks to wait. */
+        data object Declined : Reply
         class Refused(val code: String) : Reply
         class Failed(val kind: FailureKind) : Reply
     }
@@ -350,7 +382,8 @@ internal class EnableBankingConsent(
     /**
      * Sends [request] and reads what came back: an answer with an `error` code is a refusal by that code, whatever its
      * HTTP status; one without a code is a success when its status says so, a service that cannot serve now for 429 and
-     * 5xx, and an unreadable answer otherwise. No text of the answer leaves this function.
+     * 5xx, a refusal without a code for another status in the 400s, and an unreadable answer otherwise, a redirect
+     * included. No text of the answer leaves this function.
      */
     private suspend fun exchange(request: Request, context: RequestContext, event: EnableBankingConsentEvent): Reply =
         when (val answer = http.send(request, context.timeout)) {
@@ -361,8 +394,9 @@ internal class EnableBankingConsent(
                 if (code != null || answer.status !in 200..299) log.answered(event, answer.status)
                 when {
                     code != null -> Reply.Refused(code)
-                    answer.status in 200..299 -> Reply.Ok(body)
+                    answer.status in 200..299 -> Reply.Ok(body, answer.date)
                     answer.status == 429 || answer.status >= 500 -> Reply.Failed(FailureKind.ServiceUnavailable)
+                    answer.status in 400..499 -> Reply.Declined
                     else -> Reply.Failed(FailureKind.UnreadableAnswer)
                 }
             }

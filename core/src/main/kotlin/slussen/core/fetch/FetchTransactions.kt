@@ -39,7 +39,7 @@ import slussen.core.port.StartedBy
 import slussen.core.port.StoredBackOff
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredDataProvider
-import slussen.core.request.UnattendedReads
+import slussen.core.request.FetchReads
 import slussen.core.request.requestLimitFreesUpAt
 import slussen.core.request.requestLimitWarningAt
 import slussen.core.request.requestToWaitUntil
@@ -239,8 +239,8 @@ class FetchTransactions(
             return FetchReport.WarningToConfirm(key, name, RequestLimitWarningShown(warning.startsAt, warning.endsAt))
         }
         // UC-001 BR-013: Every request a Scheduled Fetch sends is kept as an unattended Provider Request, with the Bank Account it reads when it reads one.
-        val unattended = if (startedBy == StartedBy.Schedule) UnattendedReads(toRead.associate { it.read.providerReference to it.bankAccount.id }) else null
-        val response = provider.plugin.fetch(request(toRead, startedAt, startedBy), credentials.context(key, permit, credential, unattended))
+        val reads = FetchReads(toRead.associate { it.read.providerReference to it.bankAccount.id }, scheduled = startedBy == StartedBy.Schedule)
+        val response = provider.plugin.fetch(request(toRead, startedAt, startedBy), credentials.context(key, permit, credential, reads))
         return answered(provider, response, toRead, startedAt, cooldown, backOffs, startedBy)
     }
 

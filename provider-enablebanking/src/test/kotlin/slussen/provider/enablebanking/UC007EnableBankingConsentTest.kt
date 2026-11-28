@@ -261,6 +261,25 @@ class UC007EnableBankingConsentTest {
     }
 
     @Test
+    @UseCase(id = "UC-007", scenario = "Main Success Scenario", businessRules = ["BR-004"])
+    @DisplayName("BR-004: the validity is counted from the earlier of the device's clock and the time Enable Banking gave with the list of Banks just before, else from the device's clock")
+    fun validityCountsFromTheEarlierClock() {
+        fun asked(device: String, date: String?): String {
+            server.received.clear()
+            val listing = MockResponse().setHeader("Content-Type", "application/json").setBody(ConsentServer.banksOfFinland)
+            server.answer("GET", "/aspsps", if (date == null) listing else listing.setHeader("Date", date))
+            server.answer("POST", "/auth", ConsentServer.started)
+            val clocked = EnableBankingDataProvider(log, server.url(), OkHttpClient(), Clock.fixed(Instant.parse(device), ZoneOffset.UTC))
+            call { clocked.bankConsent.startConsentRequest(BANK, RETURN_ADDRESS, Secret(STATE), context()) }
+            return server.received.last().body.readUtf8().substringAfter("\"valid_until\":\"").substringBefore('"')
+        }
+        assertEquals("2027-05-27T09:59:55.000000+00:00", asked("2026-11-28T10:05:00Z", "Sat, 28 Nov 2026 10:00:00 GMT"), "the device's clock ahead")
+        assertEquals("2027-05-27T09:54:55.000000+00:00", asked("2026-11-28T09:55:00Z", "Sat, 28 Nov 2026 10:00:00 GMT"), "the device's clock behind")
+        assertEquals("2027-05-27T10:04:55.000000+00:00", asked("2026-11-28T10:05:00Z", null), "no time given")
+        assertEquals("2027-05-27T10:04:55.000000+00:00", asked("2026-11-28T10:05:00Z", "yesterday"), "a time that cannot be read")
+    }
+
+    @Test
     @UseCase(id = "UC-007", scenario = "A3: Data Provider Refuses", businessRules = ["BR-010"])
     @DisplayName("A3: a Bank that is no longer listed, as after a rebrand, is refused before anything is started; a reference that names no Bank is refused unsent")
     fun bankNoLongerListedIsRefused() {
@@ -345,6 +364,7 @@ class UC007EnableBankingConsentTest {
             assertNull(consent.stateOf(returned(query)), query)
         }
         assertNull(consent.stateOf(slussen.pluginapi.provider.ConsentAnswer(Secret("no query at all"))))
+        assertNull(consent.stateOf(returned("code=x#state=$STATE")), "a state given only in the fragment")
         assertEquals(0, server.received.size)
     }
 
@@ -483,6 +503,92 @@ class UC007EnableBankingConsentTest {
 
     @Test
     @UseCase(id = "UC-007", scenario = "A8: Data Provider Cannot Be Reached")
+    @DisplayName("A8: a completion Enable Banking accepted but Slussen cannot use ends that session once, through the gate with the Operator present, and still answers as before; nothing of it is kept (S-B-53)")
+    fun unusableCompletionEndsItsSession() {
+        val good = ConsentServer.session
+        val unusable = listOf(
+            good.replace(ConsentServer.VALID_UNTIL, "next spring"),
+            good.replace(ConsentServer.VALID_UNTIL, "2026-11-28T09:00:00+00:00"),
+            good.replace(""""name":"Aurora Sparbank","country":"FI"""", """"name":"Kuusi Pankki","country":"FI""""),
+            """{"session_id":"$SESSION_ID","accounts":{"x":[]},"aspsp":{"name":"Aurora Sparbank","country":"FI"},"psu_type":"personal","access":{"valid_until":"${ConsentServer.VALID_UNTIL}"}}""",
+        )
+        server.answer("DELETE", "/sessions/$SESSION_ID", "{}")
+        unusable.forEachIndexed { index, body ->
+            server.received.clear()
+            server.answer("POST", "/sessions", body)
+            val gate = RecordingRequestGate()
+            assertEquals(ConsentCompletion.TransientFailure(FailureKind.UnreadableAnswer), call { consent.completeConsent(granting, handle, context(gate)) }, "case $index")
+            assertEquals(listOf("POST /sessions", "DELETE /sessions/$SESSION_ID"), server.received.map { "${it.method} ${it.path}" }, "case $index")
+            assertEquals(listOf(attended(BANK), attended(BANK)), gate.requests, "case $index")
+        }
+        server.received.clear()
+        server.answer("POST", "/sessions", good.replace(""""session_id":"$SESSION_ID",""", "").replace(ConsentServer.VALID_UNTIL, "next spring"))
+        assertEquals(ConsentCompletion.TransientFailure(FailureKind.UnreadableAnswer), call { consent.completeConsent(granting, handle, context()) })
+        assertEquals(listOf("POST"), server.received.map { it.method }, "no session to end without its identifier")
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A8: Data Provider Cannot Be Reached")
+    @DisplayName("A8: ending an unusable session that fails, or that the gate holds back, leaves the outcome as it is")
+    fun unusableCompletionOutcomeStays() {
+        server.answer("POST", "/sessions", ConsentServer.session.replace(ConsentServer.VALID_UNTIL, "next spring"))
+        server.error("DELETE", "/sessions/$SESSION_ID", 500, "ASPSP_ERROR")
+        assertEquals(ConsentCompletion.TransientFailure(FailureKind.UnreadableAnswer), call { consent.completeConsent(granting, handle, context()) })
+        server.answer("DELETE", "/sessions/$SESSION_ID", MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
+        assertEquals(ConsentCompletion.TransientFailure(FailureKind.UnreadableAnswer), call { consent.completeConsent(granting, handle, context()) })
+        server.received.clear()
+        var asked = 0
+        val gate = RequestGate { if (++asked == 1) Admission.Allowed else Admission.Refused(RefusalScope.Source, RefusalReason.RequestLimitReached) }
+        assertEquals(ConsentCompletion.TransientFailure(FailureKind.UnreadableAnswer), call { consent.completeConsent(granting, handle, context(gate)) })
+        assertEquals(listOf("POST"), server.received.map { it.method })
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A4: Data Provider Does Not Confirm the Consent")
+    @DisplayName("A4: a completion refused without a code, by a status in the 400s other than the one that asks to wait, is a refusal: nothing was granted")
+    fun completionRefusedWithoutACode() {
+        listOf(400, 401, 403, 404, 422).forEach { status ->
+            server.answer("POST", "/sessions", MockResponse().setResponseCode(status).setBody("invented"))
+            assertEquals(ConsentCompletion.NotConfirmed(ConsentFailureKind.RefusedByDataProvider), call { consent.completeConsent(granting, handle, context()) }, "$status")
+        }
+        server.answer("POST", "/sessions", MockResponse().setResponseCode(429).setBody("{}"))
+        assertEquals(ConsentCompletion.TransientFailure(FailureKind.ServiceUnavailable), call { consent.completeConsent(granting, handle, context()) })
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A8: Data Provider Cannot Be Reached")
+    @DisplayName("A8: a redirect of the start or the completion is an unreadable answer, and nothing is sent to its target")
+    fun redirectsAreNotFollowed() {
+        val elsewhere = ConsentServer()
+        try {
+            server.answer("GET", "/aspsps", ConsentServer.banksOfFinland)
+            server.answer("POST", "/auth", MockResponse().setResponseCode(302).setHeader("Location", elsewhere.url("/auth").toString()))
+            server.answer("POST", "/sessions", MockResponse().setResponseCode(307).setHeader("Location", elsewhere.url("/sessions").toString()))
+            assertEquals(ConsentStart.TransientFailure(FailureKind.UnreadableAnswer), call { consent.startConsentRequest(BANK, RETURN_ADDRESS, Secret(STATE), context()) })
+            assertEquals(ConsentCompletion.TransientFailure(FailureKind.UnreadableAnswer), call { consent.completeConsent(granting, handle, context()) })
+            assertEquals(0, elsewhere.received.size, "the redirect's target received nothing")
+        } finally {
+            elsewhere.shutdown()
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A8: Data Provider Cannot Be Reached")
+    @DisplayName("A8: a start whose connection is closed before an answer is a lost connection, sent once; one answered too slowly ends within the request timeout")
+    fun startLostOrSlow() {
+        server.answer("GET", "/aspsps", ConsentServer.banksOfFinland)
+        server.answer("POST", "/auth", MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
+        assertEquals(ConsentStart.TransientFailure(FailureKind.ConnectionLost), call { consent.startConsentRequest(BANK, RETURN_ADDRESS, Secret(STATE), context()) })
+        assertEquals(1, server.received.count { it.method == "POST" }, "no request is sent again without the gate")
+        server.answer("POST", "/auth", MockResponse().setBody(ConsentServer.started).setHeadersDelay(3, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals(
+            ConsentStart.TransientFailure(FailureKind.Timeout),
+            call { consent.startConsentRequest(BANK, RETURN_ADDRESS, Secret(STATE), context(timeout = Duration.ofMillis(500))) },
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A8: Data Provider Cannot Be Reached")
     @DisplayName("A8, NFR-016: a completion that is never answered ends within the request timeout as a timeout")
     fun completionTimesOut() {
         server.answer("POST", "/sessions", MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
@@ -571,6 +677,31 @@ class UC007EnableBankingConsentTest {
     }
 
     @Test
+    @UseCase(id = "UC-014", scenario = "A1: Credentials Refused", businessRules = ["BR-002"])
+    @DisplayName("A1: a return address that is not an address with a scheme and without whitespace is refused without contacting Enable Banking; the application's kind of address and an https one pass")
+    fun returnAddressIsChecked() {
+        server.answer("GET", "/application", """{"name":"Invented household app"}""")
+        fun checked(address: String) = call {
+            provider.credentials.check(
+                CredentialInput(
+                    mapOf(
+                        EnableBankingCredentials.APPLICATION_ID to Secret(APPLICATION_ID),
+                        EnableBankingCredentials.PRIVATE_KEY to Secret(ConsentServer.pem),
+                        EnableBankingCredentials.RETURN_ADDRESS to Secret(address),
+                    ),
+                ),
+                TestRequestContext(),
+            )
+        }
+        assertEquals(CredentialCheck.Refused, checked("my bank page"))
+        assertEquals(CredentialCheck.Refused, checked("household.example/back"))
+        assertEquals(CredentialCheck.Refused, checked("https://household.example/my page"))
+        assertEquals(0, server.received.size, "nothing is sent for an address that cannot be valid")
+        assertTrue(checked("invented.app://consent") is CredentialCheck.Accepted)
+        assertTrue(checked("https://household.example/back") is CredentialCheck.Accepted)
+    }
+
+    @Test
     @UseCase(id = "UC-014", businessRules = ["BR-005"])
     @DisplayName("BR-005: a stored credential that cannot be read is refused at every operation without sending anything")
     fun unreadableCredentialSendsNothing() {
@@ -594,12 +725,15 @@ class UC007EnableBankingConsentTest {
             val logged = EnableBankingDataProvider(written, server.url(), OkHttpClient(), Clock.fixed(now, ZoneOffset.UTC)).bankConsent
             val shown = mutableListOf<String>()
             val gate = RecordingRequestGate()
+            val registered = "https://household.example/PLANTED-RETURN-3d1f"
+            fun context(gate: RequestGate) = context(gate, credential = ConsentServer.credential(registered))
             server.answer("GET", "/aspsps", ConsentServer.banksOfFinland)
             server.answer("POST", "/auth", ConsentServer.started)
             server.answer("POST", "/sessions", ConsentServer.session)
             server.answer("DELETE", "/sessions/$SESSION_ID", "{}")
             shown += call { logged.banks("FI", context(gate)) }.toString()
-            val started = call { logged.startConsentRequest(BANK, RETURN_ADDRESS, Secret(STATE), context(gate)) }
+            shown += logged.registeredReturnAddress(ConsentServer.credential(registered)).orEmpty().replace(registered, "")
+            val started = call { logged.startConsentRequest(BANK, registered, Secret(STATE), context(gate)) }
             shown += started.toString()
             shown += (started as ConsentStart.Started).handle.toString()
             val completed = call { logged.completeConsent(granting, started.handle, context(gate)) }
@@ -616,10 +750,10 @@ class UC007EnableBankingConsentTest {
             val tokens = server.received.mapNotNull { it.getHeader("Authorization")?.removePrefix("Bearer ") }
             assertTrue(written.lines.isNotEmpty(), "the operations are logged")
             assertEquals(detailed, written.lines.any { it.contains("HTTP status") })
-            (ConsentServer.plantedInLogs + tokens).forEach { planted ->
+            (ConsentServer.plantedInLogs + tokens + "PLANTED-RETURN-3d1f").forEach { planted ->
                 written.lines.forEach { line -> assertFalse(planted in line, "logged with Detailed Logging $detailed: $line") }
             }
-            (ConsentServer.planted + tokens).forEach { planted ->
+            (ConsentServer.planted + tokens + "PLANTED-RETURN-3d1f").forEach { planted ->
                 shown.forEach { text -> assertFalse(planted in text, "shown: $text") }
             }
         }

@@ -18,6 +18,8 @@ import slussen.pluginapi.request.RequestKind
 import slussen.pluginapi.request.RequestSummary
 import slussen.pluginapi.value.Secret
 import slussen.pluginapi.value.SensitiveApi
+import java.net.URI
+import java.net.URISyntaxException
 import java.time.Clock
 
 /**
@@ -60,6 +62,8 @@ internal class EnableBankingCredentials(
         val returnAddress = input.values[RETURN_ADDRESS]?.reveal()?.trim().orEmpty()
         val key = PrivateKeyFile.read(pem)
         if (applicationId.isEmpty() || key == null) return CredentialCheck.Refused
+        // UC-014 BR-002: A return address that is not an address with a scheme and without whitespace cannot be valid, and is refused without contacting Enable Banking.
+        if (returnAddress.isNotEmpty() && !isAddress(returnAddress)) return CredentialCheck.Refused
         val admission = context.gate.admit(RequestSummary(RequestKind.Other, null, null, unattended = false))
         // UC-014 BR-002: When the gate refuses the check, as at the Request Limit, nothing is sent and the refusal is returned, never a failure to reach the service.
         if (admission is Admission.Refused) return CredentialCheck.StoppedByGate(admission.reason)
@@ -92,7 +96,17 @@ internal class EnableBankingCredentials(
         }
     }
 
+    /** An address with a scheme and without whitespace: the application's kind (`<application id>://consent`) or https. */
+    private fun isAddress(text: String): Boolean =
+        ADDRESS.matches(text) && try {
+            URI(text).scheme != null
+        } catch (e: URISyntaxException) {
+            false
+        }
+
     companion object {
+        private val ADDRESS = Regex("""[A-Za-z][A-Za-z0-9+.\-]*:\S+""")
+
         const val APPLICATION_ID = "applicationId"
         const val PRIVATE_KEY = "privateKey"
 

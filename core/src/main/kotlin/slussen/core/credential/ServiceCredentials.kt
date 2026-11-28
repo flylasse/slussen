@@ -17,7 +17,7 @@ import slussen.core.port.ServiceKey
 import slussen.core.port.StartedBy
 import slussen.core.request.BudgetAppGate
 import slussen.core.request.DataProviderGate
-import slussen.core.request.UnattendedReads
+import slussen.core.request.FetchReads
 import slussen.core.request.requestLimitFreesUpAt
 import slussen.core.request.requestToWaitUntil
 import slussen.core.request.ServiceRequestContext
@@ -149,20 +149,20 @@ class ServiceCredentials(
     fun markRefused(service: ServiceKey) = refusals.markRefused(service)
 
     /**
-     * The gate of a request to [service] within the operation that holds [permit] (ADR-001 §4.0); [unattended] for the
-     * requests of a Scheduled Fetch (UC-001 BR-013).
+     * The gate of a request to [service] within the operation that holds [permit] (ADR-001 §4.0); [reads] for the
+     * requests of a Fetch (UC-001 BR-012, BR-013).
      */
-    fun gate(service: ServiceKey, permit: OperationPermit, unattended: UnattendedReads? = null): RequestGate =
+    fun gate(service: ServiceKey, permit: OperationPermit, reads: FetchReads? = null): RequestGate =
         if (service == ServiceKey.budgetApp) {
             BudgetAppGate(permit)
         } else {
-            DataProviderGate(plugins.dataProvider(service).stored, providerRequests, fetches, clock, permit, unattended)
+            DataProviderGate(plugins.dataProvider(service).stored, providerRequests, fetches, clock, permit, reads)
         }
 
     /** The request context of a call to [service], with the request timeout Operator Setting (NFR-016). */
-    suspend fun context(service: ServiceKey, permit: OperationPermit, credential: Secret?, unattended: UnattendedReads? = null): RequestContext =
+    suspend fun context(service: ServiceKey, permit: OperationPermit, credential: Secret?, reads: FetchReads? = null): RequestContext =
         ServiceRequestContext(
-            gate = gate(service, permit, unattended),
+            gate = gate(service, permit, reads),
             timeout = RequestTimeout(Duration.ofSeconds(settings.current().requestTimeoutSeconds.toLong())),
             credential = credential,
         )

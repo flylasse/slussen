@@ -11,11 +11,15 @@ import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.request.RequestTimeout
 import java.io.IOException
 import java.io.InterruptedIOException
+import java.time.Instant
 import kotlin.coroutines.resume
 
-/** What one HTTP request came to: an answer with its status and body, or a closed failure kind (ADR-001 §4.1). */
+/**
+ * What one HTTP request came to: an answer with its status, body and the time its `Date` header gives (null when it
+ * gives none readably), or a closed failure kind (ADR-001 §4.1).
+ */
 internal sealed interface HttpAnswer {
-    data class Answered(val status: Int, val body: String) : HttpAnswer {
+    data class Answered(val status: Int, val body: String, val date: Instant? = null) : HttpAnswer {
         override fun toString(): String = "Answered(status=$status)"
     }
 
@@ -26,10 +30,16 @@ internal sealed interface HttpAnswer {
  * Sends [request] with the request timeout as OkHttp's call timeout and cancels the call when the calling coroutine is
  * cancelled (ADR-001 §4.0). A timeout is [FailureKind.Timeout]; any other failure, also one that is not an I/O failure
  * such as a device that refuses network access, is [FailureKind.ConnectionLost] (S-36, NFR-004); no error text leaves
- * this function.
+ * this function. It follows no redirect, which would send the request to another address the gate never admitted,
+ * and sends nothing again on its own after a failed connection (ADR-001 §4.0: a plug-in never retries); a redirect is
+ * answered as it came, and read as an unreadable answer.
  */
 internal suspend fun OkHttpClient.send(request: Request, timeout: RequestTimeout): HttpAnswer {
-    val call = newBuilder().callTimeout(timeout.duration).apply { interceptors().add(0, ExceptionsAsIoFailure) }.build()
+    val call = newBuilder().callTimeout(timeout.duration)
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .retryOnConnectionFailure(false)
+        .apply { interceptors().add(0, ExceptionsAsIoFailure) }.build()
         .newCall(request)
     return suspendCancellableCoroutine { continuation ->
         continuation.invokeOnCancellation { call.cancel() }
@@ -42,7 +52,7 @@ internal suspend fun OkHttpClient.send(request: Request, timeout: RequestTimeout
 
                 override fun onResponse(call: Call, response: Response) {
                     val answer = try {
-                        response.use { HttpAnswer.Answered(it.code, it.body?.string().orEmpty()) }
+                        response.use { HttpAnswer.Answered(it.code, it.body?.string().orEmpty(), it.headers.getInstant("Date")) }
                     } catch (e: InterruptedIOException) {
                         HttpAnswer.Failed(FailureKind.Timeout)
                     } catch (e: IOException) {
