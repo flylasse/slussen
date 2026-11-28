@@ -9,6 +9,7 @@ import slussen.core.operation.OperationCoordinator
 import slussen.core.operation.OperationKind
 import slussen.core.operation.OperationPermit
 import slussen.core.operation.OperationResult
+import slussen.core.operation.ScheduledAdmission
 import slussen.core.plugin.RegisteredDataProvider
 import slussen.core.plugin.RegisteredPlugins
 import slussen.core.port.BackOffCause
@@ -37,6 +38,7 @@ import slussen.core.port.StartedBy
 import slussen.core.port.StoredBackOff
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredDataProvider
+import slussen.core.request.UnattendedReads
 import slussen.core.request.requestLimitFreesUpAt
 import slussen.core.request.requestLimitWarningAt
 import slussen.core.request.requestToWaitUntil
@@ -68,7 +70,8 @@ import java.time.LocalDate
  * (steps 7-8, A17, BR-002, BR-003, BR-016), its Account Balance in its own currency (step 8, A21, BR-011), the Decision
  * Journal (step 9), the Back-offs a Data Provider asks for (A5, A15), and the Fetch record with its outcome and the Fetch
  * Result of each Bank Account it selected (step 11, A2, A6-A8, A19, A20), then the Comparison with the Budget App (step
- * 10, UC-003) in the same operation. The Scheduled Fetch (A12) comes with a later slice.
+ * 10, UC-003) in the same operation; the Fetch of one Budget (A11), and the Scheduled Fetch without the Operator present
+ * (A12, A14, BR-013), deferred by the coordinator while an Upload Plan is open or written (ADR-007 §2).
  */
 class FetchTransactions(
     private val plugins: RegisteredPlugins,
@@ -106,13 +109,69 @@ class FetchTransactions(
         }
     }
 
+    /**
+     * A11 (S-B-40): the Operator starts a Fetch of the Data Providers that read a Bank Account mapped into the Budget
+     * [budgetId], for its transactions or for its balance only (BR-011), each under its own gate (BR-010) and reading
+     * every Bank Account step 3 selects for it, also one mapped into another Budget. No screen offers it yet (G-05).
+     */
+    suspend fun fetchBudget(budgetId: Long): FetchStart = admitted { permit ->
+        val bankAccounts = connections.bankAccounts()
+        val budgetAccounts = connections.budgets().firstOrNull { it.id == budgetId }?.budgetAccounts.orEmpty().map { it.id }.toSet()
+        // UC-001 BR-010: A failure, a Back-off, a Fetch Cooldown or a reached Request Limit of one Data Provider leaves the Fetch of every other Data Provider unaffected.
+        plugins.dataProviders.filter { provider ->
+            selectedBankAccounts(bankAccounts, provider.stored.id).any { (bankAccount, _) -> bankAccount.mapping?.budgetAccountId in budgetAccounts }
+        }.map { provider -> fetchOne(provider, permit, confirmedDespiteWarning = false) }
+    }
+
+    /**
+     * A12: the Scheduled Fetch, the entry point of the Fetch Schedule's worker. It returns when the Fetch of every Data
+     * Provider in use and the Comparison that follows have ended, or at once when it is deferred or switched off; it
+     * needs nothing a screen holds. Its outcome is also what it stored (BR-013), so a process that ends after it loses
+     * nothing the Operator is shown but what only the process held (A21, UC-003 A1). It throws only what storage throws;
+     * its caller repeats nothing (BR-005, BR-013).
+     */
+    suspend fun scheduledFetch(): ScheduledFetchOutcome {
+        // UC-001 BR-013: The Fetch Schedule can be lowered to 0 to switch Scheduled Fetches off.
+        if (settings.current().scheduledFetchesPerDay == 0) return ScheduledFetchOutcome.SwitchedOff
+        return scheduledOutcome(coordinator.runScheduledFetch { permit -> scheduledRun(permit) })
+    }
+
+    /**
+     * BR-013, ADR-007 §2: the deferred Scheduled Fetch, started once when the mode has returned to Normal in this
+     * running process. The operation that ends a pause (the Upload Plan confirmed and written, cancelled, left or
+     * expired) calls it once it has left the lane; a start of Slussen never calls it (BR-001, UC-008 BR-001).
+     */
+    suspend fun scheduledFetchAfterPause(): ScheduledFetchOutcome {
+        if (settings.current().scheduledFetchesPerDay == 0) return ScheduledFetchOutcome.SwitchedOff
+        return scheduledOutcome(coordinator.runDeferredScheduledFetch { permit -> scheduledRun(permit) })
+    }
+
+    private fun scheduledOutcome(admission: ScheduledAdmission<ScheduledFetchOutcome.Ran>): ScheduledFetchOutcome = when (admission) {
+        is ScheduledAdmission.Ran -> admission.value
+        is ScheduledAdmission.Deferred -> ScheduledFetchOutcome.Deferred(admission.reason)
+        ScheduledAdmission.NoneDeferred -> ScheduledFetchOutcome.NoneDeferred
+    }
+
+    // UC-001 BR-013: A Scheduled Fetch fetches all Data Providers that have credentials entered or a Bank Account and compares, and never prepares an Upload Plan, writes to the Budget App or waits for an answer from the Operator.
+    /** A12 steps 1-2: steps 2 to 9 for each Data Provider in use in turn, without the Operator present, then the Comparison. */
+    private suspend fun scheduledRun(permit: OperationPermit): ScheduledFetchOutcome.Ran {
+        val bankAccounts = connections.bankAccounts()
+        val reports = plugins.dataProviders.filter { inUse(it, bankAccounts) }.map { provider ->
+            fetchOne(provider, permit, confirmedDespiteWarning = false, startedBy = StartedBy.Schedule)
+        }
+        return ScheduledFetchOutcome.Ran(reports, comparedAfter(reports, permit))
+    }
+
+    /** Step 10, A2, A11, A12 step 2: the Comparison that follows a Fetch that stored what it read or was served from the Fetch Cooldown. */
+    private suspend fun comparedAfter(reports: List<FetchReport>, permit: OperationPermit) =
+        if (reports.any { it is FetchReport.Fetched || it is FetchReport.ServedFromFetchCooldown }) comparison?.compare(permit) else null
+
     private suspend fun admitted(block: suspend (OperationPermit) -> List<FetchReport>): FetchStart {
         // UC-006 BR-005: While an Upload Plan awaits confirmation or an Upload is written, no Fetch the Operator starts runs.
         val result = coordinator.run(OperationKind.Fetch, StartedBy.Operator) { permit ->
             val reports = block(permit)
             // Step 10, A2, A11: a Fetch that stored what it read, or was served from the Fetch Cooldown, compares with the Budget App (UC-003) in the same operation; A1, A3, A6 and A7 end before it.
-            val compared = if (reports.any { it is FetchReport.Fetched || it is FetchReport.ServedFromFetchCooldown }) comparison?.compare(permit) else null
-            FetchStart.Ran(reports, compared)
+            FetchStart.Ran(reports, comparedAfter(reports, permit))
         }
         return when (result) {
             is OperationResult.Ran -> result.value
@@ -125,7 +184,12 @@ class FetchTransactions(
         credentials.status(provider.key) != CredentialStatus.Missing ||
             bankAccounts.any { it.dataProviderId == provider.stored.id || it.balanceDataProviderId == provider.stored.id }
 
-    private suspend fun fetchOne(provider: RegisteredDataProvider, permit: OperationPermit, confirmedDespiteWarning: Boolean): FetchReport {
+    private suspend fun fetchOne(
+        provider: RegisteredDataProvider,
+        permit: OperationPermit,
+        confirmedDespiteWarning: Boolean,
+        startedBy: StartedBy = StartedBy.Operator,
+    ): FetchReport {
         val key = provider.key
         val stored = provider.stored
         val name = stored.name
@@ -135,29 +199,37 @@ class FetchTransactions(
         val credential = credentials.stored(key) ?: return FetchReport.CredentialsMissing(key, name)
         // UC-014 BR-005: A Data Provider that refused Slussen's credentials is not contacted until new ones are accepted.
         if (refusedCredentials(provider)) return FetchReport.CredentialsRefused(key, name)
+        // The Unattended Access limit of A13 (BR-012) comes with the Bank Sessions: per Bank Account at step 3 here, and in the request gate.
         // UC-001 BR-008: No Bank is contacted without a valid Bank Consent; the Bank Sessions come with Grant Bank Consent (UC-007).
         if (stored.needsBankConsent) return FetchReport.NeedsBankConsent(key, name)
         val startedAt = clock.instant()
         val backOffs = fetches.backOffsOf(stored.id)
         // UC-001 BR-004: While a Back-off with cause Request To Wait holds, the Data Provider is not contacted, whoever starts the Fetch.
         backOffs.requestToWaitUntil(startedAt)?.let { until ->
-            record(stored, startedAt, FetchOutcome.WaitingForBackOff)
+            record(stored, startedAt, FetchOutcome.WaitingForBackOff, startedBy)
             return FetchReport.WaitingForProvider(key, name, until)
+        }
+        if (startedBy == StartedBy.Schedule) {
+            // UC-001 BR-015: During a Request Limit warning no Scheduled Fetch contacts that Data Provider (A1).
+            backOffs.requestLimitWarningAt(startedAt)?.let { warning ->
+                record(stored, startedAt, FetchOutcome.WaitingForBackOff, startedBy)
+                return FetchReport.WaitingForProvider(key, name, warning.endsAt)
+            }
         }
         val selected = selected(stored)
         val cooldown = cooldownOf(stored, startedAt)
         val toRead = if (cooldown == null) selected else notReadSinceIdentified(stored, selected)
         if (cooldown != null && toRead.isEmpty()) {
-            record(stored, startedAt, FetchOutcome.ServedFromFetchCooldown)
+            record(stored, startedAt, FetchOutcome.ServedFromFetchCooldown, startedBy)
             return FetchReport.ServedFromFetchCooldown(key, name, cooldown.lastFetchAt, cooldown.endsAt, read = null, requestLimitFreesUpAt = null)
         }
         // UC-001 BR-007: A Data Provider gets at most its Request Limit of requests in the preceding 24 hours, also within the Fetch Cooldown.
         requestLimitFreesUpAt(providerRequests, stored, startedAt)?.let { freesUpAt ->
             if (cooldown != null) {
-                record(stored, startedAt, FetchOutcome.ServedFromFetchCooldown)
+                record(stored, startedAt, FetchOutcome.ServedFromFetchCooldown, startedBy)
                 return FetchReport.ServedFromFetchCooldown(key, name, cooldown.lastFetchAt, cooldown.endsAt, read = null, requestLimitFreesUpAt = freesUpAt)
             }
-            record(stored, startedAt, FetchOutcome.RequestLimitReached)
+            record(stored, startedAt, FetchOutcome.RequestLimitReached, startedBy)
             return FetchReport.RequestLimitReached(key, name, freesUpAt)
         }
         // UC-001 BR-015: During a Request Limit warning a Fetch the Operator starts is made only after the Operator has seen the warning and confirmed.
@@ -165,8 +237,10 @@ class FetchTransactions(
         if (warning != null && !confirmedDespiteWarning) {
             return FetchReport.WarningToConfirm(key, name, RequestLimitWarningShown(warning.startsAt, warning.endsAt))
         }
-        val response = provider.plugin.fetch(request(toRead, startedAt), credentials.context(key, permit, credential))
-        return answered(provider, response, toRead, startedAt, cooldown, backOffs)
+        // UC-001 BR-013: Every request a Scheduled Fetch sends is kept as an unattended Provider Request, with the Bank Account it reads when it reads one.
+        val unattended = if (startedBy == StartedBy.Schedule) UnattendedReads(toRead.associate { it.read.providerReference to it.bankAccount.id }) else null
+        val response = provider.plugin.fetch(request(toRead, startedAt, startedBy), credentials.context(key, permit, credential, unattended))
+        return answered(provider, response, toRead, startedAt, cooldown, backOffs, startedBy)
     }
 
     /**
@@ -174,7 +248,7 @@ class FetchTransactions(
      * the balance of each selected Bank Account, only the balance of one whose transactions come from Transaction Files
      * (see [selected]).
      */
-    private suspend fun request(toRead: List<Selected>, now: Instant): FetchRequest {
+    private suspend fun request(toRead: List<Selected>, now: Instant, startedBy: StartedBy): FetchRequest {
         val today = LocalDate.ofInstant(now, clock.zone)
         return FetchRequest(
             // Step 4: with no Bank Account to read, the Bank Accounts the Data Provider offers are asked for, with their balances.
@@ -186,8 +260,8 @@ class FetchTransactions(
             // UC-001 BR-009: A Fetch asks for the transactions of the fetch period, an Operator Setting.
             periodFrom = today.minusDays(settings.current().fetchPeriodDays.toLong()),
             periodTo = today,
-            // UC-001 BR-012: A Fetch the Operator starts is made with the Operator present.
-            presence = OperatorPresence.OperatorPresent,
+            // UC-001 BR-012: A Fetch the Operator starts is made with the Operator present; a Scheduled Fetch is unattended.
+            presence = if (startedBy == StartedBy.Schedule) OperatorPresence.Unattended else OperatorPresence.OperatorPresent,
             sessions = emptyMap(),
         )
     }
@@ -236,6 +310,7 @@ class FetchTransactions(
         startedAt: Instant,
         cooldown: Cooldown?,
         backOffs: List<StoredBackOff>,
+        startedBy: StartedBy,
     ): FetchReport {
         val key = provider.key
         val stored = provider.stored
@@ -246,7 +321,7 @@ class FetchTransactions(
                 val waitingUntil = (outcome as? SourceOutcome.AskedToWait)?.let { startWait(stored, it.until, startedAt) }
                 val warning = if (outcome == SourceOutcome.RequestLimitWarning) startWarning(stored, backOffs, startedAt) else null
                 if (waitingUntil != null && response.bankAccounts.isEmpty()) {
-                    record(stored, startedAt, FetchOutcome.WaitingForBackOff)
+                    record(stored, startedAt, FetchOutcome.WaitingForBackOff, startedBy)
                     return FetchReport.WaitingForProvider(key, name, waitingUntil)
                 }
                 val answeredAt = clock.instant()
@@ -256,7 +331,7 @@ class FetchTransactions(
                 val kept = keep(provider, usable, toRead, startedAt, waitingUntil, warning)
                     .copy(sharedReference = response.bankAccounts.size - usable.size)
                 // UC-001 BR-006: A read within the Fetch Cooldown is recorded as served from it, so it neither starts nor extends it.
-                val fetchId = record(stored, startedAt, if (cooldown == null) FetchOutcome.Fetched else FetchOutcome.ServedFromFetchCooldown)
+                val fetchId = record(stored, startedAt, if (cooldown == null) FetchOutcome.Fetched else FetchOutcome.ServedFromFetchCooldown, startedBy)
                 // A2 step 3: a Fetch Served From Fetch Cooldown carries the outcome of each Bank Account it read.
                 val fetched = storeDeliveries(fetchId, stored, usable, shared, toRead, startedAt, answeredAt, waiting = waitingUntil != null).let { outcomes ->
                     kept.copy(
@@ -271,30 +346,36 @@ class FetchTransactions(
                     FetchReport.ServedFromFetchCooldown(key, name, cooldown.lastFetchAt, cooldown.endsAt, read = fetched, requestLimitFreesUpAt = null)
                 }
             }
-            // UC-001 BR-005: A timeout, an outage or an unreadable answer starts no Back-off; the Operator can fetch again at any time.
+            // UC-001 BR-005: A timeout, an outage or an unreadable answer starts no Back-off; the Operator can fetch again at any time, and a Scheduled Fetch that meets it is not repeated (A14).
             is SourceOutcome.TransientFailure -> {
-                record(stored, startedAt, FetchOutcome.Failed)
+                record(stored, startedAt, FetchOutcome.Failed, startedBy)
                 FetchReport.Failed(key, name, outcome.kind, startedAt)
             }
             // UC-014 BR-005: A Data Provider that refuses Slussen's credentials is not contacted until new ones are accepted.
             SourceOutcome.CredentialsRefused -> {
                 credentials.markRefused(key)
-                record(stored, startedAt, FetchOutcome.CredentialsRefused)
+                record(stored, startedAt, FetchOutcome.CredentialsRefused, startedBy)
                 FetchReport.CredentialsRefused(key, name)
             }
-            is SourceOutcome.StoppedByGate -> stoppedByGate(stored, key, outcome.reason, startedAt)
+            is SourceOutcome.StoppedByGate -> stoppedByGate(stored, key, outcome.reason, startedAt, startedBy)
         }
     }
 
     /** The gate refused the request after step 2 had let it through: recorded as A1 or A3 would record it. */
-    private suspend fun stoppedByGate(stored: StoredDataProvider, key: ServiceKey, reason: RefusalReason, startedAt: Instant): FetchReport =
+    private suspend fun stoppedByGate(
+        stored: StoredDataProvider,
+        key: ServiceKey,
+        reason: RefusalReason,
+        startedAt: Instant,
+        startedBy: StartedBy,
+    ): FetchReport =
         when (reason) {
             RefusalReason.BackOff -> {
-                record(stored, startedAt, FetchOutcome.WaitingForBackOff)
+                record(stored, startedAt, FetchOutcome.WaitingForBackOff, startedBy)
                 FetchReport.WaitingForProvider(key, stored.name, fetches.backOffsOf(stored.id).requestToWaitUntil(startedAt) ?: startedAt)
             }
             RefusalReason.RequestLimitReached -> {
-                record(stored, startedAt, FetchOutcome.RequestLimitReached)
+                record(stored, startedAt, FetchOutcome.RequestLimitReached, startedBy)
                 FetchReport.RequestLimitReached(key, stored.name, requestLimitFreesUpAt(providerRequests, stored, startedAt) ?: startedAt)
             }
             RefusalReason.UnattendedAccessLimitReached, RefusalReason.OperationEnded -> FetchReport.NotSent(key, stored.name, reason)
@@ -614,9 +695,10 @@ class FetchTransactions(
         return last.outcome == FetchOutcome.CredentialsRefused && acceptedAt.isBefore(last.startedAt)
     }
 
-    /** Step 11: the Fetch with its time, who started it and its outcome; only the most recent are kept (`FETCH`). */
-    private suspend fun record(stored: StoredDataProvider, startedAt: Instant, outcome: FetchOutcome): Long =
-        fetches.recordFetch(NewFetch(stored.id, startedAt, StartedBy.Operator, outcome), settings.current().fetchHistorySize)
+    // UC-001 BR-013: Every Fetch of a Scheduled Fetch is recorded as started by the Fetch Schedule.
+    /** Step 11, A12 step 2: the Fetch with its time, who started it and its outcome; only the most recent are kept (`FETCH`). */
+    private suspend fun record(stored: StoredDataProvider, startedAt: Instant, outcome: FetchOutcome, startedBy: StartedBy): Long =
+        fetches.recordFetch(NewFetch(stored.id, startedAt, startedBy, outcome), settings.current().fetchHistorySize)
 
     private companion object {
         /** `OFFERED_BANK_ACCOUNT.name` holds at most 100 characters (entity model). */

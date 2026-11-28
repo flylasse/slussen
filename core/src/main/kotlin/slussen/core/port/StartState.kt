@@ -63,7 +63,25 @@ interface FirstUploadMatchingStore {
 /** The coordinator's mode, kept in `coordinator_state` so that a restart sees it (ADR-007 §2). */
 enum class CoordinatorMode { Normal, PlanOpen, Uploading }
 
-/** Reads the coordinator's mode (ADR-002 §2, `coordinator_state`). */
+/**
+ * Reads the coordinator's mode and keeps the deferral of a Scheduled Fetch (ADR-002 §2, `coordinator_state`;
+ * ADR-007 §2, §8).
+ */
 interface CoordinatorStore {
     suspend fun mode(): CoordinatorMode
+
+    /**
+     * `scheduled_fetch_deferred`: a Scheduled Fetch fell due while an Upload Plan awaited confirmation or its Upload was
+     * written, and no Scheduled Fetch has started since (UC-001 BR-013).
+     */
+    suspend fun scheduledFetchDeferred(): Boolean
+
+    /** Sets `scheduled_fetch_deferred`; one flag however many Scheduled Fetches fall due meanwhile (UC-001 BR-013). */
+    suspend fun deferScheduledFetch()
+
+    /**
+     * Records the start of a Scheduled Fetch: in one storage transaction, clears `scheduled_fetch_deferred` and returns
+     * whether it was set, so that an ended process neither loses a deferral nor runs it twice (ADR-007 §2, §8).
+     */
+    suspend fun recordScheduledFetchStart(): Boolean
 }

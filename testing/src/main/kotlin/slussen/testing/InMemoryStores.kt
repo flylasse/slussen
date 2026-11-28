@@ -175,13 +175,40 @@ class InMemoryOperatorSettingsStore(
     }
 }
 
-/** In-memory fake of [CoordinatorStore]; a test sets the mode, and makes its read fail with [failsToRead]. */
-class InMemoryCoordinatorStore(var mode: CoordinatorMode = CoordinatorMode.Normal) : CoordinatorStore {
+/**
+ * In-memory fake of [CoordinatorStore]; a test sets the mode and `scheduled_fetch_deferred` (the stored state a later
+ * process sees), and makes its read fail with [failsToRead].
+ */
+class InMemoryCoordinatorStore(
+    var mode: CoordinatorMode = CoordinatorMode.Normal,
+    var scheduledFetchDeferred: Boolean = false,
+) : CoordinatorStore {
     var failsToRead: Boolean = false
+
+    /** How many starts of a Scheduled Fetch were recorded. */
+    var scheduledFetchStarts: Int = 0
+        private set
 
     override suspend fun mode(): CoordinatorMode {
         if (failsToRead) throw IllegalStateException("The invented storage of this test cannot be read.")
         return mode
+    }
+
+    override suspend fun scheduledFetchDeferred(): Boolean {
+        if (failsToRead) throw IllegalStateException("The invented storage of this test cannot be read.")
+        return scheduledFetchDeferred
+    }
+
+    override suspend fun deferScheduledFetch() {
+        scheduledFetchDeferred = true
+    }
+
+    /** As the Room store: one step that clears the flag and says whether it was set. */
+    override suspend fun recordScheduledFetchStart(): Boolean {
+        scheduledFetchStarts++
+        val wasDeferred = scheduledFetchDeferred
+        scheduledFetchDeferred = false
+        return wasDeferred
     }
 }
 

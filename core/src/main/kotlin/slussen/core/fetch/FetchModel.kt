@@ -168,3 +168,22 @@ sealed interface FetchStart {
     /** Precondition (UC-006 BR-005): an Upload Plan awaits confirmation or an Upload is written. */
     data class Unavailable(val reason: OperationRefusal) : FetchStart
 }
+
+/**
+ * What a Scheduled Fetch came to (UC-001 A12, BR-013). Nothing of it waits for the Operator: what the Operator sees of
+ * it later is read from what it stored (Fetches, Fetch Results, Back-offs, Provider Requests, Offered Bank Accounts,
+ * Bank Transactions with their Transaction Statuses).
+ */
+sealed interface ScheduledFetchOutcome {
+    /** One report per Data Provider in use, in the order of the build, and the Comparison that followed, or null. */
+    data class Ran(val reports: List<FetchReport>, val comparison: ComparisonReport?) : ScheduledFetchOutcome
+
+    /** An Upload Plan awaits confirmation or its Upload is written: deferred, nothing contacted (ADR-007 §2). */
+    data class Deferred(val reason: OperationRefusal) : ScheduledFetchOutcome
+
+    /** Asked after a pause ended, and no Scheduled Fetch was deferred, or it started already: nothing ran. */
+    data object NoneDeferred : ScheduledFetchOutcome
+
+    /** The Fetch Schedule is 0: Scheduled Fetches are switched off, nothing is contacted or stored (BR-013). */
+    data object SwitchedOff : ScheduledFetchOutcome
+}

@@ -69,6 +69,12 @@ suspend fun requestLimitFreesUpAt(requests: ProviderRequestStore, dataProvider: 
 }
 
 /**
+ * The requests of a Scheduled Fetch (UC-001 BR-013): each is kept as an unattended Provider Request, with the Bank
+ * Account it reads when it names one, found by that Bank Account's reference at the Data Provider in [bankAccountIds].
+ */
+class UnattendedReads(val bankAccountIds: Map<String, Long>)
+
+/**
  * The gate of a Data Provider request (ADR-001 §4.0): it refuses with scope Source while a Back-off holds for the whole
  * Data Provider after it asked Slussen to wait, stores the Provider Request durably before it answers `Allowed`, and
  * refuses with scope Source once the Data Provider's Request Limit is reached in the preceding 24 hours. A credential
@@ -80,6 +86,8 @@ class DataProviderGate(
     private val fetches: FetchStore,
     private val clock: Clock,
     private val permit: OperationPermit,
+    /** Set for the requests of a Scheduled Fetch, null for a Fetch the Operator starts (UC-001 BR-012, BR-013). */
+    private val unattended: UnattendedReads? = null,
 ) : RequestGate {
     override suspend fun admit(request: RequestSummary): Admission {
         if (!permit.active) return Admission.Refused(RefusalScope.Source, RefusalReason.OperationEnded)
@@ -88,13 +96,15 @@ class DataProviderGate(
         if (fetches.backOffsOf(dataProvider.id).requestToWaitUntil(now) != null) {
             return Admission.Refused(RefusalScope.Source, RefusalReason.BackOff)
         }
+        // UC-001 BR-013: Every request a Scheduled Fetch sends is kept as an unattended Provider Request, with the Bank Account it reads when it reads one.
         val stored = NewProviderRequest(
             dataProviderId = dataProvider.id,
-            bankAccountId = null,
+            bankAccountId = unattended?.let { reads -> request.bankAccountReference?.let(reads.bankAccountIds::get) },
             kind = kindOf(request.kind),
-            unattended = false,
+            unattended = unattended != null,
             sentAt = now,
         )
+        // The Unattended Access limit of A13 (BR-012) is counted here, for a Data Provider that needs a Bank Consent, when its Bank Sessions are built.
         // UC-001 BR-007: Slussen sends a Data Provider at most its Request Limit in any rolling 24 hours.
         if (!requests.admitWithinLimit(stored, now.minus(REQUEST_LIMIT_WINDOW), dataProvider.requestLimit)) {
             return Admission.Refused(RefusalScope.Source, RefusalReason.RequestLimitReached)

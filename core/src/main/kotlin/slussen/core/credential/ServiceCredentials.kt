@@ -17,6 +17,7 @@ import slussen.core.port.ServiceKey
 import slussen.core.port.StartedBy
 import slussen.core.request.BudgetAppGate
 import slussen.core.request.DataProviderGate
+import slussen.core.request.UnattendedReads
 import slussen.core.request.requestLimitFreesUpAt
 import slussen.core.request.requestToWaitUntil
 import slussen.core.request.ServiceRequestContext
@@ -147,18 +148,21 @@ class ServiceCredentials(
     /** Records that [service] refused the stored credentials (UC-014 BR-005, UC-013 A1). */
     fun markRefused(service: ServiceKey) = refusals.markRefused(service)
 
-    /** The gate of a request to [service] within the operation that holds [permit] (ADR-001 §4.0). */
-    fun gate(service: ServiceKey, permit: OperationPermit): RequestGate =
+    /**
+     * The gate of a request to [service] within the operation that holds [permit] (ADR-001 §4.0); [unattended] for the
+     * requests of a Scheduled Fetch (UC-001 BR-013).
+     */
+    fun gate(service: ServiceKey, permit: OperationPermit, unattended: UnattendedReads? = null): RequestGate =
         if (service == ServiceKey.budgetApp) {
             BudgetAppGate(permit)
         } else {
-            DataProviderGate(plugins.dataProvider(service).stored, providerRequests, fetches, clock, permit)
+            DataProviderGate(plugins.dataProvider(service).stored, providerRequests, fetches, clock, permit, unattended)
         }
 
     /** The request context of a call to [service], with the request timeout Operator Setting (NFR-016). */
-    suspend fun context(service: ServiceKey, permit: OperationPermit, credential: Secret?): RequestContext =
+    suspend fun context(service: ServiceKey, permit: OperationPermit, credential: Secret?, unattended: UnattendedReads? = null): RequestContext =
         ServiceRequestContext(
-            gate = gate(service, permit),
+            gate = gate(service, permit, unattended),
             timeout = RequestTimeout(Duration.ofSeconds(settings.current().requestTimeoutSeconds.toLong())),
             credential = credential,
         )

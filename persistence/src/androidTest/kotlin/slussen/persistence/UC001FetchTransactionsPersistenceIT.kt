@@ -96,6 +96,42 @@ class UC001FetchTransactionsPersistenceIT {
     }
 
     @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-013"])
+    @DisplayName("BR-013: a deferred Scheduled Fetch survives a restart, which does not clear it; recording the start of a Scheduled Fetch clears it once, also after a restart")
+    fun scheduledFetchDeferralSurvivesARestartAndClearsOnce() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        assertEquals(false, storage.coordinator.scheduledFetchDeferred())
+        storage.coordinator.deferScheduledFetch()
+        storage.coordinator.deferScheduledFetch()
+        storage.close()
+
+        val restarted = SlussenStorage.open(DeviceFiles.context, clock)
+
+        assertEquals(true, restarted.coordinator.scheduledFetchDeferred())
+        assertEquals(true, restarted.coordinator.recordScheduledFetchStart())
+        assertEquals(false, restarted.coordinator.recordScheduledFetchStart())
+        restarted.close()
+        val again = SlussenStorage.open(DeviceFiles.context, clock)
+        assertEquals(false, again.coordinator.scheduledFetchDeferred())
+        again.close()
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-013"])
+    @DisplayName("A12 step 2: a Fetch started by the Fetch Schedule is read back as started by it, also after a restart")
+    fun scheduledFetchIsReadBackAsStartedByTheSchedule() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        val feeds = registeredFeeds(storage)
+        storage.fetches.recordFetch(NewFetch(feeds, now, StartedBy.Schedule, FetchOutcome.Failed), keep = 60)
+        storage.close()
+
+        val restarted = SlussenStorage.open(DeviceFiles.context, clock)
+
+        assertEquals(StartedBy.Schedule to FetchOutcome.Failed, restarted.fetches.fetchesOf(feeds).single().let { it.startedBy to it.outcome })
+        restarted.close()
+    }
+
+    @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario")
     @DisplayName("Step 11: only the most recent Fetches are kept, as many as the Operator Setting says, in the same transaction")
     fun onlyTheMostRecentFetchesAreKept() = runBlocking {

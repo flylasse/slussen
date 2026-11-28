@@ -155,7 +155,8 @@ class FakeBudgetApp(
 
 /**
  * A fake Data Provider with invented declarations. Its [fetch] asks the gate before its one request, like a part whose
- * Data Provider answers every Bank Account in one request (ADR-001 §4.0), and then answers with [fetchAnswer]; a test
+ * Data Provider answers every Bank Account in one request (ADR-001 §4.0), naming the Bank Account it reads when it
+ * reads exactly one, and then answers with [fetchAnswer]; a test
  * that scripts no answer fails when it is asked, as opening Slussen must not fetch (UC-008 BR-001). Every request and
  * context it was given is kept for assertions.
  */
@@ -190,7 +191,7 @@ class FakeDataProvider(
         fetches++
         fetchRequests += request
         fetchContexts += context
-        val admission = context.gate.admit(RequestSummary(kindOf(request), null, null))
+        val admission = context.gate.admit(RequestSummary(kindOf(request), null, readsOne(request)))
         if (admission is Admission.Refused) {
             return FetchResponse(SourceOutcome.StoppedByGate(admission.reason), emptyList(), emptyList())
         }
@@ -198,6 +199,10 @@ class FakeDataProvider(
         beforeAnswer()
         return fetchAnswer(request)
     }
+
+    /** The one Bank Account the request reads, when it selects exactly one; a request for several names none. */
+    private fun readsOne(request: FetchRequest): String? =
+        (request.bankAccounts as? BankAccountSelection.Selected)?.bankAccounts?.singleOrNull()?.providerReference
 
     private fun kindOf(request: FetchRequest): RequestKind = when (val selection = request.bankAccounts) {
         is BankAccountSelection.AllForIdentification ->

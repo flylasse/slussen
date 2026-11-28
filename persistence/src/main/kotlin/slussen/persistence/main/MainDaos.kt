@@ -951,6 +951,21 @@ abstract class CoordinatorDao : StateVersionDao {
     /** The version of everything an Upload Plan was prepared from (ADR-007 §6 step 2), null before the first start. */
     @Query("SELECT state_version FROM coordinator_state WHERE id = 1")
     abstract suspend fun stateVersion(): Long?
+
+    /** `scheduled_fetch_deferred` (ADR-007 §2), null before the first start. */
+    @Query("SELECT scheduled_fetch_deferred FROM coordinator_state WHERE id = 1")
+    abstract suspend fun scheduledFetchDeferred(): Boolean?
+
+    /** Remembers a deferred Scheduled Fetch (ADR-007 §2); setting it again changes nothing. */
+    @Query("UPDATE coordinator_state SET scheduled_fetch_deferred = 1 WHERE id = 1")
+    abstract suspend fun deferScheduledFetch()
+
+    /**
+     * The start of a Scheduled Fetch (ADR-007 §2, §8): one statement, so one transaction, that clears the flag and
+     * changes one row exactly when it was set.
+     */
+    @Query("UPDATE coordinator_state SET scheduled_fetch_deferred = 0 WHERE id = 1 AND scheduled_fetch_deferred = 1")
+    abstract suspend fun clearScheduledFetchDeferred(): Int
 }
 
 /**

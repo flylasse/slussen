@@ -443,6 +443,13 @@ class RoomCoordinatorStore(private val dao: CoordinatorDao) : CoordinatorStore {
     override suspend fun mode(): CoordinatorMode =
         dao.state()?.let { state -> modeOf(state.mode) } ?: CoordinatorMode.Normal
 
+    override suspend fun scheduledFetchDeferred(): Boolean = dao.scheduledFetchDeferred() ?: false
+
+    override suspend fun deferScheduledFetch() = dao.deferScheduledFetch()
+
+    // UC-001 BR-013: The deferral is cleared in the storage transaction that records the start of a Scheduled Fetch, so that an ended process neither loses it nor runs it twice.
+    override suspend fun recordScheduledFetchStart(): Boolean = dao.clearScheduledFetchDeferred() == 1
+
     companion object {
         /** The texts of `coordinator_state.mode` (ADR-002 §2). */
         fun textOf(mode: CoordinatorMode): String = when (mode) {
