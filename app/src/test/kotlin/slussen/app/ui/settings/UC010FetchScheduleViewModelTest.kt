@@ -104,4 +104,43 @@ class UC010FetchScheduleViewModelTest {
         fixture.notificationsAllowed = true
         assertEquals(listOf(nextAbout(7)), settings().fetchSchedule().notes)
     }
+
+    private val notSet = "The device did not take the new schedule now; Slussen sets it at its next start. Nothing else is needed."
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "A6: Change the Fetch Schedule", businessRules = ["BR-002"])
+    @DisplayName("A6, UC-001 BR-013: after a change the device did not take, the note stays when an operation ends and when Settings is opened again, and the old work's time is not shown")
+    fun failedChangeStaysOverReloads() {
+        fixture.scheduleWork.alreadyScheduled(Duration.ofHours(12), slice.clock.instant().plus(Duration.ofHours(2)))
+        val viewModel = settings()
+        viewModel.startEditing(NumberSetting.FetchSchedule)
+        fixture.scheduleWork.fails = true
+        viewModel.save("1")
+        fixture.scheduleWork.fails = false
+
+        kotlinx.coroutines.runBlocking { slice.generalSettings.change(NumberSetting.DefaultWait, 12) }
+        assertEquals(listOf(notSet), viewModel.fetchSchedule().notes)
+        viewModel.load()
+        assertEquals(listOf(notSet), viewModel.fetchSchedule().notes)
+        assertEquals(listOf(notSet), settings().fetchSchedule().notes)
+    }
+
+    @Test
+    @UseCase(id = "UC-010", scenario = "A6: Change the Fetch Schedule", businessRules = ["BR-002"])
+    @DisplayName("A6, UC-001 BR-013: after a cancel the device did not take, no next time is shown beside 0; a later change that sets the work removes the note")
+    fun failedCancelShowsNoTimeAtZero() {
+        fixture.scheduleWork.alreadyScheduled(Duration.ofHours(12), slice.clock.instant().plus(Duration.ofHours(2)))
+        val viewModel = settings()
+        viewModel.startEditing(NumberSetting.FetchSchedule)
+        fixture.scheduleWork.fails = true
+        viewModel.save("0")
+        fixture.scheduleWork.fails = false
+
+        viewModel.load()
+        assertEquals(listOf(notSet), viewModel.fetchSchedule().notes)
+
+        viewModel.startEditing(NumberSetting.FetchSchedule)
+        viewModel.save("2")
+        assertEquals(listOf(nextAbout(12)), viewModel.fetchSchedule().notes)
+    }
 }

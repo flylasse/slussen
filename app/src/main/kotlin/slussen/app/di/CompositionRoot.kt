@@ -178,6 +178,7 @@ class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLogg
             budgetAppName = registered.budgetApp.profile.name,
             fetchSchedule = fetchSchedule,
             notificationsAllowed = notificationDevice::allowed,
+            updateNotification = notification::update,
         )
     }
 

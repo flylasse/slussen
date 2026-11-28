@@ -144,4 +144,23 @@ class UC001FetchScheduleTest {
         assertFalse(schedule.atStart())
         assertNull(schedule.next())
     }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-013"])
+    @DisplayName("BR-013: no next time is given for work that does not match the stored Fetch Schedule, nor at 0; a failed change is remembered until a start or a later change sets the work")
+    fun nextTimeOnlyForMatchingWork() = runTest {
+        work.alreadyScheduled(Duration.ofHours(12), slice.clock.instant().plus(Duration.ofHours(3)))
+        storeFetchSchedule(1)
+        assertNull(schedule.next())
+        storeFetchSchedule(0)
+        assertNull(schedule.next())
+
+        work.fails = true
+        assertFalse(schedule.set(0))
+        work.fails = false
+        assertTrue(schedule.notSet)
+        assertTrue(schedule.atStart())
+        assertFalse(schedule.notSet)
+        assertNull(work.current)
+    }
 }

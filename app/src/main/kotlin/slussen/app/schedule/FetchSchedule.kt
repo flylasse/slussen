@@ -82,16 +82,29 @@ object FetchScheduleRules {
  * a crash: the start of Slussen goes on.
  */
 class FetchSchedule(private val work: FetchScheduleWork, private val stored: suspend () -> Int) {
+    /**
+     * UC-010 A6, NFR-023: the last change of the Fetch Schedule was stored but the device did not take it; true until a
+     * start or a later change has set the work. Held for this process; the next start sets the work from the stored value.
+     */
+    @Volatile
+    var notSet: Boolean = false
+        private set
+
     /** At a start of Slussen (BR-013); false when the stored value or the device's work could not be reached. */
-    suspend fun atStart(): Boolean = answered { apply(FetchScheduleRules.atStart(stored(), work.scheduled())) }
+    suspend fun atStart(): Boolean =
+        answered { apply(FetchScheduleRules.atStart(stored(), work.scheduled())) }.also { if (it) notSet = false }
 
     /** After the Operator stored the Fetch Schedule [perDay] (UC-010 A6); false when the device's work could not be set. */
-    suspend fun set(perDay: Int): Boolean = answered { apply(FetchScheduleRules.changed(perDay)) }
+    suspend fun set(perDay: Int): Boolean = answered { apply(FetchScheduleRules.changed(perDay)) }.also { notSet = !it }
 
-    /** When the next Scheduled Fetch falls due, approximately, as the device scheduled it; null when none is or it is not known. */
+    /**
+     * When the next Scheduled Fetch falls due, approximately, as the device scheduled it; null when none is, when it is not
+     * known, at a stored Fetch Schedule of 0, and for work whose period does not match the stored Fetch Schedule.
+     */
     suspend fun next(): Instant? =
         try {
-            work.scheduled()?.nextAt
+            val perDay = stored()
+            work.scheduled()?.takeIf { perDay > 0 && it.every == FetchScheduleRules.every(perDay) }?.nextAt
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {

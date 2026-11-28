@@ -1,10 +1,13 @@
 package slussen.app.platform.notification
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
@@ -29,9 +32,12 @@ class UC001NewTransactionNotificationTest {
 
         override fun shownNumber(): Int? = shown
 
-        override fun show(number: Int) {
-            calls += "show $number"
-            shown = number
+        var content: NotificationContent? = null
+
+        override fun show(content: NotificationContent) {
+            calls += "show ${content.number}"
+            shown = content.number
+            this.content = content
         }
 
         override fun remove() {
@@ -102,8 +108,64 @@ class UC001NewTransactionNotificationTest {
     @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-014"])
     @DisplayName("BR-014, NFR-012: the notification says the number in Slussen's own words, and nothing of a Bank Transaction, Bank Account or Budget")
     fun textHoldsOnlyTheNumber() {
-        assertEquals("Waiting for an Upload Plan or your Review Decision: 23", NotificationTexts.text(23))
-        assertEquals("New transactions", NotificationTexts.CHANNEL_NAME)
+        assertEquals(
+            NotificationContent(
+                channelId = "new-transactions",
+                channelName = "New transactions",
+                importance = NotificationImportance.Low,
+                silent = true,
+                vibrates = false,
+                badge = true,
+                text = "Waiting for an Upload Plan or your Review Decision: 23",
+                number = 23,
+                opens = NotificationTap.Overview,
+            ),
+            NotificationContent.of(23),
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-014"])
+    @DisplayName("BR-014: the device is given exactly that content, the one text and the number for the badge")
+    fun deviceIsGivenTheContent() = runTest {
+        number = 7
+        notification.update()
+
+        assertEquals(NotificationContent.of(7), device.content)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-014"])
+    @DisplayName("BR-014 (settings.html#notifications-off): notifications are allowed only when the device allows them for Slussen, the permission is held and Slussen's channel is not switched off")
+    fun allowedOnlyWhenAllThreeHold() {
+        assertTrue(NotificationRules.allowed(appEnabled = true, permissionHeld = true, channelSwitchedOff = false))
+        assertFalse(NotificationRules.allowed(appEnabled = false, permissionHeld = true, channelSwitchedOff = false))
+        assertFalse(NotificationRules.allowed(appEnabled = true, permissionHeld = false, channelSwitchedOff = false))
+        assertFalse(NotificationRules.allowed(appEnabled = true, permissionHeld = true, channelSwitchedOff = true))
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-014"])
+    @DisplayName("BR-014: two updates at once, the worker's and the follower's, show one notification and never an older number over a newer one")
+    fun neverAStaleNumberOverANewerOne() = runTest(UnconfinedTestDispatcher()) {
+        val holdFirstRead = CompletableDeferred<Unit>()
+        var reads = 0
+        var stored = 3
+        val shared = NewTransactionNotification(device) {
+            val read = stored
+            if (reads++ == 0) holdFirstRead.await()
+            read
+        }
+        val first = async { shared.update() }
+        stored = 8
+        val second = async { shared.update() }
+        holdFirstRead.complete(Unit)
+        first.await()
+        second.await()
+
+        assertEquals(8, device.shown)
+        assertEquals("show 8", device.calls.last())
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

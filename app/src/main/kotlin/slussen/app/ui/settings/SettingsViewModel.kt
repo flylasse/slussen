@@ -246,6 +246,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
     /** Reads what the device holds for the Fetch Schedule's line: its next Scheduled Fetch and whether notifications are allowed. */
     private suspend fun readDevice() {
         nextScheduledFetch = services.fetchSchedule.next()
+        scheduleNotSet = services.fetchSchedule.notSet
         notificationsAllowed = try {
             services.notificationsAllowed()
         } catch (failure: Exception) {
@@ -318,7 +319,6 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                 val general = services.generalSettings.shown().also { shown = it }
                 lists = services.descriptionLists.shown()
                 journalShown = services.journalControl.shown()
-                scheduleNotSet = false
                 readDevice()
                 mutableState.value = SettingsUi(
                     entries = top.entries.map { entry -> line(entry, top.next) },
@@ -562,7 +562,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                     retries.remove(setting)
                     // A6: the schedule is set again from the time of the change (UC-001 BR-013).
                     if (setting == NumberSetting.FetchSchedule) {
-                        scheduleNotSet = !services.fetchSchedule.set(outcome.value)
+                        services.fetchSchedule.set(outcome.value)
                         readDevice()
                     }
                     val notReadAgain = readAgain(stored = SettingValue.Number(setting, outcome.value))

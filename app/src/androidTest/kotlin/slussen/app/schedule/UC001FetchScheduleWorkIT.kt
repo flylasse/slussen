@@ -19,6 +19,9 @@ import java.time.Duration
  * The Fetch Schedule's work on the device's WorkManager (UC-001 BR-013, ADR-001 §5), under a test's own unique name so
  * that the debug build's own Fetch Schedule is left alone: periodic, a network connection its only constraint, its first
  * run a whole period after it is set, one work at a time, removed at 0. The worker is not run here: a run would fetch.
+ *
+ * This is the one check of "never two periodic works": the JVM fake of [FetchScheduleWork] holds one work by
+ * construction, so only WorkManager's unique name, as here, shows that a replaced work leaves no second one behind.
  */
 @DisplayName("UC-001: Fetch Transactions, the Fetch Schedule's work on the device")
 class UC001FetchScheduleWorkIT {

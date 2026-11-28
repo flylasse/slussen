@@ -65,4 +65,6 @@ class UiServices(
     val fetchSchedule: FetchSchedule = FetchSchedule(FetchScheduleWork.None) { 0 },
     /** Whether the device allows Slussen's notifications now (UC-001 BR-014), for the line on Settings and the question on the Overview. */
     val notificationsAllowed: () -> Boolean = { true },
+    /** UC-001 A12 step 3, BR-014: works the New Transaction Notification's number out now, for the Scheduled Fetch's worker before it answers. */
+    val updateNotification: suspend () -> Unit = {},
 )

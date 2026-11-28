@@ -1,6 +1,9 @@
 package slussen.app.schedule
 
+import androidx.work.ListenableWorker
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -22,7 +25,7 @@ import slussen.testing.TestSlice
 @DisplayName("UC-001: Fetch Transactions, the run of the Fetch Schedule's worker")
 class UC001ScheduledFetchRunTest {
     private val slice = TestSlice()
-    private val run = ScheduledFetchRun { slice.fetch }
+    private val run = ScheduledFetchRun(fetch = { slice.fetch })
 
     private suspend fun feedsInUse(outcome: SourceOutcome = SourceOutcome.Completed) {
         slice.enterCredentials()
@@ -92,6 +95,55 @@ class UC001ScheduledFetchRunTest {
         assertFalse(run.run())
 
         assertEquals(0, slice.feeds.fetches)
-        assertFalse(ScheduledFetchRun { error("The services could not be created (invented failure).") }.run())
+        assertFalse(ScheduledFetchRun(fetch = { error("The services could not be created (invented failure).") }).run())
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-014"])
+    @DisplayName("A12 step 3, BR-014: the run updates the New Transaction Notification after the Scheduled Fetch has returned, and before the work answers")
+    fun runUpdatesTheNotificationAfterTheFetch() = runTest {
+        feedsInUse()
+        val events = mutableListOf<String>()
+        val ordered = ScheduledFetchRun(
+            fetch = { slice.fetch },
+            notification = {
+                val stored = slice.importStatusStore.fetchesOf(slice.feedsId).size
+                events += "notification after $stored stored Fetch, lane ${if (slice.coordinator.running.value == null) "free" else "busy"}"
+            },
+        )
+
+        val answer = ScheduledFetchAnswer.after { ordered.run() }
+        events += "answer"
+
+        assertEquals(listOf("notification after 1 stored Fetch, lane free", "answer"), events)
+        assertEquals(ListenableWorker.Result.success(), answer)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-014"])
+    @DisplayName("A12 step 3, BR-014: the notification is updated also when the Scheduled Fetch threw")
+    fun notificationFollowsAFetchThatThrew() = runTest {
+        feedsInUse()
+        slice.settings.failsToRead = true
+        var updated = 0
+
+        assertFalse(ScheduledFetchRun(fetch = { slice.fetch }, notification = { updated++ }).run())
+
+        assertEquals(1, updated)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A14: Transient Failure in a Scheduled Fetch", businessRules = ["BR-005", "BR-013"])
+    @DisplayName("BR-005, BR-013: the work answers success whatever the run returned or threw, never a retry or a failure; a cancellation is passed on")
+    fun answerIsSuccessEveryTime() = runTest {
+        assertEquals(ListenableWorker.Result.success(), ScheduledFetchAnswer.after { true })
+        assertEquals(ListenableWorker.Result.success(), ScheduledFetchAnswer.after { false })
+        assertEquals(ListenableWorker.Result.success(), ScheduledFetchAnswer.after { error("An invented failure.") })
+        listOf(ScheduledFetchAnswer.after { false }, ScheduledFetchAnswer.after { error("An invented failure.") }).forEach {
+            assertFalse(it == ListenableWorker.Result.retry() || it == ListenableWorker.Result.failure())
+        }
+        assertThrows(CancellationException::class.java) {
+            kotlinx.coroutines.runBlocking { ScheduledFetchAnswer.after { throw CancellationException("stopped by the device") } }
+        }
     }
 }
