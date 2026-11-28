@@ -134,31 +134,37 @@ and `:app` must never pass by not running.
 
 ### 7. Evidence that gates the first slice that uploads (A-24, A-25, A-27)
 
-The first slice that implements UC-006 (Upload to the Budget App) is not complete, and no build that can upload is
-installed for real use, until every item below has passed and its result is recorded in that slice's plan. The
-UC-012 + UC-008 slice of the construction kickoff plan uploads nothing and does not need them. Device items run with
-`gradlew connectedCheck` on an emulator with API 26 (the `minSdk`) and on the Operator's phone; the Operator runs the
-phone and live items.
+No build that can upload is used for a real Upload until every item below has passed. The gate is the Operator's own:
+the app does not check it, and Uploads are built fully enabled, with no switch that turns them off (the Operator's
+decision for the build-out, `docs/build_out_plan.md` §6). The items are his checklist before the first real Upload, and
+each result (pass, device, date, commit) is recorded in the end checklist of the plan that builds Uploads
+(`docs/build_out_plan.md` §7). Who can produce an item: **gate**, a JVM test that `gradlew check` runs; **device**, an
+instrumented test (`connectedDebugAndroidTest`) on an emulator with API 26 (the `minSdk`) and on the Operator's phone;
+**phone**, a procedure the Operator carries out on his phone; **live**, a test tagged `live` that only the Operator
+runs, on his machine with `-PincludeLive`, against a throwaway YNAB Budget he creates for it with invented
+transactions (C-011): at least three Budget Accounts in one currency, one of them for a credit card. A live test
+that needs a step in YNAB's own screens between two of its stages says what to do and waits. The state named is that
+of the branch `build-out` at commit 8c913da; what the wave of Uploads builds is named with its phase.
 
-| ID | Evidence | Where | Proves |
-|---|---|---|---|
-| E-01 | The last good copy is made at start, replaced atomically on each later start, and survives repeated starts | instrumented, API 26 and phone | ADR-002 §8 steps 1-2 |
-| E-02 | A failed copy (planted write failure) leaves the previous last good copy in place, and a leftover temporary file is removed | instrumented, API 26 | ADR-002 §8 step 2 |
-| E-03 | A `slussen.db` with planted garbage bytes, and one with a planted unknown `Values:` text, are kept unchanged with their journal, the last good copy is used, the notice is shown and a First Upload Matching opens; the running-app path restarts and recovers. A damaged `journal.db` and a damaged `device.db` are kept unchanged and show the notice, and open **no** First Upload Matching and block no Upload (S-13) | instrumented, API 26 and phone | ADR-002 §6, §8 steps 3-5; NFR-005, NFR-006 |
-| E-04 | With no last good copy, an unreadable database starts empty with the default content | instrumented, API 26 | ADR-002 §8 step 3 |
-| E-05 | Each atomic operation O-1 to O-14 leaves nothing visible after a failure injected before its commit; a process killed between O-4 and O-5 leaves the Comparison pending and preparation refused until O-5 is committed (ADR-007 §3a); `confirmPlan` survives a killed process right after it returns | instrumented, API 26 | ADR-002 §3, §4 |
-| E-06 | Migration from every committed schema version keeps every row (S-39) | instrumented (`MigrationTestHelper`), API 26 | ADR-002 §7, NFR-017 |
-| E-07 | Backup and restore with `adb shell bmgr` (backup now, uninstall, reinstall, restore): `slussen.db` comes back, `device.db` and `journal.db` do not, the start is detected as Restored Backup, First Upload Matching holds Uploads back until a Comparison and confirmation | phone | ADR-002 §5, §6; NFR-009, NFR-010, FR-095 |
-| E-08 | A new installation opens a First Upload Matching with cause New Installation | instrumented, API 26 | ADR-002 §6 |
-| E-09 | An in-place upgrade of the `release` variant built on a second checkout with the same keystore keeps every Sent Record, Account Mapping lock and decision | phone | §6, NFR-017 |
-| E-10 | The live tests against a throwaway YNAB Budget (C-011): a reused Import Identifier is refused and answered `AlreadyPresent`; matching to a Typed Entry within the Matching Date Window; a deletion and a merge are reported; a linked transfer carries both sides' links, `readTransaction` returns a just-created leg with its link, and the counterpart can be marked Cleared in the same Upload; created transactions await approval; YNAB's own Bank import writes Import Identifiers that do not match Slussen's marker | Operator's machine, `-PincludeLive` | ADR-001 §4.2.1, §4.2.2; ADR-008 §1; S-05 |
-| E-11 | The contract tests' timeout and cancellation cases pass against each plug-in (part of `check`) | JVM | ADR-001 §4.0 |
-| E-13 | Service credentials entered in the app are stored only as ciphertext in `device.db` under a non-exportable Android Keystore key; after a backup and restore with `adb shell bmgr` they are absent and "credentials missing" is shown; a planted ciphertext that cannot be decrypted is treated as missing credentials | instrumented, API 26 and phone | ADR-002 §2a, §5; NFR-021, UC-014 BR-003, BR-004 |
-| E-12 | The start sequence is interrupted (process killed) at each boundary of ADR-002 §6, for a restored backup, a new installation and a last good copy: every next start finds the start intent, finishes the work and opens a First Upload Matching; none looks like a normal start | instrumented, API 26 | ADR-002 §6, FR-095 |
+| ID | Evidence | Who | State at 8c913da | Proves |
+|---|---|---|---|---|
+| E-01 | The last good copy is made at start, replaced atomically on each later start, and survives repeated starts | device | a JVM test with a fake database check only; the instrumented test comes with the evidence kit (C7) | ADR-002 §8 steps 1-2 |
+| E-02 | A failed copy (planted write failure) leaves the previous last good copy in place, and a leftover temporary file is removed | device (API 26) | none; C7 adds the seam that fails the copy | ADR-002 §8 step 2 |
+| E-03 | A `slussen.db` with planted garbage bytes, and one with a planted unknown `Values:` text, are kept unchanged with their journal, the last good copy is used, the notice is shown and a First Upload Matching opens; the running-app path (ADR-002 §8 step 4) restarts and recovers, also from a screen that answers storage failures. A damaged `journal.db` and a damaged `device.db` are kept unchanged and show the notice, and open **no** First Upload Matching and block no Upload (S-13) | device | JVM approximations; the running-app path is not built (C7) | ADR-002 §6, §8 steps 3-5; NFR-005, NFR-006 |
+| E-04 | With no last good copy, an unreadable database starts empty with the default content | device (API 26) | a JVM test | ADR-002 §8 step 3 |
+| E-05 | Each atomic operation O-1 to O-16 leaves nothing visible after a failure injected before its commit; a process killed between O-4 and O-5 leaves the Comparison pending and preparation refused until O-5 is committed (ADR-007 §3a); `confirmPlan` survives a killed process right after it returns, and the next start makes its Sent Records Unknown and sends nothing | device (API 26) | none; C7 adds the seams | ADR-002 §3, §4; ADR-007 §8 |
+| E-06 | Migration from every committed schema version keeps every row (S-39): `slussen.db` 1 to 6, `device.db` 1 to 2 | device; a JVM variant in `check` | written for both databases; passed on the phone for `slussen.db` 1-2 on 2026-10-28, the rest not run | ADR-002 §7, NFR-017 |
+| E-07 | Backup and restore with `adb shell bmgr` (backup now, uninstall, reinstall, restore): `slussen.db` comes back, `device.db` and `journal.db` do not, the start is detected as Restored Backup, the Bank Transactions and Sent Records are kept (seen as Already In Budget App), First Upload Matching holds Uploads back until a Comparison and confirmation | phone | procedure to be written (C7) | ADR-002 §5, §6; NFR-009, NFR-010, FR-095 |
+| E-08 | A new installation opens a First Upload Matching with cause New Installation | device (API 26) | written (`UC008CheckImportStatusPersistenceIT`) | ADR-002 §6 |
+| E-09 | An in-place upgrade of the `release` variant built on a second checkout with the same keystore keeps every Sent Record, the `first_sent_at` of every Account Mapping and every decision, compared before and after by the counts of the Budget tab and a Journal Export | phone | procedure to be written (C7) | §6, NFR-017 |
+| E-10 | The live tests against the throwaway YNAB Budget, each a fact ADR-001 §4.2.5 marks as confirmed or not documented: (1) a second create with an Import Identifier the Budget Account holds is answered as a duplicate, alone (`409`) and in a list (`duplicate_import_ids`), and is `AlreadyPresent`; (2) after the transaction is deleted, a create with the same Import Identifier is still refused; (3) the same Import Identifier in two Budget Accounts of one Budget is accepted in both; (4) a list holding one item YNAB refuses (a future date) is refused, the single sends that follow give `Rejected` for that item only, and nothing of the list was stored twice; (5) a linked transfer through the other Budget Account's transfer payee creates the other side, linked both ways, with no Import Identifier on it, and the test prints its `cleared` and `approved`; `readTransaction` right after the write returns the leg with its link, and the counterpart is marked Cleared in the same Upload; (6) the same with a hand-typed transfer of the same amount already in both Budget Accounts: whether YNAB matches it or a second pair appears (Q-04); (7) matching to a Typed Entry at 10 days before and after, and not at 11; (8) a match approved in YNAB's screens between two stages, then read by `last_knowledge_of_server`: which transaction remains, which is reported deleted, and that the reader gives Merged; (9) a deletion is reported by `last_knowledge_of_server` and not by `since_date`; (10) marking Cleared changes nothing else (memo, payee, category, flag, `approved`); (11) deleting one side of a linked transfer deletes the other, and both are reported; (12) created transactions await approval; (13) a create to a closed Budget Account is refused; (14) YNAB's own Bank import writes Import Identifiers that do not begin with Slussen's marker (this one needs a linked bank: a read-only live test against the Operator's real Budget that prints only the first four characters of each Import Identifier it finds) | live | plumbing only (`-PincludeLive`, tag `live`); the tests come with the YNAB writer (C2) | ADR-001 §4.2.1, §4.2.2, §4.2.5; ADR-008 §1; S-05 |
+| E-11 | The contract tests' timeout and cancellation cases pass against each plug-in, also for `create`, `markCleared` and `readTransaction` | gate | built for the credential checks and the reads; the writer's come with C2 | ADR-001 §4.0 |
+| E-12 | The start sequence is interrupted (process killed) at each boundary of ADR-002 §6, for a restored backup, a new installation, a last good copy and Start Over: every next start finds the start intent, finishes the work and opens a First Upload Matching; none looks like a normal start | device (API 26) | one JVM test (resume from the intent) and `UC010StartOverPersistenceIT`; C7 adds a seam per boundary | ADR-002 §3 O-17, §6, FR-095 |
+| E-13 | Service credentials entered in the app are stored only as ciphertext in `device.db` under a non-exportable Android Keystore key; after a backup and restore with `adb shell bmgr` they are absent and "credentials missing" is shown; a planted ciphertext that cannot be decrypted is treated as missing credentials | device and phone | passed on the phone on 2026-10-28 for `device.db` version 1; to run again on version 2 | ADR-002 §2a, §5; NFR-021, UC-014 BR-003, BR-004 |
 
-Each item's test or procedure is written in the slice that needs it, carries the markers of ADR-004, and its result
-(pass, device, date, commit) is recorded in that slice's plan. A failing item stops the slice; a mechanism that
-fails on the device is changed by amending ADR-002, not worked around.
+Each item's test or procedure carries the markers of ADR-004. A failing item stops the first real Upload, not the
+build; a mechanism that fails on the device is changed by amending ADR-002, a behaviour of YNAB that differs from
+ADR-001 §4.2.5 by amending that section and the rules that rest on it, not worked around.
 
 ## Consequences
 
@@ -227,3 +233,7 @@ fails on the device is changed by amending ADR-002, not worked around.
   Matching): §6, §7 E-03, E-07, E-08, E-12 and Consequences renamed; no evidence changes.
 - Backlog decisions (2026-10-27, issue #13): Context says "a newer build signed with the same key" instead of "the
   same build", as NFR-017 does; no decision changes.
+- Build-out, phase W4-0 (2026-11-28): S-B-76: §7 (the gate is the Operator's own, with no switch in the app; who can
+  produce each item and its state; E-03, E-05, E-06, E-07, E-09, E-11, E-12 brought up to date, E-09 names
+  `first_sent_at` in place of the lock; E-10 lists one live test per fact of ADR-001 §4.2.5, the linked transfer onto a
+  typed one of Q-04 among them; E-12 before E-13).

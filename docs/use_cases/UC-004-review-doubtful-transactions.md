@@ -57,7 +57,7 @@
 **Trigger:** Operator selects a Bank Transaction with the status Needs Review or Transfer Counterpart Changed (step 1)  
 **Flow:**
 
-1. Slussen shows the Bank Transaction with the reason it Needs Review and the choices Import Anyway and Defer.
+1. Slussen shows the Bank Transaction with the reason it Needs Review and the choices Import Anyway and Defer. When it differs from a Bank Transaction of the same Bank Account that Slussen already sent only in its payee or memo, or only in its date by no more than the Budget App's Matching Date Window, Slussen says so and shows that one, since a Source that gives no Stable Reference may have delivered the same transaction again with a changed text or date.
 2. Use case continues at step 3, where the Operator chooses one of these two.
 
 ### A5: Re-upload a Deleted Transaction

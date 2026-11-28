@@ -20,8 +20,8 @@
 ## Main Success Scenario
 
 1. Operator asks to upload one Budget, or one Bank Account of a Budget.
-2. Slussen prepares an Upload Plan from the Eligible Transactions in that scope on the current date (BR-018) and, while Upload as Cleared is on, from the Transfer Counterparts to be marked Cleared (BR-016), records it in the Decision Journal (UC-011 BR-001), and pauses other work while the plan awaits confirmation (BR-005).
-3. Slussen shows the Upload Plan: the Budget, the Budget Accounts, the number of transactions to create and to send as a match for a Typed Entry, the total inflow, the total outflow, whether the transactions arrive Cleared, every Transfer Counterpart that will be marked Cleared, and when the plan expires.
+2. Unless a First Upload Matching is open (A13) or the Budget owes a read of its read period (A14), Slussen first reads the Budget from the Budget App and compares its Bank Transactions (UC-003 steps 1 to 6, for that Budget only), so that the plan starts from what the Budget App holds now, and then prepares an Upload Plan from the Eligible Transactions in that scope on the current date (BR-018) and, while Upload as Cleared is on, from the Transfer Counterparts to be marked Cleared (BR-016), records it in the Decision Journal (UC-011 BR-001), and pauses other work while the plan awaits confirmation (BR-005).
+3. Slussen shows the Upload Plan: the Budget, the Budget Accounts, the number of transactions to create (a resend of an earlier send among them) and to send as a match for a Typed Entry, the total inflow, the total outflow, whether the transactions arrive Cleared, every Transfer Counterpart that will be marked Cleared, and when the plan expires.
 4. Operator confirms the Upload Plan.
 5. Slussen checks that the Upload Plan has not expired and reads the Budget App again to check that the Budget App, the Bank Transactions and the configuration are unchanged since the plan was prepared.
 6. Slussen records each Eligible Transaction of the plan in the Sent Record with its Import Identifier, its Budget Account and the outcome not yet known, and records the first send through the Account Mapping of every Bank Account concerned where none is recorded yet (UC-009 BR-003).
@@ -105,11 +105,11 @@
 
 ### A9: Budget App Rejects Transactions
 
-**Trigger:** The Budget App rejects the transactions of a Budget Account (step 8)  
+**Trigger:** The Budget App rejects transactions of a Budget Account, each one by itself: a refusal of a Budget Account's whole list rejects no transaction by itself, and the part of Slussen for the Budget App settles each transaction of it in the same Upload, for YNAB by sending each alone, so that only the ones the Budget App refuses are rejected (ADR-001 §4.2.4) (step 8)  
 **Flow:**
 
 1. Slussen records the outcome Rejected in the Sent Record for these transactions and keeps them available for Upload, under the same Import Identifiers and for the Budget Account of the current Account Mapping, also when the Operator moves the Account Mapping before the next Upload (BR-020).
-2. Slussen shows the rejection with the Budget App's reason.
+2. Slussen shows the rejection with the Budget App's reason. The reason is never stored (ADR-001 §4.2.4): after Slussen has stopped, the outcome shows the rejection without it.
 3. Use case continues at step 9 for the transactions of the other Budget Accounts.
 
 ### A10: Budget App Cannot Link a Transfer
@@ -155,6 +155,15 @@
 2. Slussen shows that the Budget must be read from the Budget App first and why, and offers to read it and compare (UC-003).
 3. Use case ends.
 
+### A15: Budget App Cannot Be Read Before the Plan
+
+**Trigger:** The read of the Budget before the plan fails, or the Budget App refuses Slussen's credentials (step 2)  
+**Flow:**
+
+1. Slussen prepares no Upload Plan, writes nothing and keeps the previous Transaction Statuses of the Budget (UC-003 A1, A2).
+2. Slussen shows that the Budget App could not be read, or the Blocked Reason "credentials refused" with the action that removes it (UC-014), and offers to ask again.
+3. Use case ends.
+
 ## Postconditions
 
 ### Success Postconditions
@@ -183,7 +192,7 @@ Slussen writes to the Budget App only after the Operator confirms an Upload Plan
 
 ### BR-002: Scope of an Upload Plan
 
-An Upload Plan covers one Budget or one Bank Account of a Budget and states the Budget, the Budget Accounts, the number of transactions to create and to send as a match, the total inflow and total outflow, every Transfer Counterpart it marks Cleared, and its expiry.
+An Upload Plan covers one Budget or one Bank Account of a Budget and states the Budget, the Budget Accounts, the number of transactions to create and to send as a match, the total inflow and total outflow, every Transfer Counterpart it marks Cleared, and its expiry. A plan for one Bank Account holds the transactions written through that Bank Account's Bank Transactions, a linked transfer's other Budget Account named with it, and the Transfer Counterparts to be marked Cleared that a send through that Bank Account created or that lie in its Budget Account; a Transfer written through the other Bank Account's Transfer Leg (BR-009) is in that Bank Account's plan, not in this one.
 
 ### BR-003: Plan Lifetime
 
@@ -251,7 +260,7 @@ Which transactions an Upload Plan holds is decided once, when the plan is prepar
 
 ### BR-019: An Upload Plan Exists Only While It Is Shown
 
-An Upload Plan exists only while the Operator is shown it. When the Operator leaves it without confirming, Slussen discards it as on cancelling (A2): nothing is written and the pause ends. A discarded, cancelled or expired Upload Plan is never shown or confirmed again. Every request for an Upload Plan prepares a new one from the current data. Once the Operator has confirmed the Upload Plan, leaving its screen is not cancelling and changes nothing: Slussen finishes the Upload (steps 5 to 12, including the alternative flows that write nothing) and shows its outcome (step 13) when the Operator next opens the Budget or the outcome.
+An Upload Plan exists only while the Operator is shown it. Leaving it means going back from it or to another screen of Slussen; putting Slussen in the background or turning the screen off is not leaving, so the plan stays until it expires (BR-003), and a process that ends makes it expired (ADR-007 §8). When the Operator leaves it without confirming, Slussen discards it as on cancelling (A2): nothing is written and the pause ends. A discarded, cancelled or expired Upload Plan is never shown or confirmed again. Every request for an Upload Plan prepares a new one from the current data. Once the Operator has confirmed the Upload Plan, leaving its screen is not cancelling and changes nothing: Slussen finishes the Upload (steps 5 to 12, including the alternative flows that write nothing) and shows its outcome (step 13) when the Operator next opens the Budget or the outcome. That outcome is read back from what is stored, the latest confirmed Upload Plan of the Budget with the Sent Records and Transfer Counterparts of its transactions, and is shown until the next Upload Plan of that Budget is prepared; an Upload that a stopped process cut short shows its unknown outcomes (A8), and a reason the Budget App gave is shown only by the process that received it (A9).
 
 ### BR-020: A Rejected Transaction Follows the Current Account Mapping
 

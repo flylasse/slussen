@@ -85,7 +85,9 @@ plan is being written).
 
 "Refused" returns a typed reason that the screen shows; nothing is half started. A deferred Scheduled Fetch is
 remembered in `coordinator_state` (`scheduled_fetch_deferred`) and started, once, when the mode returns to Normal in
-the running process (UC-006 BR-005); a start of Slussen never starts it (UC-008 BR-001), and when no process sees the
+the running process (UC-006 BR-005), whichever way the pause ends: a plan cancelled, left or expired (§5), a
+confirmation that writes nothing (§6 steps 1 to 6), or an Upload finished (§6 step 10); each of these starts it once
+it has left the lane, in a scope that outlives the screen; a start of Slussen never starts it (UC-008 BR-001), and when no process sees the
 mode return, the next run of the Fetch Schedule fetches. The flag is cleared in the storage transaction that records
 the start of a Scheduled Fetch, so an ended process neither loses the deferral nor runs it twice (UC-001 BR-013).
 
@@ -102,7 +104,8 @@ start (UC-001 BR-013).
 
 ### 3. When an Upload Plan may be prepared
 
-Preparation is admitted only when all of these hold; otherwise the reason is shown and no plan exists:
+Preparation is admitted only when all of these hold; otherwise the reason is shown, no plan exists and the Budget App
+is not read:
 
 - the mode is Normal and the request comes from the Operator (origin `Schedule` is always refused: UC-006 BR-001,
   UC-001 BR-013);
@@ -115,6 +118,13 @@ Preparation is admitted only when all of these hold; otherwise the reason is sho
   served Budget gains a Budget Account or an Operator Setting change makes the read period longer: UC-003 BR-016,
   UC-010 step 5, UC-006 A14);
 - the Budget App plug-in passed the composition checks of ADR-001 §4.2 and ADR-008 §6.
+
+Once admitted, and in the same operation on the lane, with the mode still Normal, the coordinator first reads the
+plan's Budget from the Budget App and compares it (UC-006 step 2, UC-003 steps 1 to 6 for that Budget): O-4 stores the
+read with its cursor and O-5 commits the conclusions, which clears `comparison_pending`. Only then does O-6 prepare the
+plan, from the statuses of that Comparison and with the stored cursor it read up to. When the read fails or the
+credentials are refused, no plan is prepared and the statuses stay as they were (UC-006 A15). This read is the
+Operator's, admitted like the Comparison of §2's table; it records nothing for First Upload Matching (UC-003 BR-019).
 
 ### 3a. A Comparison is never left half done (B-04)
 
@@ -160,7 +170,8 @@ that nothing is decided while writing:
     an earlier Lonely Transfer whose other side has arrived (UC-006 BR-010), or one whose clearing failed before
     (A11). They carry no Import Identifier and never touch a Sent Record (B-02);
 - the inputs the check before writing compares (§6): the `state_version` of `coordinator_state` and the
-  `ChangeCursor` of each Budget concerned. There is no configuration fingerprint any more: the configuration (served
+  `ChangeCursor` of the plan's one Budget (an Upload Plan has one Budget, `UPLOAD_PLAN.budget_id`, and a Transfer never
+  crosses Budgets, UC-005 BR-004), both in the header row of `upload_plan_item` (ADR-002 §2). There is no configuration fingerprint any more: the configuration (served
   Budgets, Bank Accounts, Account Mappings, Start Dates, Operator Settings) is stored data whose every change raises
   `state_version`, and service credentials cannot change while a plan is open (§2; S-23, S-24).
 
@@ -212,8 +223,9 @@ Budget App capabilities are resolved here, never while writing (A-10):
   item of this plan will create has no reference yet; its clearing is the item's `clear_counterpart` intent, resolved
   by the defined read of §6 step 8 (B-01).
 
-A plan is prepared from the stored statuses of the latest completed Comparison (§3a); the read and the checks at
-confirmation (§6) are what make sure they are still current. **Date-dependent eligibility is decided here, once
+A plan is prepared from the stored statuses of the Comparison its preparation ran (§3), or, for a plan that replaces an
+open one (§5), of the latest completed Comparison (§3a); the read and the checks at confirmation (§6) are what make sure
+they are still current. **Date-dependent eligibility is decided here, once
 (UC-006 BR-018):** the coordinator takes the date from `Clock` at preparation (the date of `prepared_at`) and applies
 the Upload Window, the file upload window, the Start Date of each Bank Account and the Lonely Transfer grace period
 with that date. The items it stores are the plan; a change of date while the plan awaits confirmation changes none of
@@ -227,7 +239,12 @@ when every one is Import Anyway, the Transfer is planned by the rules above (S-1
 ### 5. While the plan is open
 
 - A Review Decision or Transfer Decision is stored and the plan is replaced by a newly prepared one, with a new expiry,
-  in one exclusive step (UC-006 A3, UC-004 A8). The old plan becomes Cancelled.
+  in one exclusive step (UC-006 A3, UC-004 A8). The old plan becomes Cancelled. The new plan is prepared from stored
+  data without a read of the Budget App (the check of §6 step 4 compares against the cursor the old plan captured, which
+  the new one keeps), and only after the conclusions that the decision owes from stored data are committed (§3a): while
+  `comparison_pending` is set, no plan is prepared or confirmed, and a confirmation meets the raised `state_version`
+  (§6 step 2) in any case. When Slussen stops in between, the next start sets the plan Expired before it concludes the
+  pending Comparison (§8).
 - Cancelling or leaving the plan's screen (UC-006 A2, BR-019) sets the plan to Cancelled and the mode to Normal;
   leaving is the same cancel command, sent by the UI when the screen is left. A Cancelled plan is never shown or
   confirmed again, and a new request prepares a new plan.
@@ -247,8 +264,10 @@ Confirmation runs as one operation in this order; any failure before step 6 writ
    own transaction (ADR-002 §3). Different: the plan becomes Changed Before Writing (A5).
 3. **Configuration unchanged.** Since S-23/S-24 the configuration is stored data covered by step 2; nothing else is
    compared here. (Service credentials cannot change during Plan Open, §2.)
-4. **Budget App unchanged.** For each Budget of the plan, the reader is asked for the changes since the plan's
-   captured `ChangeCursor`. Any change in that Budget makes the plan Changed Before Writing; the change set is then
+4. **Budget App unchanged.** For the plan's one Budget, the reader is asked for the changes since the plan's
+   captured `ChangeCursor`. Any changed transaction in that Budget, in any of its Budget Accounts, makes the plan
+   Changed Before Writing; an answer with no changed transaction means unchanged, also when the Budget App's cursor
+   moved for another reason, and nothing of it is stored then; the change set is then
    stored (O-4, which marks the Comparison pending) and the Comparison is recomputed and committed (O-5, §3a) before
    the Operator returns to review, so the statuses shown are current (A5). A failed read is A6.
 5. **Expiry at the transition to writing (UC-006 step 5, BR-003, A5; NFR-003; B-07).** After the read of step 4, the
@@ -269,7 +288,11 @@ Confirmation runs as one operation in this order; any failure before step 6 writ
    Budget Account (UC-006 BR-012), through the write permit of §7. Each reported result is stored per Budget Account
    (O-8): Created and Already Present become Written and Already Present with the Budget App reference; Rejected keeps
    the transaction available for a retry, which goes to its current Account Mapping (A9, BR-020); a timeout, a lost connection or a cancelled request becomes Unknown (A8,
-   NFR-016).
+   NFR-016). When a call answers `CredentialsRefused` or `StoppedByGate`, every item of that call is recorded Unknown
+   (never Rejected, which would let it follow a moved Account Mapping), a refusal of the credentials is recorded as
+   UC-014 BR-005 says, and nothing more is sent in this Upload: the items of the Budget Accounts not sent yet are
+   recorded Unknown too, step 8 sends nothing, and the Comparison of step 9 is UC-006 A12 when it cannot read. Each
+   such item keeps its Budget Account and is resent only under its Import Identifier (§4).
 8. **Clear (UC-006 step 10, BR-009, BR-010, A11; B-01, B-02).** Only what the confirmed plan states is cleared:
    - For each `LinkedTransfer` item whose `clear_counterpart` is true and whose result in step 7 was Created, the
      counterpart is resolved by one defined read: `BudgetAppReader.readTransaction(budgetReference, legReference)`
@@ -307,7 +330,7 @@ the runtime guarantee behind them (A-19).
 ### 8. Process death and restart
 
 At every start, after the start sequence of ADR-002 §6 has finished and before any operation is admitted, the
-coordinator reads `coordinator_state`:
+coordinator reads `coordinator_state` and handles it in this order, the mode first:
 
 - **Plan Open:** the plan becomes Expired (its confirmation screen no longer exists) and the mode Normal. The Operator
   prepares again.
@@ -449,3 +472,9 @@ is listed in ADR-005 §7.
 - Build-out, the review of phase W3-0 (2026-11-27): §3 (the reason is shown, UC-006 A14; no read is started by the
   preparation), §3a (no conclusion from stored data changes the statuses of a Budget that owes a read of its read
   period).
+- Build-out, phase W4-0 (2026-11-28): S-B-61: §3 (an admitted preparation first reads and compares the plan's
+  Budget, then prepares from that Comparison; a failed read prepares nothing, UC-006 A15), §4 (the statuses a plan
+  starts from); S-B-63: §6 step 7 (`CredentialsRefused` or `StoppedByGate` while writing: Unknown, never Rejected,
+  nothing more sent); S-B-68: §4 and §6 step 4 (one Budget per plan; an answer with no changed transaction is
+  unchanged); S-B-69: §2 (every way a pause ends starts a deferred Scheduled Fetch), §5 (a replacing plan prepared from
+  stored data after the decision's conclusions), §8 (the mode handled before a pending Comparison).
