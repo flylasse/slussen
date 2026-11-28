@@ -96,11 +96,27 @@ class ScriptedBudgetAppReader(var readBudgetsAnswer: ReadResult<List<BudgetRead>
         return readBudgetsAnswer
     }
 
+    /** Every read of one transaction the gate let out, as (Budget reference, transaction reference), in order. */
+    val transactionReads = mutableListOf<Pair<String, String>>()
+
+    /**
+     * What the Budget App answers to a read of one transaction once the gate admitted it (ADR-001 §4.2.3, ADR-007 §6
+     * step 8). Without a scripted answer, a test that reads one fails, as nothing but an Upload reads one.
+     */
+    var transactionAnswer: (budgetReference: String, transactionReference: String) -> ReadResult<TransactionLookup> =
+        { _, _ -> error("No answer to a read of one transaction is scripted (UC-006).") }
+
     override suspend fun readTransaction(
         budgetReference: String,
         transactionReference: String,
         context: RequestContext,
-    ): ReadResult<TransactionLookup> = error("No slice of Phase 7 reads one transaction (UC-006).")
+    ): ReadResult<TransactionLookup> {
+        contexts += context
+        val admission = context.gate.admit(RequestSummary(RequestKind.BudgetAppRead, null, null, unattended = false))
+        if (admission is Admission.Refused) return ReadResult.StoppedByGate(admission.reason)
+        transactionReads += budgetReference to transactionReference
+        return transactionAnswer(budgetReference, transactionReference)
+    }
 
     override suspend fun readChanges(
         budgetReference: String,

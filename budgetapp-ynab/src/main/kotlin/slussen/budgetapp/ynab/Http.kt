@@ -26,10 +26,17 @@ internal sealed interface HttpAnswer {
  * Sends [request] with the request timeout as OkHttp's call timeout and cancels the call when the calling coroutine is
  * cancelled (ADR-001 §4.0). A timeout is [FailureKind.Timeout]; any other failure, also one that is not an I/O failure
  * such as a device that refuses network access, is [FailureKind.ConnectionLost] (S-36, NFR-004); no error text leaves
- * this function.
+ * this function. It follows no redirect and sends nothing again after a failed connection (ADR-001 §4.0: a plug-in never
+ * retries); a redirect is answered as it came.
  */
 internal suspend fun OkHttpClient.send(request: Request, timeout: RequestTimeout): HttpAnswer {
-    val call = newBuilder().callTimeout(timeout.duration).apply { interceptors().add(0, ExceptionsAsIoFailure) }.build()
+    val call = newBuilder().callTimeout(timeout.duration)
+        // ADR-001 §4.0, §4.2.5 (E3 review item 5): no redirect is followed, which would send the request where the gate never admitted it.
+        .followRedirects(false)
+        .followSslRedirects(false)
+        // UC-006 BR-007: OkHttp never sends a request again on its own; a write whose connection was lost is Unknown, never sent twice.
+        .retryOnConnectionFailure(false)
+        .apply { interceptors().add(0, ExceptionsAsIoFailure) }.build()
         .newCall(request)
     return suspendCancellableCoroutine { continuation ->
         continuation.invokeOnCancellation { call.cancel() }

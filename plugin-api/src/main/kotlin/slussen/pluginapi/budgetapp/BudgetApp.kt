@@ -154,7 +154,10 @@ public data class CreateItem(
     val cleared: Boolean,
     /** The other Budget Account, for a linked transfer. */
     val transferBudgetAccountReference: String?,
-)
+) {
+    /** Shows no reference, Import Identifier, date, amount, payee or memo (ADR-006 §2, NFR-007, NFR-008). */
+    override fun toString(): String = "CreateItem(cleared=$cleared, linkedTransfer=${transferBudgetAccountReference != null})"
+}
 
 public sealed interface CreateResult {
     /** One outcome per item, in the order of the items. */
@@ -169,12 +172,21 @@ public sealed interface CreateResult {
 
 /** F-2. A refusal because the Import Identifier is already held is [AlreadyPresent], never [Rejected]. */
 public sealed interface ItemOutcome {
-    public data class Created(val reference: String) : ItemOutcome
+    public data class Created(val reference: String) : ItemOutcome {
+        /** Shows no reference of the Budget App (ADR-006 §2). */
+        override fun toString(): String = "Created"
+    }
 
-    public data class AlreadyPresent(val reference: String?) : ItemOutcome
+    public data class AlreadyPresent(val reference: String?) : ItemOutcome {
+        /** Shows no reference of the Budget App (ADR-006 §2). */
+        override fun toString(): String = "AlreadyPresent(reference ${if (reference == null) "not known" else "known"})"
+    }
 
     /** [reason] is the Budget App's text, shown to the Operator and never journaled or logged (UC-006 A9). */
-    public data class Rejected(val reason: String) : ItemOutcome
+    public data class Rejected(val reason: String) : ItemOutcome {
+        /** Shows no reason: the Budget App's text may repeat a payee or memo (ADR-006 §4). */
+        override fun toString(): String = "Rejected"
+    }
 
     public data object Unknown : ItemOutcome
 }
