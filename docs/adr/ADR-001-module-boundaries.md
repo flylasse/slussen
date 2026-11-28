@@ -577,7 +577,9 @@ now. Where the description leaves a point open, the file is rejected, never gues
    follow the header at once; the file then holds no transaction (UC-002 A3).
 4. After that empty line comes text that is not read. Only its presence is required, so that a file cut short is
    rejected: there is at least one line after the empty line, and the last line that is not empty begins with
-   `Date downloaded`.
+   `Date downloaded`. A file whose text after that empty line holds the header line again, or a line that gives
+   exactly the header's fields with a first field of the form `MM/DD/YYYY`, is rejected: it holds transaction lines
+   that would not be read (two exports in one file, or an empty line among the transaction lines).
 
 **A transaction line** is split into fields at commas as CSV does: a field in double quotes may hold commas, two
 double quotes inside it stand for one, the enclosing quotes are not part of the value, and `""` is an empty value. A
