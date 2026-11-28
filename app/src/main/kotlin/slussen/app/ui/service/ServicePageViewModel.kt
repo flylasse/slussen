@@ -47,15 +47,6 @@ import slussen.pluginapi.value.Secret
 data class FieldUi(val key: String, val kind: FieldKind, val description: String, val optional: Boolean = false)
 
 /**
- * UC-014 A1 at the field: the optional fields the Operator filled in when the part refused the entry, each with what to
- * do; saving without them is always possible. The part's check says only that the entry was refused, so the note names
- * the optional value as one possible cause (S-B-51, E3 review item 3).
- */
-fun refusedOptionalFields(fields: List<FieldUi>, values: Map<String, String>): Map<String, String> =
-    fields.filter { it.optional && values[it.key].orEmpty().isNotBlank() }
-        .associate { it.key to "Refused with this value · correct it, or leave it empty, which is allowed" }
-
-/**
  * Editing the Request Limit of a Data Provider that publishes none (UC-010 steps 2-4, A1, A11;
  * `connections.html#request-limit`).
  */
@@ -566,7 +557,9 @@ class ServicePageViewModel(
         fieldNotes = emptyMap()
         mutableState.value = current.copy(checking = true, credentialAnswer = null, message = null, fieldNotes = emptyMap())
         viewModelScope.launch {
-            val input = CredentialInput(values.mapValues { Secret(it.value) })
+            val optional = (page?.credentialFields ?: emptyList()).filter { it.optional }.map { it.key }.toSet()
+            // UC-014 BR-002: an optional field left empty is left out of the entry (S-B-51).
+            val input = CredentialInput(values.filterNot { (key, value) -> key in optional && value.isBlank() }.mapValues { Secret(it.value) })
             val outcome = orWhenNotStored<CredentialOutcome?>(null) { services.credentials.enter(service, input) }
             checking = false
             if (outcome == null) {
@@ -591,13 +584,13 @@ class ServicePageViewModel(
                 return@launch
             }
             val text = Texts.outcome(page.name, outcome, services.formats)
-            refusedAtCheck = outcome == CredentialOutcome.Refused
+            refusedAtCheck = outcome is CredentialOutcome.Refused
             // A1 of UC-014: an optional value filled in may be why the entry was refused: said at its field.
-            fieldNotes = if (outcome == CredentialOutcome.Refused) refusedOptionalFields(fieldsOf(page), values) else emptyMap()
+            fieldNotes = (outcome as? CredentialOutcome.Refused)?.atFields.orEmpty().associateWith { REFUSED_AT_FIELD }
             credentialAnswer = when (outcome) {
                 is CredentialOutcome.Accepted -> AnswerUi(text, AnswerKind.Done)
                 // A1: refused at the check; nothing is stored and the earlier credentials stay (BR-005).
-                CredentialOutcome.Refused -> AnswerUi(
+                is CredentialOutcome.Refused -> AnswerUi(
                     "Refused by ${page.name} ${services.formats.time(services.clock.instant())} · nothing stored",
                     AnswerKind.Failed,
                     "Check what you entered, or get new credentials from ${page.name}, and try again.",
@@ -614,7 +607,7 @@ class ServicePageViewModel(
                     if (page.isBudgetApp && page.budgetsInUse.isEmpty()) readBudgets(keptMessage = null)
                 }
                 // A1: use case continues at step 2; the form stays open.
-                CredentialOutcome.Refused -> show(page, entering = true)
+                is CredentialOutcome.Refused -> show(page, entering = true)
                 // A2, A5: use case ends.
                 is CredentialOutcome.NotReached, is CredentialOutcome.RequestLimitReached, is CredentialOutcome.NotSent,
                 is CredentialOutcome.WaitingForProvider,
@@ -1263,6 +1256,8 @@ class ServicePageViewModel(
         const val STILL_KEPT_BY_HAND = "Still kept by hand · could not be stored, try again"
         const val PAGE_NOT_OPENED = "This page could not be opened: the data stored on this device could not be read, and nothing was " +
             "changed. Tap Try again, or go back and open it again."
+        /** UC-014 A1 (E4 review item 3): the part's own check refused this optional value, before anything was sent. */
+        const val REFUSED_AT_FIELD = "Refused by its own check before anything was sent · correct it, or leave it empty, which is allowed"
         const val PAGE_NOT_READ_AGAIN = "This page could not be read again from the data stored on this device. Open it again to see it as stored."
     }
 }

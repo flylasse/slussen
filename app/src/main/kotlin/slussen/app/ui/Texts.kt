@@ -251,7 +251,7 @@ object Texts {
 
     fun outcome(service: String, outcome: CredentialOutcome, formats: Formats): String = when (outcome) {
         is CredentialOutcome.Accepted -> "Accepted by $service"
-        CredentialOutcome.Refused -> "Refused by $service · nothing stored"
+        is CredentialOutcome.Refused -> "Refused by $service · nothing stored"
         is CredentialOutcome.NotReached -> "$service could not be reached: ${failure(outcome.kind)} · nothing stored"
         is CredentialOutcome.RequestLimitReached ->
             "Blocked: Request Limit reached · not checked · frees up from ${formats.dateTime(outcome.freesUpAt)} · " +

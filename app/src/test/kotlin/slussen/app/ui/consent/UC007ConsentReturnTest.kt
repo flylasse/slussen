@@ -215,4 +215,122 @@ class UC007ConsentReturnTest {
         assertFalse(answers.state.value.toString().contains("PLANTED"))
         assertFalse(slice.consentLog.records.any { it.toString().contains("PLANTED") })
     }
+
+    // ---- E4 review item 1: an address that answers no Consent Request is no result of any Bank -----------------------
+
+    private fun answersNow(services: MutableStateFlow<UiServices?> = MutableStateFlow(fixture.services), scope: CoroutineScope) =
+        ConsentAnswers(services, scope, slice.clock)
+
+    private fun checks() = slice.consentLog.records.count { it.event == slussen.core.consent.BankConsentEvent.AnswerNotAccepted }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A2: Result Not Accepted", businessRules = ["BR-002"])
+    @DisplayName("A2 (E4 review item 1): an address that answers no Consent Request changes nothing of the one that waits: its banner, its Cancel and the request stay, one neutral line says so, and a real answer is then granted")
+    fun aBareAddressWhileARequestWaits() = runTest {
+        val state = startedState()
+        val answers = answersNow(scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+        answers.readWaiting()
+        val before = answers.state.value
+        val banner = ConsentBannerTexts.of(before, fixture.services, current = null)
+
+        for (bare in listOf(ExampleData.CONSENT_RETURN_ADDRESS, "${ExampleData.CONSENT_RETURN_ADDRESS}?state=", "${ExampleData.CONSENT_RETURN_ADDRESS}?code=x&state=not-a-request")) {
+            answers.returned(bare)
+            assertEquals(before.waiting, answers.state.value.waiting)
+            assertNull(answers.state.value.result)
+            assertEquals(banner, ConsentBannerTexts.of(answers.state.value, fixture.services, current = null))
+            assertTrue(answers.state.value.strayAddress)
+            answers.acknowledgeStray()
+            assertFalse(answers.state.value.strayAddress)
+        }
+        assertEquals(1, slice.consentStore.consentRequests().size)
+
+        answers.returned(answerTo(state))
+        assertTrue((answers.state.value.result!!.end as ConsentEnd.Completed).outcome is CompletionOutcome.Granted)
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A2: Result Not Accepted", businessRules = ["BR-002"])
+    @DisplayName("A2 (E4 review item 1): an address that answers no Consent Request after a grant the Operator has not seen leaves the grant shown")
+    fun aBareAddressAfterAGrant() = runTest {
+        val state = startedState()
+        val answers = answersNow(scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+        answers.returned(answerTo(state))
+        val granted = answers.state.value.result
+
+        answers.returned("${ExampleData.CONSENT_RETURN_ADDRESS}?code=x")
+
+        assertEquals(granted, answers.state.value.result)
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A2: Result Not Accepted", businessRules = ["BR-002"])
+    @DisplayName("A2 (E4 review item 1): a hundred addresses while one is being checked queue nothing: one is checked, the rest are dropped")
+    fun aFloodOfAddresses() = runTest {
+        startedState()
+        val services = MutableStateFlow<UiServices?>(null)
+        val answers = answersNow(services, CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+
+        repeat(100) { answers.returned("${ExampleData.CONSENT_RETURN_ADDRESS}?state=flood-$it") }
+        assertEquals(1, answers.state.value.completing)
+        services.value = fixture.services
+
+        assertEquals(1, checks())
+        assertEquals(0, answers.state.value.completing)
+        assertNull(answers.state.value.result)
+    }
+
+    // ---- E4 review item 5: what a start finds of a Consent Request the process left ----------------------------------
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A10: Consent Request Abandoned", businessRules = ["BR-002"])
+    @DisplayName("A10 (E4 review item 5): at a start, a Consent Request whose lifetime ended without an answer is said once: not granted, the time for the answer ended; acknowledged, it is not said again")
+    fun aLifetimeThatEndedWhileSlussenWasStopped() = runTest {
+        startedState()
+        slice.clock.advance(Duration.ofMinutes(16))
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+
+        val first = answersNow(scope = scope)
+        first.atStart()
+        val end = first.state.value.result!!.end as ConsentEnd.Abandoned
+        assertEquals(ConsentEnd.Abandoned(bank, timedOut = true, afterStart = true), end)
+        assertEquals(
+            listOf("The time for the answer ended before a result reached Slussen.", "Any earlier Bank Consent of $bank is unchanged."),
+            ConsentTexts.end(end, bank, "Aurora Open Banking", fixture.services.formats).lines,
+        )
+        first.dismiss()
+
+        val second = answersNow(scope = scope)
+        second.atStart()
+        assertNull(second.state.value.result)
+        assertTrue(slice.consentStore.consentRequests().isEmpty())
+    }
+
+    // ---- E4 review item 7 --------------------------------------------------------------------------------------------
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A10: Consent Request Abandoned", businessRules = ["BR-002"])
+    @DisplayName("A10 (E4 review item 7): the banner's Cancel abandons the Consent Request it names, and no other")
+    fun theBannersCancelAbandonsItsOwnRequest() = runTest {
+        startedState()
+        slice.bankConsents.start(slice.openBankingKey, "Norrby Bank (SE)", browserAvailable = true)
+        val answers = answersNow(scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+        answers.readWaiting()
+        val banner = ConsentBannerTexts.of(answers.state.value, fixture.services, current = null)!!
+        val named = answers.state.value.waiting.single { it.requestId == banner.requestId }
+
+        answers.cancel(banner.service!!, banner.requestId!!)
+
+        val left = slice.consentStore.consentRequests()
+        assertEquals(1, left.size)
+        assertTrue(left.none { it.id == named.requestId })
+        assertEquals(ConsentEnd.Abandoned(named.bankReference, timedOut = false), answers.state.value.result!!.end)
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "Main Success Scenario", businessRules = ["BR-011"], requirements = ["NFR-008"])
+    @DisplayName("BR-011 (E4 review item 7): the paste field's keyboard neither corrects nor learns what is typed")
+    fun thePasteFieldsKeyboard() {
+        assertEquals(false, PASTE_KEYBOARD.autoCorrectEnabled)
+        assertEquals(androidx.compose.ui.text.input.KeyboardType.Password, PASTE_KEYBOARD.keyboardType)
+    }
 }

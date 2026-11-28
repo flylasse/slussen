@@ -580,6 +580,18 @@ class BankConsents(
      */
     suspend fun holdsBackUploadPlan(): Boolean = waitingAt(clock.instant()).isNotEmpty()
 
+    /**
+     * A10 (E4 review item 5): the Consent Requests whose lifetime ended without an answer, from stored data only, so that a
+     * start can say that their consent was not granted; abandoning each ([abandon]) is how the Operator acknowledges it.
+     * An answered Consent Request without a Bank Consent is not among them: the store keeps no outcome of a consumed answer.
+     */
+    suspend fun endedUnanswered(): List<EndedRequest> {
+        val now = clock.instant()
+        // UC-007 BR-002: without Cancel, a Consent Request becomes unanswerable when its lifetime ends.
+        return consents.consentRequests().filter { !it.answered && now.isAfter(it.expiresAt) }
+            .map { EndedRequest(it.id, it.dataProviderId, it.bankReference, it.expiresAt) }
+    }
+
     private suspend fun waitingAt(now: Instant): List<StoredConsentRequest> =
         consents.consentRequests().filter { !it.answered && !now.isAfter(it.expiresAt) }
 

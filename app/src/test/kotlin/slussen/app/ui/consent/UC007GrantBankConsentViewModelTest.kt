@@ -509,9 +509,71 @@ class UC007GrantBankConsentViewModelTest {
         browser = true
         page.openMyBank()
         page.opened(false)
-        assertEquals("A browser is needed to open your Bank's sign-in.", page.ui().sheet!!.answer!!.lines.first())
+        val withdrawn = page.ui().sheet!!.answer!!
+        assertEquals("Bank Consent not opened · $vesta", withdrawn.title)
+        assertEquals(
+            listOf(
+                "The Consent Request was started, but no app on this phone could show your Bank's sign-in, so it was withdrawn.",
+                "Install or enable a browser on this phone, then try again.",
+            ),
+            withdrawn.lines,
+        )
         assertTrue(requests().isEmpty())
         assertTrue(page.ui().waiting.isEmpty())
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A11: No Browser on the Device")
+    @DisplayName("A11 (E4 review item 4): a Consent Request that could not be shown and could not be withdrawn stays shown as waiting, with its paste field and Cancel")
+    fun notShownAndNotWithdrawn() {
+        accepted()
+        val page = page()
+        page.openChooser()
+        page.chooseBank(page.ui().chooser!!.banks.first { it.name == vesta })
+        page.openMyBank()
+        slice.consentStore.failsToAbandon = true
+
+        page.opened(false)
+
+        assertNull(page.ui().sheet)
+        val waiting = page.ui().waiting.single()
+        assertEquals(
+            "Your Bank's sign-in could not be shown, and the Consent Request could not be withdrawn: paste the address your browser shows, or Cancel.",
+            waiting.note,
+        )
+        assertEquals(1, requests().size)
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A2: Result Not Accepted", businessRules = ["BR-011"])
+    @DisplayName("S-B-52 (E4 review item 6): an answer that arrives without accepted credentials is lost with Slussen's own address: start again; pasting is offered only for a registered address of another kind")
+    fun resultNotHandedIn() {
+        accepted()
+        val page = page()
+        val state = page.startedAtVesta()
+        runBlocking { slice.credentials.remove(key) }
+
+        answers.returned(answerTo(state))
+
+        val lost = page.ui().result!!
+        assertEquals("Result not handed in", lost.title)
+        assertEquals(
+            listOf(
+                "Enter the credentials of $provider first · its Bank Consents are granted and renewed once they are accepted",
+                "The answer is lost: start again once they are accepted.",
+            ),
+            lost.lines,
+        )
+        assertEquals(listOf(ResultAction.StartAgain), lost.actions)
+
+        page.done()
+        slice.bankConsent.registered = { "https://household.example/return" }
+        page.load()
+        answers.returned(answerTo(state))
+        assertEquals(
+            "Or, once they are accepted, paste the address your browser shows on https://household.example/return again, within the Consent Request lifetime.",
+            page.ui().result!!.lines.last(),
+        )
     }
 
     @Test

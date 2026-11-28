@@ -42,6 +42,9 @@ class InMemoryConsentStore(val consents: MutableList<StoredBankConsent> = mutabl
     /** Makes O-10 start fail before it changes anything, as a `device.db` that cannot be written would. */
     var failsToStart: Boolean = false
 
+    /** Abandoning a Consent Request fails, as a storage failure would (NFR-023). */
+    var failsToAbandon: Boolean = false
+
     private fun failing(fails: Boolean) {
         if (fails) throw IllegalStateException("The invented storage of this test cannot be written.")
     }
@@ -119,6 +122,7 @@ class InMemoryConsentStore(val consents: MutableList<StoredBankConsent> = mutabl
     }
 
     override suspend fun abandonRequest(requestId: Long): Boolean = lock.withLock {
+        failing(failsToAbandon)
         val request = requests.firstOrNull { it.id == requestId }
         if (request == null || request.answered) return@withLock false
         deleteRequestWithCorrelation(request.id)

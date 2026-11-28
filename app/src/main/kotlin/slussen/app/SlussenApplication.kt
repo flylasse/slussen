@@ -49,8 +49,8 @@ class SlussenApplication : Application() {
         super.onCreate()
         scope.launch {
             started.value = compositionRoot.start(this@SlussenApplication, clock, scope)
-            // UC-008 BR-001: the Consent Requests that wait are read from stored data only.
-            consentAnswers.readWaiting()
+            // UC-008 BR-001: the Consent Requests that wait, and one whose lifetime ended meanwhile, are read from stored data only.
+            consentAnswers.atStart()
         }
     }
 }

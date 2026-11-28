@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import slussen.app.ui.UiServices
+import slussen.core.consent.AbandonOutcome
 import slussen.core.consent.BankConsentState
 import slussen.core.consent.BankConsentsPage
 import slussen.core.consent.BanksOutcome
@@ -62,6 +63,7 @@ data class WaitingCardUi(
     /** What the Operator pasted, a one-time value, masked in [toString]; cleared after use. */
     val pasted: OneTimeText,
     val cancelling: Boolean,
+    val note: String? = null,
 )
 
 /** One Bank on the page: its Bank Consent (`#list`, `#expired`), a Bank whose Bank Accounts miss one, or one just revoked (`#revoked`). */
@@ -99,6 +101,8 @@ data class BankConsentsUi(
     val revokeQuestion: RevokeQuestionUi?,
     /** NFR-023: an answer is being handed to the Data Provider. */
     val completing: String?,
+    /** E4 review item 1: one neutral line about an address that answers no Consent Request, with OK; null otherwise. */
+    val stray: String? = null,
 )
 
 /** Open the way to the Bank's Strong Customer Authentication in the browser (step 4): kept only until the screen opened it. */
@@ -163,6 +167,9 @@ class BankConsentsViewModel(
     private val revoked = mutableListOf<Revoked>()
     private val lineAnswers = mutableMapOf<Long, ConsentResultUi>()
     private var pasted = ""
+
+    /** A11 (E4 review item 4): Consent Requests whose sign-in could not be shown and that could not be withdrawn. */
+    private val notShown = mutableSetOf<Long>()
 
     init {
         viewModelScope.launch {
@@ -353,10 +360,18 @@ class BankConsentsViewModel(
             render()
             return
         }
-        // A11 of UC-007: a browser that does not open the way starts nothing that could be answered: the Consent Request is deleted.
+        // A11 of UC-007: a browser that does not open the way leaves nothing that could be answered: the Consent Request is withdrawn.
         viewModelScope.launch {
-            services.bankConsents?.let { consents -> orWhenThrown(Unit) { consents.abandon(open.requestId) } }
-            sheet = sheet?.copy(opening = false, answer = ConsentTexts.start(StartOutcome.NoBrowser, open.bankReference, name, formats))
+            val consents = services.bankConsents
+            val withdrawn = consents != null &&
+                orWhenThrown<AbandonOutcome>(AbandonOutcome.NotStored) { consents.abandon(open.requestId) } == AbandonOutcome.Abandoned
+            if (withdrawn) {
+                sheet = sheet?.copy(opening = false, answer = ConsentTexts.notShown(open.bankReference))
+            } else {
+                // E4 review item 4: not withdrawn, it still waits, with its paste field and Cancel.
+                sheet = null
+                notShown += open.requestId
+            }
             answers.started(service)
             render()
         }
@@ -378,6 +393,9 @@ class BankConsentsViewModel(
         answers.pasted(service, text)
         render()
     }
+
+    /** E4 review item 1: OK on the line about an address that answers no Consent Request. */
+    fun acknowledgeStray() = answers.acknowledgeStray()
 
     /** A10: Cancel while Slussen waits for the result. */
     fun cancelWaiting(requestId: Long) = answers.cancel(service, requestId)
@@ -501,9 +519,10 @@ class BankConsentsViewModel(
             chooser = chooser?.let(::chooserUi),
             sheet = sheet?.let { sheetUi(it, answered) },
             waiting = answered.waiting.filter { it.service == service }.map { waitingUi(it, shown, answered) },
-            result = result?.let { ConsentTexts.end(it.end, it.bankReference, name, formats) },
+            result = result?.let { ConsentTexts.end(it.end, it.bankReference, name, formats, shown.returnAddress.takeUnless { shown.ownAddress }) },
             revokeQuestion = question,
             completing = if (answered.completing > 0) "Handing the result to $name…" else null,
+            stray = if (answered.strayAddress && active) ConsentTexts.STRAY_ADDRESS else null,
         )
     }
 
@@ -605,6 +624,7 @@ class BankConsentsViewModel(
             pastePlaceholder = "${shown.returnAddress}?…",
             pasted = OneTimeText(pasted),
             cancelling = waiting.requestId in answered.cancelling,
+            note = if (waiting.requestId in notShown) ConsentTexts.NOT_SHOWN_NOT_WITHDRAWN else null,
         )
     }
 

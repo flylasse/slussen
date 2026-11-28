@@ -38,17 +38,26 @@
         android:label="@string/app_name"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
-        <!-- singleTask: the return from the Bank's sign-in comes back to the running Slussen through onNewIntent. -->
         <activity
             android:name=".ui.SlussenActivity"
-            android:exported="true"
-            android:launchMode="singleTask">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- UC-007 BR-011: Slussen's own return address, <application id>://consent, so that a debug and a release
-                 build each take only their own answers; an intent filter is no permission (NFR-022, S-B-43). -->
+        </activity>
+
+        <!-- UC-007 BR-011: Slussen's own return address, <application id>://consent, so that a debug and a release
+             build each take only their own answers; an intent filter is no permission (NFR-022, S-B-43). Received by
+             an activity without a screen, kept out of recents and history, that hands the answer on and brings
+             Slussen forward as it is (E4 review item 2). -->
+        <activity
+            android:name=".ui.ConsentReturnActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

@@ -268,6 +268,9 @@ data class BankConsentLine(
     val coveredBankAccounts: List<String>,
 )
 
+/** A Consent Request whose lifetime ended without an answer (A10), of the Data Provider [dataProviderId]. */
+data class EndedRequest(val requestId: Long, val dataProviderId: Long, val bankReference: String, val expiresAt: Instant)
+
 /** A Consent Request that waits for its answer within its lifetime (step 4, A10). */
 data class WaitingRequest(val requestId: Long, val bankReference: String, val expiresAt: Instant)
 

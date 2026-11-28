@@ -56,8 +56,11 @@ sealed interface CredentialOutcome {
     /** Step 4-6: stored, encrypted, in place of the earlier ones. */
     data class Accepted(val acceptedAt: Instant) : CredentialOutcome
 
-    /** A1: nothing stored, the earlier credentials unchanged. */
-    data object Refused : CredentialOutcome
+    /**
+     * A1: nothing stored, the earlier credentials unchanged. [atFields] are the optional fields the part's own check
+     * refused before anything was sent (E4 review item 3); empty for a refusal by the service, said of the credentials.
+     */
+    data class Refused(val atFields: Set<String> = emptySet()) : CredentialOutcome
 
     /** A2: the service did not answer within the request timeout or was unavailable; nothing stored. */
     data class NotReached(val kind: FailureKind) : CredentialOutcome
@@ -169,8 +172,11 @@ class ServiceCredentials(
 
     suspend fun enter(service: ServiceKey, input: CredentialInput): CredentialOutcome {
         val result = coordinator.run(OperationKind.ServiceCredentialChange, StartedBy.Operator) { permit ->
+            val context = context(service, permit, credential = null)
+            val asked = AskedGate(context.gate)
+            val capability = capability(service)
             // UC-014 BR-002: The credentials are checked with the service the way its part declares.
-            when (val check = capability(service).check(input, context(service, permit, credential = null))) {
+            when (val check = capability.check(input, ServiceRequestContext(asked, context.timeout, null))) {
                 is CredentialCheck.Accepted -> {
                     val acceptedAt = clock.instant()
                     // UC-014 BR-003: Credentials are stored only on the device, encrypted with a key that never leaves the device.
@@ -183,7 +189,7 @@ class ServiceCredentials(
                     CredentialOutcome.Accepted(acceptedAt)
                 }
                 // UC-014 BR-005: Refused credentials replace nothing; the earlier ones stay unchanged.
-                CredentialCheck.Refused -> CredentialOutcome.Refused
+                CredentialCheck.Refused -> CredentialOutcome.Refused(RefusedFields.of(capability, input, context.timeout, sentAnything = asked.asked))
                 is CredentialCheck.TransientFailure -> CredentialOutcome.NotReached(check.kind)
                 is CredentialCheck.StoppedByGate -> heldBack(service, check.reason)
             }
@@ -227,5 +233,17 @@ class ServiceCredentials(
             is OperationResult.Ran -> if (result.value) RemovalOutcome.Removed else RemovalOutcome.NotRemoved
             is OperationResult.Refused -> RemovalOutcome.Unavailable(result.reason)
         }
+    }
+}
+
+/** A gate that remembers whether the part asked it for a request, so that a refusal before anything was sent is known. */
+private class AskedGate(private val gate: slussen.pluginapi.request.RequestGate) : slussen.pluginapi.request.RequestGate {
+    @Volatile
+    var asked = false
+        private set
+
+    override suspend fun admit(request: slussen.pluginapi.request.RequestSummary): slussen.pluginapi.request.Admission {
+        asked = true
+        return gate.admit(request)
     }
 }

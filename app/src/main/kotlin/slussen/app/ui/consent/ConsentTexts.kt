@@ -120,12 +120,42 @@ object ConsentTexts {
         }
     }
 
-    /** What ended a Consent Request, where Slussen showed that it waits (steps 6-10, A1, A2, A4, A8-A10). */
-    fun end(end: ConsentEnd, bank: String?, provider: String, formats: Formats): ConsentResultUi = when (end) {
-        is ConsentEnd.Completed -> completion(end.outcome, bank, provider, formats)
+    /**
+     * A11 (E4 review item 4): the Consent Request was started, but no app could show the Bank's sign-in, so it was
+     * withdrawn.
+     */
+    fun notShown(bank: String): ConsentResultUi = ConsentResultUi(
+        "Bank Consent not opened · $bank",
+        listOf(
+            "The Consent Request was started, but no app on this phone could show your Bank's sign-in, so it was withdrawn.",
+            "Install or enable a browser on this phone, then try again.",
+        ),
+        AnswerKind.Failed,
+        listOf(ResultAction.TryAgain),
+        bankReference = bank,
+    )
+
+    /** A11 (E4 review item 4): the sign-in could not be shown, and withdrawing the Consent Request failed: it still waits. */
+    const val NOT_SHOWN_NOT_WITHDRAWN =
+        "Your Bank's sign-in could not be shown, and the Consent Request could not be withdrawn: paste the address your browser shows, or Cancel."
+
+    /** E4 review item 1: an address was opened that answers no Consent Request. */
+    const val STRAY_ADDRESS = "An address was opened that answers no Consent Request · nothing changed"
+
+    /**
+     * What ended a Consent Request, where Slussen showed that it waits (steps 6-10, A1, A2, A4, A8-A10). [pasteAddress] is
+     * the registered return address when it is not the application's own, the only case in which the browser can have
+     * shown an address to paste again (E4 review item 6).
+     */
+    fun end(end: ConsentEnd, bank: String?, provider: String, formats: Formats, pasteAddress: String? = null): ConsentResultUi = when (end) {
+        is ConsentEnd.Completed -> completion(end.outcome, bank, provider, formats, pasteAddress)
         is ConsentEnd.Abandoned -> ConsentResultUi(
             "Bank Consent not granted · ${end.bankReference}",
-            listOf("The Consent Request was cancelled, or no result arrived in time.", "Any earlier Bank Consent of ${end.bankReference} is unchanged."),
+            listOf(
+                // A10 of UC-007 (E4 review item 5): found at a start, the time for the answer had ended while Slussen was stopped.
+                if (end.afterStart) "The time for the answer ended before a result reached Slussen." else "The Consent Request was cancelled, or no result arrived in time.",
+                "Any earlier Bank Consent of ${end.bankReference} is unchanged.",
+            ),
             AnswerKind.Unchanged,
             listOf(ResultAction.StartAgain),
             bankReference = end.bankReference,
@@ -146,7 +176,7 @@ object ConsentTexts {
         )
     }
 
-    private fun completion(outcome: CompletionOutcome, known: String?, provider: String, formats: Formats): ConsentResultUi {
+    private fun completion(outcome: CompletionOutcome, known: String?, provider: String, formats: Formats, pasteAddress: String?): ConsentResultUi {
         fun notGranted(bank: String, vararg lines: String) =
             ConsentResultUi("Bank Consent not granted · $bank", lines.toList(), AnswerKind.Failed, listOf(ResultAction.StartAgain), bankReference = bank)
         return when (outcome) {
@@ -195,15 +225,18 @@ object ConsentTexts {
                 listOf(ResultAction.StartAgain),
                 bankReference = outcome.bankReference ?: known,
             )
-            // S-B-52: an answer that arrives without accepted credentials is left unconsumed and can be answered within its lifetime.
+            // S-B-52: an answer that arrives without accepted credentials is left unconsumed; with Slussen's own address it is lost (E4 review item 6).
             is CompletionOutcome.NotAvailable -> ConsentResultUi(
                 "Result not handed in",
-                listOf(
+                listOfNotNull(
                     unavailable(outcome.reason, provider),
-                    "Then paste the address the browser shows again, within the Consent Request lifetime.",
+                    "The answer is lost: start again once they are accepted.",
+                    pasteAddress?.let {
+                        "Or, once they are accepted, paste the address your browser shows on $it again, within the Consent Request lifetime."
+                    },
                 ),
                 AnswerKind.Unchanged,
-                listOf(ResultAction.Done),
+                listOf(ResultAction.StartAgain),
                 bankReference = known,
             )
         }

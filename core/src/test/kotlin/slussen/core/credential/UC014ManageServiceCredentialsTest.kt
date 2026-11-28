@@ -238,7 +238,7 @@ class UC014ManageServiceCredentialsTest {
 
         val outcome = slice.credentials.enter(ServiceKey.budgetApp, slice.input("token" to "PLANTED-REFUSED-TOKEN"))
 
-        assertEquals(CredentialOutcome.Refused, outcome)
+        assertEquals(CredentialOutcome.Refused(), outcome)
         assertEquals(ExampleData.BUDGET_APP_TOKEN, storedSecret(ServiceKey.budgetApp))
         assertEquals(CredentialStatus.Accepted(acceptedAt), slice.credentials.status(ServiceKey.budgetApp))
         assertEquals(1, slice.journalRecorder.entries.size)
@@ -578,7 +578,7 @@ class UC014ManageServiceCredentialsTest {
 
         val outcome = slice.credentials.enter(slice.feedsKey, slice.input("setupKey" to "not a setup key"))
 
-        assertEquals(CredentialOutcome.Refused, outcome)
+        assertEquals(CredentialOutcome.Refused(), outcome)
         assertEquals(0, slice.feeds.credentials.requestsSent)
         assertTrue(slice.providerRequests.requests.isEmpty())
         assertNull(slice.vault.read(slice.feedsKey))

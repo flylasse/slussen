@@ -31,8 +31,11 @@ sealed interface ConsentEnd {
     /** The answer, returned at the return address or pasted, as the core completed it. */
     data class Completed(val outcome: CompletionOutcome, val pasted: Boolean) : ConsentEnd
 
-    /** A10: cancelled by the Operator, or [timedOut]: no result arrived within the Consent Request lifetime. */
-    data class Abandoned(val bankReference: String, val timedOut: Boolean) : ConsentEnd
+    /**
+     * A10: cancelled by the Operator, or [timedOut]: no result arrived within the Consent Request lifetime; [afterStart]:
+     * found at a start of Slussen, which had stopped meanwhile (E4 review item 5).
+     */
+    data class Abandoned(val bankReference: String, val timedOut: Boolean, val afterStart: Boolean = false) : ConsentEnd
 
     /** A10: Cancel did not delete the Consent Request (NFR-023): it is answered meanwhile, could not be stored, or is paused. */
     data class NotAbandoned(val bankReference: String, val outcome: AbandonOutcome) : ConsentEnd
@@ -45,6 +48,8 @@ data class ConsentResult(
     val end: ConsentEnd,
     /** Shown on the Data Provider's page: it goes when the Operator leaves that page (review D4 item 2). */
     val shownOnPage: Boolean = false,
+    /** Consent Requests whose lifetime ended without an answer, abandoned once the Operator has seen this, so that it is said once. */
+    val forget: List<Long> = emptyList(),
 )
 
 /** What [ConsentAnswers] holds for every screen: answers being handed in, the Consent Requests that wait, the last result. */
@@ -54,6 +59,8 @@ data class ConsentAnswersState(
     val result: ConsentResult? = null,
     /** The Consent Requests whose Cancel runs (NFR-023). */
     val cancelling: Set<Long> = emptySet(),
+    /** E4 review item 1: an address was opened that answers no Consent Request; it changed nothing, and goes when acknowledged. */
+    val strayAddress: Boolean = false,
 )
 
 /**
@@ -77,6 +84,10 @@ class ConsentAnswers(
     /** An answer at the return address was handed in in this process: a second delivery of it is not the Operator's result. */
     private var returnedBefore = false
 
+    /** An address from the return is being checked: further ones are dropped, so that a flood queues nothing (E4 review item 1). */
+    @Volatile
+    private var checkingReturned = false
+
     // UC-007 BR-011: Slussen's return address hands the answer back to Slussen.
     /** Step 6: an answer that reached the activity at the return address. */
     fun returned(address: String) = handIn(address, pastedFor = null)
@@ -88,6 +99,11 @@ class ConsentAnswers(
     private fun handIn(address: String, pastedFor: ServiceKey?) {
         // UC-007 BR-002: the time of arrival decides whether the answer is late, so it is taken now, before anything waits.
         val arrivedAt = clock.instant()
+        val returned = pastedFor == null
+        if (returned) {
+            if (checkingReturned) return
+            checkingReturned = true
+        }
         val answer = ConsentAnswer(Secret(address))
         mutableState.update { it.copy(completing = it.completing + 1) }
         scope.launch {
@@ -95,6 +111,7 @@ class ConsentAnswers(
                 val started = services.filterNotNull().first()
                 order.withLock { completed(started, answer, arrivedAt, pastedFor) }
             } finally {
+                if (returned) checkingReturned = false
                 mutableState.update { it.copy(completing = it.completing - 1) }
             }
         }
@@ -117,6 +134,13 @@ class ConsentAnswers(
         if (returned) returnedBefore = true
         readWaitingQuietly(services)
         if (again) return
+        // UC-007 BR-002: an address from the return that answers no Consent Request is the result of no Bank: it replaces and removes nothing.
+        if (returned && outcome is CompletionOutcome.NotAccepted &&
+            (outcome.reason == AnswerNotAccepted.Unreadable || outcome.reason == AnswerNotAccepted.NoSuchRequest)
+        ) {
+            mutableState.update { it.copy(strayAddress = true) }
+            return
+        }
         val bank = bankOf(outcome)
         val service = pastedFor
             ?: waitingBefore.firstOrNull { it.bankReference == bank }?.service
@@ -164,14 +188,18 @@ class ConsentAnswers(
                 .lastOrNull()
             state.copy(
                 waiting = read,
-                result = timedOut?.let { ConsentResult(it.service, it.bankReference, ConsentEnd.Abandoned(it.bankReference, timedOut = true)) } ?: state.result,
+                result = timedOut?.let {
+                    ConsentResult(it.service, it.bankReference, ConsentEnd.Abandoned(it.bankReference, timedOut = true), forget = listOf(it.requestId))
+                } ?: state.result,
             )
         }
     }
 
     /** Step 4: a Consent Request of [service] was started: an earlier result of it goes, and the waiting ones are read again. */
     fun started(service: ServiceKey) {
+        val before = mutableState.value.result
         mutableState.update { state -> state.copy(result = state.result?.takeUnless { it.service == service || it.service == null }) }
+        if (mutableState.value.result == null) forget(before)
         scope.launch { readWaiting() }
     }
 
@@ -216,11 +244,71 @@ class ConsentAnswers(
     // Review D4 item 2: an answer is shown until the Operator leaves the page that shows it, or dismisses it.
     /** The Operator left the page of [service]: a result it showed goes. */
     fun left(service: ServiceKey) {
-        mutableState.update { state -> if (state.result?.service == service && state.result.shownOnPage) state.copy(result = null) else state }
+        val before = mutableState.value.result
+        mutableState.update { state ->
+            val goes = state.result?.service == service && state.result.shownOnPage
+            state.copy(result = if (goes) null else state.result, strayAddress = false)
+        }
+        if (before != null && mutableState.value.result == null) forget(before)
+    }
+
+    /** E4 review item 1: the Operator acknowledged the line about an address that answers no Consent Request. */
+    fun acknowledgeStray() {
+        mutableState.update { it.copy(strayAddress = false) }
+    }
+
+    /**
+     * A10 (E4 review item 5): at a start, from stored data only (UC-008 BR-001): a Consent Request whose lifetime ended
+     * while Slussen was stopped is said once, as not granted; once the Operator has seen it, it is abandoned, so that the
+     * next start does not say it again. The waiting ones are read as at any time.
+     */
+    suspend fun atStart() {
+        val started = services.value ?: return
+        val consents = started.bankConsents ?: return
+        val ended = try {
+            consents.endedUnanswered()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            emptyList()
+        }
+        val latest = ended.maxByOrNull { it.expiresAt }
+        if (latest != null) {
+            val service = ServiceKey.dataProvider(latest.dataProviderId)
+            mutableState.update { state ->
+                state.copy(
+                    result = state.result ?: ConsentResult(
+                        service, latest.bankReference, ConsentEnd.Abandoned(latest.bankReference, timedOut = true, afterStart = true),
+                        forget = ended.map { it.requestId },
+                    ),
+                )
+            }
+        }
+        readWaitingQuietly(started)
+    }
+
+    /** Abandons what a result said once (A10), so that it is not said again; a failure only means it is said again. */
+    private fun forget(result: ConsentResult?) {
+        val ids = result?.forget.orEmpty()
+        if (ids.isEmpty()) return
+        scope.launch {
+            val consents = services.value?.bankConsents ?: return@launch
+            ids.forEach { id ->
+                try {
+                    consents.abandon(id)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    // NFR-023: kept stored; the next start says it again.
+                }
+            }
+        }
     }
 
     /** Done, or OK on the banner: the result goes. */
     fun dismiss() {
+        val before = mutableState.value.result
         mutableState.update { it.copy(result = null) }
+        forget(before)
     }
 }

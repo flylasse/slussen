@@ -936,6 +936,23 @@ class UC007GrantBankConsentTest {
     }
 
     @Test
+    @UseCase(id = "UC-007", scenario = "A10: Consent Request Abandoned", businessRules = ["BR-002"])
+    @DisplayName("A10 (E4 review item 5): a Consent Request whose lifetime ended without an answer is read from stored data, and abandoning it acknowledges it; an answered one is not among them")
+    fun endedWithoutAnAnswer() = runTest {
+        val request = started()
+        assertEquals(emptyList<EndedRequest>(), consents.endedUnanswered())
+        slice.clock.advance(Duration.ofMinutes(16))
+
+        assertEquals(listOf(EndedRequest(request.requestId, dataProviderId, bank, request.expiresAt)), consents.endedUnanswered())
+        assertEquals(AbandonOutcome.Abandoned, consents.abandon(request.requestId))
+        assertEquals(emptyList<EndedRequest>(), consents.endedUnanswered())
+
+        granted()
+        slice.clock.advance(Duration.ofMinutes(16))
+        assertEquals(emptyList<EndedRequest>(), consents.endedUnanswered())
+    }
+
+    @Test
     @UseCase(id = "UC-007", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-008", "BR-010"])
     @DisplayName("BR-003, BR-010: the page names each Bank the Data Provider names for its Bank Accounts that has no Bank Consent, with those Bank Accounts, and it is granted again without a choice")
     fun banksWithoutABankConsent() = runTest {

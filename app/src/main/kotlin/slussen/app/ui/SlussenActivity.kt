@@ -2,7 +2,6 @@ package slussen.app.ui
 
 import android.Manifest
 import android.content.ActivityNotFoundException
-import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -81,13 +80,11 @@ import slussen.app.ui.theme.SlussenColors
 import slussen.app.ui.transfers.TransfersScreen
 import slussen.app.ui.transfers.TransfersViewModel
 import slussen.app.ui.theme.SlussenTheme
-import slussen.app.ui.consent.ArrivedIntent
 import slussen.app.ui.consent.BankConsentsSection
 import slussen.app.ui.consent.BankConsentsViewModel
 import slussen.app.ui.consent.ConsentAnswers
 import slussen.app.ui.consent.ConsentBanner
 import slussen.app.ui.consent.ConsentBannerTexts
-import slussen.app.ui.consent.ConsentReturn
 import slussen.app.ui.consent.bankConsentActionsOf
 import slussen.app.platform.browser.ConsentBrowser
 import slussen.core.port.ServiceKey
@@ -100,8 +97,6 @@ class SlussenActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val application = application as SlussenApplication
-        // Step 6 of UC-007: Slussen was stopped while the Operator was at the Bank: the answer is in the launching intent.
-        take(intent, restored = savedInstanceState != null)
         setContent {
             SlussenTheme {
                 val services by application.services.collectAsState()
@@ -111,32 +106,6 @@ class SlussenActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    /** UC-007 step 6: the answer reaches the running Slussen (the activity is `singleTask`). */
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        take(intent, restored = false)
-    }
-
-    // UC-007 BR-011: Slussen's return address hands the answer back to Slussen, which hands it to the core at once, off the main thread, once.
-    /**
-     * Hands an answer at the return address to [SlussenApplication.consentAnswers] with the time it arrived; an intent
-     * handed again (restored, or brought back from recents) is not an answer again. The address is then removed from the
-     * intent, and never logged or kept in saved state (BR-006).
-     */
-    private fun take(intent: Intent?, restored: Boolean) {
-        intent ?: return
-        val arrived = ArrivedIntent(
-            action = intent.action,
-            address = intent.dataString,
-            restored = restored,
-            fromRecents = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0,
-        )
-        val address = ConsentReturn.answerIn(arrived, packageName) ?: return
-        intent.data = null
-        setIntent(intent)
-        (application as SlussenApplication).consentAnswers.returned(address)
     }
 }
 

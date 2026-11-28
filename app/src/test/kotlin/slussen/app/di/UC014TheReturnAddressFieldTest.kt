@@ -5,8 +5,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import slussen.app.ui.service.FieldUi
-import slussen.app.ui.service.refusedOptionalFields
+import slussen.core.credential.RefusedFields
 import slussen.pluginapi.credential.CredentialCheck
 import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.testfixtures.RecordingRequestGate
@@ -26,14 +25,16 @@ import java.util.Base64
 @DisplayName("UC-014: Manage Service Credentials, the optional return address with the real part")
 class UC014TheReturnAddressFieldTest {
     private val part = EnableBankingDataProvider(RecordingSlussenLog())
-    private val fields = part.credentials.form.fields.map { FieldUi(it.key, it.kind, it.description, it.optional) }
+    private val fields = part.credentials.form.fields
 
     private val pem: String = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair().private.encoded.let {
         "-----BEGIN PRIVATE KEY-----\n" + Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(it) + "\n-----END PRIVATE KEY-----\n"
     }
 
+    /** The entry as the screen gives it: an optional field left empty is left out. */
     private fun input(returnAddress: String) = CredentialInput(
-        mapOf("applicationId" to Secret("00000000-0000-4000-8000-00000000e4e4"), "privateKey" to Secret(pem), "returnAddress" to Secret(returnAddress)),
+        mapOf("applicationId" to Secret("00000000-0000-4000-8000-00000000e4e4"), "privateKey" to Secret(pem)) +
+            (if (returnAddress.isEmpty()) emptyMap() else mapOf("returnAddress" to Secret(returnAddress))),
     )
 
     @Test
@@ -46,17 +47,23 @@ class UC014TheReturnAddressFieldTest {
 
     @Test
     @UseCase(id = "UC-014", scenario = "A1: Credentials Refused", businessRules = ["BR-002"])
-    @DisplayName("A1 (E3 review item 3): a return address the part refuses is refused without contacting the service and named at its field; left empty, the entry goes on to the check")
+    @DisplayName("A1 (E4 review item 3): only the part's own check of the return address, before anything is sent, names it at its field; left empty, the entry goes on to the check")
     fun aRefusedReturnAddressAtItsField() = runBlocking {
         val gate = RecordingRequestGate.refusing()
-
         assertEquals(CredentialCheck.Refused, part.credentials.check(input("not an address"), TestRequestContext(gate)))
         assertTrue(gate.requests.isEmpty())
-        assertEquals(setOf("returnAddress"), refusedOptionalFields(fields, mapOf("applicationId" to "x", "returnAddress" to "not an address")).keys)
+
+        val timeout = TestRequestContext().timeout
+        assertEquals(setOf("returnAddress"), RefusedFields.of(part.credentials, input("not an address"), timeout, sentAnything = false))
+        // Another field the part refused: the return address is not named.
+        val badKey = CredentialInput(input("not an address").values + ("privateKey" to Secret("not a key")))
+        assertEquals(emptySet<String>(), RefusedFields.of(part.credentials, badKey, timeout, sentAnything = false))
+        // A refusal by the Data Provider, after the check was sent, is a refusal of the credentials at no field.
+        assertEquals(emptySet<String>(), RefusedFields.of(part.credentials, input("https://household.example/return"), timeout, sentAnything = true))
 
         val withoutIt = part.credentials.check(input(""), TestRequestContext(gate))
         assertTrue(withoutIt is CredentialCheck.StoppedByGate)
         assertEquals(1, gate.requests.size)
-        assertTrue(refusedOptionalFields(fields, mapOf("applicationId" to "x", "returnAddress" to "")).isEmpty())
+        assertEquals(emptySet<String>(), RefusedFields.of(part.credentials, input(""), timeout, sentAnything = false))
     }
 }

@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
@@ -29,6 +33,12 @@ import slussen.app.ui.components.SlussenCard
 import slussen.app.ui.theme.SlussenColors
 import slussen.pluginapi.provider.BankChoice
 
+/**
+ * UC-007 BR-011 (E4 review item 7): the paste field takes a one-time value, so the keyboard neither corrects nor learns
+ * it; the password kind of field is the one that keyboards keep out of their suggestions. It is shown as typed.
+ */
+val PASTE_KEYBOARD = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password, imeAction = ImeAction.Done)
+
 /** What the Operator does in the Bank Consents part of a Data Provider's page (UC-007). */
 class BankConsentActions(
     val onGrant: () -> Unit,
@@ -47,6 +57,7 @@ class BankConsentActions(
     val onPaste: (String) -> Unit,
     val onUsePasted: () -> Unit,
     val onCancelWaiting: (Long) -> Unit,
+    val onStrayOk: () -> Unit,
     val onAct: (ConsentResultUi, ResultAction) -> Unit,
     val onAccountMappings: () -> Unit,
 )
@@ -68,6 +79,7 @@ fun bankConsentActionsOf(vm: BankConsentsViewModel, onAccountMappings: () -> Uni
     onPaste = vm::paste,
     onUsePasted = vm::usePasted,
     onCancelWaiting = vm::cancelWaiting,
+    onStrayOk = vm::acknowledgeStray,
     onAct = vm::act,
     onAccountMappings = onAccountMappings,
 )
@@ -84,6 +96,12 @@ fun BankConsentsSection(ui: BankConsentsUi, actions: BankConsentActions) {
     SectionTitle(ui.heading)
     ui.result?.let { ResultCard(it, actions, onCopy = { address -> clipboard.setText(AnnotatedString(address)) }) }
     ui.completing?.let { RunningText(it, running = true) }
+    ui.stray?.let { line ->
+        Row {
+            Text(line, color = SlussenColors.Text2, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            TextButton(onClick = actions.onStrayOk) { Text("OK") }
+        }
+    }
     ui.waiting.forEach { waiting -> WaitingCard(waiting, ui.completing != null, actions) }
     SlussenCard {
         ui.unavailable?.let { Muted(it) }
@@ -199,6 +217,7 @@ private fun WaitingCard(waiting: WaitingCardUi, completing: Boolean, actions: Ba
         Text(waiting.title, color = SlussenColors.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         RunningText(waiting.until, running = true)
         waiting.steps.forEach { Text(it, color = SlussenColors.Text, fontSize = 13.sp) }
+        waiting.note?.let { Text(it, color = SlussenColors.Amber, fontSize = 12.sp) }
         Muted(waiting.pasteNote)
         // UC-007 BR-011: the field into which the Operator pastes; Slussen never reads the clipboard itself, and the field is not saved.
         OutlinedTextField(
@@ -208,6 +227,8 @@ private fun WaitingCard(waiting: WaitingCardUi, completing: Boolean, actions: Ba
             singleLine = true,
             label = { Text("Paste the address") },
             placeholder = { Text(waiting.pastePlaceholder) },
+            keyboardOptions = PASTE_KEYBOARD,
+            visualTransformation = VisualTransformation.None,
         )
         Row {
             Button(onClick = actions.onUsePasted, enabled = !completing && waiting.pasted.text.isNotBlank()) { Text("Use this address") }
