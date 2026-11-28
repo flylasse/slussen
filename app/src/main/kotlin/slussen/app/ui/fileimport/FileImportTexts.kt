@@ -65,7 +65,7 @@ object FileImportTexts {
             val at = formats.dateTime(outcome.importedAt)
             val count = if (named || outcome.takenIn.any { it.identical != null }) "new for ${outcome.bankAccountName}: ${outcome.takenIn.size}" else "new: ${outcome.takenIn.size}"
             val freshness = "Freshness: data as of the Transaction File imported $at"
-            // UC-002 step 9, UC-003 A1: a Comparison that could not read the Budget App keeps the import, not compared yet.
+            // Step 9 of UC-002, A1 of UC-003: a Comparison that could not read the Budget App keeps the import, not compared yet.
             val notCompared = outcome.takenIn.any { it.status == null }
             val compared = if (notCompared) " · $budgetAppName could not be read: the new Bank Transactions are not compared yet" else ""
             AnswerUi("Imported $at · $count", AnswerKind.Done, freshness + compared)

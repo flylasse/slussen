@@ -10,7 +10,7 @@ import kotlinx.coroutines.launch
 import slussen.app.ui.Texts
 import slussen.app.ui.UiServices
 import slussen.app.ui.fileimport.FileImportTexts
-import slussen.app.ui.fileimport.ImportTarget
+import slussen.app.ui.fileimport.ImportBankAccount
 import slussen.app.ui.mappings.FreeBudgetAccountLine
 import slussen.app.ui.mappings.PickerGroup
 import slussen.core.connection.BalanceSource
@@ -59,7 +59,7 @@ data class FileFormatUi(
     val canImportFirst: Boolean = false,
     val importFirstNote: String? = null,
     /** UC-002 A7 step 2: the Bank Account just added for the first file; the screen opens the file choice for it once. */
-    val importFor: ImportTarget? = null,
+    val importFor: ImportBankAccount? = null,
 )
 
 /** The page of one File Format, opened from its entry in Settings (UC-013 A4, UC-010 BR-010). */
@@ -75,7 +75,7 @@ class FileFormatViewModel(private val services: UiServices, private val fileForm
 
     /** UC-002 A7: the form was opened by Import a Transaction File, so that the file choice follows Add. */
     private var importAfterAdd = false
-    private var importFor: ImportTarget? = null
+    private var importFor: ImportBankAccount? = null
     private var shownMessage: String? = null
 
     init {
@@ -124,7 +124,7 @@ class FileFormatViewModel(private val services: UiServices, private val fileForm
             form = if (formOpen && shown.canAdd) formOf(shown) else null,
             message = message,
             footnote = "Its Transaction Files are imported from its Transaction File Source on its Budget's tab. Its Account Mapping is changed in Account Mappings.",
-            // UC-002 A7: Import a Transaction File on the page of a File Format for which no Bank Account is added yet.
+            // A7 of UC-002: Import a Transaction File on the page of a File Format for which no Bank Account is added yet.
             canImportFirst = shown.canAdd && shown.bankAccounts.isEmpty(),
             importFirstNote = if (shown.canAdd && shown.bankAccounts.isEmpty()) FileImportTexts.IMPORT_FIRST_NOTE else null,
             importFor = importFor,
@@ -228,8 +228,8 @@ class FileFormatViewModel(private val services: UiServices, private val fileForm
             if (outcome is PairOutcome.Added) {
                 val budgetAccount = page?.freeBudgetAccounts?.firstOrNull { it.budgetAccountId == budgetAccountId }?.name.orEmpty()
                 formOpen = false
-                // UC-002 A7 step 2: the use case continues at step 2, the choice of the file, for the Bank Account just added.
-                if (importAfterAdd) importFor = ImportTarget(outcome.bankAccountId, outcome.name)
+                // A7 step 2 of UC-002: the use case continues at step 2, the choice of the file, for the Bank Account just added.
+                if (importAfterAdd) importFor = ImportBankAccount(outcome.bankAccountId, outcome.name)
                 importAfterAdd = false
                 reload(message = "${outcome.name} added and mapped → $budgetAccount · its transactions come from its Transaction Files")
             } else {

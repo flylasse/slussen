@@ -19,7 +19,7 @@ import slussen.app.ui.components.FirstUploadMatchingUi
 import slussen.app.ui.fileimport.FileImportEntry
 import slussen.app.ui.fileimport.FileImportTexts
 import slussen.app.ui.fileimport.ImportPlace
-import slussen.app.ui.fileimport.ImportTarget
+import slussen.app.ui.fileimport.ImportBankAccount
 import slussen.core.port.ServiceKey
 import slussen.core.status.Blocked
 import slussen.core.status.NotYetUploaded
@@ -226,7 +226,7 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                         fileImport = source.fileFormatId?.let { fileFormatId ->
                             FileImportEntry(
                                 ImportPlace.Source(budgetId, fileFormatId),
-                                workspace.bankAccounts.filter { it.fileFormatId == fileFormatId }.map { ImportTarget(it.bankAccountId, it.name) },
+                                workspace.bankAccounts.filter { it.fileFormatId == fileFormatId }.map { ImportBankAccount(it.bankAccountId, it.name) },
                             )
                         },
                     )

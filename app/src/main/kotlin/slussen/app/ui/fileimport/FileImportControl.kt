@@ -21,7 +21,7 @@ import slussen.app.ui.theme.SlussenColors
 /** What the control of Import a Transaction File does when tapped, wired once by `SlussenScreens`. */
 class FileImportActions(
     val onImport: () -> Unit,
-    val onChoose: (ImportTarget) -> Unit,
+    val onChoose: (ImportBankAccount) -> Unit,
     val onCancelChoice: () -> Unit,
     val onWithdraw: () -> Unit,
     val onAccountMappings: () -> Unit,
@@ -40,10 +40,10 @@ fun FileImportControl(control: FileImportControlUi, actions: FileImportActions, 
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         if (showButton) {
             Button(onClick = actions.onImport, enabled = control.enabled, modifier = Modifier.testTag("file-import")) {
-                RunningText(control.label, running = control.running)
+                RunningText(control.title, running = control.running)
             }
         } else if (control.running) {
-            RunningText(control.label, running = true)
+            RunningText(control.title, running = true)
         }
         control.forBankAccount?.let { Muted(it) }
         control.choice?.let { choice ->

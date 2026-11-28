@@ -24,7 +24,7 @@ import slussen.app.ui.fileimport.FileImportActions
 import slussen.app.ui.fileimport.FileImportControl
 import slussen.app.ui.fileimport.FileImportTexts
 import slussen.app.ui.fileimport.ImportPlace
-import slussen.app.ui.fileimport.ImportTarget
+import slussen.app.ui.fileimport.ImportBankAccount
 import slussen.app.ui.fileimport.TransactionFileImportViewModel
 import slussen.app.ui.fileimport.TransactionFileSource
 import slussen.app.ui.fileimport.control
@@ -94,7 +94,7 @@ class UC002ImportATransactionFileScreenIT {
         converts(fixture, line(-35_000, "Harbor Clinic copay"))
         val budget = BudgetViewModel(fixture.services, careFund)
         val screen = TransactionFileImportViewModel(fixture.services)
-        val opened = mutableListOf<ImportTarget>()
+        val opened = mutableListOf<ImportBankAccount>()
         onMain { budget.load() }
         setContent {
             SlussenTheme {
@@ -134,13 +134,13 @@ class UC002ImportATransactionFileScreenIT {
         val careFund = ready(fixture)
         fixture.slice.fileFormat.answer = { ConversionResult.Rejected("Line 14, column Amount: not a number") }
         val place = ImportPlace.Source(careFund, fixture.slice.plugins.fileFormats.single().id)
-        val target = runBlocking { ImportTarget(fixture.slice.connectionStore.bankAccounts().single().id, "Harbor Health Savings") }
+        val chosen = runBlocking { ImportBankAccount(fixture.slice.connectionStore.bankAccounts().single().id, "Harbor Health Savings") }
         val screen = TransactionFileImportViewModel(fixture.services)
         setContent {
             SlussenTheme {
                 FileImportControl(
                     screen.state.collectAsState().value.control(place),
-                    FileImportActions(onImport = { screen.start(place, listOf(target)) }, onChoose = {}, onCancelChoice = {}, onWithdraw = {}, onAccountMappings = {}),
+                    FileImportActions(onImport = { screen.start(place, listOf(chosen)) }, onChoose = {}, onCancelChoice = {}, onWithdraw = {}, onAccountMappings = {}),
                 )
             }
         }

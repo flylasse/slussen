@@ -165,7 +165,7 @@ fun SlussenScreens(services: UiServices) {
     val overview: OverviewViewModel = viewModel(key = "overview") { OverviewViewModel(services) }
     val overviewUi by overview.state.collectAsState()
 
-    // UC-002: one import for the whole app, so that no second one starts and no answer is lost when a screen is left.
+    // Import a Transaction File (UC-002): one import for the whole app, so that no second one starts and no answer is lost when a screen is left.
     val fileImport: TransactionFileImportViewModel = viewModel(key = "transaction-file-import") { TransactionFileImportViewModel(services) }
     val fileImportUi by fileImport.state.collectAsState()
     val resolver = LocalContext.current.contentResolver

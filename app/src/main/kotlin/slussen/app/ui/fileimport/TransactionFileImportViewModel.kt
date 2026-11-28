@@ -21,10 +21,10 @@ sealed interface ImportPlace {
 }
 
 /** A Bank Account a Transaction File can be imported for (UC-002 step 1). */
-data class ImportTarget(val bankAccountId: Long, val name: String)
+data class ImportBankAccount(val bankAccountId: Long, val name: String)
 
 /** Step 1 on a Transaction File Source: the place and the Bank Accounts of this Budget whose files it imports. */
-data class FileImportEntry(val place: ImportPlace, val bankAccounts: List<ImportTarget>)
+data class FileImportEntry(val place: ImportPlace, val bankAccounts: List<ImportBankAccount>)
 
 /**
  * Step 4: the file the Operator chose, as the core asks for it: its whole content, read off the screen's thread. It throws
@@ -41,7 +41,7 @@ data class TakenInLine(val day: String, val text: String, val amount: String, va
 data class FileImportUi(
     val place: ImportPlace? = null,
     /** S-B-34: the Bank Accounts to choose from before the file; null while no choice is asked. */
-    val choice: List<ImportTarget>? = null,
+    val choice: List<ImportBankAccount>? = null,
     /** The text of the control while a step runs: the document dialog, the read, the wait, the import; null otherwise. */
     val progress: String? = null,
     val forBankAccount: String? = null,
@@ -58,11 +58,11 @@ data class FileImportUi(
 
 /** One control that imports a Transaction File, as [FileImportUi.control] gives it for its place. */
 data class FileImportControlUi(
-    val label: String,
+    val title: String,
     val enabled: Boolean,
     val running: Boolean = false,
     val forBankAccount: String? = null,
-    val choice: List<ImportTarget>? = null,
+    val choice: List<ImportBankAccount>? = null,
     val canWithdraw: Boolean = false,
     val answer: AnswerUi? = null,
     val lines: List<TakenInLine> = emptyList(),
@@ -70,13 +70,13 @@ data class FileImportControlUi(
 )
 
 /**
- * The control at [place], labelled [label] while nothing runs there: the state of an import started there and its answer,
+ * The control at [place], labelled [title] while nothing runs there: the state of an import started there and its answer,
  * or, while one runs elsewhere, a control that cannot be tapped.
  */
-fun FileImportUi.control(place: ImportPlace, label: String = FileImportTexts.IMPORT): FileImportControlUi {
-    if (this.place != place) return FileImportControlUi(label, enabled = !busy)
+fun FileImportUi.control(place: ImportPlace, title: String = FileImportTexts.IMPORT): FileImportControlUi {
+    if (this.place != place) return FileImportControlUi(title, enabled = !busy)
     return FileImportControlUi(
-        label = progress ?: label,
+        title = progress ?: title,
         enabled = !busy,
         running = progress != null,
         forBankAccount = forBankAccount.takeIf { busy },
@@ -99,7 +99,7 @@ class TransactionFileImportViewModel(private val services: UiServices) : ViewMod
     private val mutableState = MutableStateFlow(FileImportUi())
     val state: StateFlow<FileImportUi> = mutableState
 
-    private var target: ImportTarget? = null
+    private var chosen: ImportBankAccount? = null
     private var named = false
     private var running: Job? = null
     private var started = false
@@ -108,7 +108,7 @@ class TransactionFileImportViewModel(private val services: UiServices) : ViewMod
      * Step 1 at [place] for one of [bankAccounts]: the Bank Account to open the document dialog for, or null when none is to
      * be opened now: another import is under way, or the Operator first chooses among two or more (S-B-34).
      */
-    fun start(place: ImportPlace, bankAccounts: List<ImportTarget>): ImportTarget? {
+    fun start(place: ImportPlace, bankAccounts: List<ImportBankAccount>): ImportBankAccount? {
         if (mutableState.value.busy || bankAccounts.isEmpty()) return null
         named = bankAccounts.size > 1
         if (bankAccounts.size > 1) {
@@ -119,7 +119,7 @@ class TransactionFileImportViewModel(private val services: UiServices) : ViewMod
     }
 
     /** S-B-34: the Bank Account the file is for; true when the document dialog is to be opened for it. */
-    fun choose(bankAccount: ImportTarget): Boolean {
+    fun choose(bankAccount: ImportBankAccount): Boolean {
         val current = mutableState.value
         val place = current.place ?: return false
         if (current.choice?.contains(bankAccount) != true) return false
@@ -133,8 +133,8 @@ class TransactionFileImportViewModel(private val services: UiServices) : ViewMod
         mutableState.value = FileImportUi(place = mutableState.value.place)
     }
 
-    private fun choosing(place: ImportPlace, bankAccount: ImportTarget): ImportTarget {
-        target = bankAccount
+    private fun choosing(place: ImportPlace, bankAccount: ImportBankAccount): ImportBankAccount {
+        chosen = bankAccount
         // Steps 2-3 (`#choose`): the control waits for the document dialog's answer.
         mutableState.value = FileImportUi(place = place, progress = FileImportTexts.CHOOSE, forBankAccount = bankAccount.name)
         return bankAccount
@@ -142,13 +142,13 @@ class TransactionFileImportViewModel(private val services: UiServices) : ViewMod
 
     /** A1: the document dialog was left without a file; the stored Bank Transactions stay unchanged. */
     fun noFileChosen() {
-        val bankAccount = target ?: return
+        val bankAccount = chosen ?: return
         answer(FileImportTexts.noFileChosen(bankAccount.name))
     }
 
     /** NFR-023: the device has no app that answers the document dialog; nothing is imported. */
     fun noFileCanBeChosen() {
-        if (target == null) return
+        if (chosen == null) return
         answer(FileImportTexts.noApp)
     }
 
@@ -163,7 +163,7 @@ class TransactionFileImportViewModel(private val services: UiServices) : ViewMod
      * file is read first, off the screen's thread; a read that fails stores nothing, not even a rejection (NFR-023).
      */
     fun import(file: TransactionFileSource) {
-        val bankAccount = target ?: return
+        val bankAccount = chosen ?: return
         if (mutableState.value.progress != FileImportTexts.CHOOSE) return
         started = false
         progress(FileImportTexts.READING)
@@ -210,7 +210,7 @@ class TransactionFileImportViewModel(private val services: UiServices) : ViewMod
 
     private fun answer(answer: AnswerUi, lines: List<TakenInLine> = emptyList(), toAccountMappings: Boolean = false) {
         mutableState.value = FileImportUi(place = mutableState.value.place, answer = answer, lines = lines, toAccountMappings = toAccountMappings)
-        target = null
+        chosen = null
         started = false
     }
 }

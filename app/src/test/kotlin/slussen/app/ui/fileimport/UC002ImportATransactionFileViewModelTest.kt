@@ -126,8 +126,8 @@ class UC002ImportATransactionFileViewModelTest {
     /** Import Transaction File on the Care Fund tab, then the document dialog gives [file]. */
     private fun TransactionFileImportViewModel.importOnCareFund(file: TransactionFileSource = InventedFile()) {
         val entry = careFundSource().fileImport!!
-        val target = start(entry.place, entry.bankAccounts)!!
-        assertEquals("Harbor Health Savings", target.name)
+        val chosen = start(entry.place, entry.bankAccounts)!!
+        assertEquals("Harbor Health Savings", chosen.name)
         import(file)
     }
 
@@ -148,14 +148,14 @@ class UC002ImportATransactionFileViewModelTest {
         val source = careFundSource()
         val entry = source.fileImport!!
         assertEquals(carePlace(), entry.place)
-        assertEquals(listOf(ImportTarget(harbor, "Harbor Health Savings")), entry.bankAccounts)
+        assertEquals(listOf(ImportBankAccount(harbor, "Harbor Health Savings")), entry.bankAccounts)
         val screen = screen()
-        assertEquals(FileImportControlUi(label = "Import Transaction File", enabled = true), screen.at(entry.place))
+        assertEquals(FileImportControlUi(title = "Import Transaction File", enabled = true), screen.at(entry.place))
 
-        assertEquals(ImportTarget(harbor, "Harbor Health Savings"), screen.start(entry.place, entry.bankAccounts))
+        assertEquals(ImportBankAccount(harbor, "Harbor Health Savings"), screen.start(entry.place, entry.bankAccounts))
 
         assertEquals(
-            FileImportControlUi(label = "Choose a Transaction File", enabled = false, running = true, forBankAccount = "Harbor Health Savings"),
+            FileImportControlUi(title = "Choose a Transaction File", enabled = false, running = true, forBankAccount = "Harbor Health Savings"),
             screen.at(entry.place),
         )
         assertNull(screen.start(entry.place, entry.bankAccounts), "no second import while one is under way")
@@ -173,7 +173,7 @@ class UC002ImportATransactionFileViewModelTest {
         val second = fileBankAccount("Harbor Second Savings", budgetAccount = "Checking", suffix = "f12e")
         val budget = BudgetViewModel(fixture.services, budgetId("Household")).also { it.load() }
         val entry = budget.state.value!!.sources.single { it.fileImport != null }.fileImport!!
-        val both = listOf(ImportTarget(harbor, "Harbor Health Savings"), ImportTarget(second, "Harbor Second Savings"))
+        val both = listOf(ImportBankAccount(harbor, "Harbor Health Savings"), ImportBankAccount(second, "Harbor Second Savings"))
         assertEquals(both.sortedBy { it.bankAccountId }, entry.bankAccounts.sortedBy { it.bankAccountId })
         val screen = screen()
 
@@ -181,10 +181,10 @@ class UC002ImportATransactionFileViewModelTest {
         assertEquals(entry.bankAccounts, screen.at(entry.place).choice)
         assertFalse(screen.at(entry.place).enabled)
         screen.cancelChoice()
-        assertEquals(FileImportControlUi(label = "Import Transaction File", enabled = true), screen.at(entry.place))
+        assertEquals(FileImportControlUi(title = "Import Transaction File", enabled = true), screen.at(entry.place))
 
         screen.start(entry.place, entry.bankAccounts)
-        assertTrue(screen.choose(ImportTarget(second, "Harbor Second Savings")))
+        assertTrue(screen.choose(ImportBankAccount(second, "Harbor Second Savings")))
         assertEquals("Harbor Second Savings", screen.at(entry.place).forBankAccount)
         assertNull(screen.at(entry.place).choice)
         converts(line(oct14, -12_340))
@@ -208,7 +208,7 @@ class UC002ImportATransactionFileViewModelTest {
 
         screen.importOnCareFund(InventedFile(gate = gate))
 
-        assertEquals(FileImportControlUi(label = "Reading the Transaction File…", enabled = false, running = true, forBankAccount = "Harbor Health Savings"), screen.at(carePlace()))
+        assertEquals(FileImportControlUi(title = "Reading the Transaction File…", enabled = false, running = true, forBankAccount = "Harbor Health Savings"), screen.at(carePlace()))
         assertTrue(slice.fileFormat.files.isEmpty(), "nothing is converted or stored before the file is read")
         gate.complete(Unit)
 
@@ -271,7 +271,7 @@ class UC002ImportATransactionFileViewModelTest {
         screen.importOnCareFund()
 
         val waiting = screen.at(carePlace())
-        assertEquals("Waits for: Reading the Budget App · then imports the Transaction File for Harbor Health Savings", waiting.label)
+        assertEquals("Waits for: Reading the Budget App · then imports the Transaction File for Harbor Health Savings", waiting.title)
         assertTrue(waiting.canWithdraw)
         assertTrue(waiting.running)
         screen.withdraw()
@@ -317,7 +317,7 @@ class UC002ImportATransactionFileViewModelTest {
         screen.importOnCareFund()
 
         val importing = screen.at(carePlace())
-        assertEquals("Importing the Transaction File for Harbor Health Savings… then comparing with ${fixture.services.budgetAppName}", importing.label)
+        assertEquals("Importing the Transaction File for Harbor Health Savings… then comparing with ${fixture.services.budgetAppName}", importing.title)
         assertFalse(importing.canWithdraw)
         screen.withdraw()
         store.complete(Unit)
@@ -552,14 +552,14 @@ class UC002ImportATransactionFileViewModelTest {
         page.choose(budgetAccountId("Health Savings"), null)
         page.add(BankAccountType.Savings, BankChoice.Named("Harbor Health Trust"), "Harbor Health Savings", "USD", "")
         val added = runBlocking { slice.connectionStore.bankAccounts() }.single()
-        assertEquals(ImportTarget(added.id, "Harbor Health Savings"), page.state.value!!.importFor)
+        assertEquals(ImportBankAccount(added.id, "Harbor Health Savings"), page.state.value!!.importFor)
         assertFalse(page.state.value!!.canImportFirst, "later files are imported from the Budget tab")
 
         page.importStarted()
         assertNull(page.state.value!!.importFor)
         val place = ImportPlace.FileFormatPage(fileFormatId)
         val screen = screen()
-        assertEquals(ImportTarget(added.id, "Harbor Health Savings"), screen.start(place, listOf(ImportTarget(added.id, "Harbor Health Savings"))))
+        assertEquals(ImportBankAccount(added.id, "Harbor Health Savings"), screen.start(place, listOf(ImportBankAccount(added.id, "Harbor Health Savings"))))
         converts(line(oct14, -12_340))
         screen.import(InventedFile())
         assertEquals("Imported 2026-10-15 14:00 · new: 1", screen.at(place).answer!!.text)

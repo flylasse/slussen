@@ -64,7 +64,7 @@ fun FileFormatScreen(
             SlussenCard {
                 if (ui.bankAccounts.isEmpty()) Muted("None yet")
                 ui.bankAccounts.forEach { line -> AccountLine(line.title, line.detail, null, null, null, trailing = line.trailing) }
-                // UC-002 A7: the first file of the File Format adds its Bank Account first; its answer stays here.
+                // A7 of UC-002: the first file of the File Format adds its Bank Account first; its answer stays here.
                 fileImport(ui.canImportFirst)
                 OutlinedButton(onClick = onOpenForm, enabled = ui.canAdd) { Text("Add a Bank Account of this File Format") }
                 if (ui.importFirstNote != null) Muted(ui.importFirstNote)
