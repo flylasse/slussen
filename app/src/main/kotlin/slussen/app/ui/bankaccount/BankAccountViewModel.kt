@@ -455,7 +455,7 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
                     Texts.blocked(blocked, formats),
                     // UC-008 BR-006: Each Blocked Reason is shown with the action that removes it, here through the Bank Account's Data Provider.
                     remedyAction(blocked, account?.dataProviderId?.let(ServiceKey::dataProvider)),
-                    Texts.advice(blocked),
+                    Texts.advice(blocked, formats),
                 )
             },
             statuses = account?.let { status ->

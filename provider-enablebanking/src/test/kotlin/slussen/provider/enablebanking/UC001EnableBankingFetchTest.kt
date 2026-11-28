@@ -911,6 +911,46 @@ class UC001EnableBankingFetchTest {
         assertEquals("2026-11-28", asked.queryParameter("date_to"))
     }
 
+    @Test
+    @UseCase(id = "UC-001", scenario = "A13: Unattended Access Limit Reached", businessRules = ["BR-012"])
+    @DisplayName("A13 (E6 review item 3): after the gate refused the balance read for the Unattended Access limit, nothing is sent for the balance and the transactions are still read")
+    fun refusedBalanceLeavesTheTransactions() {
+        server.balances(UID_HOUSEHOLD, balance("ITBD", "100.00"))
+        server.page(UID_HOUSEHOLD, null, listOf(entry()))
+
+        val result = fetch(request(both(HOUSEHOLD)), RefusingGate { it.kind == RequestKind.Balance }).of(HOUSEHOLD).result
+
+        assertEquals(BankAccountResult.Read(listOf(booked(thousandths = -12_500)), null, null), result)
+        assertEquals(1, server.requestsOf(UID_HOUSEHOLD).size)
+        assertTrue(server.requestsOf(UID_HOUSEHOLD).single().requestUrl!!.encodedPath.endsWith("/transactions"))
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A13: Unattended Access Limit Reached", businessRules = ["BR-012"])
+    @DisplayName("A13 (E6 review item 3): after the gate refused the transactions read for the limit, the balance read before it is delivered with the Bank Account not read")
+    fun refusedTransactionsKeepTheBalance() {
+        server.balances(UID_HOUSEHOLD, balance("ITBD", "100.00"))
+        server.page(UID_HOUSEHOLD, null, listOf(entry()))
+
+        val result = fetch(request(both(HOUSEHOLD)), RefusingGate { it.kind == RequestKind.Transactions }).of(HOUSEHOLD).result
+
+        assertEquals(BankAccountResult.NotRead(NotReadCause.RefusedByGate, Amount(100_000)), result)
+        assertEquals(1, server.requestsOf(UID_HOUSEHOLD).size)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A5: Data Provider Asks Slussen to Wait", businessRules = ["BR-004"])
+    @DisplayName("ADR-001 §4.0 (E6 review item 3): a refusal of the balance read with scope Bank keeps its meaning: nothing more is asked of that Bank")
+    fun bankRefusalOfTheBalanceKeepsItsMeaning() {
+        server.balances(UID_HOUSEHOLD, balance("ITBD", "100.00"))
+        server.page(UID_HOUSEHOLD, null, listOf(entry()))
+
+        val response = fetch(request(both(HOUSEHOLD)), RefusingGate(RefusalScope.Bank, RefusalReason.BackOff) { it.kind == RequestKind.Balance })
+
+        assertEquals(BankAccountResult.NotRead(NotReadCause.StoppedWithItsBank), response.of(HOUSEHOLD).result)
+        assertEquals(0, server.requestsOf(UID_HOUSEHOLD).size)
+    }
+
     /** A gate that refuses every request [refuses] picks, with [scope] and [reason], and admits the others. */
     private class RefusingGate(
         private val scope: RefusalScope = RefusalScope.BankAccount,

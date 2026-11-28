@@ -452,7 +452,15 @@ class UC008CheckImportStatusTest {
         val current = workspaceAccount("Summer House", "Aurora Current").blocked
 
         assertEquals(listOf(Blocked(BlockedReason.RequestLimitReached, Remedy.WaitUntilItEnds, oldest.plus(Duration.ofHours(24)), "Kestrel Feeds")), feeds)
-        assertTrue(Blocked(BlockedReason.AccessLimitReached, Remedy.WaitUntilItEnds, accessAt.plus(Duration.ofHours(24)), "Aurora Current") in current)
+        // E6 review items 2 and 4: the window of the access limit is closed at its start, so it frees one stored millisecond after the oldest is 24 hours old, and the Blocked Reason says which read waits.
+        val accessFree = accessAt.plus(Duration.ofHours(24)).plusMillis(1)
+        assertTrue(
+            Blocked(
+                BlockedReason.AccessLimitReached, Remedy.WaitUntilItEnds, accessFree, "Aurora Current",
+                accessLimit = slussen.core.fetch.AccessLimitHeld("Aurora Current", accessFree, null),
+            ) in current,
+            "$current",
+        )
     }
 
     @Test

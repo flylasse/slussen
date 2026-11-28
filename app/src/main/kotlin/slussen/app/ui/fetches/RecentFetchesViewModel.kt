@@ -190,7 +190,7 @@ class RecentFetchesViewModel(private val services: UiServices) : ViewModel() {
                     result = FetchesTexts.result(line),
                     note = FetchesTexts.accountNote(line, formats, now),
                     asks = still?.let { FetchesTexts.stillNeeded(it, formats, now) },
-                    advice = still?.let { slussen.app.ui.Texts.advice(it) },
+                    advice = still?.let { slussen.app.ui.Texts.advice(it, formats) },
                     // The action that removes the reason leads to the page that has it (UC-008 A6).
                     action = still?.let { remedyAction(it, ServiceKey.dataProvider(fetch.dataProviderId)) }
                         ?: unread?.let { fetchAgain(ServiceKey.dataProvider(fetch.dataProviderId)) },

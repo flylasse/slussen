@@ -83,6 +83,12 @@ class UC001UnattendedAccessTest {
     /** True when the Data Provider gives no answer after the gate let out the requests of the first Bank Account. */
     private var noAnswer = false
 
+    /** A gate the Data Provider's reader asks instead of the core's, or null for the core's own. */
+    private var gateInstead: ((RequestGate) -> RequestGate)? = null
+
+    /** Runs inside the Fetch, after the core chose what to read and before the first request. */
+    private var beforeTheFirstRequest: () -> Unit = {}
+
     @BeforeEach
     fun ready() = runTest {
         slice.credentials.enter(slussen.core.port.ServiceKey.budgetApp, slice.input("token" to ExampleData.BUDGET_APP_TOKEN))
@@ -151,7 +157,9 @@ class UC001UnattendedAccessTest {
      * not read.
      */
     private fun readingEachBankAccount() {
-        provider.readsEachBankAccount = { request, gate ->
+        provider.readsEachBankAccount = { request, coreGate ->
+            beforeTheFirstRequest()
+            val gate = gateInstead?.invoke(coreGate) ?: coreGate
             val unattended = request.presence == OperatorPresence.Unattended || !provider.showsPresence
             val results = mutableListOf<DeliveredBankAccount>()
             var failed = false
@@ -167,7 +175,7 @@ class UC001UnattendedAccessTest {
                 if (read.read != ReadKind.Transactions && gate.admit(summary(RequestKind.Balance)) == Admission.Allowed) balance = BALANCE
                 val result = when {
                     read.read == ReadKind.Balance -> BankAccountResult.Read(emptyList(), balance)
-                    gate.admit(summary(RequestKind.Transactions)) != Admission.Allowed -> BankAccountResult.NotRead(NotReadCause.RefusedByGate)
+                    gate.admit(summary(RequestKind.Transactions)) != Admission.Allowed -> BankAccountResult.NotRead(NotReadCause.RefusedByGate, balance)
                     else -> {
                         repeat(pages - 1) { gate.admit(summary(RequestKind.Other)) }
                         if (noAnswer) BankAccountResult.Failed(FailureKind.Timeout) else BankAccountResult.Read(listOf(booked()), balance)
@@ -189,6 +197,9 @@ class UC001UnattendedAccessTest {
 
     private fun sentHoursAgo(bankAccountId: Long, kind: ProviderRequestKind, vararg hours: Long) =
         hours.forEach { sent(bankAccountId, kind, now.minus(Duration.ofHours(it))) }
+
+    /** When an access sent at [sentAt] has left the window, closed at its start (item 4 of the E6 review): one millisecond, the resolution of storage, after it is 24 hours old. */
+    private fun freeAfter(sentAt: Instant): Instant = sentAt.plus(Duration.ofHours(24)).plusMillis(1)
 
     private suspend fun accesses() = UnattendedAccesses.of(slice.providerRequests, slice.openBankingId, now)
 
@@ -230,7 +241,7 @@ class UC001UnattendedAccessTest {
         assertEquals(4, accesses().used(household, ProviderRequestKind.Transactions))
         assertEquals(setOf(StoredFetchResult(household, FetchResultOutcome.AccessLimitReached, 0)), lastResults())
         assertEquals(
-            listOf(AccessLimitHeld("Household Current", transactionsFreeAt = now.minus(Duration.ofHours(11)).plus(Duration.ofHours(24)), balanceFreeAt = null)),
+            listOf(AccessLimitHeld("Household Current", transactionsFreeAt = freeAfter(now.minus(Duration.ofHours(11))), balanceFreeAt = null)),
             atLimit.accessLimitReached,
         )
 
@@ -261,7 +272,7 @@ class UC001UnattendedAccessTest {
         assertNull(balanceOf(household), "no balance is asked for, so none is stored")
         assertEquals(setOf(StoredFetchResult(household, FetchResultOutcome.Fetched, 1)), lastResults(), "its transactions were read")
         assertEquals(4, accesses().used(household, ProviderRequestKind.Balance))
-        assertEquals(listOf(AccessLimitHeld("Household Current", null, now.minus(Duration.ofHours(11)).plus(Duration.ofHours(24)))), atLimit.accessLimitReached)
+        assertEquals(listOf(AccessLimitHeld("Household Current", null, freeAfter(now.minus(Duration.ofHours(11))))), atLimit.accessLimitReached)
 
         sent(household, ProviderRequestKind.Balance, now.minus(Duration.ofMinutes(5)))
         slice.clock.advance(Duration.ofMinutes(10))
@@ -274,23 +285,59 @@ class UC001UnattendedAccessTest {
     @DisplayName("BR-012, NFR-018: an access sent exactly 24 hours ago has left the window; the window moves, and when the oldest access leaves it the next Scheduled Fetch reads again, at the time the report named")
     fun windowMoves() = runTest {
         val household = household()
-        sent(household, ProviderRequestKind.Transactions, now.minus(Duration.ofHours(24)))
+        sent(household, ProviderRequestKind.Transactions, now.minus(Duration.ofHours(24)).minusMillis(1))
         sentHoursAgo(household, ProviderRequestKind.Transactions, 23, 22, 21)
-        assertEquals(3, accesses().used(household, ProviderRequestKind.Transactions))
-        sent(household, ProviderRequestKind.Transactions, now.minus(Duration.ofHours(24)).plusMillis(1))
-        assertEquals(4, accesses().used(household, ProviderRequestKind.Transactions), "one sent just after the window's start is in it")
+        assertEquals(3, accesses().used(household, ProviderRequestKind.Transactions), "one sent just before the window's start has left it")
+        val atTheStart = now.minus(Duration.ofHours(24))
+        sent(household, ProviderRequestKind.Transactions, atTheStart)
+        assertEquals(4, accesses().used(household, ProviderRequestKind.Transactions), "one sent exactly 24 hours ago is counted: the window is closed at its start")
 
         val held = scheduled() as FetchReport.Fetched
-        val freeAt = now.plusMillis(1)
+        val freeAt = freeAfter(atTheStart)
         assertEquals(freeAt, held.accessLimitReached.single().transactionsFreeAt)
 
         slice.clock.set(freeAt.minusMillis(1))
-        assertTrue(accesses().reached(household, ProviderRequestKind.Transactions))
+        assertTrue(accesses().reached(household, ProviderRequestKind.Transactions), "at exactly 24 hours it is still counted")
         slice.clock.set(freeAt)
         assertFalse(accesses().reached(household, ProviderRequestKind.Transactions))
         scheduled()
         assertEquals(ReadKind.TransactionsAndBalance, asked().single().read)
         assertEquals(setOf(StoredFetchResult(household, FetchResultOutcome.Fetched, 1)), lastResults())
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A3: Request Limit Reached", businessRules = ["BR-007"], requirements = ["NFR-018"])
+    @DisplayName("BR-007: the Request Limit's own window is unchanged: a request sent exactly 24 hours ago is not counted against it")
+    fun requestLimitWindowUnchanged() = runTest {
+        slice.providerSettings.changeRequestLimit(key, 10)
+        slice.providerRequests.requests.clear()
+        val stored = slice.plugins.dataProvider(key).stored
+        slice.providerRequests.requests += StoredProviderRequest(slice.openBankingId, null, ProviderRequestKind.Other, false, now.minus(Duration.ofHours(24)))
+        repeat(9) { slice.providerRequests.requests += StoredProviderRequest(slice.openBankingId, null, ProviderRequestKind.Other, false, now.minus(Duration.ofHours(1))) }
+        val gate = DataProviderGate(stored, slice.providerRequests, slice.importStatusStore, slice.clock, OperationPermit(OperationKind.Fetch))
+
+        assertEquals(Admission.Allowed, gate.admit(RequestSummary(RequestKind.Other, null, null, unattended = false)))
+        assertEquals(
+            Admission.Refused(RefusalScope.Source, RefusalReason.RequestLimitReached),
+            gate.admit(RequestSummary(RequestKind.Other, null, null, unattended = false)),
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A13: Unattended Access Limit Reached", businessRules = ["BR-012"], requirements = ["C-006"])
+    @DisplayName("A13: with five or six counted, access is free again when so many have left the window that fewer than the limit remain")
+    fun freeAgainWithMoreThanTheLimit() = runTest {
+        val household = household()
+        val savings = savings()
+        sentHoursAgo(household, ProviderRequestKind.Transactions, 10, 9, 8, 7, 6)
+        sentHoursAgo(savings, ProviderRequestKind.Balance, 12, 11, 10, 9, 8, 7)
+
+        assertEquals(freeAfter(now.minus(Duration.ofHours(9))), accesses().freesUpAt(household, ProviderRequestKind.Transactions))
+        assertEquals(freeAfter(now.minus(Duration.ofHours(10))), accesses().freesUpAt(savings, ProviderRequestKind.Balance))
+        slice.clock.set(freeAfter(now.minus(Duration.ofHours(9))).minusMillis(1))
+        assertTrue(accesses().reached(household, ProviderRequestKind.Transactions))
+        slice.clock.advance(Duration.ofMillis(1))
+        assertFalse(accesses().reached(household, ProviderRequestKind.Transactions))
     }
 
     // ---- What is refused, and what is still read ----------------------------------------------------------------------
@@ -315,7 +362,7 @@ class UC001UnattendedAccessTest {
             setOf(StoredFetchResult(household, FetchResultOutcome.AccessLimitReached, 0), StoredFetchResult(savings, FetchResultOutcome.Fetched, 1)),
             lastResults(),
         )
-        val freeAt = now.minus(Duration.ofHours(10)).plus(Duration.ofHours(24))
+        val freeAt = freeAfter(now.minus(Duration.ofHours(10)))
         assertEquals(listOf(AccessLimitHeld("Household Current", freeAt, freeAt)), report.accessLimitReached)
         assertTrue(slice.importStatusStore.bankTransactionsOf(household).isEmpty())
     }
@@ -358,7 +405,7 @@ class UC001UnattendedAccessTest {
             setOf(StoredFetchResult(household, FetchResultOutcome.AccessLimitReached, 0), StoredFetchResult(savings, FetchResultOutcome.AccessLimitReached, 0)),
             lastResults(),
         )
-        assertEquals(FetchOutcome.WaitingForBackOff, slice.importStatusStore.fetchesOf(slice.openBankingId).first().outcome)
+        assertEquals(FetchOutcome.AccessLimitReached, slice.importStatusStore.fetchesOf(slice.openBankingId).first().outcome)
         assertEquals(StartedBy.Schedule, slice.importStatusStore.fetchesOf(slice.openBankingId).first().startedBy)
         assertNull(outcome.comparison)
     }
@@ -502,6 +549,148 @@ class UC001UnattendedAccessTest {
         assertTrue(outcome.reports.single { it.service == slice.feedsKey } is FetchReport.Fetched)
         assertEquals(1, slice.feeds.fetches)
         assertEquals(0, UnattendedAccesses.of(slice.providerRequests, slice.openBankingId, now).used(checking, ProviderRequestKind.Transactions))
+        // E6 review item 5: its own unattended rows reach the count all the same, and nothing refused it, since it needs no Bank Consent.
+        assertTrue(UnattendedAccesses.of(slice.providerRequests, slice.feedsId, now).reached(checking, ProviderRequestKind.Transactions))
+        assertEquals(setOf(StoredFetchResult(checking, FetchResultOutcome.Fetched, 1)), slice.importStatusStore.fetchesOf(slice.feedsId).first().results.toSet())
+    }
+
+    // ---- E6 review, items 1, 3 and 5 ------------------------------------------------------------------------------------
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A13: Unattended Access Limit Reached", businessRules = ["BR-012"])
+    @DisplayName("A13 step 4 (E6 review item 1): a Scheduled Fetch the limit left out entirely shows the Source Health Access Limit Reached and its recent Fetch waits on the access limit, never on a Back-off")
+    fun nothingLeftShowsNoBackOff() = runTest {
+        val household = household()
+        sentHoursAgo(household, ProviderRequestKind.Transactions, 6, 5, 4, 3)
+        sentHoursAgo(household, ProviderRequestKind.Balance, 6, 5, 4, 3)
+        scheduled()
+
+        val workspace = slice.status.workspace(budgetOf("Current"))
+        val source = workspace.sources.single { it.name == "Aurora Open Banking" }
+        assertEquals(slussen.core.status.SourceHealth.FetchHealth(FetchOutcome.AccessLimitReached, now, StartedBy.Schedule), source.health)
+        val everyBlocked = workspace.sources.flatMap { it.blocked } + workspace.bankAccounts.flatMap { it.blocked }
+        assertTrue(everyBlocked.none { it.reason == BlockedReason.WaitingForProvider }, "$everyBlocked")
+        assertTrue(slice.importStatusStore.backOffs().isEmpty())
+        val recent = slice.status.recentFetches().fetches.first()
+        val limit = blockedOf("Household Current").single { it.reason == BlockedReason.AccessLimitReached }
+        assertEquals(slussen.core.status.FetchNeed.NotNeeded(slussen.core.status.FetchNote.WaitingOn(listOf(limit))), recent.need)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A13: Unattended Access Limit Reached", businessRules = ["BR-012"], requirements = ["C-006"])
+    @DisplayName("ADR-001 §4.0: the gate of a Scheduled Fetch lets the read out while one below the limit is counted, and refuses the next")
+    fun gateAllowsOneBelow() = runTest {
+        val household = household()
+        sentHoursAgo(household, ProviderRequestKind.Transactions, 4, 3, 2)
+        val gate = DataProviderGate(
+            slice.plugins.dataProvider(key).stored, slice.providerRequests, slice.importStatusStore, slice.clock, OperationPermit(OperationKind.Fetch),
+            FetchReads(mapOf("aurora-household" to household), scheduled = true, countedAt = now),
+        )
+        val summary = RequestSummary(RequestKind.Transactions, AURORA, "aurora-household", unattended = true)
+
+        assertEquals(Admission.Allowed, gate.admit(summary))
+        assertEquals(4, accesses().used(household, ProviderRequestKind.Transactions))
+        assertEquals(Admission.Refused(RefusalScope.BankAccount, RefusalReason.UnattendedAccessLimitReached), gate.admit(summary))
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A13: Unattended Access Limit Reached", businessRules = ["BR-012"])
+    @DisplayName("E6 review item 3: the core and the gate count at the same time, the start of the Fetch: with the clock set back between the core's choice and the first request, the read the core chose is not refused")
+    fun clockSetBackDuringTheFetch() = runTest {
+        val household = household()
+        sent(household, ProviderRequestKind.Transactions, now.minus(Duration.ofHours(24)).minusMillis(1))
+        sentHoursAgo(household, ProviderRequestKind.Transactions, 23, 22, 21)
+        beforeTheFirstRequest = { slice.clock.advance(Duration.ofHours(-1)) }
+
+        scheduled()
+
+        assertEquals(ReadKind.TransactionsAndBalance, asked().single().read)
+        assertEquals(setOf(StoredFetchResult(household, FetchResultOutcome.Fetched, 1)), lastResults())
+        assertEquals(1, slice.importStatusStore.bankTransactionsOf(household).size)
+    }
+
+    /** A gate that refuses the reads of [kind] for the Unattended Access limit and passes the rest to [core]. */
+    private fun refusing(kind: RequestKind): (RequestGate) -> RequestGate = { core ->
+        RequestGate { if (it.kind == kind) Admission.Refused(RefusalScope.BankAccount, RefusalReason.UnattendedAccessLimitReached) else core.admit(it) }
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A13: Unattended Access Limit Reached", businessRules = ["BR-012"])
+    @DisplayName("E6 review item 3: when the gate refuses the balance read for the limit, the transactions are read and stored and the Fetch Result is Fetched; when it refuses the transactions, the balance read is stored and the result is Access Limit Reached")
+    fun gateRefusalLeavesTheOtherRead() = runTest {
+        val household = household()
+        slice.providerSettings.changeFetchCooldown(key, 0)
+        gateInstead = refusing(RequestKind.Balance)
+
+        scheduled()
+
+        assertEquals(1, slice.importStatusStore.bankTransactionsOf(household).size)
+        assertNull(balanceOf(household))
+        assertEquals(setOf(StoredFetchResult(household, FetchResultOutcome.Fetched, 1)), lastResults())
+
+        gateInstead = refusing(RequestKind.Transactions)
+        slice.clock.advance(Duration.ofHours(1))
+        scheduled()
+
+        assertEquals(BALANCE, balanceOf(household)?.amount)
+        assertEquals(setOf(StoredFetchResult(household, FetchResultOutcome.AccessLimitReached, 0)), lastResults())
+    }
+
+    /** The household at the limit for both reads, at a Bank whose requests show the Operator's presence unless [presence] is false. */
+    private suspend fun householdAtTheLimit(presence: Boolean = true): Long {
+        val household = household()
+        sentHoursAgo(household, ProviderRequestKind.Transactions, 6, 5, 4, 3)
+        sentHoursAgo(household, ProviderRequestKind.Balance, 6, 5, 4, 3)
+        consent.presence = { presence }
+        provider.showsPresence = presence
+        return household
+    }
+
+    private suspend fun assertReadInFull(report: FetchReport, household: Long) {
+        assertTrue(report is FetchReport.Fetched, "$report")
+        assertEquals(ReadKind.TransactionsAndBalance, asked().single().read)
+        assertEquals(setOf(StoredFetchResult(household, FetchResultOutcome.Fetched, 1)), lastResults())
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A11: Fetch of Several Data Providers", businessRules = ["BR-012"])
+    @DisplayName("BR-012 (E6 review item 5): the Operator's Fetch of all Data Providers and of one Budget is never refused by the count with both reads at the limit")
+    fun operatorNeverRefusedThroughAllOrOneBudget() = runTest {
+        val household = householdAtTheLimit()
+
+        val all = (slice.fetch.fetchAll() as FetchStart.Ran).reports.single { it.service == key }
+        assertReadInFull(all, household)
+
+        slice.clock.advance(Duration.ofHours(7))
+        val budget = (slice.fetch.fetchBudget(budgetOf("Current")) as FetchStart.Ran).reports.single { it.service == key }
+        assertReadInFull(budget, household)
+        assertEquals(4, accesses().used(household, ProviderRequestKind.Transactions), "reads that showed his presence add none")
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A16: Operator Fetches Despite a Request Limit Warning", businessRules = ["BR-012", "BR-015"])
+    @DisplayName("BR-012 (E6 review item 5): after confirming a Request Limit warning (A16) and the question of A22, the Operator's Fetch of one Data Provider is not refused by the count")
+    fun operatorNeverRefusedAfterTheConfirmations() = runTest {
+        val household = householdAtTheLimit(presence = false)
+        slice.importStatusStore.startBackOff(
+            slussen.core.port.NewBackOff(slice.openBankingId, null, slussen.core.port.BackOffCause.RequestLimitWarning, now, now.plus(Duration.ofHours(2))),
+        )
+
+        assertTrue(operatorFetch() is FetchReport.WarningToConfirm)
+        val asked = (slice.fetch.fetch(key, confirmedDespiteWarning = true) as FetchStart.Ran).reports.single()
+        assertTrue(asked is FetchReport.UnattendedToConfirm && asked.warningConfirmed, "$asked")
+        val read = (slice.fetch.fetch(key, confirmedDespiteWarning = true, confirmedUnattended = true) as FetchStart.Ran).reports.single()
+
+        assertReadInFull(read, household)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario", businessRules = ["BR-012"])
+    @DisplayName("BR-012 (E6 review item 5): the Operator's Fetch of one Data Provider at a Bank that shows his presence is not refused with both reads at the limit")
+    fun operatorNeverRefusedThroughOne() = runTest {
+        val household = householdAtTheLimit()
+
+        assertReadInFull(operatorFetch(), household)
     }
 
     // ---- What the import status shows (UC-008 BR-006) -------------------------------------------------------------------
@@ -516,11 +705,20 @@ class UC001UnattendedAccessTest {
         sentHoursAgo(savings, ProviderRequestKind.Balance, 12, 11, 10, 9)
         scheduled()
 
-        val householdFree = now.minus(Duration.ofHours(10)).plus(Duration.ofHours(24))
-        val savingsFree = now.minus(Duration.ofHours(12)).plus(Duration.ofHours(24))
-        assertTrue(Blocked(BlockedReason.AccessLimitReached, Remedy.WaitUntilItEnds, householdFree, "Household Current") in blockedOf("Household Current"))
-        assertTrue(Blocked(BlockedReason.AccessLimitReached, Remedy.WaitUntilItEnds, savingsFree, "Aurora Savings") in blockedOf("Aurora Savings"))
+        val householdFree = freeAfter(now.minus(Duration.ofHours(10)))
+        val savingsFree = freeAfter(now.minus(Duration.ofHours(12)))
+        assertTrue(
+            Blocked(BlockedReason.AccessLimitReached, Remedy.WaitUntilItEnds, householdFree, "Household Current", accessLimit = AccessLimitHeld("Household Current", householdFree, null))
+                in blockedOf("Household Current"),
+        )
+        assertTrue(
+            Blocked(BlockedReason.AccessLimitReached, Remedy.WaitUntilItEnds, savingsFree, "Aurora Savings", accessLimit = AccessLimitHeld("Aurora Savings", null, savingsFree))
+                in blockedOf("Aurora Savings"),
+        )
+        assertEquals(FetchResultOutcome.Fetched, lastResults().single { it.bankAccountId == savings }.outcome, "A13 step 3: only its balance waited")
 
+        slice.clock.set(savingsFree.minusMillis(1))
+        assertTrue(blockedOf("Aurora Savings").any { it.reason == BlockedReason.AccessLimitReached })
         slice.clock.set(savingsFree)
         assertTrue(blockedOf("Aurora Savings").none { it.reason == BlockedReason.AccessLimitReached })
         assertTrue(blockedOf("Household Current").any { it.reason == BlockedReason.AccessLimitReached })

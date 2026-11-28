@@ -79,7 +79,15 @@ suspend fun requestLimitFreesUpAt(requests: ProviderRequestStore, dataProvider: 
  * request is kept with the Bank Account it reads (UC-001 BR-012). Every request of a [scheduled] Fetch is unattended
  * (BR-013); in a Fetch the Operator starts, a request is unattended when it does not show the Bank that he is present.
  */
-class FetchReads(val bankAccountIds: Map<String, Long>, val scheduled: Boolean)
+class FetchReads(
+    val bankAccountIds: Map<String, Long>,
+    val scheduled: Boolean,
+    /**
+     * The time the Unattended Access limit is counted at: the start of the Fetch, when the core chose what to read, so
+     * that the core's choice and the gate's refusal cannot disagree (E6 review item 3); null counts at each request.
+     */
+    val countedAt: Instant? = null,
+)
 
 /**
  * The gate of a Data Provider request (ADR-001 §4.0): it refuses with scope Source while a Back-off holds for the whole
@@ -119,7 +127,8 @@ class DataProviderGate(
         if (limitsUnattendedAccess(stored)) {
             val bankAccountId = stored.bankAccountId!!
             // A13 of UC-001: refused with scope BankAccount before it is stored, so nothing is sent for that read; a further page (kind Other) is no further access.
-            if (UnattendedAccesses.of(requests, dataProvider.id, now).reached(bankAccountId, stored.kind)) {
+            // E6 review item 3: counted at the time the core chose what to read, so that the two cannot disagree.
+            if (UnattendedAccesses.of(requests, dataProvider.id, reads?.countedAt ?: now).reached(bankAccountId, stored.kind)) {
                 return Admission.Refused(RefusalScope.BankAccount, RefusalReason.UnattendedAccessLimitReached)
             }
         }

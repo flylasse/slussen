@@ -211,7 +211,8 @@ internal class FetchHistoryRules(
         val later = later(fetch)
         val laterNote = later.firstOrNull()?.let { FetchNote.LaterFetch(it.startedAt, it.outcome) }
         return when (fetch.outcome) {
-            FetchOutcome.Fetched, FetchOutcome.ServedFromFetchCooldown -> fromBankAccounts(lines)
+            // A13 step 4 of UC-001: every Bank Account waits on the access limit, a wait that ends by itself.
+            FetchOutcome.Fetched, FetchOutcome.ServedFromFetchCooldown, FetchOutcome.AccessLimitReached -> fromBankAccounts(lines)
             FetchOutcome.WaitingForBackOff -> FetchNeed.NotNeeded(waitOf(fetch))
             FetchOutcome.RequestLimitReached -> {
                 val limit = sourceBlocked(fetch.dataProviderId, fetches.firstOrNull { it.dataProviderId == fetch.dataProviderId })

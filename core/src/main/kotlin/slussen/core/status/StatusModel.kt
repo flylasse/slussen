@@ -2,6 +2,7 @@ package slussen.core.status
 
 import slussen.core.comparison.BudgetReadFailure
 import slussen.core.credential.CredentialStatusReader
+import slussen.core.fetch.AccessLimitHeld
 import slussen.core.fetch.BalanceInOtherCurrency
 import slussen.core.firstupload.FirstUploadMatchingNotice
 import slussen.core.journal.DecisionJournal
@@ -88,6 +89,11 @@ data class Blocked(
      * the refusal (UC-008 BR-006, UC-001 A9); false for an ordinary expiry and every other Blocked Reason.
      */
     val refusedByBank: Boolean = false,
+    /**
+     * For a reached access limit (UC-001 A13, BR-012): which read waits, its transactions, its balance or both, each with
+     * the time it is free again; null for every other Blocked Reason.
+     */
+    val accessLimit: AccessLimitHeld? = null,
 )
 
 /** Source Health: only the outcome of the last Fetch or Transaction File import (BR-003). */

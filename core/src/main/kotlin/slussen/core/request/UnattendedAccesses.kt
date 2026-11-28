@@ -3,13 +3,14 @@ package slussen.core.request
 import slussen.core.port.ProviderRequestKind
 import slussen.core.port.ProviderRequestStore
 import slussen.core.port.StoredProviderRequest
+import java.time.Duration
 import java.time.Instant
 
 /**
  * The Unattended Accesses of the Bank Accounts read through one Data Provider that needs a Bank Consent (UC-001 BR-012,
  * C-006, glossary Unattended Access), counted only from the stored Provider Requests: those of that Data Provider sent
- * in the preceding 24 hours, the same window as the Request Limit (NFR-018: a request sent exactly 24 hours ago has left
- * it), without the Operator's presence (`unattended`), with the Bank Account they read and their kind. A read of the
+ * in the preceding 24 hours, closed at its start so that a request sent exactly 24 hours ago is still counted (the safe
+ * side against a Bank that counts any 24 hours closed at both ends; the Request Limit's own window is open there), without the Operator's presence (`unattended`), with the Bank Account they read and their kind. A read of the
  * transactions is counted by its first request, of kind Transactions, however many pages followed (each further page is
  * of kind Other, ADR-001 §4.0); a read of the balance by its request of kind Balance. A request is counted whatever
  * started its Fetch and however that Fetch ended, failed or stopped included, since the gate stored it before it let it
@@ -26,30 +27,40 @@ class UnattendedAccesses private constructor(private val counted: List<StoredPro
 
     /**
      * When a read of [kind] of [bankAccountId] is free again: when so many of its counted accesses have left the 24-hour
-     * window that fewer than the limit remain, or null while the limit is not reached.
+     * window that fewer than the limit remain, that is one millisecond, the precision at which a Provider Request's time
+     * is stored, after the deciding access is 24 hours old; or null while the limit is not reached.
      */
     fun freesUpAt(bankAccountId: Long, kind: ProviderRequestKind): Instant? {
         val sent = sentAt(bankAccountId, kind)
         if (sent.size < UNATTENDED_ACCESS_LIMIT) return null
-        return sent[sent.size - UNATTENDED_ACCESS_LIMIT].plus(REQUEST_LIMIT_WINDOW)
+        return sent[sent.size - UNATTENDED_ACCESS_LIMIT].plus(REQUEST_LIMIT_WINDOW).plus(STORED_PRECISION)
     }
 
     private fun sentAt(bankAccountId: Long, kind: ProviderRequestKind): List<Instant> =
         counted.filter { it.bankAccountId == bankAccountId && it.kind == kind }.map { it.sentAt }.sorted()
 
     companion object {
+        /** The precision at which a Provider Request's time is stored (`PROVIDER_REQUEST.sent_at`, in milliseconds). */
+        private val STORED_PRECISION: Duration = Duration.ofMillis(1)
+
+        /**
+         * The time after which [ProviderRequestStore.sentSince] gives every request this count needs at [now], the one
+         * sent exactly at the window's start included.
+         */
+        fun readSince(now: Instant): Instant = now.minus(REQUEST_LIMIT_WINDOW).minus(STORED_PRECISION)
+
         /** The Unattended Accesses through the Data Provider [dataProviderId] at [now], from [requests] as stored. */
         fun of(requests: List<StoredProviderRequest>, dataProviderId: Long, now: Instant): UnattendedAccesses {
             val windowStart = now.minus(REQUEST_LIMIT_WINDOW)
             return UnattendedAccesses(
                 requests.filter {
                     it.dataProviderId == dataProviderId && it.unattended && it.bankAccountId != null &&
-                        it.kind != ProviderRequestKind.Other && it.sentAt.isAfter(windowStart)
+                        it.kind != ProviderRequestKind.Other && !it.sentAt.isBefore(windowStart)
                 },
             )
         }
 
         suspend fun of(requests: ProviderRequestStore, dataProviderId: Long, now: Instant): UnattendedAccesses =
-            of(requests.sentSince(now.minus(REQUEST_LIMIT_WINDOW)), dataProviderId, now)
+            of(requests.sentSince(readSince(now)), dataProviderId, now)
     }
 }

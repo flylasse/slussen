@@ -20,6 +20,7 @@ import slussen.core.port.TransactionFileOutcome
 import slussen.core.settings.NextThing
 import slussen.core.settings.ServiceStatus
 import slussen.core.status.Blocked
+import slussen.core.fetch.AccessLimitHeld
 import slussen.core.request.UNATTENDED_ACCESS_LIMIT
 import slussen.core.status.BlockedReason
 import slussen.core.status.Remedy
@@ -385,7 +386,7 @@ object Texts {
      * at the Data Provider (UC-001 A19); for the Bank's sign-in, to sign in there again (UC-001 A20). Both keep the stored
      * data unchanged.
      */
-    fun advice(blocked: Blocked): String? {
+    fun advice(blocked: Blocked, formats: Formats): String? {
         val provider = blocked.dataProviderName ?: "the Data Provider"
         return when (blocked.reason) {
             BlockedReason.NotDelivered ->
@@ -396,11 +397,32 @@ object Texts {
                     "Balance are kept unchanged. Sign in to the Bank of ${blocked.subject} again at $provider, then fetch " +
                     "again. Your $provider credentials in Slussen stay as they are."
             // UC-001 BR-012: A Fetch the Operator starts is never refused by this count; only Scheduled Fetches are held back by it.
-            BlockedReason.AccessLimitReached ->
-                "PSD2 allows $UNATTENDED_ACCESS_LIMIT reads of its transactions and $UNATTENDED_ACCESS_LIMIT of its balance in " +
-                    "24 hours without you present; until then Scheduled Fetches leave out the reads that reached it, and its " +
-                    "stored data stays unchanged. A Fetch you start is not held back by this; the Bank may still refuse it."
+            BlockedReason.AccessLimitReached -> blocked.accessLimit?.let { accessLimitAdvice(it, formats) }
             else -> null
+        }
+    }
+
+    /**
+     * UC-001 A13, BR-012 (E6 review item 2): which read waits for Scheduled Fetches, its transactions, its Account Balance
+     * or both, until when each is free again, and that a Fetch the Operator starts reads it.
+     */
+    private fun accessLimitAdvice(held: AccessLimitHeld, formats: Formats): String {
+        val transactions = held.transactionsFreeAt
+        val balance = held.balanceFreeAt
+        val limit = UNATTENDED_ACCESS_LIMIT
+        return when {
+            transactions != null && balance != null ->
+                "Scheduled Fetches wait until ${formats.dateTime(transactions)} to read its transactions and until " +
+                    "${formats.dateTime(balance)} to read its Account Balance: PSD2 allows $limit reads of each in 24 hours " +
+                    "without you present. A Fetch you start reads both; the Bank may still refuse it."
+            transactions != null ->
+                "Scheduled Fetches wait until ${formats.dateTime(transactions)} to read its transactions: PSD2 allows $limit " +
+                    "reads of a Bank Account's transactions in 24 hours without you present. A Fetch you start reads them; " +
+                    "the Bank may still refuse it."
+            else ->
+                "Scheduled Fetches wait until ${formats.dateTime(balance!!)} to read its Account Balance: PSD2 allows $limit " +
+                    "reads of a Bank Account's balance in 24 hours without you present. A Fetch you start reads it; the Bank " +
+                    "may still refuse it."
         }
     }
 

@@ -203,7 +203,7 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
             // NFR-023 (review 4a): every read that suspends comes before the state is built, so that a line that changed meanwhile, such as Read again, is not overwritten.
             val (transfers, guessedLegs, guessedByBankAccount) = transfersEntry()
             fun lines(blocked: List<Blocked>, dataProvider: ServiceKey?) =
-                blocked.map { BlockedLine(Texts.blocked(it, formats), remedyAction(it, serviceByName[it.subject] ?: dataProvider), Texts.advice(it)) }
+                blocked.map { BlockedLine(Texts.blocked(it, formats), remedyAction(it, serviceByName[it.subject] ?: dataProvider), Texts.advice(it, formats)) }
             mutableFailure.value = null
             mutableState.value = BudgetUi(
                 title = workspace.summary.name,

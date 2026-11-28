@@ -24,6 +24,7 @@ import slussen.pluginapi.provider.SourceOutcome
 import slussen.pluginapi.provider.UnreadableReason
 import slussen.pluginapi.request.Admission
 import slussen.pluginapi.request.FailureKind
+import slussen.pluginapi.request.RefusalReason
 import slussen.pluginapi.request.RefusalScope
 import slussen.pluginapi.request.RequestContext
 import slussen.pluginapi.request.RequestKind
@@ -192,12 +193,15 @@ internal class EnableBankingFetch(
             when (val step = send(accountAddress(uid, "balances"), summary, presence, context, signer, progress)) {
                 is Step.Ok -> balance = chosenBalance(step.body, currency)
                 // S-B-55: a failure that concerns only the balance gives no Account Balance, and the transactions are still read.
-                is Step.Stop -> if (!step.concernsThisBankAccountOnly) return step.outcome(bank, laterPage = false)
+                // A13 of UC-001 (S-B-56): so does the gate's refusal of the balance read for the Unattended Access limit, which ends that read only.
+                is Step.Stop -> if (!step.concernsThisBankAccountOnly && !step.accessLimit) return step.outcome(bank, laterPage = false)
             }
         }
         if (read.read == ReadKind.Balance) return AccountOutcome.Done(BankAccountResult.Read(emptyList(), balance?.amount, balance?.reportedAt), currency)
         return when (val transactions = readTransactions(uid, reference, bank, presence, request, context, signer, progress)) {
             is Pages.Read -> AccountOutcome.Done(BankAccountResult.Read(transactions.items, balance?.amount, balance?.reportedAt), currency)
+            // A13 of UC-001 (S-B-56): the gate refused the transactions read for the Unattended Access limit; the balance read before it is kept.
+            is Pages.LimitReached -> AccountOutcome.Done(BankAccountResult.NotRead(NotReadCause.RefusedByGate, balance?.amount), currency)
             is Pages.Stopped -> transactions.outcome
         }
     }
@@ -205,6 +209,9 @@ internal class EnableBankingFetch(
     private sealed interface Pages {
         class Read(val items: List<ProviderTransaction>) : Pages
         class Stopped(val outcome: AccountOutcome) : Pages
+
+        /** The gate refused the first page for the Unattended Access limit (ADR-001 §4.0, S-B-56). */
+        data object LimitReached : Pages
     }
 
     /**
@@ -237,7 +244,7 @@ internal class EnableBankingFetch(
                 .build()
             val page = when (val step = send(address, RequestSummary(kind, bank, reference, presence.unattended), presence, context, signer, progress)) {
                 is Step.Ok -> step.body
-                is Step.Stop -> return Pages.Stopped(step.outcome(bank, laterPage = key != null))
+                is Step.Stop -> return if (key == null && step.accessLimit) Pages.LimitReached else Pages.Stopped(step.outcome(bank, laterPage = key != null))
             }
             val entries = page["transactions"] as? JsonArray ?: return Pages.Stopped(AccountOutcome.Done(failed(FailureKind.UnreadableAnswer)))
             items += entries.map(::transactionOf)
@@ -280,6 +287,9 @@ internal class EnableBankingFetch(
 
             /** A failure the Data Provider named for this Bank Account alone, not for its Bank, the session or the Data Provider. */
             val concernsThisBankAccountOnly: Boolean get() = stop is Stopping.Account
+
+            /** The gate refused this one read of the Bank Account for the Unattended Access limit (scope BankAccount). */
+            val accessLimit: Boolean get() = (stop as? Stopping.Refused)?.accessLimit == true
         }
     }
 
@@ -294,10 +304,13 @@ internal class EnableBankingFetch(
 
         /** The gate refused: nothing is sent in its scope; a read whose later page is refused is incomplete. */
         class Refused(private val admission: Admission.Refused) : Stopping {
+            val accessLimit: Boolean
+                get() = admission.scope == RefusalScope.BankAccount && admission.reason == RefusalReason.UnattendedAccessLimitReached
+
             override fun outcome(bank: String, laterPage: Boolean): AccountOutcome {
                 val incomplete = failed(FailureKind.Incomplete)
                 return when (admission.scope) {
-                    // A13 of UC-001: a refusal for a reached Unattended Access limit arrives with scope BankAccount; the core records it as Access Limit Reached.
+                    // A13 of UC-001: a refusal for a reached Unattended Access limit arrives with scope BankAccount; the read it refused ends, the other goes on.
                     RefusalScope.BankAccount -> AccountOutcome.Done(if (laterPage) incomplete else BankAccountResult.NotRead(NotReadCause.RefusedByGate))
                     RefusalScope.Bank -> AccountOutcome.BankStopped(
                         BankOutcome.StoppedByGate(bank, admission.reason),

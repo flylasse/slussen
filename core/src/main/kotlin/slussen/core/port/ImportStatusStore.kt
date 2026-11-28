@@ -19,6 +19,9 @@ enum class FetchOutcome(val text: String) {
     Failed("Failed"),
     NotConsented("Not Consented"),
     CredentialsRefused("Credentials Refused"),
+
+    /** UC-001 A13 step 4: a Scheduled Fetch in which the Unattended Access limit left every selected Bank Account out. */
+    AccessLimitReached("Access Limit Reached"),
 }
 
 /** The `Values:` of `FETCH_RESULT.outcome`. */

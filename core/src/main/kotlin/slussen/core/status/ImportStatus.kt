@@ -18,6 +18,7 @@ import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.ProviderRequestKind
 import slussen.core.request.UnattendedAccesses
+import slussen.core.fetch.AccessLimitHeld
 import slussen.core.port.ProviderRequestStore
 import slussen.core.port.ServiceKey
 import slussen.core.port.StartState
@@ -111,7 +112,8 @@ class ImportStatus(
             backOffs = stored.backOffs(),
             files = stored.latestTransactionFiles(),
             counts = stored.transactionCounts().associateBy { it.bankAccountId },
-            requests = providerRequests.sentSince(now.minus(LIMIT_WINDOW)),
+            // The Unattended Access limit's window is closed at its start (UC-001 BR-012), the Request Limit's is not: the wider of the two is read.
+            requests = providerRequests.sentSince(UnattendedAccesses.readSince(now)),
             firstUploadMatching = firstUploadMatching.notice(),
             credentials = services.associateWith { credentials.status(it) },
             periodReadOwed = budgets.filter { periodReadOwed(it.id) }.map { it.id }.toSet(),
@@ -355,7 +357,8 @@ class ImportStatus(
         if (last != null && last.outcome == FetchOutcome.Failed) {
             add(Blocked(BlockedReason.FailedFetch, Remedy.FetchAgain, last.startedAt, provider.name))
         }
-        val sent = snapshot.requests.filter { it.dataProviderId == provider.id }.map { it.sentAt }
+        val windowStart = snapshot.now.minus(LIMIT_WINDOW)
+        val sent = snapshot.requests.filter { it.dataProviderId == provider.id && it.sentAt.isAfter(windowStart) }.map { it.sentAt }
         // UC-008 BR-006: A reached Request Limit is shown with the time the limit frees up.
         freesUpAt(sent, provider.requestLimit)?.let {
             add(Blocked(BlockedReason.RequestLimitReached, Remedy.WaitUntilItEnds, it, provider.name))
@@ -482,7 +485,10 @@ class ImportStatus(
                 .maxByOrNull { it.endsAt }
                 ?.let { add(Blocked(BlockedReason.WaitingForProvider, Remedy.WaitUntilItEnds, it.endsAt, subject)) }
             // UC-008 BR-006: A reached access limit is shown with the time the limit frees up, while it holds.
-            accessFreesUpAt(bankAccount, readers, snapshot)?.let { add(Blocked(BlockedReason.AccessLimitReached, Remedy.WaitUntilItEnds, it, subject)) }
+            accessLimitOf(bankAccount, readers, snapshot)?.let { held ->
+                val at = listOfNotNull(held.transactionsFreeAt, held.balanceFreeAt).max()
+                add(Blocked(BlockedReason.AccessLimitReached, Remedy.WaitUntilItEnds, at, subject, accessLimit = held))
+            }
             if (provider != null) {
                 lastResult(bankAccount, snapshot)?.let { (fetch, result) ->
                     resultBlocked(result.outcome, fetch, bankAccount, provider, snapshot)?.takeIf { found -> none { it.reason == found.reason } }?.let { add(it) }
@@ -529,21 +535,20 @@ class ImportStatus(
     }
 
     /**
-     * UC-001 A13, BR-012: when the reads of [bankAccount] that reached the Unattended Access limit through the Data
-     * Providers that need a Bank Consent among [readers] are all free again, by the count the Scheduled Fetch uses
+     * UC-001 A13, BR-012: which reads of [bankAccount] wait on the Unattended Access limit through the Data Providers that
+     * need a Bank Consent among [readers], each with the time it is free again, by the count the Scheduled Fetch uses
      * ([UnattendedAccesses]): its transactions and its balance through the Data Provider that reads them, only its
      * balance through the one that reads only that (UC-001 BR-011); null while none of them reached the limit.
      */
-    private fun accessFreesUpAt(bankAccount: StoredBankAccount, readers: List<StoredDataProvider>, snapshot: Snapshot): Instant? =
-        readers.filter { it.needsBankConsent }.flatMap { reader ->
-            val accesses = UnattendedAccesses.of(snapshot.requests, reader.id, snapshot.now)
-            val kinds = if (reader.id == bankAccount.dataProviderId) {
-                listOf(ProviderRequestKind.Transactions, ProviderRequestKind.Balance)
-            } else {
-                listOf(ProviderRequestKind.Balance)
-            }
-            kinds.mapNotNull { accesses.freesUpAt(bankAccount.id, it) }
-        }.maxOrNull()
+    private fun accessLimitOf(bankAccount: StoredBankAccount, readers: List<StoredDataProvider>, snapshot: Snapshot): AccessLimitHeld? {
+        val consenting = readers.filter { it.needsBankConsent }
+        fun freeAt(kind: ProviderRequestKind, reads: (StoredDataProvider) -> Boolean): Instant? = consenting.filter(reads)
+            .mapNotNull { UnattendedAccesses.of(snapshot.requests, it.id, snapshot.now).freesUpAt(bankAccount.id, kind) }.maxOrNull()
+        val transactions = freeAt(ProviderRequestKind.Transactions) { it.id == bankAccount.dataProviderId }
+        val balance = freeAt(ProviderRequestKind.Balance) { true }
+        if (transactions == null && balance == null) return null
+        return AccessLimitHeld(bankAccount.name, transactions, balance)
+    }
 
     private fun backupWarning(snapshot: Snapshot): BackupWarning? {
         val bytes = backupSize.backedUpBytes()

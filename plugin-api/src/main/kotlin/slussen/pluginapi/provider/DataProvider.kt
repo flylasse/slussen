@@ -169,7 +169,9 @@ public sealed interface BankAccountResult {
     /**
      * Listed but not read. For [NotReadCause.NotSelected], [balance] is the balance the Data Provider gave with the list
      * in the same answer, or null when it gave none; the plug-in sends no further request for it. The core takes it as
-     * the Offered Bank Account's balance and does not store it as an Account Balance (S-35, ADR-001 §4.1). For any other
+     * the Offered Bank Account's balance and does not store it as an Account Balance (S-35, ADR-001 §4.1). For
+     * [NotReadCause.RefusedByGate] after the gate refused the transactions read for the Unattended Access limit, it is the
+     * balance read before that refusal, which the core stores as the Account Balance (UC-001 A13, S-B-56). For any other
      * cause [balance] is null.
      */
     public data class NotRead(val cause: NotReadCause, val balance: Amount? = null) : BankAccountResult
