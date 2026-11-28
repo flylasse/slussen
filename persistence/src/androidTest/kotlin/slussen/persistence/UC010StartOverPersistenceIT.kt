@@ -75,12 +75,14 @@ class UC010StartOverPersistenceIT {
         File(noBackup, "journal.db.unreadable-3-cc").writeText("invented unreadable original")
         val oldInstallation = File(noBackup, "installation.id").readText()
 
-        again.startOver.recordStartOver()
+        val notEnded = listOf(slussen.core.consent.ConsentNotEnded("Aurora Sparbank (FI)", "Kestrel Open Banking", slussen.core.consent.NotEndedBecause.NotConfirmed))
+        again.startOver.recordStartOver(notEnded)
         again.close()
         val started = SlussenStorage.open(DeviceFiles.context, clock)
 
         try {
             assertTrue(started.startState.startedOver)
+            assertEquals(slussen.core.port.StartOverRecord(notEnded, complete = true), started.startState.startOver)
             assertEquals(StartKind.NewInstallation, started.startState.startKind)
             assertEquals(listOf(FirstUploadMatchingCause.NewInstallation), started.firstUploadMatching.openChecks().map { it.cause })
             assertEquals(OperatorSettings.DEFAULT, started.settings.current())
@@ -102,6 +104,7 @@ class UC010StartOverPersistenceIT {
         }
         val next = SlussenStorage.open(DeviceFiles.context, clock)
         assertFalse(next.startState.startedOver)
+        assertNull(next.startState.startOver, "a later start shows nothing of the Start Over")
         assertEquals(StartKind.Normal, next.startState.startKind)
         next.close()
     }

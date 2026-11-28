@@ -3,6 +3,7 @@ package slussen.core.settings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.awaitCancellation
 import slussen.core.consent.BankConsents
+import slussen.core.consent.ConsentAsked
 import slussen.core.consent.ConsentNotEnded
 import slussen.core.consent.ConsentToEnd
 import slussen.core.operation.AloneAdmission
@@ -48,10 +49,13 @@ sealed interface StartOverOutcome {
     data object StoredDataNotRead : StartOverOutcome
 
     /**
-     * O-17 step 2 failed: nothing was deleted. [asked] names the Banks whose Bank Consent was asked to end, which may no
-     * longer be usable.
+     * O-17 step 2 failed: nothing was deleted. [asked] names the Banks whose Bank Consent was asked to end and how each
+     * went; those asked may no longer be usable.
      */
-    data class NotRecorded(val asked: List<String>) : StartOverOutcome
+    data class NotRecorded(val asked: List<ConsentAsked>) : StartOverOutcome
+
+    /** The stored data could not be read while the Bank Consents were being ended: nothing recorded or deleted; [asked] as for [NotRecorded]. */
+    data class NotReadWhileEnding(val asked: List<ConsentAsked>) : StartOverOutcome
 }
 
 /**
@@ -97,17 +101,13 @@ class StartOver(
             val waiting = readOrNull { bankConsents.waiting() } ?: return@runAlone StartOverOutcome.StoredDataNotRead
             // ADR-007 §2: a Consent Request unanswered within its lifetime refuses Start Over, so that no Bank's result arrives for a consent Slussen could no longer end.
             waiting.firstOrNull()?.let { return@runAlone StartOverOutcome.NotNow(StartOverUnavailable.ConsentRequestWaiting(it.bankReference)) }
-            val asked = mutableListOf<String>()
+            val asked = mutableListOf<ConsentAsked>()
             // ADR-002 §3 O-17 step 1: every Bank Consent is asked to end before anything is recorded or deleted.
-            val notEnded = readOrNull {
-                bankConsents.endEveryBankConsent(permit) { toEnd ->
-                    asked += toEnd.bankName
-                    asking(toEnd)
-                }
-            } ?: return@runAlone StartOverOutcome.StoredDataNotRead
-            // ADR-002 §3 O-17 step 2: the obligation is recorded durably; from here every start finishes Start Over.
+            val notEnded = readOrNull { bankConsents.endEveryBankConsent(permit, asking) { asked += it } }
+                ?: return@runAlone if (asked.isEmpty()) StartOverOutcome.StoredDataNotRead else StartOverOutcome.NotReadWhileEnding(asked.toList())
+            // ADR-002 §3 O-17 step 2: the obligation is recorded durably with the Banks to name; from here every start finishes Start Over.
             try {
-                store.recordStartOver()
+                store.recordStartOver(notEnded)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {

@@ -592,7 +592,11 @@ class BankConsents(
      * accepted credentials or whose gate holds the request back does not stop it: each Bank whose consent was not
      * confirmed as ended at the Bank is returned with why. Throws only when the stored Bank Consents cannot be read.
      */
-    suspend fun endEveryBankConsent(permit: OperationPermit, asking: (ConsentToEnd) -> Unit = {}): List<ConsentNotEnded> {
+    suspend fun endEveryBankConsent(
+        permit: OperationPermit,
+        asking: (ConsentToEnd) -> Unit = {},
+        ended: (ConsentAsked) -> Unit = {},
+    ): List<ConsentNotEnded> {
         val banks = connections.banks().associateBy { it.id }
         val stored = consents.bankConsents()
         val sessions = consents.bankSessions()
@@ -612,7 +616,7 @@ class BankConsents(
             }
             asking(toEnd)
             permit.workingOn(provider.stored.name)
-            val ended = try {
+            val revoked = try {
                 capability.revoke(session, context(provider, permit, consent.bankId))
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -622,12 +626,14 @@ class BankConsents(
             }
             logged(BankConsentEvent.BankConsentRevoked)
             // A12 step 4 of UC-010: each Bank whose Bank Consent the Data Provider did not confirm as ended at the Bank is named, also one it could not contact.
-            when (ended) {
+            val outcome = when (revoked) {
                 RevokeResult.Ended -> null
                 RevokeResult.EndedAtDataProvider -> notEnded(NotEndedBecause.EndedAtDataProviderOnly)
                 RevokeResult.NotConfirmed -> notEnded(NotEndedBecause.NotConfirmed)
                 is RevokeResult.StoppedByGate -> notEnded(NotEndedBecause.HeldBackByGate)
             }
+            ended(ConsentAsked(toEnd.bankName, toEnd.dataProviderName, outcome?.because))
+            outcome
         }
     }
 

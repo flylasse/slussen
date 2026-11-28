@@ -319,3 +319,6 @@ enum class NotEndedBecause {
 
 /** A Bank whose Bank Consent the Data Provider did not confirm as ended at the Bank, also one not contacted (UC-010 A12 step 4). */
 data class ConsentNotEnded(val bankName: String, val dataProviderName: String, val because: NotEndedBecause)
+
+/** A Bank Consent Start Over asked its Data Provider to end, and how it went: [notEnded] null when the end was confirmed at the Bank. */
+data class ConsentAsked(val bankName: String, val dataProviderName: String, val notEnded: NotEndedBecause?)

@@ -19,6 +19,11 @@ import slussen.core.consent.NotEndedBecause
 import slussen.core.consent.StartOutcome
 import slussen.core.port.CoordinatorMode
 import slussen.core.settings.StartOverResult
+import slussen.core.settings.StartOverUnavailable
+import slussen.core.port.StartOverRecord
+import slussen.core.operation.RunningOperation
+import slussen.core.operation.OperationKind
+import slussen.core.port.StartedBy
 import slussen.pluginapi.provider.ConsentCompletion
 import slussen.pluginapi.provider.ConsentSession
 import slussen.pluginapi.provider.ConsentStart
@@ -115,7 +120,7 @@ class UC010StartOverViewModelTest {
 
         val answer = vm.state.value.answer.orEmpty()
         assertTrue(answer.startsWith("Not started over:"), answer)
-        assertTrue("a change of an Operator Setting" in answer, answer)
+        assertTrue("a change of an Operator Setting is running" in answer, answer)
         assertTrue("Nothing was deleted" in answer, answer)
         assertNull(vm.state.value.running)
         assertTrue(vm.state.value.enabled)
@@ -157,9 +162,10 @@ class UC010StartOverViewModelTest {
         vm.open(); vm.confirm()
 
         val answer = vm.state.value.answer.orEmpty()
-        assertTrue(answer.startsWith("Not started over: it could not be recorded."), answer)
-        assertTrue("Nothing was deleted" in answer)
-        assertTrue(aurora in answer, answer)
+        assertEquals(
+            "Not started over: it could not be recorded. Nothing was deleted. The Bank Consents Slussen asked to end are no longer usable: grant them again, or start over again.",
+            answer,
+        )
         assertTrue(vm.state.value.enabled)
         assertTrue(fixture.restarted.isEmpty())
     }
@@ -179,59 +185,70 @@ class UC010StartOverViewModelTest {
 
     @Test
     @UseCase(id = "UC-010", scenario = "A12: Start Over", requirements = ["NFR-023"])
-    @DisplayName("O-17 step 3 (`#start-over-failed`): when the app cannot be started again, the row asks the Operator to close Slussen and open it again, and stays unavailable")
-    fun notRestarted() = runTest {
-        fixture.restartFails = true
+    @DisplayName("O-17 step 1 (`#start-over-failed`): a read that fails while the Bank Consents are being ended names the Banks already asked and how each went")
+    fun aReadThatFailsWhileEnding() = runTest {
+        slice.bankConsent.revokeAnswer = { RevokeResult.Ended }
+        slice.bankConsents.start(slice.openBankingKey, "Nordvik Bank (SE)", browserAvailable = true)
+        slice.bankConsent.completeAnswer = { _, _ -> ConsentCompletion.Completed(Instant.parse("2027-04-13T12:00:00Z"), emptyList(), ConsentSession("t")) }
+        slice.bankConsents.complete(ScriptedBankConsent.answer(ExampleData.CONSENT_RETURN_ADDRESS, "code=c&state=${slice.bankConsent.stateTexts().last()}"))
+        slice.bankConsent.revokeAnswer = { RevokeResult.Ended.also { slice.vault.failsToRead = true } }
         val vm = viewModel()
         vm.open(); vm.confirm()
 
-        assertEquals(StartOverTexts.OPEN_AGAIN, vm.state.value.answer)
-        assertNull(vm.state.value.running)
-        assertFalse(vm.state.value.enabled)
+        assertEquals(
+            "Not started over: the stored data could not be read. Nothing was deleted. Already asked: $aurora, ended. " +
+                "The Bank Consents Slussen asked to end are no longer usable: grant them again, or start over again.",
+            vm.state.value.answer,
+        )
     }
 
     // ---- The new installation's card (`#started-over`) --------------------------------------------------------------
 
     @Test
     @UseCase(id = "UC-010", scenario = "A12: Start Over")
-    @DisplayName("A12 step 4 (`#started-over`): the new installation names each Bank whose Bank Consent was not confirmed as ended, with why, until OK, and keeps nothing after")
+    @DisplayName("A12 step 4 (`#started-over`): a start that finished Start Over names each Bank from its record, not confirmed apart from not contacted, until OK; nothing else can make it show")
     fun theCardNamesTheBanksUntilClosed() {
         val notice = StartedOverNotice()
-        notice.receive(StartOverHandOver.decode(StartOverHandOver.encode(StartOverResult(listOf(
+        notice.atStart(StartOverRecord(listOf(
             ConsentNotEnded("Nordvik Bank (SE)", provider, NotEndedBecause.NotConfirmed),
             ConsentNotEnded(aurora, provider, NotEndedBecause.CredentialsMissing),
-        )))))
-        notice.servicesStarted(startedOver = true)
+        ), complete = true))
 
         val card = checkNotNull(notice.card.value)
         assertEquals("Slussen started over", card.title)
-        assertTrue("Nordvik Bank (SE) ($provider did not confirm it)" in card.text, card.text)
-        assertTrue("$aurora ($provider's credentials were missing)" in card.text, card.text)
-        assertTrue("stays at its Bank until it expires" in card.text)
+        assertEquals(
+            "Everything it stored was deleted. Not confirmed as ended at the Bank: Nordvik Bank (SE) ($provider did not confirm it). " +
+                "Not contacted: $aurora ($provider's credentials were missing). Each stays at its Bank until it expires; you can end it at the Bank.",
+            card.text,
+        )
         notice.close()
         assertNull(notice.card.value)
-        notice.servicesStarted(startedOver = true)
-        assertNull(notice.card.value, "closed means not shown again in this process")
     }
 
     @Test
     @UseCase(id = "UC-010", scenario = "A12: Start Over")
-    @DisplayName("A12 step 4: every Bank Consent ended is said so; a start that finished Start Over without the names (a process that ended between) says that they are not known")
-    fun theCardWithoutNames() {
-        val allEnded = StartedOverNotice()
-        allEnded.receive(StartOverHandOver.decode(StartOverHandOver.encode(StartOverResult(emptyList()))))
+    @DisplayName("A12 step 4: an ordinary start shows no card, whatever started the app; a list not known or not complete is said so")
+    fun theCardOnlyAfterStartOver() {
+        val ordinary = StartedOverNotice()
+        ordinary.atStart(null)
+        assertNull(ordinary.card.value, "an activity start with any extra on an ordinary installation shows no card: no extra is read")
+
+        val allEnded = StartedOverNotice().apply { atStart(StartOverRecord(emptyList(), complete = true)) }
         assertEquals(StartOverTexts.EVERY_CONSENT_ENDED, allEnded.card.value?.text)
+        val notKnown = StartedOverNotice().apply { atStart(StartOverRecord(null, complete = false)) }
+        assertEquals(StartOverTexts.NAMES_NOT_KNOWN, notKnown.card.value?.text)
+        val partly = StartedOverNotice().apply { atStart(StartOverRecord(listOf(ConsentNotEnded(aurora, provider, NotEndedBecause.NotConfirmed)), complete = false)) }
+        assertTrue(partly.card.value!!.text.endsWith(StartOverTexts.LIST_NOT_COMPLETE), partly.card.value?.text)
+    }
 
-        val lost = StartedOverNotice()
-        lost.servicesStarted(startedOver = true)
-        assertEquals(StartOverTexts.NAMES_NOT_KNOWN, lost.card.value?.text)
-        lost.receive(StartOverResult(emptyList()))
-        assertEquals(StartOverTexts.EVERY_CONSENT_ENDED, lost.card.value?.text, "names that arrive after the start replace the line")
-
-        val normal = StartedOverNotice()
-        normal.servicesStarted(startedOver = false)
-        assertNull(normal.card.value)
-        assertNull(StartOverHandOver.decode(null))
+    @Test
+    @UseCase(id = "UC-010", scenario = "A12: Start Over", requirements = ["NFR-023"])
+    @DisplayName("A12 step 3 (`#start-over-unavailable`): the refusal for another operation reads as the mockup's")
+    fun theRefusalReads() {
+        assertEquals(
+            "Not started over: a Fetch of SimpleFIN that the Fetch Schedule started is running. Nothing was deleted. Start over once it has ended.",
+            StartOverTexts.notNow(StartOverUnavailable.AnotherOperation(RunningOperation(OperationKind.Fetch, "SimpleFIN", StartedBy.Schedule))),
+        )
     }
 
     @Test

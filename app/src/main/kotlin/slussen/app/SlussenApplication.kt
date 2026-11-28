@@ -14,6 +14,9 @@ import slussen.app.platform.log.LogcatLog
 import slussen.app.ui.UiServices
 import slussen.app.ui.consent.ConsentAnswers
 import slussen.app.ui.settings.StartedOverNotice
+import slussen.app.ui.AppState
+import slussen.app.platform.restart.ProcessRestart
+import slussen.persistence.start.StartNotFinished
 import java.time.Clock
 
 /**
@@ -52,14 +55,58 @@ class SlussenApplication : Application() {
      */
     val startedOver: StartedOverNotice = StartedOverNotice()
 
+    /** What the root of the screens reads before any screen: Start Over recorded, or a start that could not finish (ADR-002 §3 O-17). */
+    val appState: AppState = AppState()
+
+    /** How many of the app's activities are started: above 0 while the app is in the foreground (ADR-002 §3 O-17 step 3). */
+    private val startedActivities = java.util.concurrent.atomic.AtomicInteger(0)
+
     override fun onCreate() {
         super.onCreate()
+        // ADR-002 §3 O-17 step 3: the process of the activity that opens Slussen again starts nothing of Slussen's own.
+        if (ProcessRestart.isRestartProcess(processNameOrNull())) return
+        registerActivityLifecycleCallbacks(ForegroundCount(startedActivities))
         scope.launch {
-            val services = compositionRoot.start(this@SlussenApplication, clock, scope)
-            startedOver.servicesStarted(services.startedOver)
+            val services = try {
+                compositionRoot.start(this@SlussenApplication, clock, scope, appState) { startedActivities.get() > 0 }
+            } catch (notFinished: StartNotFinished) {
+                // ADR-002 §3 O-17 step 6: a start that stops says so and what the Operator can do; it never crashes.
+                appState.startNotFinished(notFinished.startingOver)
+                return@launch
+            }
+            startedOver.atStart(services.startOverRecord)
             started.value = services
             // UC-008 BR-001: the Consent Requests that wait, and one whose lifetime ended meanwhile, are read from stored data only.
             consentAnswers.atStart()
         }
     }
+}
+
+/** The name of this process, so that the `:restart` process starts nothing of Slussen's own. */
+private fun processNameOrNull(): String? =
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+        Application.getProcessName()
+    } else {
+        try {
+            java.io.File("/proc/self/cmdline").readText().trimEnd('\u0000')
+        } catch (failure: Exception) {
+            null
+        }
+    }
+
+/** Counts the app's started activities, so that Start Over opens the app again only while it is in the foreground. */
+private class ForegroundCount(private val started: java.util.concurrent.atomic.AtomicInteger) : Application.ActivityLifecycleCallbacks {
+    override fun onActivityStarted(activity: android.app.Activity) {
+        started.incrementAndGet()
+    }
+
+    override fun onActivityStopped(activity: android.app.Activity) {
+        started.decrementAndGet()
+    }
+
+    override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: android.os.Bundle?) = Unit
+    override fun onActivityResumed(activity: android.app.Activity) = Unit
+    override fun onActivityPaused(activity: android.app.Activity) = Unit
+    override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: android.os.Bundle) = Unit
+    override fun onActivityDestroyed(activity: android.app.Activity) = Unit
 }

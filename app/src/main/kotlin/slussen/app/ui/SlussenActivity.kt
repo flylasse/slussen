@@ -77,7 +77,6 @@ import slussen.app.ui.settings.TransferDescriptionsScreen
 import slussen.app.ui.settings.TransferDescriptionsViewModel
 import slussen.app.ui.settings.descriptionActionsOf
 import slussen.app.ui.settings.StartOverActions
-import slussen.app.ui.settings.StartOverHandOver
 import slussen.app.ui.settings.StartOverViewModel
 import slussen.app.ui.settings.StartedOverNotice
 import slussen.app.ui.theme.SlussenColors
@@ -101,19 +100,30 @@ class SlussenActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val application = application as SlussenApplication
-        // A12 step 4 of UC-010: the Banks handed over by the process Start Over ended are read once, held in memory and never stored.
-        if (savedInstanceState == null) application.startedOver.receive(StartOverHandOver.decode(intent?.getStringArrayListExtra(StartOverHandOver.EXTRA)))
-        intent?.removeExtra(StartOverHandOver.EXTRA)
         setContent {
             SlussenTheme {
                 val services by application.services.collectAsState()
+                val startingOver by application.appState.startingOver.collectAsState()
+                val startFailure by application.appState.startFailure.collectAsState()
                 Box(Modifier.fillMaxSize().background(SlussenColors.Background).safeDrawingPadding()) {
                     val started = services
-                    if (started == null) Muted("Opening Slussen…") else SlussenScreens(started, application.consentAnswers, application.startedOver)
+                    // ADR-002 §3 O-17 steps 3, 6: Start Over recorded, or a start that could not finish, is all any screen shows.
+                    when (application.appState.root(servicesStarted = started != null).also { startingOver; startFailure }) {
+                        RootScreen.StartingOver -> AppNotice(AppTexts.STARTING_OVER)
+                        RootScreen.StartNotFinished -> AppNotice(startFailure.orEmpty())
+                        RootScreen.Opening -> Muted("Opening Slussen…")
+                        RootScreen.Screens -> SlussenScreens(started!!, application.consentAnswers, application.startedOver)
+                    }
                 }
             }
         }
     }
+}
+
+/** The only thing shown while Slussen is starting over or could not finish its start (`settings.html#starting-over`, `#start-over-not-finished`). */
+@Composable
+private fun AppNotice(text: String) {
+    Box(Modifier.fillMaxSize().padding(24.dp)) { Text(text, color = SlussenColors.Text) }
 }
 
 /** The screen the Operator is on. */

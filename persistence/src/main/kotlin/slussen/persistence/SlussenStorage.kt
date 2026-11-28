@@ -57,7 +57,7 @@ import java.time.Clock
 class SequenceStartState(outcome: StartOutcome) : StartState {
     override val startKind: StartKind = outcome.kind
     override val unreadableParts: List<UnreadablePart> = outcome.unreadableParts
-    override val startedOver: Boolean = outcome.startedOver
+    override val startOver: slussen.core.port.StartOverRecord? = outcome.startOver
 }
 
 /** The size of `slussen.db`, the only file that is backed up (ADR-002 §5). */

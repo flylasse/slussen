@@ -15,11 +15,17 @@ class InMemoryCredentialVault : CredentialVault {
     var beforeRemove: suspend () -> Unit = {}
     var failsToRemove: Boolean = false
 
+    /** Makes every read fail, as a `device.db` that cannot be read would (UC-010 A12). */
+    var failsToRead: Boolean = false
+
     override suspend fun replace(service: ServiceKey, credential: Secret, acceptedAt: Instant) {
         stored[service] = StoredCredential(credential, acceptedAt)
     }
 
-    override suspend fun read(service: ServiceKey): StoredCredential? = stored[service]
+    override suspend fun read(service: ServiceKey): StoredCredential? {
+        if (failsToRead) throw IllegalStateException("The invented storage of this test cannot be read.")
+        return stored[service]
+    }
 
     override suspend fun remove(service: ServiceKey) {
         beforeRemove()

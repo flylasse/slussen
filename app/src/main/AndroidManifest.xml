@@ -65,5 +65,15 @@
                 <data android:scheme="${applicationId}" android:host="consent" />
             </intent-filter>
         </activity>
+
+        <!-- UC-010 A12, ADR-002 §3 O-17 step 3: opens Slussen again after Start Over has ended its process, from a process
+             of its own, so that the start does not land in the process that ends. Not exported; no permission. -->
+        <activity
+            android:name=".platform.restart.RestartActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:process=":restart"
+            android:theme="@android:style/Theme.NoDisplay" />
     </application>
 </manifest>

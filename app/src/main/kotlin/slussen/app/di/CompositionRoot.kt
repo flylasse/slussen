@@ -39,7 +39,8 @@ import slussen.core.settings.DescriptionLists
 import slussen.core.settings.StartOver
 import slussen.core.settings.StartOverResult
 import slussen.app.platform.restart.ProcessRestart
-import slussen.app.ui.settings.StartOverHandOver
+import slussen.app.platform.restart.StartOverEnding
+import slussen.app.ui.AppState
 import slussen.core.status.BankAccountTransactions
 import slussen.core.status.BudgetTransfers
 import slussen.core.status.ImportStatus
@@ -75,7 +76,13 @@ class CompositionRoot(private val log: SlussenLog, private val detailedLogging: 
      * the Fetch Schedule's work at the start (UC-001 BR-013) and keeps the New Transaction Notification following the
      * stored number in [scope] (UC-001 BR-014), and the worker uses the same services.
      */
-    suspend fun start(context: Context, clock: Clock, scope: CoroutineScope): UiServices {
+    suspend fun start(
+        context: Context,
+        clock: Clock,
+        scope: CoroutineScope,
+        appState: AppState = AppState(),
+        inForeground: () -> Boolean = { false },
+    ): UiServices {
         val storage = SlussenStorage.open(context, clock)
         val appVersion = context.installedAppVersion()
         val random = SecureRandom()
@@ -149,12 +156,17 @@ class CompositionRoot(private val log: SlussenLog, private val detailedLogging: 
         )
         // A12 of UC-010: Start Over, alone on the lane (ADR-007 §2), recorded in the start intent and finished by the next start (ADR-002 §3 O-17).
         val startOver = StartOver(storage.connections, storage.fetches, bankConsents, coordinator, storage.startOver) { journalExport.underWay }
-        // ADR-002 §3 O-17 step 3: the Fetch Schedule's work and the notification are removed, and the app is started again with the Banks to name.
-        val restartForStartOver: suspend (StartOverResult) -> Nothing = { result ->
-            fetchSchedule.startedOver()
-            removeQuietly(notificationDevice)
-            ProcessRestart(context.applicationContext).restart(StartOverHandOver.EXTRA, StartOverHandOver.encode(result))
-        }
+        // ADR-002 §3 O-17 step 3: every screen shows that Slussen is starting over, the work and the notification go, the app asks to be opened again while in the foreground, and the process ends in every case.
+        val restart = ProcessRestart(context.applicationContext)
+        val ending = StartOverEnding(
+            state = appState,
+            cancelSchedule = { fetchSchedule.startedOver() },
+            removeNotification = { removeQuietly(notificationDevice) },
+            inForeground = inForeground,
+            reopen = restart::reopen,
+            exit = restart::exit,
+        )
+        val restartForStartOver: suspend (StartOverResult) -> Nothing = ending::end
         return UiServices(
             credentials = credentials,
             settingsOverview = settingsOverview,
@@ -214,7 +226,7 @@ class CompositionRoot(private val log: SlussenLog, private val detailedLogging: 
             startOver = startOver,
             processScope = scope,
             restartForStartOver = restartForStartOver,
-            startedOver = storage.startState.startedOver,
+            startOverRecord = storage.startState.startOver,
         )
     }
 

@@ -157,8 +157,8 @@ class TestSlice(
     val startOver = startOverWith { journalExport.underWay }
 
     /** Start Over with another answer to whether a Journal Export is being written (ADR-007 §2). */
-    fun startOverWith(exportUnderWay: () -> Boolean): StartOver =
-        StartOver(connectionStore, importStatusStore, bankConsents, coordinator, startOverStore, exportUnderWay)
+    fun startOverWith(store: slussen.core.port.StartOverStore = startOverStore, exportUnderWay: () -> Boolean): StartOver =
+        StartOver(connectionStore, importStatusStore, bankConsents, coordinator, store, exportUnderWay)
 
     /** The removal at a start of the Banks an attempt to grant a Bank Consent left behind (ADR-002 §3 O-10). */
     val leftBehindBanks = LeftBehindBanks(connectionStore, consentStore, offeredStore)

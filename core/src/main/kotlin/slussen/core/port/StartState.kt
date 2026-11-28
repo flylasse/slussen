@@ -1,5 +1,7 @@
 package slussen.core.port
 
+import slussen.core.consent.ConsentNotEnded
+
 import java.time.Instant
 
 /** How this start began (ADR-002 §6). */
@@ -25,9 +27,18 @@ interface StartState {
     val startKind: StartKind
     val unreadableParts: List<UnreadablePart>
 
+    /** What this start read from the record of a Start Over it finished (ADR-002 §3 O-17 step 6), or null for any other start. */
+    val startOver: StartOverRecord? get() = null
+
     /** This start finished a Start Over (UC-010 A12, ADR-002 §3 O-17): the start of a new installation. */
-    val startedOver: Boolean get() = false
+    val startedOver: Boolean get() = startOver != null
 }
+
+/**
+ * The Banks a Start Over recorded with itself (ADR-002 §3 O-17 steps 2, 6): [notEnded] null when the list could not be
+ * read, and [complete] false when an entry was left out or could not be read.
+ */
+data class StartOverRecord(val notEnded: List<ConsentNotEnded>?, val complete: Boolean)
 
 /** The size of the data Slussen includes in device backups, and the limit Android sets (ADR-002 §5, C-015). */
 interface BackupSizeMonitor {

@@ -84,6 +84,6 @@ class UiServices(
     val processScope: kotlinx.coroutines.CoroutineScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default),
     /** O-17 step 3: cancels the Fetch Schedule's work, removes the notification and starts the app again, handing it [StartOverResult]. */
     val restartForStartOver: suspend (slussen.core.settings.StartOverResult) -> Nothing = { kotlinx.coroutines.awaitCancellation() },
-    /** This start finished a Start Over (ADR-002 §3 O-17 step 5): the start of a new installation. */
-    val startedOver: Boolean = false,
+    /** What this start read from the record of a Start Over it finished (ADR-002 §3 O-17 step 6); null for any other start. */
+    val startOverRecord: slussen.core.port.StartOverRecord? = null,
 )

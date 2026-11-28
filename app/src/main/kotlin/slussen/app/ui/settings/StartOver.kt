@@ -10,11 +10,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import slussen.app.ui.Texts
 import slussen.app.ui.UiServices
+import slussen.core.consent.ConsentAsked
 import slussen.core.consent.ConsentNotEnded
+import slussen.core.operation.OperationKind
+import slussen.core.operation.RunningOperation
+import slussen.core.port.StartOverRecord
+import slussen.core.port.StartedBy
 import slussen.core.consent.ConsentToEnd
 import slussen.core.consent.NotEndedBecause
 import slussen.core.settings.StartOverOutcome
-import slussen.core.settings.StartOverResult
 import slussen.core.settings.StartOverStatement
 import slussen.core.settings.StartOverUnavailable
 
@@ -42,11 +46,12 @@ object StartOverTexts {
     const val RESTARTING = "Starting over: Slussen deletes everything and starts again by itself"
     const val NOTHING_DELETED_YET = "Nothing is deleted yet. Slussen then deletes everything and starts again by itself."
     const val STATEMENT_NOT_READ = "Not started over: the stored data could not be read. Nothing was deleted. Try again."
-    const val OPEN_AGAIN = "Everything is ready to be deleted: close Slussen and open it again to finish starting over."
     const val CARD_TITLE = "Slussen started over"
     const val EVERY_CONSENT_ENDED = "Everything it stored was deleted. Every Bank Consent was confirmed as ended."
     const val NAMES_NOT_KNOWN = "Everything it stored was deleted. Which Bank Consents were not confirmed as ended is not known: " +
         "check each at its Bank; one not ended stays there until it expires."
+    const val LIST_NOT_COMPLETE = " The list may not be complete: check each Bank Consent at its Bank."
+    private const val NO_LONGER_USABLE = " The Bank Consents Slussen asked to end are no longer usable: grant them again, or start over again."
 
     fun statement(statement: StartOverStatement): StartOverDialogUi {
         val consents = statement.consentsToEnd
@@ -73,7 +78,7 @@ object StartOverTexts {
     fun asking(toEnd: ConsentToEnd): String = "Asking ${toEnd.dataProviderName} to end the Bank Consent of ${toEnd.bankName}"
 
     fun notNow(why: StartOverUnavailable): String = "Not started over: " + when (why) {
-        is StartOverUnavailable.AnotherOperation -> (why.running?.let { Texts.operation(it) } ?: "another operation") + " is under way"
+        is StartOverUnavailable.AnotherOperation -> (why.running?.let(::running) ?: "another operation") + " is running"
         is StartOverUnavailable.ConsentRequestWaiting ->
             "a Consent Request for ${why.bankReference} waits for the Bank's result: cancel it on its Data Provider's page, or wait until its time ends"
         StartOverUnavailable.JournalExportBeingWritten -> "a Journal Export is being written"
@@ -83,8 +88,25 @@ object StartOverTexts {
         }
     } + ". Nothing was deleted. Start over once it has ended."
 
-    fun notRecorded(asked: List<String>): String = "Not started over: it could not be recorded. Nothing was deleted." +
-        if (asked.isEmpty()) " Try again." else " The Bank Consents of ${asked.joinToString(", ")} were asked to end and may no longer be usable: grant them again, or start over again."
+    /** The operation that runs, as a sentence's subject (`#start-over-unavailable`). */
+    private fun running(running: RunningOperation): String {
+        val bySchedule = running.startedBy == StartedBy.Schedule
+        return when (running.kind) {
+            OperationKind.Fetch -> "a Fetch of ${running.subject ?: "a Data Provider"}" + if (bySchedule) " that the Fetch Schedule started" else ""
+            OperationKind.Comparison -> "a read of ${running.subject ?: "the Budget App"}"
+            OperationKind.FileImport -> "an import of a Transaction File for ${running.subject ?: "a Bank Account"}"
+            OperationKind.JournalExport -> "the Journal Export's read of ${running.subject ?: "the Budget App"}"
+            OperationKind.BankConsent -> "a request to ${running.subject ?: "a Data Provider"} about a Bank Consent"
+            else -> Texts.operation(running)
+        }
+    }
+
+    fun notRecorded(asked: List<ConsentAsked>): String = "Not started over: it could not be recorded. Nothing was deleted." +
+        if (asked.isEmpty()) " Try again." else NO_LONGER_USABLE
+
+    fun notReadWhileEnding(asked: List<ConsentAsked>): String = "Not started over: the stored data could not be read. Nothing was deleted. " +
+        "Already asked: " + asked.joinToString("; ") { "${it.bankName}, " + (it.notEnded?.let { because -> "not ended: " + why(ConsentNotEnded(it.bankName, it.dataProviderName, because)) } ?: "ended") } +
+        "." + NO_LONGER_USABLE
 
     private fun why(notEnded: ConsentNotEnded): String = when (notEnded.because) {
         NotEndedBecause.EndedAtDataProviderOnly -> "${notEnded.dataProviderName} ended it on its side only"
@@ -95,62 +117,44 @@ object StartOverTexts {
         NotEndedBecause.NotContactable -> "${notEnded.dataProviderName.ifEmpty { "its Data Provider" }} could not be contacted"
     }
 
-    fun card(result: StartOverResult?): StartedOverCardUi = StartedOverCardUi(
-        CARD_TITLE,
-        when {
-            result == null -> NAMES_NOT_KNOWN
-            result.notEnded.isEmpty() -> EVERY_CONSENT_ENDED
-            else -> "Everything it stored was deleted. Not confirmed as ended at the Bank: " +
-                result.notEnded.joinToString("; ") { "${it.bankName.ifEmpty { "a Bank" }} (${why(it)})" } +
-                ". Each stays at its Bank until it expires; you can end it at the Bank."
-        },
+    private val notContacted = setOf(
+        NotEndedBecause.CredentialsMissing, NotEndedBecause.CredentialsRefused, NotEndedBecause.HeldBackByGate, NotEndedBecause.NotContactable,
     )
-}
 
-/**
- * How the names of the Banks of Start Over reach the new process (ADR-002 §3 O-17 step 3): as text in the intent that
- * starts the app, never in a file. One line per Bank: why, the Data Provider's name and the Bank's name, by tabs.
- */
-object StartOverHandOver {
-    /** The name of the intent's extra. */
-    const val EXTRA = "slussen.start-over.not-ended"
+    private fun named(banks: List<ConsentNotEnded>) = banks.joinToString("; ") { "${it.bankName.ifEmpty { "a Bank" }} (${why(it)})" }
 
-    fun encode(result: StartOverResult): ArrayList<String> =
-        ArrayList(result.notEnded.map { listOf(it.because.name, it.dataProviderName, it.bankName).joinToString("\t") { part -> part.replace('\t', ' ') } })
-
-    /** The result handed over, or null when the app was not started by Start Over; a line that cannot be read is named as not confirmed. */
-    fun decode(lines: List<String>?): StartOverResult? = lines?.let { handed ->
-        StartOverResult(
-            handed.map { line ->
-                val parts = line.split('\t')
-                val because = NotEndedBecause.entries.firstOrNull { it.name == parts.getOrNull(0) } ?: NotEndedBecause.NotConfirmed
-                ConsentNotEnded(parts.getOrNull(2) ?: line, parts.getOrNull(1).orEmpty(), because)
-            },
+    /** The card of `#started-over`, from the record the start read: not confirmed as ended apart from not contacted. */
+    fun card(record: StartOverRecord): StartedOverCardUi {
+        val banks = record.notEnded ?: return StartedOverCardUi(CARD_TITLE, NAMES_NOT_KNOWN)
+        val tail = if (record.complete) "" else LIST_NOT_COMPLETE
+        if (banks.isEmpty()) return StartedOverCardUi(CARD_TITLE, (if (record.complete) EVERY_CONSENT_ENDED else "Everything it stored was deleted.") + tail)
+        val (notReached, notConfirmed) = banks.partition { it.because in notContacted }
+        val parts = listOfNotNull(
+            notConfirmed.takeIf { it.isNotEmpty() }?.let { "Not confirmed as ended at the Bank: ${named(it)}." },
+            notReached.takeIf { it.isNotEmpty() }?.let { "Not contacted: ${named(it)}." },
+        )
+        return StartedOverCardUi(
+            CARD_TITLE,
+            "Everything it stored was deleted. " + parts.joinToString(" ") + " Each stays at its Bank until it expires; you can end it at the Bank." + tail,
         )
     }
 }
 
 /**
- * The card of the new installation after Start Over, held in this process's memory only and never stored (UC-010 A12
- * step 4): the names handed over in the intent that started the app ([receive]), or, when a start finished Start Over
- * without them ([servicesStarted]), that they are not known. Closed, it is not shown again.
+ * The card of the new installation after Start Over, held in this process's memory only (UC-010 A12 step 4): shown only
+ * when this process's start finished a Start Over, with the Banks read from its record ([atStart]); nothing that starts
+ * the app can make it show. Closed, it is not shown again.
  */
 class StartedOverNotice {
     private val shown = MutableStateFlow<StartedOverCardUi?>(null)
     private var closed = false
-    private var received = false
 
     val card: StateFlow<StartedOverCardUi?> = shown.asStateFlow()
 
-    fun receive(result: StartOverResult?) {
-        if (result == null || closed) return
-        received = true
-        shown.value = StartOverTexts.card(result)
-    }
-
-    fun servicesStarted(startedOver: Boolean) {
-        if (!startedOver || closed || received) return
-        shown.value = StartOverTexts.card(null)
+    // A12 step 4 of UC-010: the names are read from the record of Start Over by the start that finishes it and shown until the Operator closes them.
+    fun atStart(record: StartOverRecord?) {
+        if (record == null || closed) return
+        shown.value = StartOverTexts.card(record)
     }
 
     fun close() {
@@ -201,7 +205,6 @@ class StartOverViewModel(private val services: UiServices) : ViewModel() {
                         current.update { it.copy(running = StartOverTexts.RESTARTING) }
                         services.restartForStartOver(result)
                     },
-                    notRestarted = { current.value = StartOverUi(answer = StartOverTexts.OPEN_AGAIN, enabled = false) },
                     asking = { toEnd -> current.update { it.copy(running = StartOverTexts.asking(toEnd)) } },
                 )
             } catch (cancelled: CancellationException) {
@@ -215,6 +218,7 @@ class StartOverViewModel(private val services: UiServices) : ViewModel() {
                     is StartOverOutcome.NotNow -> StartOverTexts.notNow(outcome.why)
                     StartOverOutcome.StoredDataNotRead -> StartOverTexts.STATEMENT_NOT_READ
                     is StartOverOutcome.NotRecorded -> StartOverTexts.notRecorded(outcome.asked)
+                    is StartOverOutcome.NotReadWhileEnding -> StartOverTexts.notReadWhileEnding(outcome.asked)
                 },
             )
         }

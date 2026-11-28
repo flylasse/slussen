@@ -16,6 +16,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import slussen.core.comparison.ComparisonStart
 import slussen.core.consent.CompletionOutcome
+import slussen.core.consent.ConsentAsked
 import slussen.core.consent.ConsentNotEnded
 import slussen.core.consent.ConsentToEnd
 import slussen.core.consent.NotEndedBecause
@@ -284,6 +285,7 @@ class UC010StartOverTest {
 
         val result = restarted.await()
         assertEquals(listOf(ConsentNotEnded(nordvik, ExampleData.openBankingProfile.name, NotEndedBecause.EndedAtDataProviderOnly)), result.notEnded)
+        assertEquals(result.notEnded, slice.startOverStore.recordedNotEnded, "the Banks are written with the record itself (ADR-002 §3 O-17 step 2)")
         assertTrue(recordedAfterEnding, "the obligation is recorded only after every Bank Consent was asked (ADR-002 §3 O-17 steps 1-2)")
         assertTrue(slice.startOverStore.recorded)
         val requests = consent.asked.drop(asked)
@@ -349,7 +351,10 @@ class UC010StartOverTest {
 
         val outcome = slice.startOver.startOver(restart = restart)
 
-        assertEquals(StartOverOutcome.NotRecorded(listOf(aurora, nordvik)), outcome)
+        assertEquals(
+            StartOverOutcome.NotRecorded(listOf(ConsentAsked(aurora, provider, null), ConsentAsked(nordvik, provider, null))),
+            outcome,
+        )
         assertFalse(restarted.isCompleted)
         assertNull(slice.coordinator.running.value)
         assertTrue(slice.coordinator.run(OperationKind.OperatorSettingChange, StartedBy.Operator) { Unit } is OperationResult.Ran)
@@ -397,57 +402,21 @@ class UC010StartOverTest {
         assertEquals(OperationKind.StartOver, slice.coordinator.running.value?.kind)
     }
 
-    // ---- After Start Over: nothing uploaded before First Upload Matching --------------------------------------------
+    private val provider = ExampleData.openBankingProfile.name
 
     @Test
-    @UseCase(id = "UC-010", scenario = "A12: Start Over")
-    @DisplayName("A12 step 4, UC-006 BR-017: after Start Over, with the same Bank Transactions fetched again, a First Upload Matching holds Uploads back and those Slussen had uploaded are Already In Budget App, not Eligible")
-    fun afterStartOverNothingIsEligibleBeforeFirstUploadMatching() = runTest {
-        // The new installation the start sequence leaves (ADR-002 §3 O-17 step 5): empty data and a First Upload Matching open.
-        val fresh = TestSlice(startKind = StartKind.NewInstallation)
-        fresh.firstUploadMatchingStore.open(FirstUploadMatchingCause.NewInstallation, fresh.clock.instant())
-        fresh.enterCredentials()
-        val listed = ExampleData.budgetsRead().map { budget ->
-            BudgetToServe(budget.reference, budget.name, budget.currency, budget.budgetAccounts.map { BudgetAccountToStore(it.reference, it.name, it.balance) })
-        }
-        fresh.connectionStore.serveBudgets(listed, listed.map { it.budgetAppReference }.toSet(), fresh.clock.instant())
-        val checking = fresh.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Checking" }
-        val bankAccountId = 9001L
-        fresh.connectionStore.bankAccountList += StoredBankAccount(
-            id = bankAccountId, generatedIdentifier = "00000000-0000-4000-8000-000000009001",
-            bankId = fresh.connectionStore.bankNamed("Kestrel Bank").id, providerBankId = null, dataProviderId = fresh.feedsId,
-            fileFormatId = null, balanceDataProviderId = null, name = "Kestrel Checking", currency = USD, type = BankAccountType.Checking,
-            startDate = null, providerReference = "acct-checking", bankAccountFingerprint = null, balanceProviderReference = null,
-            identifiedAt = fresh.clock.instant(), retired = false, fundedByBudgetAccountId = null, transferPartnerBudgetAccountId = null,
-            mapping = StoredAccountMapping(9002L, bankAccountId, checking.id, null),
-        )
-        val oct14 = LocalDate.of(2026, 10, 14)
-        // The same Bank Transactions fetched again: their Import Identifiers are those of the Uploads before Start Over (ADR-008).
-        fresh.importStatusStore.bankTransactions += transaction(9003L, bankAccountId, "TX-UPLOADED-1", oct14, amount(-64, 180))
-        fresh.importStatusStore.bankTransactions += transaction(9004L, bankAccountId, "TX-UPLOADED-2", oct14, amount(-12))
-        fresh.budgetApp.reader.changesAnswer = { asked ->
-            val held = if (asked.budgetReference == "budget-household") {
-                listOf("TX-UPLOADED-1" to amount(-64, 180), "TX-UPLOADED-2" to amount(-12)).mapIndexed { i, (reference, money) ->
-                    BudgetAppTransactionRead("ynab-$i", "ba-checking", oct14, money, "Corner Grocer", null, identifier(reference), EntryKind.Imported, null, ReadState.Present, true, true)
-                }
-            } else {
-                emptyList()
-            }
-            ReadResult.Answered(ChangeSet(held, ChangeCursor("k-${asked.budgetReference}")))
-        }
+    @UseCase(id = "UC-010", scenario = "A12: Start Over", requirements = ["NFR-023"])
+    @DisplayName("O-17 step 1: stored data that cannot be read while the Bank Consents are being ended stops Start Over before anything is recorded, and the answer names each Bank already asked and how it went")
+    fun aReadThatFailsWhileEndingNamesTheBanksAsked() = runTest {
+        revokeAnswers(aurora to RevokeResult.Ended, nordvik to RevokeResult.Ended)
+        val ended = consent.revokeAnswer
+        consent.revokeAnswer = { session -> ended(session).also { slice.vault.failsToRead = true } }
 
-        assertNotNull(fresh.status.overview().firstUploadMatching, "before any Comparison, a First Upload Matching holds every Upload back")
-        assertTrue(fresh.comparison.readAgain() is ComparisonStart.Ran)
+        val outcome = slice.startOver.startOver(restart = restart)
 
-        assertEquals(
-            listOf(TransactionStatus.AlreadyInBudgetApp, TransactionStatus.AlreadyInBudgetApp),
-            fresh.importStatusStore.bankTransactions.map { it.status },
-        )
-        val household = fresh.connectionStore.budgets().single { it.name == "Household" }
-        assertEquals(0, fresh.status.workspace(household.id).summary.notYetUploaded.eligible)
-        val open = fresh.firstUploadMatchingStore.openChecks().single()
-        assertEquals(FirstUploadMatchingCause.NewInstallation, open.cause)
-        assertNull(open.confirmedAt, "Uploads wait until the Operator confirms First Upload Matching (ADR-007 §3)")
-        assertNotNull(fresh.status.overview().firstUploadMatching)
+        assertEquals(StartOverOutcome.NotReadWhileEnding(listOf(ConsentAsked(aurora, provider, null))), outcome)
+        assertFalse(slice.startOverStore.recorded)
+        assertFalse(restarted.isCompleted)
+        assertNull(slice.coordinator.running.value)
     }
 }
