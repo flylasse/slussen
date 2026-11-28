@@ -45,6 +45,11 @@ fun FileFormatScreen(
     onCancelForm: () -> Unit,
     onChoose: (Long?, Long?) -> Unit,
     onAdd: (BankAccountType?, BankChoice?, String, String, String) -> Unit,
+    /**
+     * UC-002 A7 (`connections.html#import-first`): the control of Import a Transaction File on this page, with the state
+     * and answer of an import started here; [showButton] while no Bank Account of the File Format is added yet.
+     */
+    fileImport: @Composable (showButton: Boolean) -> Unit = {},
 ) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
@@ -59,7 +64,10 @@ fun FileFormatScreen(
             SlussenCard {
                 if (ui.bankAccounts.isEmpty()) Muted("None yet")
                 ui.bankAccounts.forEach { line -> AccountLine(line.title, line.detail, null, null, null, trailing = line.trailing) }
+                // UC-002 A7: the first file of the File Format adds its Bank Account first; its answer stays here.
+                fileImport(ui.canImportFirst)
                 OutlinedButton(onClick = onOpenForm, enabled = ui.canAdd) { Text("Add a Bank Account of this File Format") }
+                if (ui.importFirstNote != null) Muted(ui.importFirstNote)
                 if (ui.waitNote != null) Muted(ui.waitNote)
             }
             Muted(ui.footnote)

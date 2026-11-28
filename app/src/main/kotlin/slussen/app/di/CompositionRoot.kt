@@ -12,6 +12,7 @@ import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
 import slussen.core.fetch.FetchNotices
 import slussen.core.fetch.FetchTransactions
+import slussen.core.fileimport.ImportTransactionFile
 import slussen.core.firstupload.FirstUploadMatching
 import slussen.core.journal.DecisionJournal
 import slussen.core.journal.JournalControl
@@ -138,6 +139,10 @@ class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLogg
             fetch = FetchTransactions(
                 registered, credentials, storage.connections, storage.offered, storage.fetches, storage.providerRequests,
                 coordinator, storage.settings, journal, clock, fetchNotices, comparison,
+            ),
+            // For UC-002: Import a Transaction File through the File Pre-processor of its File Format, with its Comparison (step 9).
+            fileImport = ImportTransactionFile(
+                registered, plugins.filePreprocessors, storage.connections, storage.fileImports, storage.fetches, coordinator, journal, clock, comparison,
             ),
             // For UC-004, UC-005: the decisions, each one storage operation admitted by the coordinator (O-13, ADR-007 §2).
             review = ReviewDecisions(

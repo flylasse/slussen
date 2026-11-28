@@ -1006,6 +1006,9 @@ class InMemoryImportStatusStore(
      */
     var importWholeFailsPartWay: Boolean = false
 
+    /** Runs as [importWhole] begins, before anything is counted: a test can hold the store on its way here while it looks at the screen. */
+    var beforeImportWhole: suspend () -> Unit = {}
+
     /** Makes [recordRejected] fail, as a storage that cannot be written would (NFR-023). */
     var recordRejectedFails: Boolean = false
 
@@ -1015,6 +1018,7 @@ class InMemoryImportStatusStore(
      * `state_version` raised when a Bank Transaction is new; nothing of it on a collision or a failure.
      */
     override suspend fun importWhole(file: TransactionFileToImport): WholeImport {
+        beforeImportWhole()
         val counting = TransactionFileCounting.count(bankTransactionsOf(file.bankAccountId), file, identify)
         if (counting is FileCounting.Collision) return WholeImport.Collision(counting.importIdentifier)
         val inserts = (counting as FileCounting.Counted).inserts

@@ -9,6 +9,7 @@ import slussen.core.operation.OperationCoordinator
 import slussen.core.operation.OperationKind
 import slussen.core.operation.OperationPermit
 import slussen.core.operation.OperationResult
+import slussen.core.operation.RunningOperation
 import slussen.core.plugin.RegisteredPlugins
 import slussen.core.port.ConnectionStore
 import slussen.core.port.FetchStore
@@ -56,10 +57,24 @@ class ImportTransactionFile(
     /** A rejection the core decides, with the reason it shows and stores. */
     private class Rejection(val cause: RejectionCause, val reason: String)
 
-    /** Steps 1-10: the Operator imports [file], the bytes of the chosen Transaction File, for the Bank Account [bankAccountId]. */
-    suspend fun import(bankAccountId: Long, file: ByteArray): FileImportOutcome {
+    /**
+     * Steps 1-10: the Operator imports [file], the bytes of the chosen Transaction File, for the Bank Account [bankAccountId].
+     * When the import has to wait for the lane behind another operation, [waiting] is told which (ADR-007 §1), and
+     * [started] once it has the lane, before anything is read or converted; a caller that cancels the import before
+     * [started] withdraws it, and nothing is stored.
+     */
+    suspend fun import(
+        bankAccountId: Long,
+        file: ByteArray,
+        waiting: (RunningOperation) -> Unit = {},
+        started: () -> Unit = {},
+    ): FileImportOutcome {
+        coordinator.running.value?.let(waiting)
         // UC-006 BR-005: While an Upload Plan awaits confirmation or an Upload is written, no Transaction File is imported (ADR-007 §2).
-        val result = coordinator.run(OperationKind.FileImport, StartedBy.Operator) { permit -> imported(bankAccountId, file, permit) }
+        val result = coordinator.run(OperationKind.FileImport, StartedBy.Operator) { permit ->
+            started()
+            imported(bankAccountId, file, permit)
+        }
         return when (result) {
             is OperationResult.Ran -> result.value
             is OperationResult.Refused -> FileImportOutcome.Unavailable(result.reason)
@@ -136,6 +151,7 @@ class ImportTransactionFile(
         val comparisonFailed = comparison != null && compared == null
         return FileImportOutcome.Imported(
             bankAccountName = bankAccount.name,
+            importedAt = importedAt,
             delivered = kept.size,
             takenIn = withStatuses(bankAccount.id, takenIn),
             comparison = compared,
@@ -235,14 +251,32 @@ class ImportTransactionFile(
      * the import; when that read fails, each is shown as not compared yet, and the import stays.
      */
     private suspend fun withStatuses(bankAccountId: Long, takenIn: List<ReceivedBankTransaction>): List<TakenInTransaction> {
-        val statuses = try {
-            fetches.bankTransactionsOf(bankAccountId).associate { it.importIdentifier to it.status }
+        val stored = try {
+            fetches.bankTransactionsOf(bankAccountId)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            emptyMap()
+            emptyList()
         }
-        return takenIn.map { TakenInTransaction(it.importIdentifier, it.bookedDate, it.amount, statuses[it.importIdentifier]) }
+        val byIdentifier = stored.associateBy { it.importIdentifier }
+        return takenIn.map { received ->
+            val one = byIdentifier[received.importIdentifier]
+            TakenInTransaction(
+                importIdentifier = received.importIdentifier,
+                bookedDate = received.bookedDate,
+                amount = received.amount,
+                status = one?.status,
+                payee = one?.payee,
+                // A4 step 1: one without a Stable Reference is numbered among the identical ones of its Bank Account.
+                identical = one?.takeIf { it.stableReference == null }?.let { alone ->
+                    val identical = stored.count {
+                        it.stableReference == null && it.bookedDate == alone.bookedDate && it.amount == alone.amount &&
+                            it.payee == alone.payee && it.memo == alone.memo
+                    }
+                    IdenticalPosition(alone.occurrenceNumber, identical)
+                },
+            )
+        }
     }
 
     /** An amount as signed units with three decimals, the entity model's precision `12,3`: -12.340. */

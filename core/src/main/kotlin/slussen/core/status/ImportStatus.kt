@@ -301,10 +301,13 @@ class ImportStatus(
             SourceStatus(
                 name = fileFormats.single { it.id == id }.name,
                 isFileFormat = true,
-                health = last?.let { SourceHealth.FileImportHealth(it.outcome, it.importedAt) } ?: SourceHealth.NoneYet,
-                freshness = last?.takeIf { it.outcome == TransactionFileOutcome.Imported }?.importedAt,
+                health = last?.let(::fileHealth) ?: SourceHealth.NoneYet,
+                // UC-002 BR-006: The Freshness of a file-imported Bank Account is measured from the time of the last imported Transaction File.
+                freshness = snapshot.files.filter { file -> file.outcome == TransactionFileOutcome.Imported && ofFormat.any { it.id == file.bankAccountId } }
+                    .maxOfOrNull { it.importedAt },
                 notYetUploaded = notYetUploaded(ofFormat, snapshot),
                 blocked = emptyList(),
+                fileFormatId = id,
             )
         }
         return providerSources + fileSources
@@ -353,6 +356,7 @@ class ImportStatus(
             // A21 of UC-001: the balance the last Fetch reported in another currency, named with both currencies.
             balanceInOtherCurrency = fetchNotices.balanceInOtherCurrency(bankAccount.id),
             notComparedYet = counts?.notComparedYet ?: 0,
+            fileFormatId = bankAccount.fileFormatId,
         )
     }
 
@@ -366,11 +370,15 @@ class ImportStatus(
     private fun health(bankAccount: StoredBankAccount, snapshot: Snapshot): SourceHealth {
         if (bankAccount.fileFormatId != null) {
             val file = snapshot.files.filter { it.bankAccountId == bankAccount.id }.maxByOrNull { it.importedAt }
-            return file?.let { SourceHealth.FileImportHealth(it.outcome, it.importedAt) } ?: SourceHealth.NoneYet
+            return file?.let(::fileHealth) ?: SourceHealth.NoneYet
         }
         val (fetch, result) = lastResult(bankAccount, snapshot) ?: return SourceHealth.NoneYet
         return SourceHealth.BankAccountFetchHealth(result.outcome, fetch.startedAt, fetch.startedBy)
     }
+
+    // UC-002 BR-006: For a Bank Account whose transactions come from Transaction Files, the Source Health is the outcome of the last Transaction File import (imported or rejected with its reason) with its time.
+    private fun fileHealth(file: StoredTransactionFile) =
+        SourceHealth.FileImportHealth(file.outcome, file.importedAt, file.transactionCount, file.rejectionReason)
 
     // UC-008 BR-003: Freshness shows only how old the data is; old data never changes the Source Health.
     private fun freshness(bankAccount: StoredBankAccount, snapshot: Snapshot): Instant? {

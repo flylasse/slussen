@@ -4,6 +4,7 @@ import slussen.core.comparison.ComparisonReport
 import slussen.core.operation.OperationRefusal
 import slussen.core.port.TransactionStatus
 import slussen.pluginapi.value.Amount
+import java.time.Instant
 import java.time.LocalDate
 
 /** Why a Transaction File was rejected as a whole (UC-002 A2, A3, A6). */
@@ -24,6 +25,12 @@ enum class RejectionCause {
     ImportIdentifierCollision,
 }
 
+/**
+ * A4 step 1: a Bank Transaction without a Stable Reference is numbered [number] among the [of] stored Bank Transactions of
+ * its Bank Account that are identical to it in date, amount, payee and memo (UC-003 BR-002).
+ */
+data class IdenticalPosition(val number: Int, val of: Int)
+
 /** One Bank Transaction an import took in for the first time, with the Transaction Status it has now (step 10). */
 data class TakenInTransaction(
     val importIdentifier: String,
@@ -31,6 +38,10 @@ data class TakenInTransaction(
     val amount: Amount,
     /** Empty while it is not compared yet (UC-003 A1). */
     val status: TransactionStatus?,
+    /** The payee as stored, for the list of step 10; null when the file gave none or the stored data could not be read. */
+    val payee: String? = null,
+    /** A4: its number among the identical ones when it has no Stable Reference; null when it has one. */
+    val identical: IdenticalPosition? = null,
 )
 
 /** What an import of a Transaction File came to, as the screens show it (UC-002 step 10, A2, A3, A5, A6). */
@@ -44,6 +55,8 @@ sealed interface FileImportOutcome {
      */
     data class Imported(
         val bankAccountName: String,
+        /** When the file was recorded as imported: its Source Health and Freshness (BR-006). */
+        val importedAt: Instant,
         val delivered: Int,
         val takenIn: List<TakenInTransaction>,
         val comparison: ComparisonReport?,

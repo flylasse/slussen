@@ -33,6 +33,7 @@ class ScreenFixture(
         bankAccountTransactions = slice.bankAccountTransactions,
         transfers = slice.budgetTransfers,
         fetch = slice.fetch,
+        fileImport = slice.fileImport,
         review = slice.review,
         transferDecisions = slice.transferDecisions,
         comparison = slice.comparison,

@@ -16,6 +16,10 @@ import slussen.app.ui.components.FetchButtonUi
 import slussen.app.ui.transfers.TransfersTexts
 import slussen.core.operation.RunningOperation
 import slussen.app.ui.components.FirstUploadMatchingUi
+import slussen.app.ui.fileimport.FileImportEntry
+import slussen.app.ui.fileimport.FileImportTexts
+import slussen.app.ui.fileimport.ImportPlace
+import slussen.app.ui.fileimport.ImportTarget
 import slussen.core.port.ServiceKey
 import slussen.core.status.Blocked
 import slussen.core.status.NotYetUploaded
@@ -47,6 +51,8 @@ data class SourceCard(
     /** Null for a Source of the balance only, which brings no Bank Transaction to upload. */
     val counts: String?,
     val blocked: List<BlockedLine>,
+    /** UC-002 step 1, S-B-34: a Transaction File Source imports for its Bank Accounts of this Budget; null for a Data Provider. */
+    val fileImport: FileImportEntry? = null,
 )
 
 /** One Bank Account of the Budget (UC-008 steps 5-8, A2-A4). */
@@ -211,11 +217,18 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                             source.balanceOnly -> "Data Provider · Account Balance only"
                             else -> "Data Provider"
                         },
-                        health = Texts.health(source.health, formats),
-                        freshness = freshness(source.freshness, formats),
+                        health = if (source.isFileFormat) Texts.fileHealth(source.health, formats) else Texts.health(source.health, formats),
+                        freshness = if (source.isFileFormat) FileImportTexts.freshness(source.freshness, formats) else freshness(source.freshness, formats),
                         // UC-001 BR-011: a Source of the balance only brings no Bank Transaction to upload.
                         counts = if (source.balanceOnly) null else "Not yet uploaded: " + counts(source.notYetUploaded),
                         blocked = lines(source.blocked, dataProvider = null),
+                        // S-B-34: later files are imported from the Bank Account's Transaction File Source on its Budget's tab.
+                        fileImport = source.fileFormatId?.let { fileFormatId ->
+                            FileImportEntry(
+                                ImportPlace.Source(budgetId, fileFormatId),
+                                workspace.bankAccounts.filter { it.fileFormatId == fileFormatId }.map { ImportTarget(it.bankAccountId, it.name) },
+                            )
+                        },
                     )
                 },
                 bankAccounts = workspace.bankAccounts.map { account ->
@@ -223,8 +236,8 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
                         bankAccountId = account.bankAccountId,
                         name = account.name,
                         type = formats.type(account.type),
-                        health = Texts.health(account.health, formats),
-                        freshness = freshness(account.freshness, formats),
+                        health = if (account.fileFormatId != null) Texts.fileHealth(account.health, formats) else Texts.health(account.health, formats),
+                        freshness = if (account.fileFormatId != null) FileImportTexts.freshness(account.freshness, formats) else freshness(account.freshness, formats),
                         counts = Texts.counts(account.notYetUploaded, account.notComparedYet),
                         balance = Texts.balance(account.balance, formats, now),
                         blocked = lines(account.blocked, account.dataProviderId?.let(ServiceKey::dataProvider)),

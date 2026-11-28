@@ -92,7 +92,16 @@ sealed interface SourceHealth {
     data class BankAccountFetchHealth(val outcome: FetchResultOutcome, val at: Instant, val startedBy: StartedBy) :
         SourceHealth
 
-    data class FileImportHealth(val outcome: TransactionFileOutcome, val at: Instant) : SourceHealth
+    /**
+     * UC-002 BR-006: the outcome of the last Transaction File import with its time; [delivered] the Bank Transactions an
+     * imported file delivered (UC-002 step 7), [rejectionReason] the reason a rejected file was recorded with.
+     */
+    data class FileImportHealth(
+        val outcome: TransactionFileOutcome,
+        val at: Instant,
+        val delivered: Int = 0,
+        val rejectionReason: String? = null,
+    ) : SourceHealth
 
     /** No Fetch or import yet. */
     data object NoneYet : SourceHealth
@@ -154,6 +163,8 @@ data class BankAccountStatus(
     val balanceInOtherCurrency: BalanceInOtherCurrency? = null,
     /** UC-003 A1, S-T-08: its Bank Transactions stored since its Budget's last successful read, without a Transaction Status. */
     val notComparedYet: Int = 0,
+    /** The File Format whose Transaction Files bring its transactions (UC-002); null for one a Data Provider fetches. */
+    val fileFormatId: Long? = null,
 )
 
 /** One Source of the selected Budget (steps 5-6). */
@@ -166,6 +177,8 @@ data class SourceStatus(
     val blocked: List<Blocked>,
     /** A Data Provider that reports only the Account Balance of the Budget's file-imported Bank Accounts (UC-001 BR-011). */
     val balanceOnly: Boolean = false,
+    /** The File Format of a Transaction File Source, whose Bank Accounts of this Budget import from it (UC-002 step 1); null for a Data Provider. */
+    val fileFormatId: Long? = null,
 )
 
 /** The overview line of one Budget: counts and blocked states only (step 1, BR-007). */

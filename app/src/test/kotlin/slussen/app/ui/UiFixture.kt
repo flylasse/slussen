@@ -21,8 +21,10 @@ class UiFixture(
     startKind: StartKind = StartKind.Normal,
     unreadableParts: List<UnreadablePart> = emptyList(),
     appVersion: AppVersion = AppVersion.of(packageName = "slussen.app", versionName = "9.8.7"),
+    /** The Import Identifiers the slice computes; a test passes a test-only digest to plant a collision (ADR-008 §5). */
+    identify: (slussen.core.identity.ImportIdentifierInput) -> String = slussen.core.identity.ImportIdentifierProtocol::importIdentifier,
 ) {
-    val slice = TestSlice(startKind, unreadableParts)
+    val slice = TestSlice(startKind, unreadableParts, identify)
     val zone: ZoneId = ZoneId.of("Europe/Stockholm")
     val services = UiServices(
         credentials = slice.credentials,
@@ -38,6 +40,7 @@ class UiFixture(
         bankAccountTransactions = slice.bankAccountTransactions,
         transfers = slice.budgetTransfers,
         fetch = slice.fetch,
+        fileImport = slice.fileImport,
         review = slice.review,
         transferDecisions = slice.transferDecisions,
         comparison = slice.comparison,

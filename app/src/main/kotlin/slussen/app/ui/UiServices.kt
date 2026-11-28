@@ -4,6 +4,7 @@ import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.ServiceCredentials
 import slussen.core.comparison.Comparison
 import slussen.core.fetch.FetchTransactions
+import slussen.core.fileimport.ImportTransactionFile
 import slussen.core.journal.JournalControl
 import slussen.core.journal.JournalExport
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +41,8 @@ class UiServices(
     /** The Transfers of one Budget with why each is guessed and whether it is eligible (UC-005 step 1), from stored data only. */
     val transfers: BudgetTransfers,
     val fetch: FetchTransactions,
+    /** Import a Transaction File (UC-002), from a Budget tab's Transaction File Source or a File Format's page (A7). */
+    val fileImport: ImportTransactionFile,
     /** The Review Decisions on doubtful Bank Transactions and Unreadable Transactions (UC-004), from the Bank Account screen. */
     val review: ReviewDecisions,
     /** The Transfer Decisions (UC-005 steps 2-6), from the Transfers of a Budget. */

@@ -405,10 +405,17 @@ object Texts {
             "Source Health: ${fetch(health.outcome)} ${formats.dateTime(health.at)} · ${startedBy(health.startedBy)}"
         is SourceHealth.BankAccountFetchHealth ->
             "Source Health: ${fetchResult(health.outcome)} ${formats.dateTime(health.at)} · ${startedBy(health.startedBy)}"
-        is SourceHealth.FileImportHealth ->
-            "Source Health: ${if (health.outcome == TransactionFileOutcome.Imported) "Imported" else "Rejected"} ${formats.dateTime(health.at)}"
+        // UC-002 BR-006: The Source Health of a file-imported Bank Account is the outcome of the last Transaction File import, imported or rejected with its reason, with its time.
+        is SourceHealth.FileImportHealth -> when (health.outcome) {
+            TransactionFileOutcome.Imported -> "Source Health: Imported ${formats.dateTime(health.at)} · delivered: ${health.delivered}"
+            TransactionFileOutcome.Rejected -> "Source Health: Rejected ${formats.dateTime(health.at)}" + (health.rejectionReason?.let { " · $it" } ?: "")
+        }
         SourceHealth.NoneYet -> "Source Health: no Fetch yet"
     }
+
+    /** UC-002 BR-006: the Source Health of a Bank Account or Source whose transactions come from Transaction Files. */
+    fun fileHealth(health: SourceHealth, formats: Formats): String =
+        if (health == SourceHealth.NoneYet) "Source Health: no Transaction File imported yet" else health(health, formats)
 
     fun fetch(outcome: FetchOutcome): String = outcome.text
 

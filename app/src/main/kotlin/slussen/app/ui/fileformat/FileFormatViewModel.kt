@@ -2,11 +2,15 @@ package slussen.app.ui.fileformat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import slussen.app.ui.Texts
 import slussen.app.ui.UiServices
+import slussen.app.ui.fileimport.FileImportTexts
+import slussen.app.ui.fileimport.ImportTarget
 import slussen.app.ui.mappings.FreeBudgetAccountLine
 import slussen.app.ui.mappings.PickerGroup
 import slussen.core.connection.BalanceSource
@@ -51,6 +55,11 @@ data class FileFormatUi(
     val form: FileAccountFormUi?,
     val message: String?,
     val footnote: String,
+    /** UC-002 A7 (`connections.html#import-first`): no Bank Account of the File Format is added yet and one can be. */
+    val canImportFirst: Boolean = false,
+    val importFirstNote: String? = null,
+    /** UC-002 A7 step 2: the Bank Account just added for the first file; the screen opens the file choice for it once. */
+    val importFor: ImportTarget? = null,
 )
 
 /** The page of one File Format, opened from its entry in Settings (UC-013 A4, UC-010 BR-010). */
@@ -64,11 +73,33 @@ class FileFormatViewModel(private val services: UiServices, private val fileForm
     private var chosenBalanceId: Long? = null
     private var proposedCurrency: CurrencyCode? = null
 
+    /** UC-002 A7: the form was opened by Import a Transaction File, so that the file choice follows Add. */
+    private var importAfterAdd = false
+    private var importFor: ImportTarget? = null
+    private var shownMessage: String? = null
+
+    init {
+        viewModelScope.launch {
+            // NFR-023: when an operation ends, whichever screen started it, the page shows the stored data again.
+            services.ended.drop(1).collect {
+                if (mutableState.value == null) return@collect
+                try {
+                    reload(shownMessage)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    Unit
+                }
+            }
+        }
+    }
+
     fun load() {
         viewModelScope.launch { reload(message = null) }
     }
 
     private suspend fun reload(message: String?) {
+        shownMessage = message
         val shown = services.connect.fileFormatPage(fileFormatId).also { page = it }
         val budgetAppName = services.settingsOverview.servicePage(ServiceKey.budgetApp).name
         mutableState.value = FileFormatUi(
@@ -92,7 +123,11 @@ class FileFormatViewModel(private val services: UiServices, private val fileForm
             waitNote = if (shown.canAdd) null else "Available once $budgetAppName is set up and a Budget is chosen.",
             form = if (formOpen && shown.canAdd) formOf(shown) else null,
             message = message,
-            footnote = "Its Transaction Files are imported from the Bank Account. Its Account Mapping is changed in Account Mappings.",
+            footnote = "Its Transaction Files are imported from its Transaction File Source on its Budget's tab. Its Account Mapping is changed in Account Mappings.",
+            // UC-002 A7: Import a Transaction File on the page of a File Format for which no Bank Account is added yet.
+            canImportFirst = shown.canAdd && shown.bankAccounts.isEmpty(),
+            importFirstNote = if (shown.canAdd && shown.bankAccounts.isEmpty()) FileImportTexts.IMPORT_FIRST_NOTE else null,
+            importFor = importFor,
         )
     }
 
@@ -128,15 +163,37 @@ class FileFormatViewModel(private val services: UiServices, private val fileForm
     fun openForm() {
         if (page?.canAdd != true) return
         formOpen = true
+        importAfterAdd = false
         chosenBudgetAccountId = null
         chosenBalanceId = null
         proposedCurrency = null
         viewModelScope.launch { reload(message = null) }
     }
 
+    /** A message at the form, kept when the page is shown again after an operation ends. */
+    private fun say(message: String) {
+        shownMessage = message
+        mutableState.value = mutableState.value?.copy(message = message)
+    }
+
+    /** UC-002 A7 step 1: Import a Transaction File first adds the Bank Account with its Account Mapping, as UC-013 A4 does. */
+    fun openFormToImport() {
+        if (page?.canAdd != true || page?.bankAccounts?.isNotEmpty() == true) return
+        openForm()
+        importAfterAdd = true
+    }
+
+    /** UC-002 A7 step 1: Cancel ends with nothing added and no file chosen. */
     fun cancelForm() {
         formOpen = false
+        importAfterAdd = false
         viewModelScope.launch { reload(message = null) }
+    }
+
+    /** UC-002 A7 step 2: the screen has opened the file choice for [FileFormatUi.importFor]. */
+    fun importStarted() {
+        importFor = null
+        mutableState.value = mutableState.value?.copy(importFor = null)
     }
 
     /** A4 step 2, BR-010: the Budget Account or the balance source chosen; the currency proposed follows them. */
@@ -152,16 +209,16 @@ class FileFormatViewModel(private val services: UiServices, private val fileForm
     /** A4 steps 2-3: [startDate] empty or `yyyy-MM-dd`, [currency] an ISO 4217 code. */
     fun add(type: BankAccountType?, bank: BankChoice?, name: String, currency: String, startDate: String) {
         val date = Texts.startDate(startDate).getOrElse {
-            mutableState.value = mutableState.value?.copy(message = "The Start Date is a date like 2026-09-01, or empty.")
+            say("The Start Date is a date like 2026-09-01, or empty.")
             return
         }
         val budgetAccountId = chosenBudgetAccountId ?: run {
-            mutableState.value = mutableState.value?.copy(message = "Choose a Budget Account · not added")
+            say("Choose a Budget Account · not added")
             return
         }
         val stated = currency.trim().uppercase().takeIf { it.isNotEmpty() }
         if (stated != null && !Texts.isCurrencyCode(stated)) {
-            mutableState.value = mutableState.value?.copy(message = "The currency is an ISO 4217 code of three capital letters, like USD · not added")
+            say("The currency is an ISO 4217 code of three capital letters, like USD · not added")
             return
         }
         viewModelScope.launch {
@@ -171,9 +228,12 @@ class FileFormatViewModel(private val services: UiServices, private val fileForm
             if (outcome is PairOutcome.Added) {
                 val budgetAccount = page?.freeBudgetAccounts?.firstOrNull { it.budgetAccountId == budgetAccountId }?.name.orEmpty()
                 formOpen = false
+                // UC-002 A7 step 2: the use case continues at step 2, the choice of the file, for the Bank Account just added.
+                if (importAfterAdd) importFor = ImportTarget(outcome.bankAccountId, outcome.name)
+                importAfterAdd = false
                 reload(message = "${outcome.name} added and mapped → $budgetAccount · its transactions come from its Transaction Files")
             } else {
-                mutableState.value = mutableState.value?.copy(message = Texts.pairRefusal(outcome))
+                say(Texts.pairRefusal(outcome))
             }
         }
     }

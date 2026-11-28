@@ -8,7 +8,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
+import slussen.app.platform.document.ChosenTransactionFile
 import slussen.app.platform.document.PickedDocument
+import slussen.app.ui.fileimport.FileImportActions
+import slussen.app.ui.fileimport.FileImportControl
+import slussen.app.ui.fileimport.FileImportTexts
+import slussen.app.ui.fileimport.ImportPlace
+import slussen.app.ui.fileimport.TransactionFileImportViewModel
+import slussen.app.ui.fileimport.control
 import slussen.app.ui.journal.JournalExportScreen
 import slussen.app.ui.journal.JournalExportViewModel
 import androidx.activity.compose.setContent
@@ -157,6 +164,30 @@ fun SlussenScreens(services: UiServices) {
 
     val overview: OverviewViewModel = viewModel(key = "overview") { OverviewViewModel(services) }
     val overviewUi by overview.state.collectAsState()
+
+    // UC-002: one import for the whole app, so that no second one starts and no answer is lost when a screen is left.
+    val fileImport: TransactionFileImportViewModel = viewModel(key = "transaction-file-import") { TransactionFileImportViewModel(services) }
+    val fileImportUi by fileImport.state.collectAsState()
+    val resolver = LocalContext.current.contentResolver
+    // Steps 2-3 of UC-002: Android's document dialog (`ACTION_OPEN_DOCUMENT`, no permission needed); no file chosen is A1.
+    val documentDialog = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) fileImport.noFileChosen() else fileImport.import(ChosenTransactionFile(resolver, uri))
+    }
+    fun openDocumentDialog() {
+        // NFR-023: a device with no app to choose a file is answered at the control, never a crash.
+        try {
+            documentDialog.launch(arrayOf("*/*"))
+        } catch (noApp: ActivityNotFoundException) {
+            fileImport.noFileCanBeChosen()
+        }
+    }
+    fun fileImportActions(onImport: () -> Unit) = FileImportActions(
+        onImport = onImport,
+        onChoose = { if (fileImport.choose(it)) openDocumentDialog() },
+        onCancelChoice = fileImport::cancelChoice,
+        onWithdraw = fileImport::withdraw,
+        onAccountMappings = { go(Screen.AccountMappings) },
+    )
     Scaffold(
         containerColor = SlussenColors.Background,
         bottomBar = {
@@ -213,6 +244,12 @@ fun SlussenScreens(services: UiServices) {
                             onReadAgain = vm::readAgain,
                             onBankAccount = { id -> go(Screen.BankAccount(id, current.budgetId)) },
                             onTransfers = { go(Screen.Transfers(current.budgetId, selectLeg = null)) },
+                            fileImport = { entry ->
+                                FileImportControl(
+                                    fileImportUi.control(entry.place),
+                                    fileImportActions { fileImport.start(entry.place, entry.bankAccounts)?.let { openDocumentDialog() } },
+                                )
+                            },
                         )
                     }
                 }
@@ -342,7 +379,15 @@ fun SlussenScreens(services: UiServices) {
                         FileFormatViewModel(services, current.fileFormatId)
                     }
                     LaunchedEffect(current) { vm.load() }
+                    val place = ImportPlace.FileFormatPage(current.fileFormatId)
                     vm.state.collectAsState().value?.let { ui ->
+                        // A7 step 2 of UC-002: once the Bank Account is added, the file choice opens for it.
+                        LaunchedEffect(ui.importFor) {
+                            ui.importFor?.let { added ->
+                                vm.importStarted()
+                                fileImport.start(place, listOf(added))?.let { openDocumentDialog() }
+                            }
+                        }
                         FileFormatScreen(
                             ui = ui,
                             onBack = ::back,
@@ -350,6 +395,13 @@ fun SlussenScreens(services: UiServices) {
                             onCancelForm = vm::cancelForm,
                             onChoose = vm::choose,
                             onAdd = vm::add,
+                            fileImport = { showButton ->
+                                FileImportControl(
+                                    fileImportUi.control(place, FileImportTexts.IMPORT_FIRST),
+                                    fileImportActions(onImport = vm::openFormToImport),
+                                    showButton = showButton,
+                                )
+                            },
                         )
                     }
                 }

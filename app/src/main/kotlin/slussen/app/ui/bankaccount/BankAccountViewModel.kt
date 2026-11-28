@@ -438,8 +438,15 @@ class BankAccountViewModel(private val services: UiServices, private val bankAcc
             kind = "${formats.type(view.type)} · ${view.currency.code}",
             placement = BankAccountTexts.placement(view),
             placementNote = BankAccountTexts.placementNote(view.placement),
-            health = account?.let { Texts.health(it.health, formats) },
-            freshness = account?.let { status -> status.freshness?.let { "Freshness: data as of ${formats.dateTime(it)}" } ?: "Freshness: no data yet" },
+            // UC-002 BR-006: The Source Health of a file-imported Bank Account is its last Transaction File import, and its Freshness is measured from the last imported one.
+            health = account?.let { if (it.fileFormatId != null) Texts.fileHealth(it.health, formats) else Texts.health(it.health, formats) },
+            freshness = account?.let { status ->
+                if (status.fileFormatId != null) {
+                    slussen.app.ui.fileimport.FileImportTexts.freshness(status.freshness, formats)
+                } else {
+                    status.freshness?.let { "Freshness: data as of ${formats.dateTime(it)}" } ?: "Freshness: no data yet"
+                }
+            },
             balance = account?.let { Texts.balance(it.balance, formats, now) },
             balanceRemedy = account?.let { Texts.balanceRemedy(it.balance) },
             balanceNotice = account?.balanceInOtherCurrency?.let { Texts.balanceInOtherCurrencyNotice(it, formats) },

@@ -265,7 +265,7 @@ class UC008CheckImportStatusTest {
         assertEquals(SourceHealth.BankAccountFetchHealth(FetchResultOutcome.Fetched, longAgo, StartedBy.Operator), checking.health)
         assertEquals(longAgo, checking.freshness)
         val file = harbor.bankAccounts.single()
-        assertEquals(SourceHealth.FileImportHealth(TransactionFileOutcome.Imported, longAgo), file.health)
+        assertEquals(SourceHealth.FileImportHealth(TransactionFileOutcome.Imported, longAgo, delivered = 0), file.health)
         assertEquals(longAgo, file.freshness)
         assertTrue(harbor.sources.single().isFileFormat)
         assertEquals("Harbor Health statement", harbor.sources.single().name)

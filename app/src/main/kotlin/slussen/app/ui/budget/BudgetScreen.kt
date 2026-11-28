@@ -19,6 +19,7 @@ import slussen.app.ui.components.ScreenTitle
 import slussen.app.ui.components.SectionTitle
 import slussen.app.ui.components.SlussenCard
 import slussen.app.ui.Texts
+import slussen.app.ui.fileimport.FileImportEntry
 import slussen.app.ui.transfers.TransfersTexts
 import slussen.app.ui.theme.SlussenColors
 
@@ -36,6 +37,8 @@ fun BudgetScreen(
     onReadAgain: () -> Unit = {},
     onBankAccount: (Long) -> Unit = {},
     onTransfers: () -> Unit = {},
+    /** UC-002 step 1 (`budget.html#care-fund`): the control of Import Transaction File on a Transaction File Source. */
+    fileImport: @Composable (FileImportEntry) -> Unit = {},
 ) {
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
         item {
@@ -66,6 +69,8 @@ fun BudgetScreen(
                 Muted(source.freshness)
                 source.counts?.let { Muted(it) }
                 source.blocked.forEach { BlockedReasonLine(it.text, it.action, onRemedy, it.advice) }
+                // S-B-34: later files are imported from the Transaction File Source, for one of its Bank Accounts of this Budget.
+                source.fileImport?.takeIf { it.bankAccounts.isNotEmpty() }?.let { fileImport(it) }
             }
         }
         item { SectionTitle("Bank Accounts") }

@@ -1,5 +1,7 @@
 package slussen.core.fileimport
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -229,8 +231,15 @@ class UC002ImportATransactionFileTest {
         assertEquals(listOf(Amount(-12_340), Amount(-25_000)), outcome.takenIn.map { it.amount })
         val workspace = slice.status.workspace(slice.connectionStore.budgets().single { it.name == "Care Fund" }.id)
         val account = workspace.bankAccounts.single()
-        assertEquals(SourceHealth.FileImportHealth(TransactionFileOutcome.Imported, importedAt), account.health)
+        assertEquals(SourceHealth.FileImportHealth(TransactionFileOutcome.Imported, importedAt, delivered = 2), account.health)
         assertEquals(importedAt, account.freshness)
+        assertEquals(importedAt, outcome.importedAt)
+        assertEquals(listOf("DEBIT CARD PURCHASE HARBOR PHARMACY", "DISTRIBUTION EXAMPLE CLINIC"), outcome.takenIn.map { it.payee })
+        assertEquals(listOf<IdenticalPosition?>(null, null), outcome.takenIn.map { it.identical })
+        val source = workspace.sources.single { it.isFileFormat }
+        assertEquals(slice.plugins.fileFormats.single().id, source.fileFormatId)
+        assertEquals(slice.plugins.fileFormats.single().id, account.fileFormatId)
+        assertEquals(SourceHealth.FileImportHealth(TransactionFileOutcome.Imported, importedAt, delivered = 2), source.health)
     }
 
     @Test
@@ -350,6 +359,35 @@ class UC002ImportATransactionFileTest {
         assertEquals(RunningOperation(OperationKind.FileImport, "Harbor Health Savings"), running)
     }
 
+    @Test
+    @UseCase(id = "UC-002", scenario = "Main Success Scenario")
+    @DisplayName("ADR-007 §1: an import that has to wait for the lane behind another operation is told which, and told when it has the lane, before the file is converted; one that waits for nothing is told only that it has the lane")
+    fun theImportSaysWhatItWaitsFor() = runTest {
+        ready()
+        val harbor = fileBankAccount()
+        converts(line(oct14, -12_340))
+        val signals = mutableListOf<String>()
+
+        imported(slice.fileImport.import(harbor, ByteArray(0), waiting = { signals += "waits for ${it.kind}" }, started = { signals += "started" }))
+        assertEquals(listOf("started"), signals)
+
+        signals.clear()
+        val lane = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val other = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined).launch {
+            slice.coordinator.run(OperationKind.Comparison, slussen.core.port.StartedBy.Operator) { lane.await() }
+        }
+        val waiting = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined).async {
+            slice.fileImport.import(harbor, ByteArray(0), waiting = { signals += "waits for ${it.kind}" }, started = {
+                signals += "started, converted before: ${slice.fileFormat.files.size}"
+            })
+        }
+        assertEquals(listOf("waits for Comparison"), signals)
+        lane.complete(Unit)
+        imported(waiting.await())
+        other.join()
+        assertEquals(listOf("waits for Comparison", "started, converted before: 1"), signals)
+    }
+
     // ---- Alternative flows ---------------------------------------------------------------------------------------
 
     @Test
@@ -372,7 +410,10 @@ class UC002ImportATransactionFileTest {
         val rejectedFile = filesOf(harbor).last()
         assertEquals(StoredTransactionFile(harbor, slice.clock.instant(), TransactionFileOutcome.Rejected, 0, "Line 7, column Amount ($): not a number"), rejectedFile)
         val workspace = slice.status.workspace(slice.connectionStore.budgets().single { it.name == "Care Fund" }.id)
-        assertEquals(SourceHealth.FileImportHealth(TransactionFileOutcome.Rejected, slice.clock.instant()), workspace.bankAccounts.single().health)
+        assertEquals(
+            SourceHealth.FileImportHealth(TransactionFileOutcome.Rejected, slice.clock.instant(), rejectionReason = "Line 7, column Amount ($): not a number"),
+            workspace.bankAccounts.single().health,
+        )
         assertEquals(filesOf(harbor).first().importedAt, workspace.bankAccounts.single().freshness, "BR-006: Freshness from the last imported file")
     }
 
@@ -667,6 +708,8 @@ class UC002ImportATransactionFileTest {
                 identities(),
             )
             assertEquals(listOf(TransactionStatus.New, TransactionStatus.NeedsReview, TransactionStatus.NeedsReview), outcome.takenIn.map { it.status })
+            // Step 10 (`import-file.html#told-apart`): each new one is shown with its number among the identical ones.
+            assertEquals(listOf(null, IdenticalPosition(1, 2), IdenticalPosition(2, 2)), outcome.takenIn.map { it.identical })
         }
 
         @Test
