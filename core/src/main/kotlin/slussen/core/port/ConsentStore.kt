@@ -116,6 +116,12 @@ interface ConsentStore {
     suspend fun startRequest(request: NewConsentRequest): StoredConsentRequest
 
     /**
+     * The Consent Request whose correlation holds [stateDigest], or null; a read only, which decides nothing: it names the
+     * Data Provider whose credentials and operations complete the answer, and [consumeAnswer] then decides it.
+     */
+    suspend fun requestWithDigest(stateDigest: String): StoredConsentRequest?
+
+    /**
      * Consume: finds the Consent Request whose correlation holds [stateDigest] and accepts the answer only when it is
      * the most recent of its Bank and Data Provider, [arrivedAt] does not lie after its `expires_at`, and it is not
      * answered; then sets `answered`, together with the checks.

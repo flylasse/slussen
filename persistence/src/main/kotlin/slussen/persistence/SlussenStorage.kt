@@ -206,7 +206,7 @@ class SlussenStorage private constructor(
         // an empty slussen.db), so that no Bank created later under the same key inherits it.
         BanksOfDeviceData(connections, RoomDeviceBankReferences(device.banks())).run()
         // ADR-002 §3 O-10: a Bank an attempt to grant a Bank Consent created and then could not store a Bank Consent
-        // for, because the process ended in between, is removed when nothing refers to it.
-        LeftBehindBanks(connections, consents, offered).run()
+        // for, because the process ended in between, is removed when nothing refers to it; a failure of it does not stop the start.
+        LeftBehindBanks(connections, consents, offered).runAtStart()
     }
 }

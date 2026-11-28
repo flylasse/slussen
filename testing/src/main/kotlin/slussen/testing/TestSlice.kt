@@ -170,6 +170,7 @@ class TestSlice(
         fetchNotices = fetchNotices,
         comparisonNotices = comparisonNotices,
         periodReadOwed = { copyStore.periodReadOwed(it) },
+        offered = { offeredStore.offered() },
     )
 
     /** UC-008 step 5: the transactions of one Bank Account with their statuses and reasons, weeks from Monday. */

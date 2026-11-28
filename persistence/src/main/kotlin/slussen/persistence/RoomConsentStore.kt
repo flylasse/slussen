@@ -48,6 +48,9 @@ class RoomConsentStore(private val dao: ConsentDao) : ConsentStore {
             request.providerHandle?.reveal(),
         ).stored()
 
+    override suspend fun requestWithDigest(stateDigest: String): StoredConsentRequest? =
+        dao.correlationWithDigest(stateDigest)?.let { dao.request(it.consentRequestId) }?.stored()
+
     override suspend fun consumeAnswer(stateDigest: String, arrivedAt: Instant): ConsumedAnswer = dao.consume(stateDigest, arrivedAt)
 
     @OptIn(SensitiveApi::class)

@@ -1,5 +1,8 @@
 package slussen.core.consent
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -37,6 +40,7 @@ import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.request.RefusalReason
 import slussen.pluginapi.request.RequestKind
 import slussen.pluginapi.testfixtures.UseCase
+import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.value.BankAccountNumber
 import slussen.pluginapi.value.Secret
 import slussen.testing.ExampleData
@@ -170,12 +174,13 @@ class UC007GrantBankConsentTest {
 
     @Test
     @UseCase(id = "UC-007", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-006"])
-    @DisplayName("Step 2: the state is made by the core from the random source, 256 bits, and only its SHA-256 digest is stored with the Consent Request")
+    @DisplayName("Step 2: the state is made by the core from the random source, 256 bits written as base64url without padding (ADR-008 §7), and only its SHA-256 digest is stored with the Consent Request")
     fun theStateIsTheCoresAndOnlyItsDigestIsStored() = runTest {
         started()
         val state = lastState()
-        assertEquals(64, state.length)
-        assertTrue(state.all { it in "0123456789abcdef" })
+        // ADR-008 §7: 256 bits from the random source, base64url without padding: 43 characters of that alphabet.
+        assertTrue(Regex("[A-Za-z0-9_-]{43}").matches(state), state)
+        assertEquals(32, java.util.Base64.getUrlDecoder().decode(state).size)
         // Another Consent Request gets another state.
         started("Vesta Bank (SE)")
         assertFalse(lastState() == state)
@@ -848,4 +853,197 @@ class UC007GrantBankConsentTest {
         assertFalse(state in accepted.toString())
         assertNotNull(accepted)
     }
+
+    // ---- The review of phase E2 ---------------------------------------------------------------------------------------
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A6: Bank Account Not Identified", businessRules = ["BR-009"])
+    @DisplayName("A6, BR-009: a lasting reference already offered under another Bank of the Data Provider is not kept for this Bank and is reported as not identified; the rest of the Bank's Bank Accounts are kept")
+    fun aReferenceOfferedUnderAnotherBank() = runTest {
+        consent.completeAnswer = { _, _ ->
+            completed(listOf(household.copy(bankReference = "Vesta Bank (SE)"), savings.copy(bankReference = "Vesta Bank (SE)")))
+        }
+        granted("Vesta Bank (SE)")
+        val vesta = slice.connectionStore.banks().single().id
+        // Vesta's consent kept lasting-household and lasting-savings; Aurora's consent delivers lasting-savings again.
+        consent.completeAnswer = { _, _ -> completed(listOf(delivered("lasting-savings", "Rainy Day Savings"), delivered("lasting-aurora", "Aurora Only"))) }
+        val coverage = granted().coverage!!
+
+        val aurora = slice.connectionStore.banks().single { it.name == bank }.id
+        assertEquals(listOf("lasting-aurora"), slice.offeredStore.offered().filter { it.bankId == aurora }.map { it.providerReference })
+        assertEquals(setOf("lasting-household", "lasting-savings"), slice.offeredStore.offered().filter { it.bankId == vesta }.map { it.providerReference }.toSet())
+        assertEquals(listOf("Rainy Day Savings"), coverage.notIdentified)
+        assertEquals(1, coverage.toMap)
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "Main Success Scenario", businessRules = ["BR-009"])
+    @DisplayName("BR-009: a delivered Bank Account without a Bank's reference is kept with the Bank of the Bank Consent; one whose reference is longer than the entity model holds is not kept")
+    fun withoutABanksReferenceAndTooLong() = runTest {
+        consent.completeAnswer = { _, _ -> completed(listOf(delivered("lasting-plain", "Plain", bankReference = null), delivered("R".repeat(201), "Too Long"))) }
+        val coverage = granted().coverage!!
+        assertEquals(listOf("lasting-plain"), slice.offeredStore.offered().map { it.providerReference })
+        assertEquals(1, coverage.delivered)
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "Main Success Scenario")
+    @DisplayName("NFR-023: when the Offered Bank Accounts cannot be kept, the Bank Consent stands and its coverage is unknown")
+    fun offeredNotKept() = runTest {
+        slice.offeredStore.failsToReplace = true
+        val outcome = granted()
+        assertNull(outcome.coverage)
+        assertEquals(1, store.bankConsents().size)
+        assertEquals(listOf(bank), bankNames())
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A2: Result Not Accepted", businessRules = ["BR-002"])
+    @DisplayName("BR-002: the lifetime is counted to the moment the answer arrived, also when it waited for the lane")
+    fun theArrivalIsTakenBeforeTheLane() = runTest {
+        started()
+        val answer = answerTo(lastState())
+        slice.clock.advance(Duration.ofMinutes(14))
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val busy = launch { slice.coordinator.run(OperationKind.Comparison, slussen.core.port.StartedBy.Operator) { release.await() } }
+        testScheduler.runCurrent()
+        val completing = async { consents.complete(answer) }
+        testScheduler.runCurrent()
+        slice.clock.advance(Duration.ofMinutes(5))
+        release.complete(Unit)
+        busy.join()
+        assertTrue(completing.await() is CompletionOutcome.Granted)
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A2: Result Not Accepted", businessRules = ["BR-002"])
+    @DisplayName("S-B-52: an answer that arrives while the Data Provider's credentials are missing is left unconsumed and can be answered once they are accepted")
+    fun anAnswerWithoutCredentialsIsLeftUnconsumed() = runTest {
+        started()
+        val answer = answerTo(lastState())
+        slice.credentials.remove(key)
+        assertEquals(CompletionOutcome.NotAvailable(ConsentUnavailable.CredentialsMissing), consents.complete(answer))
+        assertFalse(store.consentRequests().single().answered)
+        assertEquals(emptyList<Any?>(), consent.handlesCompleted)
+        slice.credentials.enter(key, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        assertTrue(consents.complete(answer) is CompletionOutcome.Granted)
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "Main Success Scenario")
+    @DisplayName("O-10: a completion cancelled after the Bank was created removes the Bank and stores no Bank Consent")
+    fun cancelledAfterTheBankWasCreated() = runTest {
+        started()
+        val answer = answerTo(lastState())
+        store.beforeReplace = { kotlinx.coroutines.awaitCancellation() }
+        val completing = launch { consents.complete(answer) }
+        testScheduler.runCurrent()
+        assertEquals(listOf(bank), bankNames())
+        completing.cancelAndJoin()
+        assertEquals(emptyList<String>(), bankNames())
+        assertEquals(emptyList<Any>(), store.bankConsents())
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-010"])
+    @DisplayName("BR-003, BR-010: renewing is refused for a Bank that has no Bank Consent of this Data Provider and is not the Bank it names for one of its Bank Accounts; nothing is sent")
+    fun renewOnlyAKnownBankOfTheDataProvider() = runTest {
+        val elsewhere = slice.connectionStore.bankNamed("Kestrel Bank")
+        assertEquals(StartOutcome.NotABankOfTheDataProvider, consents.renew(key, elsewhere.id, true))
+        assertEquals(emptyList<Any>(), consent.asked)
+        val named = slice.connectionStore.bankNamed("Borealis Bank (FI)")
+        added(21, "lasting-borealis", named.id)
+        assertTrue(consents.renew(key, named.id, true) is StartOutcome.Started, "the Bank it names for one of its Bank Accounts (UC-001 A4)")
+        granted()
+        val aurora = slice.connectionStore.banks().single { it.name == bank }.id
+        assertTrue(consents.renew(key, aurora, true) is StartOutcome.Started)
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A8: Data Provider Cannot Be Reached")
+    @DisplayName("A8 step 2, ADR-001 §4.0: a plug-in that throws in the completion after the answer was taken is answered as a failure in transit: nothing stored, no Bank left, start again")
+    fun aCompletionThatThrows() = runTest {
+        consent.completeAnswer = { _, _ -> throw IllegalStateException("invented failure of a plug-in") }
+        started()
+        assertEquals(CompletionOutcome.MayHaveBeenGranted(bank, FailureKind.ConnectionLost, now), consents.complete(answerTo(lastState())))
+        assertEquals(emptyList<Any>(), store.bankConsents())
+        assertEquals(emptyList<String>(), bankNames())
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A8: Data Provider Cannot Be Reached", businessRules = ["BR-007"])
+    @DisplayName("A8 step 3, ADR-001 §4.0: a plug-in that throws in the revocation is answered as an end the Data Provider did not confirm, never as an exception")
+    fun aRevocationThatThrows() = runTest {
+        granted()
+        val bankId = slice.connectionStore.banks().single().id
+        consent.revokeAnswer = { throw IllegalStateException("invented failure of a plug-in") }
+        assertEquals(RevokeOutcome.Revoked(bank, endedAtBank = false, dataProviderContacted = true, heldBack = null), consents.revoke(key, bankId))
+        assertEquals(emptyList<Any>(), store.bankConsents())
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "Main Success Scenario")
+    @DisplayName("O-10: a failure while removing the Banks left behind at a start is caught, logs nothing of its content, and the start goes on")
+    fun aFailingRemovalAtAStart() = runTest {
+        started()
+        store.consumeAnswer(ConsentStateValue.digestOf(Secret(lastState())), now)
+        slice.connectionStore.bankNamed(bank)
+        slice.connectionStore.failsToStore = true
+        assertEquals(0, slice.leftBehindBanks.runAtStart())
+        slice.connectionStore.failsToStore = false
+        assertEquals(1, slice.leftBehindBanks.runAtStart())
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "Main Success Scenario")
+    @DisplayName("The Consent Request found by the digest names its Data Provider: that one's credentials are checked and its Bank Consent operations complete it")
+    fun theRequestsOwnDataProviderCompletes() = runTest {
+        val two = TwoDataProviders()
+        two.credentials.enter(two.secondKey, CredentialInput(mapOf("setupKey" to Secret(ExampleData.SETUP_KEY))))
+        two.second.startAnswer = { ConsentStart.Started(consentAddress, Secret(handle)) }
+        two.second.completeAnswer = { _, _ -> completed() }
+        two.first.completeAnswer = { _, _ -> error("the first Data Provider is never asked") }
+        assertTrue(two.bankConsents.start(two.secondKey, bank, true) is StartOutcome.Started)
+        val answer = ScriptedBankConsent.answer(ExampleData.CONSENT_RETURN_ADDRESS, "code=$code&state=${two.second.stateTexts().last()}")
+
+        assertTrue(two.bankConsents.complete(answer) is CompletionOutcome.Granted)
+        assertEquals(1, two.second.handlesCompleted.size)
+        assertEquals(emptyList<Any?>(), two.first.handlesCompleted)
+    }
+}
+
+/**
+ * Two Data Providers that need a Bank Consent, wired as the composition root wires them, on fresh fakes: the slice of
+ * `:testing` has only one, and adding one there would change what every other test sees.
+ */
+private class TwoDataProviders {
+    val clock = slussen.testing.MutableClock()
+    val first = ScriptedBankConsent()
+    val second = ScriptedBankConsent()
+    private val firstProvider = slussen.testing.FakeDataProvider(ExampleData.openBankingProfile, bankConsent = first)
+    private val secondProvider = slussen.testing.FakeDataProvider(
+        ExampleData.openBankingProfile.copy(name = "Borealis Open Banking", sourceKey = "example-open-banking-two"),
+        bankConsent = second,
+    )
+    private val settings = slussen.testing.InMemoryOperatorSettingsStore()
+    private val providerRequests = slussen.testing.InMemoryProviderRequestStore()
+    private val connections = slussen.testing.InMemoryConnectionStore()
+    private val importStatus = slussen.testing.InMemoryImportStatusStore(connections = connections)
+    private val consents = slussen.testing.InMemoryConsentStore(importStatus.consents)
+    private val coordinator = slussen.core.operation.OperationCoordinator(slussen.testing.InMemoryCoordinatorStore())
+    val plugins = kotlinx.coroutines.runBlocking {
+        slussen.core.plugin.PluginRegistration(slussen.testing.InMemoryPluginRegistryStore())
+            .register(slussen.testing.FakeBudgetApp(), listOf(firstProvider, secondProvider), emptyList())
+    }
+    val credentials = slussen.core.credential.ServiceCredentials(
+        plugins, slussen.testing.InMemoryCredentialVault(), coordinator,
+        slussen.core.journal.DecisionJournal(slussen.testing.InMemoryDecisionJournal(), settings, clock),
+        settings, providerRequests, importStatus, slussen.core.credential.CredentialRefusals(), clock,
+    )
+    val bankConsents = BankConsents(
+        plugins, credentials, consents, connections, slussen.testing.InMemoryOfferedBankAccountStore(), importStatus, providerRequests,
+        coordinator, settings, clock, java.util.Random(7).let { seeded -> slussen.core.port.RandomSource { seeded.nextBytes(it) } },
+        ExampleData.CONSENT_RETURN_ADDRESS, slussen.testing.RecordingSlussenLog(),
+    )
+    val secondKey = plugins.dataProviders.single { it.plugin === secondProvider }.key
 }

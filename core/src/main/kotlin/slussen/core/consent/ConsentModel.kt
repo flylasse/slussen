@@ -103,6 +103,12 @@ sealed interface StartOutcome {
     data object BankReferenceNotUsable : StartOutcome
 
     /**
+     * BR-003, BR-010: renewing needs no choice only for a Bank that has a Bank Consent of this Data Provider or that it
+     * names for one of its Bank Accounts; any other Bank is chosen from its list. Nothing sent or stored.
+     */
+    data object NotABankOfTheDataProvider : StartOutcome
+
+    /**
      * The Data Provider started the Consent Request, but it could not be stored, so no answer to it can be accepted
      * (BR-002); the Operator starts again.
      */

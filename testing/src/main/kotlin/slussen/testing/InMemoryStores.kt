@@ -543,7 +543,17 @@ class InMemoryOfferedBankAccountStore : OfferedBankAccountStore {
         return stored.toList()
     }
 
+    /** Makes O-2 fail before it changes anything, as a `device.db` that cannot be written would. */
+    var failsToReplace: Boolean = false
+
     override suspend fun replaceOffered(dataProviderId: Long, bankId: Long?, delivered: List<NewOfferedBankAccount>) {
+        if (failsToReplace) throw IllegalStateException("The invented storage of this test cannot be written.")
+        // The unique index of offered_bank_account on (data_provider_id, provider_reference): Room rolls the whole write back.
+        val staying = stored.filterNot { it.dataProviderId == dataProviderId && (bankId == null || it.bankId == bankId) }
+        val references = staying.filter { it.dataProviderId == dataProviderId }.map { it.providerReference } + delivered.map { it.providerReference }
+        if (references.size != references.toSet().size) {
+            throw IllegalStateException("The invented storage refuses a second Offered Bank Account of one reference (its unique index).")
+        }
         stored.removeAll { it.dataProviderId == dataProviderId && (bankId == null || it.bankId == bankId) }
         delivered.forEach {
             stored += StoredOfferedBankAccount(

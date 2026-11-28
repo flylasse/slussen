@@ -114,6 +114,7 @@ class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLogg
             fetchNotices = fetchNotices,
             comparisonNotices = comparisonNotices,
             periodReadOwed = { storage.comparisons.periodReadOwed(it) },
+            offered = { storage.offered.offered() },
         )
         // UC-001 BR-013: Scheduled Fetches follow the Fetch Schedule, set by the first start of Slussen while the stored value is above 0, kept by a later start; the first run falls due a whole period later, so opening Slussen never fetches (BR-001).
         val fetchSchedule = FetchSchedule(WorkManagerFetchSchedule(context)) { storage.settings.current().scheduledFetchesPerDay }

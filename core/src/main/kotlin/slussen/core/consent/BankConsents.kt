@@ -222,7 +222,14 @@ class BankConsents(
      * one of the Bank Consent, so no choice is needed, and its reference is its `BANK.name`.
      */
     suspend fun renew(service: ServiceKey, bankId: Long, browserAvailable: Boolean): StartOutcome {
-        val bank = connections.banks().firstOrNull { it.id == bankId } ?: return StartOutcome.BankReferenceNotUsable
+        val dataProviderId = plugins.dataProvider(service).stored.id
+        val bank = connections.banks().firstOrNull { it.id == bankId } ?: return StartOutcome.NotABankOfTheDataProvider
+        // UC-007 BR-010: Renewing needs no choice: the Bank is the one of the Bank Consent, or the one the Data Provider names for one of its Bank Accounts.
+        val ofTheDataProvider = consents.bankConsents().any { it.bankId == bankId && it.dataProviderId == dataProviderId } ||
+            connections.bankAccounts().any {
+                it.providerBankId == bankId && (it.dataProviderId == dataProviderId || it.balanceDataProviderId == dataProviderId)
+            }
+        if (!ofTheDataProvider) return StartOutcome.NotABankOfTheDataProvider
         return start(service, bank.name, browserAvailable)
     }
 
@@ -284,14 +291,18 @@ class BankConsents(
             // The plug-in reads the state from the answer and sends nothing; the core digests it (ADR-001 §4.1).
             val state = capabilityOf(provider).stateOf(answer) ?: continue
             stateFound = true
-            unavailable(provider)?.let { return CompletionOutcome.NotAvailable(it) }
+            val digest = ConsentStateValue.digestOf(state)
+            // The Consent Request of the digest names its Data Provider: that one's credentials and operations are used.
+            val request = storeOrNull { consents.requestWithDigest(digest) ?: NONE } ?: return CompletionOutcome.NotStored(bankReference = null)
+            if (request === NONE) continue
+            val owner = plugins.dataProviders.firstOrNull { it.stored.id == request.dataProviderId } ?: continue
+            // UC-007 BR-002: An answer that arrives while its Data Provider's credentials are missing or refused is left unconsumed; its lifetime still bounds it.
+            unavailable(owner)?.let { return CompletionOutcome.NotAvailable(it) }
             // UC-007 BR-002: A Consent Request is accepted at most once, within its lifetime, and only when it is the most recent of its Bank.
-            val consumed = storeOrNull { consents.consumeAnswer(ConsentStateValue.digestOf(state), arrivedAt) }
-                ?: return CompletionOutcome.NotStored(bankReference = null)
+            val consumed = storeOrNull { consents.consumeAnswer(digest, arrivedAt) } ?: return CompletionOutcome.NotStored(bankReference = null)
             when (consumed) {
                 is ConsumedAnswer.Rejected -> if (consumed.reason != AnswerRejection.NoSuchRequest) return CompletionOutcome.NotAccepted(notAccepted(consumed.reason))
                 is ConsumedAnswer.Accepted -> {
-                    val owner = plugins.dataProviders.firstOrNull { it.stored.id == consumed.request.dataProviderId } ?: provider
                     permit.workingOn(owner.stored.name)
                     return completeAccepted(owner, capabilityOf(owner), answer, consumed, permit)
                 }
@@ -318,7 +329,15 @@ class BankConsents(
         val request = accepted.request
         val reference = request.bankReference
         val bankId = bankOf(reference)?.id
-        return when (val completion = capability.completeConsent(answer, accepted.providerHandle, context(provider, permit, bankId))) {
+        val completion = try {
+            capability.completeConsent(answer, accepted.providerHandle, context(provider, permit, bankId))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            // A8 step 2 of UC-007: a plug-in that throws (ADR-001 §4.0 forbids it) is a completion that did not reach Slussen.
+            ConsentCompletion.TransientFailure(FailureKind.ConnectionLost)
+        }
+        return when (completion) {
             is ConsentCompletion.Completed -> granted(provider, capability, request, completion, permit)
             // A1 of UC-007: the Operator cancelled or the Bank refused; no Bank Consent is stored and the earlier one stays.
             ConsentCompletion.NotCompleted -> CompletionOutcome.NotGranted(reference)
@@ -416,7 +435,10 @@ class BankConsents(
         }
         // UC-009 BR-004: a reference that two delivered Bank Accounts share identifies neither; neither is kept or identified.
         val shared = ofBank.groupingBy { it.providerReference }.eachCount().filterValues { it > 1 }.keys
-        val usable = ofBank.filter { it.providerReference !in shared }
+        // UC-009 BR-004: a lasting reference the Data Provider already offers under another of its Banks would be a guess under this one: it is not kept here, and Slussen stops for it (A6).
+        val elsewhere = offered.offered().filter { it.dataProviderId == dataProvider.id && it.bankId != bank.id }.map { it.providerReference }.toSet()
+        val offeredElsewhere = ofBank.filter { it.providerReference in elsewhere && it.providerReference !in shared }
+        val usable = ofBank.filter { it.providerReference !in shared && it.providerReference !in elsewhere }
         val references = usable.map { it.providerReference }.toSet()
         val leftOut = connections.leftOutBankAccounts().filter { it.dataProviderId == dataProvider.id }.map { it.providerReference }.toSet()
         val kept = usable.map { offeredOf(provider, bank, it, offeredAt, it.providerReference in leftOut) }
@@ -437,9 +459,12 @@ class BankConsents(
         // UC-009 BR-004: Slussen uses a Bank Account's transactions only when it identifies the Bank Account with certainty: by the reference its Data Provider gives it, here at the Bank of the Bank Consent.
         val identified = ofDataProvider.filter { referenceOf(it) in references && it.providerBankId == bank.id }
         val notIdentified = (
-            ofDataProvider.filter { referenceOf(it) in shared || (referenceOf(it) in references && it.providerBankId != bank.id) } +
-                ambiguous.values.flatten()
+            ofDataProvider.filter {
+                referenceOf(it) in shared || (referenceOf(it) in references && it.providerBankId != bank.id) ||
+                    (referenceOf(it) in elsewhere && it.providerBankId == bank.id)
+            } + ambiguous.values.flatten()
             ).distinctBy { it.id }
+        val elsewhereNotAdded = offeredElsewhere.filter { delivery -> ofDataProvider.none { referenceOf(it) == delivery.providerReference } }
         val proposedIds = proposals.values.toSet()
         val noLongerDelivered = ofDataProvider.filter {
             it.providerBankId == bank.id && referenceOf(it) !in references && it.id !in proposedIds && it !in notIdentified
@@ -451,7 +476,7 @@ class BankConsents(
                 val match = proposals[offer.providerReference]?.let { id -> added.firstOrNull { it.id == id } } ?: return@mapNotNull null
                 ProposedMatch(offer.name, offer.lastFourDigits, match.name)
             },
-            notIdentified = notIdentified.map { it.name },
+            notIdentified = notIdentified.map { it.name } + elsewhereNotAdded.map { it.name.orEmpty() },
             // UC-013 BR-012: every Offered Bank Account that is neither added nor left out is imported by default and to map.
             toMap = kept.count {
                 it.providerReference !in leftOut && it.providerReference !in addedReferences && it.providerReference !in proposals &&
@@ -521,7 +546,15 @@ class BankConsents(
             var endedAtBank = false
             var heldBack: HeldBack? = null
             if (session != null && unavailable(provider) == null) {
-                when (val ended = capability.revoke(session, context(provider, permit, bankId))) {
+                val ended = try {
+                    capability.revoke(session, context(provider, permit, bankId))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    // A8 step 3 of UC-007: a plug-in that throws (ADR-001 §4.0 forbids it) is an end the Data Provider did not confirm.
+                    RevokeResult.NotConfirmed
+                }
+                when (ended) {
                     RevokeResult.Ended -> { contacted = true; endedAtDataProvider = true; endedAtBank = true }
                     RevokeResult.EndedAtDataProvider -> { contacted = true; endedAtDataProvider = true }
                     // A8 step 3 of UC-007: an end the Data Provider does not confirm is a revocation it did not confirm.
@@ -589,6 +622,9 @@ class BankConsents(
     }
 
     private companion object {
+        /** Stands for "no Consent Request has this digest" inside [storeOrNull], which gives null for a failure. */
+        val NONE = StoredConsentRequest(0, "", 0, Instant.EPOCH, Instant.EPOCH, answered = true)
+
         /** An ISO 3166 two-letter country code (BR-010). */
         val COUNTRY = Regex("[A-Z]{2}")
 

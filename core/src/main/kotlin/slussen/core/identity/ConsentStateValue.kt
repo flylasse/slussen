@@ -1,7 +1,9 @@
 package slussen.core.identity
 
 import slussen.core.port.RandomSource
+import slussen.pluginapi.value.OneWayDigestApi
 import slussen.pluginapi.value.Secret
+import java.util.Base64
 
 /**
  * The `state` value of a Consent Request and its digest (ADR-001 §4.1, ADR-002 §2 `consent_request_correlation`, ADR-008
@@ -16,14 +18,18 @@ object ConsentStateValue {
     const val STATE_BYTES: Int = 32
 
     // UC-007 BR-002: A Consent Request is accepted at most once, so its state value is new for every request and cannot be guessed.
-    /** A new `state` value: [STATE_BYTES] bytes from [random], in lower-case hex (64 characters, safe in any address). */
+    /**
+     * A new `state` value: [STATE_BYTES] bytes from [random], written as base64url without padding (ADR-008 §7): 43
+     * characters, safe in any address.
+     */
     fun newState(random: RandomSource): Secret {
         val bytes = ByteArray(STATE_BYTES)
         random.nextBytes(bytes)
-        return Secret(hex(bytes))
+        return Secret(Base64.getUrlEncoder().withoutPadding().encodeToString(bytes))
     }
 
     /** The SHA-256 digest of [state], in lower-case hex (64 characters): what `state_digest` stores, never [state] itself. */
+    @OptIn(OneWayDigestApi::class)
     fun digestOf(state: Secret): String = hex(state.sha256())
 
     private fun hex(bytes: ByteArray): String = buildString(bytes.size * 2) {

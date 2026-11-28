@@ -36,6 +36,9 @@ class InMemoryConsentStore(val consents: MutableList<StoredBankConsent> = mutabl
     /** Makes O-10 replace fail before it changes anything, as a `device.db` that cannot be written would. */
     var failsToReplace: Boolean = false
 
+    /** Runs as O-10 replace begins, before it changes anything: a test can hold or cancel the completion there. */
+    var beforeReplace: suspend () -> Unit = {}
+
     /** Makes O-10 start fail before it changes anything, as a `device.db` that cannot be written would. */
     var failsToStart: Boolean = false
 
@@ -72,6 +75,10 @@ class InMemoryConsentStore(val consents: MutableList<StoredBankConsent> = mutabl
         stored
     }
 
+    override suspend fun requestWithDigest(stateDigest: String): StoredConsentRequest? = lock.withLock {
+        correlations.firstOrNull { it.stateDigest == stateDigest }?.let { found -> requests.firstOrNull { it.id == found.requestId } }
+    }
+
     override suspend fun consumeAnswer(stateDigest: String, arrivedAt: Instant): ConsumedAnswer = lock.withLock {
         val correlation = correlations.firstOrNull { it.stateDigest == stateDigest }
         val request = correlation?.let { found -> requests.firstOrNull { it.id == found.requestId } }
@@ -88,7 +95,12 @@ class InMemoryConsentStore(val consents: MutableList<StoredBankConsent> = mutabl
         ConsumedAnswer.Accepted(answered, correlation.providerHandle)
     }
 
-    override suspend fun replaceConsent(requestId: Long, granted: GrantedBankConsent): ReplacedConsent = lock.withLock {
+    override suspend fun replaceConsent(requestId: Long, granted: GrantedBankConsent): ReplacedConsent {
+        beforeReplace()
+        return replaceUnderLock(requestId, granted)
+    }
+
+    private suspend fun replaceUnderLock(requestId: Long, granted: GrantedBankConsent): ReplacedConsent = lock.withLock {
         failing(failsToReplace)
         val request = requests.firstOrNull { it.id == requestId } ?: return@withLock ReplacedConsent.Refused(ReplaceRefusal.NoSuchRequest)
         if (newerExists(request)) return@withLock ReplacedConsent.Refused(ReplaceRefusal.NewerRequestExists)

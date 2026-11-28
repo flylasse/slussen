@@ -101,9 +101,9 @@ class ScriptedBankConsent : BankConsentCapability {
     fun stateTexts(): List<String> = starts.map { it.state.reveal() }
 
     companion object {
-        /** The value of `state` in the query of [returned], or null when it has none. */
+        /** The value of `state` in the query of [returned], or null when it has none, an empty one, or more than one. */
         fun stateIn(returned: String): String? =
-            returned.substringAfter('?', "").split('&').firstOrNull { it.startsWith("state=") }?.removePrefix("state=")?.takeIf { it.isNotEmpty() }
+            returned.substringAfter('?', "").split('&').filter { it.startsWith("state=") }.singleOrNull()?.removePrefix("state=")?.takeIf { it.isNotEmpty() }
 
         /** An answer as a Data Provider returns it to [returnAddress]: the address with [query] added. */
         fun answer(returnAddress: String, query: String): ConsentAnswer = ConsentAnswer(Secret("$returnAddress?$query"))

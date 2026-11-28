@@ -34,6 +34,7 @@ class ScriptedBankConsentContractTest : BankConsentContractTest() {
     private val session = ConsentSession("PLANTED-CONTRACT-SESSION-4e1a")
     private val cancelled = ScriptedBankConsent.answer(ExampleData.CONSENT_RETURN_ADDRESS, "error=access_denied&state=contract-a")
     private val unreadable = ScriptedBankConsent.answer(ExampleData.CONSENT_RETURN_ADDRESS, "state=contract-b")
+    private val errorAndCode = ScriptedBankConsent.answer(ExampleData.CONSENT_RETURN_ADDRESS, "error=access_denied&code=PLANTED-CONTRACT-CODE-0c3f&state=contract-d")
     private val granting = ScriptedBankConsent.answer(ExampleData.CONSENT_RETURN_ADDRESS, "code=PLANTED-CONTRACT-CODE-0c3f&state=contract-c")
 
     init {
@@ -42,7 +43,7 @@ class ScriptedBankConsentContractTest : BankConsentContractTest() {
         fake.completeAnswer = { answer: ConsentAnswer, _ ->
             when {
                 answer === cancelled -> ConsentCompletion.NotCompleted
-                answer === unreadable -> ConsentCompletion.NotConfirmed(ConsentFailureKind.AnswerNotUnderstood)
+                answer === unreadable || answer === errorAndCode -> ConsentCompletion.NotConfirmed(ConsentFailureKind.AnswerNotUnderstood)
                 else -> ConsentCompletion.Completed(
                     Instant.parse("2027-04-13T12:00:00Z"),
                     listOf(
@@ -75,6 +76,12 @@ class ScriptedBankConsentContractTest : BankConsentContractTest() {
 
     @OptIn(slussen.pluginapi.value.SensitiveApi::class)
     private fun revealed(state: Secret): String = state.reveal()
+
+    override fun answerWithTwoStates(): ConsentAnswer = ScriptedBankConsent.answer(ExampleData.CONSENT_RETURN_ADDRESS, "state=one&code=x&state=two")
+
+    override fun answerWithEmptyState(): ConsentAnswer = ScriptedBankConsent.answer(ExampleData.CONSENT_RETURN_ADDRESS, "code=x&state=")
+
+    override fun answerWithErrorAndCode(): ConsentAnswerScenario = ConsentAnswerScenario(errorAndCode, Secret("handle"))
 
     override fun sessionToEnd(): ConsentSession = session
 

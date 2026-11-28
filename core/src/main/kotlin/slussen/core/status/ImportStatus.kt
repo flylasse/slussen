@@ -25,6 +25,7 @@ import slussen.core.port.StoredBackOff
 import slussen.core.port.StoredBank
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredBankConsent
+import slussen.core.port.StoredOfferedBankAccount
 import slussen.core.port.StoredBudget
 import slussen.core.port.StoredDataProvider
 import slussen.core.port.StoredFetch
@@ -66,6 +67,8 @@ class ImportStatus(
     private val comparisonNotices: ComparisonNotices = ComparisonNotices(),
     /** UC-003 BR-016: whether a Budget owes a read of its read period (`budget_read_state.period_read_owed`). */
     private val periodReadOwed: suspend (Long) -> Boolean = { false },
+    /** The Offered Bank Accounts of `device.db` (UC-009 BR-009), from which UC-007 A6 is shown (BR-001: stored data only). */
+    private val offered: suspend () -> List<StoredOfferedBankAccount> = { emptyList() },
 ) {
     private val dataProviders: List<StoredDataProvider> get() = currentDataProviders()
 
@@ -86,6 +89,7 @@ class ImportStatus(
         val firstUploadMatching: FirstUploadMatchingNotice?,
         val credentials: Map<ServiceKey, CredentialStatus>,
         val periodReadOwed: Set<Long>,
+        val offered: List<StoredOfferedBankAccount>,
     )
 
     // UC-008 BR-001: Opening Slussen shows only stored data; it never contacts a Source, a Bank or the Budget App.
@@ -109,7 +113,20 @@ class ImportStatus(
             firstUploadMatching = firstUploadMatching.notice(),
             credentials = services.associateWith { credentials.status(it) },
             periodReadOwed = budgets.filter { periodReadOwed(it.id) }.map { it.id }.toSet(),
+            offered = offeredOrUnknown(),
         )
+    }
+
+    /**
+     * The Offered Bank Accounts, or none when `device.db` cannot be read: UC-007 A6 is then not known and not shown, and the
+     * rest of the import status is shown all the same.
+     */
+    private suspend fun offeredOrUnknown(): List<StoredOfferedBankAccount> = try {
+        offered()
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        emptyList()
     }
 
     /**
@@ -450,6 +467,8 @@ class ImportStatus(
                     // A Bank Consent the Bank refused counts as expired from the time it was refused (UC-001 A9, entity model BANK_CONSENT).
                     !consent.expiredFrom.isAfter(snapshot.now) ->
                         add(Blocked(BlockedReason.ExpiredBankConsent, Remedy.GrantBankConsent, consent.expiredFrom, subject, refusedByBank = consent.refusedByBank))
+                    notDeliveredWith(consent, reader, bankAccount, snapshot) ->
+                        add(Blocked(BlockedReason.UnrecognisedBankAccount, Remedy.IdentifyBankAccount, consent.grantedAt, subject))
                 }
             }
             // UC-001 BR-004: A Back-off of one Bank holds for each Bank Account read through its Data Provider whose provider_bank_id is that Bank.
@@ -462,7 +481,7 @@ class ImportStatus(
                 ?.let { add(Blocked(BlockedReason.WaitingForProvider, Remedy.WaitUntilItEnds, it.endsAt, subject)) }
             if (provider != null) {
                 lastResult(bankAccount, snapshot)?.let { (fetch, result) ->
-                    resultBlocked(result.outcome, fetch, bankAccount, provider, snapshot)?.let { add(it) }
+                    resultBlocked(result.outcome, fetch, bankAccount, provider, snapshot)?.takeIf { found -> none { it.reason == found.reason } }?.let { add(it) }
                 }
             }
             // UC-008 BR-006: A currency mismatch is shown with the action that moves the Account Mapping (UC-009 A8).
@@ -470,6 +489,20 @@ class ImportStatus(
                 add(Blocked(BlockedReason.CurrencyMismatch, Remedy.MoveAccountMapping, null, subject))
             }
         }
+
+    // UC-008 BR-006: An unrecognised Bank Account is shown with the action that confirms or identifies it (UC-009).
+    /**
+     * UC-007 A6, from stored data: the Bank Consent [consent] of [reader] delivered its Bank Accounts, and [bankAccount]'s
+     * reference is not among them. Only when at least one Offered Bank Account of that Bank was kept since the Bank
+     * Consent was granted: when none was (its Bank Accounts could not be kept, or it covers none), what it covers is not
+     * known, and no Bank Account of it is shown as unrecognised for that.
+     */
+    private fun notDeliveredWith(consent: StoredBankConsent, reader: StoredDataProvider, bankAccount: StoredBankAccount, snapshot: Snapshot): Boolean {
+        val kept = snapshot.offered.filter { it.dataProviderId == reader.id && it.bankId == consent.bankId && !it.offeredAt.isBefore(consent.grantedAt) }
+        if (kept.isEmpty()) return false
+        val reference = if (bankAccount.dataProviderId == reader.id) bankAccount.providerReference else bankAccount.balanceProviderReference
+        return kept.none { it.providerReference == reference }
+    }
 
     private fun resultBlocked(
         outcome: FetchResultOutcome,

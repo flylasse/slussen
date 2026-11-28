@@ -1,5 +1,6 @@
 package slussen.core.consent
 
+import kotlinx.coroutines.CancellationException
 import slussen.core.port.ConnectionStore
 import slussen.core.port.ConsentStore
 import slussen.core.port.OfferedBankAccountStore
@@ -30,6 +31,18 @@ class LeftBehindBanks(
      * process after the Data Provider completed it and before its Bank Consent was stored left behind. Returns how many it
      * removed.
      */
+    /**
+     * [run] as the start sequence calls it: a failure of the stored data is caught and the start goes on, with nothing of
+     * it logged; the next start tries again. Returns how many Banks it removed, 0 after a failure.
+     */
+    suspend fun runAtStart(): Int = try {
+        run()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        0
+    }
+
     suspend fun run(): Int {
         val answered = consents.consentRequests().filter { it.answered }.map { it.bankReference }.toSet()
         if (answered.isEmpty()) return 0

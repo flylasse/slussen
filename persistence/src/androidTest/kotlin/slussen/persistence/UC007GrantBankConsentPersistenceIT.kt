@@ -165,6 +165,38 @@ class UC007GrantBankConsentPersistenceIT {
 
     @Test
     @UseCase(id = "UC-007", scenario = "Main Success Scenario")
+    @DisplayName("ADR-002 §3 (O-10): a Bank is removed only when no Bank Account names it by bank_id or by provider_bank_id and no Back-off names it; each clause on its own, with the foreign keys off so that only the statement decides")
+    fun eachClauseOfTheRemovalHolds() = runBlocking {
+        device.close()
+        val storage = SlussenStorage.open(DeviceFiles.context, java.time.Clock.fixed(at, java.time.ZoneOffset.UTC))
+        try {
+            val byBank = storage.connections.bankNamed("By Bank").id
+            val byProviderBank = storage.connections.bankNamed("By Provider Bank").id
+            val byBackOff = storage.connections.bankNamed("By Back-off").id
+            val unused = storage.connections.bankNamed("Unused").id
+            storage.main.openHelper.writableDatabase.apply {
+                execSQL("PRAGMA foreign_keys = OFF")
+                fun bankAccount(id: Int, bankId: Long, providerBankId: Long?) = execSQL(
+                    "INSERT INTO bank_account (id, generated_identifier, bank_id, provider_bank_id, name, currency, bank_account_type, identified_at, retired) " +
+                        "VALUES ($id, '00000000-0000-4000-8000-00000000000$id', $bankId, ${providerBankId ?: "NULL"}, 'Invented $id', 'EUR', 'Checking', 0, 0)",
+                )
+                bankAccount(1, byBank, null)
+                bankAccount(2, byBank, byProviderBank)
+                execSQL("INSERT INTO back_off (data_provider_id, bank_id, cause, starts_at, ends_at) VALUES (999, $byBackOff, 'Request To Wait', 0, 1)")
+            }
+            assertFalse(storage.connections.removeBankIfUnreferenced(byBank))
+            assertFalse(storage.connections.removeBankIfUnreferenced(byProviderBank))
+            assertFalse(storage.connections.removeBankIfUnreferenced(byBackOff))
+            assertTrue(storage.connections.removeBankIfUnreferenced(unused))
+            assertEquals(setOf(byBank, byProviderBank, byBackOff), storage.connections.banks().map { it.id }.toSet())
+        } finally {
+            storage.main.close(); storage.device.close(); storage.journal.close()
+        }
+        device = SlussenDatabases.openDevice(DeviceFiles.context)
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "Main Success Scenario")
     @DisplayName("ADR-002 §3 (O-10): at a start after a process that ended between creating the Bank and storing its Bank Consent, the Bank nothing refers to is removed from slussen.db; a Bank with a Bank Consent stays")
     fun aBankLeftBehindIsRemovedAtTheNextStart() = runBlocking {
         device.close()

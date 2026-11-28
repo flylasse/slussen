@@ -1079,4 +1079,40 @@ class UC008CheckImportStatusTest {
 
         assertEquals(NothingStored.NoneKept, slice.bankAccountTransactions.of(saver).nothingStored)
     }
+
+    private fun offeredAurora(reference: String, offeredAt: Instant, bankId: Long) =
+        ExampleData.offered(reference, reference, "current", EUR, null, null, bankId, offeredAt)
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-001", "BR-006"])
+    @DisplayName("Step 8, UC-007 A6: a Bank Account whose reference is not among the Offered Bank Accounts its Bank's Bank Consent delivered is shown, from stored data, as an unrecognised Bank Account with the action that identifies it")
+    fun aBankAccountTheBankConsentDidNotDeliverIsUnrecognised() = runTest {
+        household()
+        val aurora = slice.connectionStore.bankNamed("Aurora Bank").id
+        val grantedAt = now.minus(Duration.ofDays(10))
+        slice.offeredStore.replaceOffered(slice.openBankingId, aurora, listOf(offeredAurora("ref-${id("Aurora Dollar")}", grantedAt.plusSeconds(1), aurora)))
+
+        val current = workspaceAccount("Summer House", "Aurora Current").blocked
+        val dollar = workspaceAccount("Summer House", "Aurora Dollar").blocked
+
+        assertEquals(listOf(Blocked(BlockedReason.UnrecognisedBankAccount, Remedy.IdentifyBankAccount, grantedAt, "Aurora Current")), current)
+        assertTrue(dollar.none { it.reason == BlockedReason.UnrecognisedBankAccount }, "the Bank Consent delivered it: $dollar")
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-001", "BR-006"])
+    @DisplayName("Step 8, UC-007 A6: when no Offered Bank Account was kept for the Bank since its Bank Consent was granted (its coverage unknown), no Bank Account of it is shown as unrecognised; nor while its Bank Consent is expired")
+    fun unknownCoverageOrAnExpiredConsentMarksNothingUnrecognised() = runTest {
+        household()
+        val aurora = slice.connectionStore.bankNamed("Aurora Bank").id
+        slice.offeredStore.replaceOffered(slice.openBankingId, aurora, listOf(offeredAurora("ref-other", now.minus(Duration.ofDays(30)), aurora)))
+
+        assertEquals(emptyList<Blocked>(), workspaceAccount("Summer House", "Aurora Current").blocked)
+
+        slice.importStatusStore.consents.clear()
+        val expiredAt = now.minus(Duration.ofDays(1))
+        slice.importStatusStore.consents += StoredBankConsent(99, aurora, slice.openBankingId, now.minus(Duration.ofDays(10)), expiredAt)
+        slice.offeredStore.replaceOffered(slice.openBankingId, aurora, listOf(offeredAurora("ref-other", now.minus(Duration.ofDays(9)), aurora)))
+        assertEquals(listOf(Blocked(BlockedReason.ExpiredBankConsent, Remedy.GrantBankConsent, expiredAt, "Aurora Current")), workspaceAccount("Summer House", "Aurora Current").blocked)
+    }
 }

@@ -21,6 +21,7 @@ import slussen.pluginapi.provider.DataProvider
 import slussen.pluginapi.provider.RevokeResult
 import slussen.pluginapi.request.RequestKind
 import slussen.pluginapi.value.Secret
+import slussen.pluginapi.value.SensitiveApi
 
 /** A Consent Request the contract test starts: the Bank's reference and the return address the core would send. */
 public class ConsentRequestScenario(public val bank: String, public val returnAddress: String)
@@ -66,6 +67,15 @@ public abstract class BankConsentContractTest {
 
     /** The answer the Data Provider returns to the return address for a Consent Request started with [state]. */
     protected abstract fun answerCarrying(state: Secret): ConsentAnswer
+
+    /** An answer that carries the `state` twice, with two values (S-B-42: it answers no one Consent Request). */
+    protected abstract fun answerWithTwoStates(): ConsentAnswer
+
+    /** An answer whose `state` is present but empty. */
+    protected abstract fun answerWithEmptyState(): ConsentAnswer
+
+    /** An answer that carries a refusal and a result together, which the plug-in cannot read as either. */
+    protected abstract fun answerWithErrorAndCode(): ConsentAnswerScenario
 
     /** The session of a granted Bank Consent; the server ends it when asked. */
     protected abstract fun sessionToEnd(): ConsentSession
@@ -141,9 +151,26 @@ public abstract class BankConsentContractTest {
         val state = Secret("contract-state-5d2b")
         val read = capability().stateOf(answerCarrying(state))
         assertNotNull(read)
-        assertTrue(read!!.sha256().contentEquals(state.sha256()), "the state read is the one sent")
+        assertEquals(revealed(state), revealed(read!!), "the state read is the one sent")
         assertNull(capability().stateOf(ConsentAnswer(Secret("no-state-in-this-answer"))))
         assertEquals(0, requestsReceived(), "stateOf sends nothing")
+    }
+
+    @OptIn(SensitiveApi::class)
+    private fun revealed(secret: Secret): String = secret.reveal()
+
+    @Test
+    @DisplayName("S-B-42: an answer with two states or an empty one carries no state the core can match; one with a refusal and a result together is never Completed")
+    public fun malformedAnswersAreNotRead() {
+        val capability = capability()
+        assertNull(capability.stateOf(answerWithTwoStates()), "two states")
+        assertNull(capability.stateOf(answerWithEmptyState()), "an empty state")
+        val both = answerWithErrorAndCode()
+        val completed = call { capability.completeConsent(both.answer, both.handle, context()) }
+        assertTrue(
+            completed == ConsentCompletion.NotCompleted || completed == ConsentCompletion.NotConfirmed(ConsentFailureKind.AnswerNotUnderstood),
+            "an error with a code is not a granted consent: $completed",
+        )
     }
 
     @Test
