@@ -18,6 +18,8 @@ import slussen.core.port.MappingStored
 import slussen.core.port.NewIdentification
 import slussen.core.port.OperatorSettings
 import slussen.core.port.SettingChange
+import slussen.core.port.NumberSetting
+import slussen.core.port.SettingValue
 import slussen.core.port.DescriptionListChange
 import slussen.core.port.SettingFollowUp
 import slussen.core.port.SentRecordOutcome
@@ -60,6 +62,8 @@ abstract class OperatorSettingsDao : StateVersionDao {
     open suspend fun store(change: SettingChange) {
         val stored = checkNotNull(current()) { "The one record of the Operator Settings is stored at the first start." }
         check(update(change.value.appliedTo(stored.settings()).entity(stored.id)) == 1) { "The one record of the Operator Settings is updated." }
+        // UC-001 BR-013: A Fetch Schedule of 0 switches Scheduled Fetches off and removes the schedule, a deferred Scheduled Fetch with it.
+        if (change.value == SettingValue.Number(NumberSetting.FetchSchedule, 0)) removeDeferredScheduledFetch()
         raiseStateVersion()
         when (change.followUp) {
             SettingFollowUp.None -> Unit
@@ -67,6 +71,10 @@ abstract class OperatorSettingsDao : StateVersionDao {
             SettingFollowUp.PeriodReadOwed -> owePeriodReadOfEveryBudgetWithACursor()
         }
     }
+
+    /** `coordinator_state.scheduled_fetch_deferred` cleared (ADR-007 §2), within the transaction of [store]. */
+    @Query("UPDATE coordinator_state SET scheduled_fetch_deferred = 0 WHERE id = 1")
+    protected abstract suspend fun removeDeferredScheduledFetch()
 
     @Query("SELECT * FROM transfer_description ORDER BY id")
     abstract suspend fun transferDescriptions(): List<TransferDescriptionEntity>

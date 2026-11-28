@@ -30,6 +30,10 @@ import slussen.core.port.NewBankAccount
 import slussen.core.port.NewBackOff
 import slussen.core.port.NewFetch
 import slussen.core.port.StartedBy
+import slussen.core.port.NumberSetting
+import slussen.core.port.SettingChange
+import slussen.core.port.SettingFollowUp
+import slussen.core.port.SettingValue
 import slussen.core.port.StoredAccountBalance
 import slussen.core.port.StoredFetchResult
 import slussen.pluginapi.value.Amount
@@ -114,6 +118,26 @@ class UC001FetchTransactionsPersistenceIT {
         val again = SlussenStorage.open(DeviceFiles.context, clock)
         assertEquals(false, again.coordinator.scheduledFetchDeferred())
         again.close()
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-013"])
+    @DisplayName("BR-013: a Fetch Schedule of 0 removes a deferred Scheduled Fetch in the transaction that stores it; set above 0 again, none is deferred; a value above 0 keeps one")
+    fun fetchScheduleOfZeroRemovesTheDeferral() = runBlocking {
+        val storage = SlussenStorage.open(DeviceFiles.context, clock)
+        storage.coordinator.deferScheduledFetch()
+        storage.settings.store(SettingChange(SettingValue.Number(NumberSetting.FetchSchedule, 1), SettingFollowUp.None))
+        assertEquals(true, storage.coordinator.scheduledFetchDeferred())
+
+        storage.settings.store(SettingChange(SettingValue.Number(NumberSetting.FetchSchedule, 0), SettingFollowUp.None))
+
+        assertEquals(false, storage.coordinator.scheduledFetchDeferred())
+        storage.settings.store(SettingChange(SettingValue.Number(NumberSetting.FetchSchedule, 2), SettingFollowUp.None))
+        storage.close()
+        val restarted = SlussenStorage.open(DeviceFiles.context, clock)
+        assertEquals(false, restarted.coordinator.scheduledFetchDeferred())
+        assertEquals(false, restarted.coordinator.recordScheduledFetchStart())
+        restarted.close()
     }
 
     @Test

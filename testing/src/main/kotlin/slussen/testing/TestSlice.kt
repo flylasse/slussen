@@ -75,7 +75,7 @@ class TestSlice(
     val offeredStore = InMemoryOfferedBankAccountStore()
     val importStatusStore = InMemoryImportStatusStore(identify, connectionStore)
     val copyStore = InMemoryBudgetAppCopyStore(connectionStore, importStatusStore)
-    val settings = InMemoryOperatorSettingsStore(stateVersion = stateVersion, connections = connectionStore, copies = copyStore)
+    val settings = InMemoryOperatorSettingsStore(stateVersion = stateVersion, connections = connectionStore, copies = copyStore, coordinator = coordinatorStore)
     val firstUploadMatchingStore = InMemoryFirstUploadMatchingStore()
     val startState = FixedStartState(startKind, unreadableParts)
     val backupSize = FixedBackupSizeMonitor()

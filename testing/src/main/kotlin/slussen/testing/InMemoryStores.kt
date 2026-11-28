@@ -17,6 +17,8 @@ import slussen.core.port.BudgetToServe
 import slussen.core.port.ConnectionStore
 import slussen.core.port.CoordinatorMode
 import slussen.core.port.CoordinatorStore
+import slussen.core.port.SettingValue
+import slussen.core.port.NumberSetting
 import slussen.core.port.DataProviderRegistration
 import slussen.core.port.DataProviderSettingsStore
 import kotlinx.coroutines.Deferred
@@ -126,6 +128,8 @@ class InMemoryOperatorSettingsStore(
     val stateVersion: InMemoryStateVersion = InMemoryStateVersion(),
     private val connections: InMemoryConnectionStore? = null,
     private val copies: InMemoryBudgetAppCopyStore? = null,
+    /** `coordinator_state`, whose deferred Scheduled Fetch a Fetch Schedule of 0 removes in the same step (UC-001 BR-013). */
+    private val coordinator: InMemoryCoordinatorStore? = null,
 ) : OperatorSettingsStore {
     var beforeStore: suspend () -> Unit = {}
 
@@ -151,6 +155,8 @@ class InMemoryOperatorSettingsStore(
             SettingFollowUp.PeriodReadOwed -> checkNotNull(copies) { "This fake was made without the stored copy." }.let { copy -> copy.periodOwed += copy.cursors.keys }
         }
         settings = change.value.appliedTo(settings)
+        // As the Room store: a Fetch Schedule of 0 removes a deferred Scheduled Fetch in the same step.
+        if (change.value == SettingValue.Number(NumberSetting.FetchSchedule, 0)) coordinator?.scheduledFetchDeferred = false
         stateVersion.raise()
         afterStore()
     }

@@ -36,6 +36,7 @@ import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
 import slussen.core.port.NewBankAccount
 import slussen.core.port.NewProviderRequest
+import slussen.core.port.NumberSetting
 import slussen.core.port.ProviderRequestKind
 import slussen.core.port.StartedBy
 import slussen.core.port.StoredBackOff
@@ -554,6 +555,42 @@ class UC001ScheduledFetchTest {
         assertEquals(ScheduledFetchOutcome.NoneDeferred, laterFetch.scheduledFetchAfterPause())
         assertEquals(1, slice.feeds.fetches)
         assertFalse(slice.coordinatorStore.scheduledFetchDeferred)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-013"])
+    @DisplayName("BR-013: setting the Fetch Schedule to 0 removes a deferred Scheduled Fetch; set above 0 again, a pause that ends starts none")
+    fun fetchScheduleOfZeroRemovesTheDeferral() = runTest {
+        feedsWithChecking()
+        slice.coordinatorStore.mode = CoordinatorMode.PlanOpen
+        slice.fetch.scheduledFetch()
+        slice.coordinatorStore.mode = CoordinatorMode.Normal
+
+        slice.generalSettings.change(NumberSetting.FetchSchedule, 0)
+
+        assertFalse(slice.coordinatorStore.scheduledFetchDeferred)
+        slice.generalSettings.change(NumberSetting.FetchSchedule, 2)
+        slice.coordinatorStore.mode = CoordinatorMode.PlanOpen
+        slice.coordinatorStore.mode = CoordinatorMode.Normal
+        assertEquals(ScheduledFetchOutcome.NoneDeferred, slice.fetch.scheduledFetchAfterPause())
+        assertEquals(0, slice.feeds.fetches)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-013"])
+    @DisplayName("BR-013: a Fetch Schedule changed to another value above 0 keeps a deferred Scheduled Fetch, which starts once when the pause ends")
+    fun fetchScheduleAboveZeroKeepsTheDeferral() = runTest {
+        feedsWithChecking()
+        slice.coordinatorStore.mode = CoordinatorMode.Uploading
+        slice.fetch.scheduledFetch()
+        slice.coordinatorStore.mode = CoordinatorMode.Normal
+
+        slice.generalSettings.change(NumberSetting.FetchSchedule, 1)
+
+        assertTrue(slice.coordinatorStore.scheduledFetchDeferred)
+        assertInstanceOf(ScheduledFetchOutcome.Ran::class.java, slice.fetch.scheduledFetchAfterPause())
+        assertEquals(ScheduledFetchOutcome.NoneDeferred, slice.fetch.scheduledFetchAfterPause())
+        assertEquals(1, slice.feeds.fetches)
     }
 
     // ---- ADR-007 §1, §2: a Scheduled Fetch racing another operation -----------------------------------------------
