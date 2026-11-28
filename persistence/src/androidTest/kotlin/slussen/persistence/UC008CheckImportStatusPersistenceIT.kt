@@ -90,4 +90,40 @@ class UC008CheckImportStatusPersistenceIT {
         assertTrue(mainFile.parentFile!!.listFiles()!!.any { it.name.startsWith("slussen.db.unreadable-") })
         storage.main.close(); storage.device.close(); storage.journal.close()
     }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "A1: Stored Data Cannot Be Read", requirements = ["NFR-005"])
+    @DisplayName("A1 (ADR-002 §6, §8): a sound device.db of version 2 with a Bank Consent passes the start checks and is kept; one whose Bank Session names no stored Bank Consent is set aside, starts empty, is named, and opens no First Upload Matching")
+    fun theStartSequenceChecksDeviceDbVersion2AsVersion1() = runBlocking {
+        val at = Instant.parse("2026-11-28T10:00:00Z")
+        SlussenStorage.open(DeviceFiles.context, clock).also { it.main.close(); it.device.close(); it.journal.close() }
+        SlussenDatabases.openDevice(DeviceFiles.context).also { device ->
+            val consents = RoomConsentStore(device.consents())
+            val started = consents.startRequest(slussen.core.port.NewConsentRequest("Aurora Bank (FI)", 2, at, at.plusSeconds(900), "a".repeat(64), null))
+            consents.consumeAnswer("a".repeat(64), at)
+            consents.replaceConsent(started.id, slussen.core.port.GrantedBankConsent(7, at, at.plusSeconds(86_400 * 180L), slussen.pluginapi.provider.ConsentSession("invented-session"), at))
+        }.close()
+
+        val sound = SlussenStorage.open(DeviceFiles.context, clock)
+        assertEquals(StartKind.Normal, sound.startState.startKind)
+        assertEquals(emptyList<Any>(), sound.startState.unreadableParts)
+        assertEquals(listOf(7L), sound.importStatus.bankConsents().map { it.bankId })
+        val openChecks = sound.firstUploadMatching.openChecks().size
+        sound.main.close(); sound.device.close(); sound.journal.close()
+        SQLiteDatabase.openDatabase(SlussenDatabases.deviceFile(DeviceFiles.context).path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("PRAGMA foreign_keys = OFF")
+            db.execSQL("UPDATE bank_session SET bank_consent_id = 99")
+        }
+
+        val damaged = SlussenStorage.open(DeviceFiles.context, clock)
+        try {
+            assertEquals(StartKind.Normal, damaged.startState.startKind)
+            assertEquals(listOf(StoredPart.CredentialsConsentsAndOfferedBankAccounts), damaged.startState.unreadableParts.map { it.part })
+            assertTrue(damaged.consents.bankConsents().isEmpty())
+            assertEquals(openChecks, damaged.firstUploadMatching.openChecks().size)
+            assertTrue(DeviceFiles.context.noBackupFilesDir.listFiles()!!.any { it.name.startsWith("device.db.unreadable-") })
+        } finally {
+            damaged.main.close(); damaged.device.close(); damaged.journal.close()
+        }
+    }
 }

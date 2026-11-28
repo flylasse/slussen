@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import slussen.persistence.device.DeviceDatabase
 import slussen.persistence.journal.JournalDatabase
 import slussen.persistence.main.SlussenDatabase
 import slussen.persistence.main.SlussenMigrations
@@ -748,14 +747,12 @@ class SlussenDatabaseMigrationTest {
     }
 
     @Test
-    @DisplayName("NFR-017: device.db and journal.db are still at their committed version 1, so no Migration is due for them (ADR-002 §7)")
-    fun deviceAndJournalNeedNoMigration() {
-        listOf(DeviceDatabase::class, JournalDatabase::class).forEach { database ->
-            assertEquals(1, RoomSchemas.currentOf(database).version, database.java.name)
-            assertEquals(listOf(1), RoomSchemas.committedVersions(database))
-        }
-        create(DeviceDatabase::class.java, 1)
-        val validation = RoomSchemas.openDelegateOf(DeviceDatabase::class).onValidateSchema(connection)
+    @DisplayName("NFR-017: journal.db is still at its committed version 1, so no Migration is due for it; device.db has its own migration tests from version 2 on (DeviceDatabaseMigrationTest; ADR-002 §7)")
+    fun journalNeedsNoMigration() {
+        assertEquals(1, RoomSchemas.currentOf(JournalDatabase::class).version, JournalDatabase::class.java.name)
+        assertEquals(listOf(1), RoomSchemas.committedVersions(JournalDatabase::class))
+        create(JournalDatabase::class.java, 1)
+        val validation = RoomSchemas.openDelegateOf(JournalDatabase::class).onValidateSchema(connection)
         assertTrue(validation.isValid, validation.expectedFoundMsg)
         assertFalse(tables().isEmpty())
     }

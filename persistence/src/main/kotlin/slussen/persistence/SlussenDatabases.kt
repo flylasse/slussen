@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import slussen.persistence.device.DeviceDatabase
+import slussen.persistence.device.DeviceMigrations
 import slussen.persistence.journal.JournalDatabase
 import slussen.persistence.main.SlussenDatabase
 import slussen.persistence.main.SlussenMigrations
@@ -40,9 +41,14 @@ object SlussenDatabases {
             .addCallback(DefaultDescriptionLists)
             .build()
 
-    /** `JournalMode.TRUNCATE` and `PRAGMA synchronous = FULL` (ADR-002 §4). */
+    /**
+     * `JournalMode.TRUNCATE` and `PRAGMA synchronous = FULL` (ADR-002 §4), with the Migration from every committed schema
+     * version, so an installed `device.db` is upgraded and never cleared (ADR-002 §7, NFR-017).
+     */
     fun openDevice(context: Context): DeviceDatabase =
         Room.databaseBuilder(context, DeviceDatabase::class.java, deviceFile(context).path)
+            // UC-014 BR-003: The service credentials and the Offered Bank Accounts in device.db are kept on an upgrade to version 2.
+            .addMigrations(*DeviceMigrations.ALL)
             .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
             .addCallback(SynchronousFull)
             .build()

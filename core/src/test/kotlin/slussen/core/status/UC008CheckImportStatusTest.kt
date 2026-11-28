@@ -94,6 +94,8 @@ class UC008CheckImportStatusTest {
         budgetAccountName: String,
         fileFormatId: Long? = null,
         balanceDataProviderId: Long? = null,
+        /** The Bank the Data Provider names for it: the Operator's Bank unless a test says otherwise, as UC-013 adds it (entity model `provider_bank_id`). */
+        providerBankName: String? = bankName.takeIf { dataProviderId != null || balanceDataProviderId != null },
     ) {
         val id = nextId++
         val budgetAccount = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == budgetAccountName }
@@ -101,7 +103,7 @@ class UC008CheckImportStatusTest {
             id = id,
             generatedIdentifier = "00000000-0000-4000-8000-%012d".format(id),
             bankId = slice.connectionStore.bankNamed(bankName).id,
-            providerBankId = null,
+            providerBankId = providerBankName?.let { slice.connectionStore.bankNamed(it).id },
             dataProviderId = dataProviderId,
             fileFormatId = fileFormatId,
             balanceDataProviderId = balanceDataProviderId,
@@ -187,6 +189,65 @@ class UC008CheckImportStatusTest {
         assertEquals(listOf(ExpiringBankConsent("Aurora Bank", "Aurora Open Banking", now.plus(Duration.ofDays(4)))), warned)
         slice.settings.settings = slice.settings.settings.copy(consentWarningDays = 10)
         assertEquals(listOf("Aurora Bank", "Vesta Sparbank"), slice.status.open().expiringBankConsents.map { it.bankName })
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-006"])
+    @DisplayName("Step 8: the Bank Consent and the Back-off of a Bank are those of the Bank the Data Provider names for the Bank Account (provider_bank_id), never of the Bank the Operator chose for it (UC-007 BR-009, UC-001 BR-004; survey E risk R3)")
+    fun theBankTheDataProviderNamesDecidesTheConsentAndTheBackOff() = runTest {
+        household()
+        val aurora = slice.connectionStore.bankNamed("Aurora Bank").id
+        val vesta = slice.connectionStore.bankNamed("Vesta Sparbank").id
+        // UC-009 A14: the Operator chose Vesta Sparbank for Aurora Current; the Data Provider still names Aurora Bank for it.
+        slice.connectionStore.bankAccountList.replaceAll { if (it.name == "Aurora Current") it.copy(bankId = vesta, providerBankId = aurora) else it }
+        slice.importStatusStore.consents += StoredBankConsent(98, vesta, slice.openBankingId, now.minus(Duration.ofDays(200)), now.minus(Duration.ofDays(4)))
+        val waitEnds = now.plus(Duration.ofHours(5))
+        slice.importStatusStore.backOffList += StoredBackOff(slice.openBankingId, aurora, BackOffCause.RequestToWait, now.minus(Duration.ofHours(1)), waitEnds)
+        bankAccount("Vesta Card", "Aurora Bank", slice.openBankingId, EUR, BankAccountType.CreditCard, "Card", providerBankName = "Vesta Sparbank")
+
+        val current = workspaceAccount("Summer House", "Aurora Current").blocked
+        val card = workspaceAccount("Summer House", "Vesta Card").blocked
+
+        assertEquals(listOf(Blocked(BlockedReason.WaitingForProvider, Remedy.WaitUntilItEnds, waitEnds, "Aurora Current")), current)
+        assertEquals(listOf(Blocked(BlockedReason.ExpiredBankConsent, Remedy.GrantBankConsent, now.minus(Duration.ofDays(4)), "Vesta Card")), card)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-006"])
+    @DisplayName("Step 8: a file-imported Bank Account whose balance a Data Provider that needs a Bank Consent reports is blocked by that Bank's missing Bank Consent and its Back-off, as one whose transactions it delivers (balance_data_provider_id; UC-001 BR-011; survey E risk R3)")
+    fun theBalanceDataProviderNeedsItsBankConsentToo() = runTest {
+        household()
+        val fileFormat = slice.plugins.fileFormats.single().id
+        bankAccount(
+            "Harbor Health Savings", "Harbor Health Trust", null, USD, BankAccountType.Savings, "Health Savings",
+            fileFormatId = fileFormat, balanceDataProviderId = slice.openBankingId, providerBankName = "Harbor Health Trust",
+        )
+        val harbor = slice.connectionStore.bankNamed("Harbor Health Trust").id
+
+        val missing = workspaceAccount("Care Fund", "Harbor Health Savings").blocked
+        slice.importStatusStore.consents += StoredBankConsent(97, harbor, slice.openBankingId, now.minus(Duration.ofDays(1)), now.plus(Duration.ofDays(90)))
+        val waitEnds = now.plus(Duration.ofHours(2))
+        slice.importStatusStore.backOffList += StoredBackOff(slice.openBankingId, harbor, BackOffCause.RequestToWait, now.minus(Duration.ofHours(1)), waitEnds)
+        val covered = workspaceAccount("Care Fund", "Harbor Health Savings").blocked
+
+        assertEquals(listOf(Blocked(BlockedReason.MissingBankConsent, Remedy.GrantBankConsent, null, "Harbor Health Savings")), missing)
+        assertEquals(listOf(Blocked(BlockedReason.WaitingForProvider, Remedy.WaitUntilItEnds, waitEnds, "Harbor Health Savings")), covered)
+    }
+
+    @Test
+    @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-006"])
+    @DisplayName("Step 8: a Bank Consent the Bank refused counts as expired from the time it was refused, whatever expiry was reported, and is no longer among the expiring ones (entity model BANK_CONSENT refused_at; UC-001 A9)")
+    fun aRefusedBankConsentIsExpiredFromItsRefusal() = runTest {
+        household()
+        slice.importStatusStore.consents.clear()
+        val aurora = slice.connectionStore.bankNamed("Aurora Bank").id
+        val refusedAt = now.minus(Duration.ofHours(6))
+        slice.importStatusStore.consents += StoredBankConsent(1, aurora, slice.openBankingId, now.minus(Duration.ofDays(170)), now.plus(Duration.ofDays(4)), refusedAt)
+
+        val current = workspaceAccount("Summer House", "Aurora Current").blocked
+
+        assertEquals(listOf(Blocked(BlockedReason.ExpiredBankConsent, Remedy.GrantBankConsent, refusedAt, "Aurora Current")), current)
+        assertEquals(emptyList<ExpiringBankConsent>(), slice.status.open().expiringBankConsents)
     }
 
     @Test

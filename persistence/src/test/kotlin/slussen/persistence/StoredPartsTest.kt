@@ -58,7 +58,19 @@ class StoredPartsTest {
     @UseCase(id = "UC-014", businessRules = ["BR-003", "BR-004"], requirements = ["NFR-009", "NFR-021"])
     @DisplayName("BR-003, BR-004: service credentials and Offered Bank Accounts are only in device.db, which is never backed up or restored")
     fun credentialsAndOfferedBankAccountsStayOnTheDevice() {
-        assertEquals(setOf("service_credential", "offered_bank_account"), device)
+        assertEquals(setOf("service_credential", "offered_bank_account") + consentTables, device)
         assertTrue("service_credential" !in main && "offered_bank_account" !in main)
+    }
+
+    /** The tables of Bank Consents that `device.db` version 2 adds (ADR-002 §1, §7; S-B-45). */
+    private val consentTables = setOf("bank_consent", "bank_session", "consent_request", "consent_request_correlation")
+
+    @Test
+    @UseCase(id = "UC-007", businessRules = ["BR-005"], requirements = ["NFR-009"])
+    @DisplayName("BR-005: Bank Consents, their Bank Sessions and Consent Requests with their correlation are only in device.db, which is never backed up, transferred or restored; the Bank of a Bank Consent stays in slussen.db")
+    fun bankConsentsStayOnThisInstallation() {
+        assertTrue(device.containsAll(consentTables), "$device")
+        assertTrue(main.none { it in consentTables }, "$main")
+        assertTrue("bank" in main && "bank" !in device)
     }
 }

@@ -53,14 +53,23 @@ data class StoredAccountBalance(
     val reportedAt: Instant,
 )
 
-/** `BANK_CONSENT` (entity model) as stored in `device.db`. */
+/**
+ * `BANK_CONSENT` (entity model) as stored in `device.db`. [bankId] is the Bank the Data Provider names, which a Bank
+ * Account's `provider_bank_id` refers to (UC-007 BR-009).
+ */
 data class StoredBankConsent(
     val id: Long,
     val bankId: Long,
     val dataProviderId: Long,
     val grantedAt: Instant,
+    /** The expiry the Bank or Data Provider reported, kept as reported (UC-007 BR-004). */
     val expiresAt: Instant,
-)
+    /** `refused_at`: the time the Data Provider first reported that the Bank no longer accepts it, null until then (UC-001 A9). */
+    val refusedAt: Instant? = null,
+) {
+    /** The time from which it counts as expired: its refusal, when the Bank refused it before its reported expiry (entity model). */
+    val expiredFrom: Instant get() = refusedAt?.takeIf { it.isBefore(expiresAt) } ?: expiresAt
+}
 
 /** The `Values:` of `BACK_OFF.cause`. */
 enum class BackOffCause(val text: String) {

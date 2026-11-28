@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import slussen.persistence.device.DeviceDatabase
 import slussen.persistence.main.SlussenDatabase
 import slussen.persistence.start.SqliteDatabaseCheck.ValueColumn
 import java.io.File
@@ -24,8 +25,16 @@ class EntityModelSchemaTest {
         RoomSchemas.create(SlussenDatabase::class, RoomSchemas.committedVersions(SlussenDatabase::class).max(), it)
     }
 
+    /** `device.db` at its current committed schema version (ADR-002 §1, §7; S-B-45). */
+    private val device: SQLiteConnection = BundledSQLiteDriver().open(":memory:").also {
+        RoomSchemas.create(DeviceDatabase::class, RoomSchemas.committedVersions(DeviceDatabase::class).max(), it)
+    }
+
     @AfterEach
-    fun close() = connection.close()
+    fun close() {
+        connection.close()
+        device.close()
+    }
 
     /** One attribute of an entity as its table of the entity model states it. */
     private data class Attribute(val name: String, val dataType: String, val rules: String) {
@@ -206,5 +215,81 @@ class EntityModelSchemaTest {
         assertEquals(sorted(ofTheEntityModel + technical), sorted(SlussenStorage.MAIN_VALUES))
         SlussenStorage.MAIN_VALUES.forEach { column -> assertEquals(column.allowed.distinct(), column.allowed, "$column") }
         SlussenStorage.MAIN_VALUES.forEach { column -> assertTrue(columnsOf(column.table).any { it[0] == column.column && it[1] == "TEXT" }, "$column") }
+    }
+    /** The entities ADR-002 §1 keeps in `device.db`. */
+    private val deviceEntities: Map<String, List<Attribute>>
+        get() = entityModel.filterKeys { it in setOf("SERVICE_CREDENTIAL", "OFFERED_BANK_ACCOUNT", "BANK_CONSENT", "BANK_SESSION", "CONSENT_REQUEST") }
+
+    private fun deviceQuery(sql: String): List<List<String?>> = RoomSchemas.rows(device, sql)
+
+    private fun deviceColumnsOf(table: String) = deviceQuery("SELECT name, type, \"notnull\", pk, dflt_value FROM pragma_table_info('$table')")
+
+    @Test
+    @DisplayName("ADR-002 §1, §2, §7 (S-B-45): device.db version 2 holds one table per entity ADR-002 §1 puts there and the technical table consent_request_correlation, and no other table")
+    fun deviceDbHoldsItsEntitiesAndNoOtherTable() {
+        val tables = deviceQuery("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != 'room_master_table'").map { it.single()!! }
+        assertEquals((deviceEntities.keys.map { it.lowercase() } + "consent_request_correlation").toSortedSet(), tables.toSortedSet())
+        assertEquals(5, deviceEntities.size, "${deviceEntities.keys}")
+    }
+
+    @Test
+    @DisplayName("ADR-002 §2, §7 (S-B-45): each table of device.db has exactly the attributes of its entity as columns, none more and none fewer, each Optional one may be empty and every other must be filled, a String as TEXT and every other data type as INTEGER, and no column fills in a value by itself")
+    fun everyDeviceTableHasExactlyTheAttributesOfItsEntity() {
+        val problems = deviceEntities.flatMap { (entity, attributes) ->
+            val table = entity.lowercase()
+            val columns = deviceColumnsOf(table).associateBy { it[0]!! }
+            val names = attributes.map { it.name }
+            (columns.keys - names.toSet()).map { "$table.$it is a column the entity model does not have" } +
+                (names - columns.keys).map { "$table lacks the attribute $it" } +
+                attributes.mapNotNull { attribute ->
+                    val column = columns[attribute.name] ?: return@mapNotNull null
+                    val expected = listOf(attribute.name, if (attribute.dataType == "String") "TEXT" else "INTEGER", if (attribute.optional) "0" else "1", null)
+                    val found = listOf(column[0], column[1], column[2], column[4])
+                    if (found == expected && (column[3] != "0") == attribute.primaryKey) null else "$table.${attribute.name}: the entity model gives $expected, the table has $column"
+                }
+        }
+        assertEquals(emptyList<String>(), problems, problems.joinToString("\n"))
+    }
+
+    @Test
+    @DisplayName("ADR-002 §2, §7 (S-B-45): within device.db the only foreign keys are bank_session.bank_consent_id to bank_consent and consent_request_correlation.consent_request_id to consent_request, acting on nothing by themselves; a reference to a table of slussen.db is a plain column; one Bank Consent per Bank and Data Provider and one Bank Session per Bank Consent by unique index")
+    fun deviceDbKeysAndIndicesAreThoseOfAdr002() {
+        val foreignKeys = listOf("service_credential", "offered_bank_account", "bank_consent", "bank_session", "consent_request", "consent_request_correlation").flatMap { table ->
+            deviceQuery("SELECT \"from\", \"table\", \"to\", on_update, on_delete FROM pragma_foreign_key_list('$table')").map { listOf(table) + it }
+        }
+        assertEquals(
+            listOf(
+                listOf("bank_session", "bank_consent_id", "bank_consent", "id", "NO ACTION", "NO ACTION"),
+                listOf("consent_request_correlation", "consent_request_id", "consent_request", "id", "NO ACTION", "NO ACTION"),
+            ),
+            foreignKeys,
+        )
+        fun uniqueIndices(table: String) = deviceQuery("SELECT name FROM pragma_index_list('$table') WHERE \"unique\" = 1 AND origin = 'c'")
+            .map { index -> deviceQuery("SELECT name FROM pragma_index_info('${index.single()}')").map { it.single() } }
+        assertEquals(listOf(listOf("bank_id", "data_provider_id")), uniqueIndices("bank_consent"))
+        assertEquals(listOf(listOf("bank_consent_id")), uniqueIndices("bank_session"))
+        assertEquals(emptyList<List<String?>>(), uniqueIndices("consent_request"))
+        assertEquals(listOf(listOf("state_digest")), uniqueIndices("consent_request_correlation"))
+        assertEquals(emptyList<List<String?>>(), deviceQuery("SELECT name FROM pragma_index_list('consent_request')"))
+    }
+
+    @Test
+    @DisplayName("ADR-002 §2: consent_request_correlation has exactly the columns ADR-002 §2 lists: consent_request_id, its key, the state_digest, never the state, and the plug-in's provider_handle, which may be empty")
+    fun theCorrelationHasTheColumnsOfAdr002() {
+        assertEquals(
+            listOf(
+                listOf("consent_request_id", "INTEGER", "1", "1", null),
+                listOf("state_digest", "TEXT", "1", "0", null),
+                listOf("provider_handle", "TEXT", "0", "0", null),
+            ),
+            deviceColumnsOf("consent_request_correlation"),
+        )
+    }
+
+    @Test
+    @DisplayName("ADR-002 §8 step 1: device.db has no Values column in the entity model, and the logical check at every start knows none (SlussenStorage.DEVICE_VALUES)")
+    fun deviceDbHasNoValuesColumn() {
+        assertEquals(emptyList<String>(), deviceEntities.flatMap { (entity, attributes) -> attributes.filter { it.values != null }.map { "$entity.${it.name}" } })
+        assertEquals(emptyList<ValueColumn>(), SlussenStorage.DEVICE_VALUES)
     }
 }

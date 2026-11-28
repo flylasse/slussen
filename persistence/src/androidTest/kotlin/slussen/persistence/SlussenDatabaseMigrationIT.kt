@@ -22,6 +22,7 @@ import slussen.core.port.TransferDecision
 import slussen.core.port.TransferType
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.CurrencyCode
+import slussen.testing.InMemoryConsentStore
 import slussen.persistence.main.ReviewDecisionEntity
 import slussen.persistence.main.SentRecordEntity
 import slussen.persistence.main.SlussenDatabase
@@ -325,7 +326,7 @@ class SlussenDatabaseMigrationIT {
             assertEquals(listOf("acct-2290"), connections.leftOutBankAccounts().map { it.providerReference })
             val fetches = RoomFetchStore(main.fetches())
             assertEquals(listOf(StoredFetchResult(1, FetchResultOutcome.Fetched, 3)), fetches.fetchesOf(1).single().results)
-            assertEquals(listOf(Amount(5135280)), RoomImportStatusStore(main.fetches(), RoomConnectionStore(main.connections()), main.transactionFiles()).accountBalances().map { it.amount })
+            assertEquals(listOf(Amount(5135280)), RoomImportStatusStore(main.fetches(), RoomConnectionStore(main.connections()), main.transactionFiles(), InMemoryConsentStore()).accountBalances().map { it.amount })
             val db = main.openHelper.writableDatabase
             assertEquals(DEFAULT_DESCRIPTIONS, db.select("SELECT kind, text FROM transfer_description ORDER BY id"))
             db.execSQL(
@@ -361,7 +362,7 @@ class SlussenDatabaseMigrationIT {
             assertEquals(listOf("Kestrel Checking"), connections.bankAccounts().map { it.name })
             assertEquals(listOf("acct-2290"), connections.leftOutBankAccounts().map { it.providerReference })
             val fetches = RoomFetchStore(main.fetches())
-            val status = RoomImportStatusStore(main.fetches(), RoomConnectionStore(main.connections()), main.transactionFiles())
+            val status = RoomImportStatusStore(main.fetches(), RoomConnectionStore(main.connections()), main.transactionFiles(), InMemoryConsentStore())
             assertEquals(listOf(FetchOutcome.Fetched), fetches.fetchesOf(1).map { it.outcome })
             assertTrue(status.accountBalances().isEmpty())
             fetches.storeBankAccountDelivery(

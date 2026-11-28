@@ -97,7 +97,9 @@ class SlussenStorage private constructor(
     /** The Decision Journal read for the Journal Export only (UC-011, Konsist K-07), on the same thread. */
     val journalReader: DecisionJournalReader = journalDatabase
     val fetches = RoomFetchStore(main.fetches())
-    val importStatus = RoomImportStatusStore(main.fetches(), connections, main.transactionFiles())
+    /** O-10 of Grant Bank Consent (UC-007), `device.db` version 2. */
+    val consents = RoomConsentStore(device.consents())
+    val importStatus = RoomImportStatusStore(main.fetches(), connections, main.transactionFiles(), consents)
 
     /** O-3 of Import a Transaction File (UC-002). */
     val fileImports = RoomFileImportStore(main.transactionFiles())
@@ -138,6 +140,14 @@ class SlussenStorage private constructor(
             ValueColumn("transaction_file", "outcome", TransactionFileOutcome.entries.map { it.text }),
         )
 
+        /**
+         * The `Values:` columns of `device.db` in this schema, for the logical check of ADR-002 §8 step 1: none. Version 2
+         * adds `bank_consent`, `bank_session`, `consent_request` and `consent_request_correlation`, none of which has a
+         * `Values:` attribute in the entity model (`answered` is a Boolean); `EntityModelSchemaTest` checks this list
+         * against the entity model and the technical table of ADR-002 §2.
+         */
+        val DEVICE_VALUES: List<ValueColumn> = emptyList()
+
         val JOURNAL_VALUES: List<ValueColumn> = listOf(
             ValueColumn("decision_journal_entry", "event_type", JournalEventType.entries.map { it.text }),
         )
@@ -150,7 +160,7 @@ class SlussenStorage private constructor(
             val sequence = StartSequence(
                 files,
                 SqliteDatabaseCheck(MAIN_VALUES),
-                SqliteDatabaseCheck(emptyList()),
+                SqliteDatabaseCheck(DEVICE_VALUES),
                 SqliteDatabaseCheck(JOURNAL_VALUES),
                 clock,
             )

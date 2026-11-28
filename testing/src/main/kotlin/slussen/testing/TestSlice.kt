@@ -74,6 +74,9 @@ class TestSlice(
     val connectionStore = InMemoryConnectionStore(stateVersion)
     val offeredStore = InMemoryOfferedBankAccountStore()
     val importStatusStore = InMemoryImportStatusStore(identify, connectionStore)
+
+    /** O-10 of `device.db` (UC-007); its Bank Consents are the ones the import status reads. */
+    val consentStore = InMemoryConsentStore(importStatusStore.consents)
     val copyStore = InMemoryBudgetAppCopyStore(connectionStore, importStatusStore)
     val settings = InMemoryOperatorSettingsStore(stateVersion = stateVersion, connections = connectionStore, copies = copyStore, coordinator = coordinatorStore)
     val firstUploadMatchingStore = InMemoryFirstUploadMatchingStore()

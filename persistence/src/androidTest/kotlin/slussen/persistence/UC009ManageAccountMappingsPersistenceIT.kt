@@ -28,6 +28,7 @@ import slussen.core.port.NewLeftOutBankAccount
 import slussen.core.port.SentRecordOutcome
 import slussen.core.port.SentThrough
 import slussen.core.port.UploadPlanState
+import slussen.testing.InMemoryConsentStore
 import slussen.persistence.main.SentRecordEntity
 import slussen.persistence.main.UploadPlanEntity
 import slussen.pluginapi.provider.RequestLimitDeclaration
@@ -329,7 +330,7 @@ class UC009ManageAccountMappingsPersistenceIT {
         val mapped = mapped()
         val mappings = RoomMappingStore(main.connections())
         val comparisons = RoomComparisonStore(main, connections)
-        val counts = RoomImportStatusStore(main.fetches(), connections, main.transactionFiles())
+        val counts = RoomImportStatusStore(main.fetches(), connections, main.transactionFiles(), InMemoryConsentStore())
         val checkingAccount = mapped.budgetAccounts.getValue("Checking")
         val cardAccount = mapped.budgetAccounts.getValue("Rewards Card")
         comparisons.applyChangeSet(BudgetReadToStore(mapped.householdId, null, emptyList(), ChangeCursor("1"), emptyMap(), now))

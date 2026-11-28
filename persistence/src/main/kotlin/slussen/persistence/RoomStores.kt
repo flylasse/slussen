@@ -21,6 +21,7 @@ import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
 import slussen.core.port.FetchStore
 import slussen.core.port.FileFormatRegistration
+import slussen.core.port.ConsentStore
 import slussen.core.port.ImportStatusStore
 import slussen.core.port.IdentificationStored
 import slussen.core.port.KeptOutcome
@@ -583,13 +584,14 @@ class RoomFileImportStore(
  * The import status data of UC-001, UC-002, UC-003 and UC-007. The Fetches with their Fetch Results, the Account
  * Balances and the Back-offs of UC-001 are read from `fetch`, `fetch_result`, `account_balance` and `back_off`, the
  * Transaction Files of UC-002 from `transaction_file`, the counts of UC-003 from the Transaction Statuses in
- * `bank_transaction` and `unreadable_transaction`; `bank_consent` comes with the slice that builds UC-007 (ADR-002 §1),
- * and until then its read is empty.
+ * `bank_transaction` and `unreadable_transaction`, and the Bank Consents of UC-007 from `bank_consent` in `device.db`
+ * version 2 (ADR-002 §1, §7) through [consents].
  */
 class RoomImportStatusStore(
     private val fetches: FetchDao,
     private val connections: RoomConnectionStore,
     private val files: TransactionFileDao,
+    private val consents: ConsentStore,
 ) : ImportStatusStore {
     override suspend fun recentFetches(): List<StoredFetch> = withResults(fetches.recent(), fetches.results())
 
@@ -597,7 +599,7 @@ class RoomImportStatusStore(
         StoredAccountBalance(it.bankAccountId, Amount(it.amount), currencyOf(it.currency, MAIN_PART), it.reportedAt)
     }
 
-    override suspend fun bankConsents(): List<StoredBankConsent> = emptyList()
+    override suspend fun bankConsents(): List<StoredBankConsent> = consents.bankConsents()
 
     override suspend fun backOffs(): List<StoredBackOff> = fetches.backOffs().map { it.stored() }
 

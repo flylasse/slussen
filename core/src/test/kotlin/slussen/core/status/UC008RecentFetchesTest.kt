@@ -403,7 +403,7 @@ class UC008RecentFetchesTest {
         val bankId = slice.connectionStore.bankNamed("Aurora Bank").id
         val kestrel = slice.connectionStore.bankAccountList.first()
         slice.connectionStore.bankAccountList += kestrel.copy(
-            id = 9001, name = "Aurora Current", bankId = bankId, dataProviderId = slice.openBankingId, providerReference = "aurora-1",
+            id = 9001, name = "Aurora Current", bankId = bankId, providerBankId = bankId, dataProviderId = slice.openBankingId, providerReference = "aurora-1",
             generatedIdentifier = "00000000-0000-4000-8000-000000009001", mapping = kestrel.mapping?.copy(id = 9002, bankAccountId = 9001),
         )
         val fetchId = fetch(ago(30), FetchOutcome.NotConsented, providerId = slice.openBankingId)

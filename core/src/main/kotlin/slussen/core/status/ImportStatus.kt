@@ -439,19 +439,28 @@ class ImportStatus(
         buildList {
             val subject = bankAccount.name
             val provider = dataProviders.firstOrNull { it.id == bankAccount.dataProviderId }
-            if (provider != null && provider.needsBankConsent) {
-                val consent = snapshot.consents.firstOrNull { it.bankId == bankAccount.bankId && it.dataProviderId == provider.id }
+            // UC-007 BR-009: The Data Provider that reads the Bank Account, for its transactions or for its balance, and the Bank it names for it (`provider_bank_id`) decide which Bank Consent covers it; the Bank the Operator chose never does.
+            val readers = listOfNotNull(bankAccount.dataProviderId, bankAccount.balanceDataProviderId).distinct()
+                .mapNotNull { id -> dataProviders.firstOrNull { it.id == id } }
+            readers.filter { it.needsBankConsent }.forEach { reader ->
+                val consent = snapshot.consents.firstOrNull { it.bankId == bankAccount.providerBankId && it.dataProviderId == reader.id }
                 // UC-008 BR-006: A missing or expired Bank Consent is shown with the action that grants it (UC-007).
                 when {
                     consent == null -> add(Blocked(BlockedReason.MissingBankConsent, Remedy.GrantBankConsent, null, subject))
-                    !consent.expiresAt.isAfter(snapshot.now) ->
-                        add(Blocked(BlockedReason.ExpiredBankConsent, Remedy.GrantBankConsent, consent.expiresAt, subject))
+                    // A Bank Consent the Bank refused counts as expired from the time it was refused (UC-001 A9, entity model BANK_CONSENT).
+                    !consent.expiredFrom.isAfter(snapshot.now) ->
+                        add(Blocked(BlockedReason.ExpiredBankConsent, Remedy.GrantBankConsent, consent.expiredFrom, subject))
                 }
             }
+            // UC-001 BR-004: A Back-off of one Bank holds for each Bank Account read through its Data Provider whose provider_bank_id is that Bank.
+            readers.flatMap { reader ->
+                snapshot.backOffs.filter {
+                    it.dataProviderId == reader.id && it.bankId != null && it.bankId == bankAccount.providerBankId && it.endsAt.isAfter(snapshot.now)
+                }
+            }
+                .maxByOrNull { it.endsAt }
+                ?.let { add(Blocked(BlockedReason.WaitingForProvider, Remedy.WaitUntilItEnds, it.endsAt, subject)) }
             if (provider != null) {
-                snapshot.backOffs.filter { it.dataProviderId == provider.id && it.bankId == bankAccount.bankId && it.endsAt.isAfter(snapshot.now) }
-                    .maxByOrNull { it.endsAt }
-                    ?.let { add(Blocked(BlockedReason.WaitingForProvider, Remedy.WaitUntilItEnds, it.endsAt, subject)) }
                 lastResult(bankAccount, snapshot)?.let { (fetch, result) ->
                     resultBlocked(result.outcome, fetch, bankAccount, provider, snapshot)?.let { add(it) }
                 }
@@ -507,7 +516,7 @@ class ImportStatus(
         val horizon = snapshot.now.plus(Duration.ofDays(snapshot.settings.consentWarningDays.toLong()))
         // UC-008 BR-002: Every opening shows each Bank Consent whose expiry lies within the consent warning lead time.
         return snapshot.consents
-            .filter { it.expiresAt.isAfter(snapshot.now) && !it.expiresAt.isAfter(horizon) }
+            .filter { it.refusedAt == null && it.expiresAt.isAfter(snapshot.now) && !it.expiresAt.isAfter(horizon) }
             .sortedBy { it.expiresAt }
             .map { ExpiringBankConsent(snapshot.banks[it.bankId]?.name.orEmpty(), dataProviderName(it.dataProviderId), it.expiresAt) }
     }
