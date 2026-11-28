@@ -304,7 +304,7 @@ class UC001FetchTransactionsViewModelTest {
                 FetchResultUi("Kestrel Feeds · Fetched 14:00", "Bank Accounts offered: 3 · not added: 3", FetchResultKind.Fetched, tap = 1),
                 // P9-13: said plainly, without naming a feature this build does not have.
                 FetchResultUi(
-                    "Aurora Open Banking · Not fetched: Bank Consents are not in this build yet; Aurora Open Banking cannot fetch until they are",
+                    "Aurora Open Banking · Not fetched: Bank Accounts through Aurora Open Banking are not read in this build yet · nothing is sent, the Bank Consents stay as they are, no action is needed",
                     null,
                     FetchResultKind.NotFetched,
                     tap = 1,
@@ -396,14 +396,14 @@ class UC001FetchTransactionsViewModelTest {
 
     @Test
     @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
-    @DisplayName("A4, BR-008 (P9-13): the page of a Data Provider that needs a Bank Consent says plainly that Bank Consents are not in this build, and its Fetch is unavailable with that reason")
+    @DisplayName("A4, BR-008 (P9-13, phase E4): the page of a Data Provider that needs a Bank Consent says plainly that its Bank Accounts are not read in this build yet, and its Fetch is unavailable with that reason")
     fun bankConsentProviderCannotFetchInThisBuild() {
         runBlocking { slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY)) }
         val page = page(slice.openBankingKey)
 
         assertFalse(page.ui().canFetch)
-        assertEquals("Bank Consents are not in this build yet; Aurora Open Banking cannot fetch until they are.", page.ui().fetchUnavailable)
-        assertEquals("None yet · a Bank Consent of a Bank lists its Bank Accounts here · Bank Consents are not in this build yet", page.ui().offered!!.emptyText)
+        assertEquals("Bank Accounts through Aurora Open Banking are not read in this build yet · nothing is sent, the Bank Consents stay as they are, no action is needed.", page.ui().fetchUnavailable)
+        assertEquals("None yet · a Bank Consent of a Bank lists its Bank Accounts here: grant one under Bank Consents", page.ui().offered!!.emptyText)
         page.fetch()
         assertEquals(0, slice.openBanking.fetches)
         assertNull(page(slice.feedsKey).ui().fetchUnavailable)

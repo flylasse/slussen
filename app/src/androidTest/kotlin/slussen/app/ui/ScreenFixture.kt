@@ -43,6 +43,10 @@ class ScreenFixture(
         running = slice.coordinator.running,
         ended = slice.coordinator.ended,
         budgetAppName = slice.plugins.budgetApp.profile.name,
+        bankConsents = slice.bankConsents,
+        consentProviders = slice.plugins.dataProviders.filter { it.stored.needsBankConsent }
+            .map { slussen.app.ui.consent.ConsentProvider(it.key, it.stored.name) },
+        applicationReturnAddress = slussen.testing.ExampleData.CONSENT_RETURN_ADDRESS,
     )
 }
 

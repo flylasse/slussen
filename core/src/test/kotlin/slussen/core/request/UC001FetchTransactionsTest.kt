@@ -1067,6 +1067,34 @@ class UC001FetchTransactionsTest {
     }
 
     @Test
+    @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
+    @DisplayName("BR-008 (phase E4): with a granted Bank Consent, this build still reads no Bank Account through a Data Provider that needs one: nothing is sent, nothing stored, the Bank Consent unchanged")
+    fun aGrantedBankConsentIsNotReadInThisBuild() = runTest {
+        ready()
+        slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+        slice.bankConsent.startAnswer = { slussen.pluginapi.provider.ConsentStart.Started("https://aurora.example/sca", null) }
+        slice.bankConsent.completeAnswer = { _, _ ->
+            slussen.pluginapi.provider.ConsentCompletion.Completed(
+                slice.clock.instant().plus(java.time.Duration.ofDays(90)), emptyList(), slussen.pluginapi.provider.ConsentSession("session-e4"),
+            )
+        }
+        slice.bankConsents.start(slice.openBankingKey, "Aurora Bank (FI)", browserAvailable = true)
+        val state = slice.bankConsent.stateTexts().last()
+        val granted = slice.bankConsents.complete(slussen.testing.ScriptedBankConsent.answer(ExampleData.CONSENT_RETURN_ADDRESS, "code=c&state=$state"))
+        assertTrue(granted is slussen.core.consent.CompletionOutcome.Granted)
+        val sentBefore = slice.bankConsent.sent.size
+        val consentsBefore = slice.consentStore.bankConsents()
+
+        val reports = (slice.fetch.fetch(slice.openBankingKey) as FetchStart.Ran).reports
+
+        assertEquals(listOf(FetchReport.NeedsBankConsent(slice.openBankingKey, "Aurora Open Banking")), reports)
+        assertEquals(0, slice.openBanking.fetches)
+        assertEquals(sentBefore, slice.bankConsent.sent.size)
+        assertTrue(slice.importStatusStore.fetches.isEmpty())
+        assertEquals(consentsBefore, slice.consentStore.bankConsents())
+    }
+
+    @Test
     @UseCase(id = "UC-001", scenario = "Main Success Scenario")
     @DisplayName("Failure postconditions: a Fetch writes nothing to the Budget App, prepares no Upload Plan and records no Offered Bank Account in the Decision Journal")
     fun fetchWritesNothingToTheBudgetApp() = runTest {

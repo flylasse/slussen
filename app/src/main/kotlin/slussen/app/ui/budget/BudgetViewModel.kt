@@ -287,7 +287,7 @@ class BudgetViewModel(private val services: UiServices, private val budgetId: Lo
 
 /**
  * UC-008 A6: the remedy of a Blocked Reason starts its use case; of those, this build has Manage Service Credentials
- * and Fetch Transactions, both on the service's page in Settings ([service]: the service the Blocked Reason names,
+ * Fetch Transactions and Grant Bank Consent, all on the service's page in Settings ([service]: the service the Blocked Reason names,
  * or the Data Provider of the Bank Account it names). A remedy this build does not have says so plainly (P9-13).
  */
 fun remedyAction(blocked: Blocked, service: ServiceKey?): RemedyAction? {
@@ -296,7 +296,8 @@ fun remedyAction(blocked: Blocked, service: ServiceKey?): RemedyAction? {
         Remedy.EnterCredentials -> RemedyAction(title, available = true, service = service, note = null)
         // UC-008 BR-006: A failed Fetch, a Bank Account not delivered and the Bank's sign-in (after signing in) are removed by fetching again.
         Remedy.FetchAgain, Remedy.SignInAtDataProvider -> RemedyAction(title, available = service != null, service = service, note = null)
-        Remedy.GrantBankConsent -> RemedyAction(title, available = false, service = null, note = Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD)
+        // UC-007 BR-003: a missing or expired Bank Consent is granted or renewed on its Data Provider's page (UC-008 A6).
+        Remedy.GrantBankConsent -> RemedyAction(title, available = service != null, service = service, note = null)
         // steps 2-7, A8 of UC-009: identifying a Bank Account and moving its Account Mapping are done in Account Mappings.
         Remedy.IdentifyBankAccount, Remedy.MoveAccountMapping ->
             RemedyAction(title, available = true, service = null, note = "in Account Mappings", accountMappings = true)

@@ -271,11 +271,14 @@ class BankConsents(
      * Steps 6-10: completes the Consent Request that [answer] answers, returned at the return address or pasted by the
      * Operator, which are checked alike (BR-011). The answer has exactly one outcome, decided by O-10's checks in one
      * transaction: accepted only for the most recent Consent Request of its Bank, within its lifetime counted to the
-     * moment it arrived, and not answered before (BR-002).
+     * moment it arrived, and not answered before (BR-002). [arrivedAt] is the time the screen took when the answer
+     * reached Slussen, before the services had started or the lane was free; a time after now counts as now.
      */
-    suspend fun complete(answer: ConsentAnswer): CompletionOutcome {
-        val arrivedAt = clock.instant()
-        return operation<CompletionOutcome>(CompletionOutcome::NotAvailable) { permit -> completeOnLane(answer, arrivedAt, permit) }
+    suspend fun complete(answer: ConsentAnswer, arrivedAt: Instant? = null): CompletionOutcome {
+        val now = clock.instant()
+        // UC-007 BR-002: the lifetime is counted to the moment the answer arrived, never to a later one.
+        val arrival = arrivedAt?.takeIf { it.isBefore(now) } ?: now
+        return operation<CompletionOutcome>(CompletionOutcome::NotAvailable) { permit -> completeOnLane(answer, arrival, permit) }
             .also { outcome ->
                 when (outcome) {
                     is CompletionOutcome.Granted -> logged(BankConsentEvent.BankConsentStored)
@@ -609,7 +612,13 @@ class BankConsents(
             )
         }
         val waiting = waitingAt(now).filter { it.dataProviderId == dataProviderId }.map { WaitingRequest(it.id, it.bankReference, it.expiresAt) }
-        return BankConsentsPage(returnAddress, returnAddress == applicationReturnAddress, lines, waiting)
+        val withConsent = lines.map { it.bankId }.toSet()
+        // UC-007 BR-003: renewing is offered for a Bank whose Bank Accounts miss a Bank Consent; it is the Bank the Data Provider names for them (BR-009).
+        val withoutConsent = bankAccounts
+            .filter { !it.retired && it.providerBankId != null && it.providerBankId !in withConsent && (it.dataProviderId == dataProviderId || it.balanceDataProviderId == dataProviderId) }
+            .groupBy { it.providerBankId!! }
+            .mapNotNull { (bankId, accounts) -> banks[bankId]?.let { BankWithoutConsent(bankId, it.name, accounts.map { account -> account.name }) } }
+        return BankConsentsPage(returnAddress, returnAddress == applicationReturnAddress, lines, waiting, withoutConsent)
     }
 
     /** Runs one storage operation and gives null when the stored data throws (NFR-023); cancellation is passed on. */

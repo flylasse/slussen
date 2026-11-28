@@ -12,6 +12,7 @@ import slussen.app.di.DetailedLoggingSwitch
 import slussen.app.platform.log.AndroidLogSink
 import slussen.app.platform.log.LogcatLog
 import slussen.app.ui.UiServices
+import slussen.app.ui.consent.ConsentAnswers
 import java.time.Clock
 
 /**
@@ -32,11 +33,24 @@ class SlussenApplication : Application() {
     /** The core's services, once the storage is open and the plug-ins are registered. */
     val services: StateFlow<UiServices?> = started
 
+    /** The process's work off the main thread: the start, and each answer of a Bank's sign-in (UC-007). */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** The device's clock, the one the core's services use. */
+    private val clock: Clock = Clock.systemDefaultZone()
+
+    /**
+     * The answers of the Bank's Strong Customer Authentication for the whole process (UC-007 steps 6-7, BR-011): each one
+     * handed to the core once, off the main thread, with the time it arrived, also before the services have started.
+     */
+    val consentAnswers: ConsentAnswers = ConsentAnswers(started, scope, clock)
+
     override fun onCreate() {
         super.onCreate()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope.launch {
-            started.value = compositionRoot.start(this@SlussenApplication, Clock.systemDefaultZone(), scope)
+            started.value = compositionRoot.start(this@SlussenApplication, clock, scope)
+            // UC-008 BR-001: the Consent Requests that wait are read from stored data only.
+            consentAnswers.readWaiting()
         }
     }
 }

@@ -5,6 +5,8 @@ import slussen.app.schedule.FetchScheduleWork
 import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.ServiceCredentials
 import slussen.core.comparison.Comparison
+import slussen.core.consent.BankConsents
+import slussen.app.ui.consent.ConsentProvider
 import slussen.core.fetch.FetchTransactions
 import slussen.core.fileimport.ImportTransactionFile
 import slussen.core.journal.JournalControl
@@ -67,4 +69,10 @@ class UiServices(
     val notificationsAllowed: () -> Boolean = { true },
     /** UC-001 A12 step 3, BR-014: works the New Transaction Notification's number out now, for the Scheduled Fetch's worker before it answers. */
     val updateNotification: suspend () -> Unit = {},
+    /** Grant Bank Consent (UC-007): on the page of each Data Provider that needs a Bank Consent; null in a build without one. */
+    val bankConsents: BankConsents? = null,
+    /** The Data Providers of this build that need a Bank Consent, by the name each part declares (UC-007 BR-008). */
+    val consentProviders: List<ConsentProvider> = emptyList(),
+    /** Slussen's own return address, `<application id>://consent` (UC-007 BR-011), the one the credentials' form names for an empty field. */
+    val applicationReturnAddress: String = "",
 )

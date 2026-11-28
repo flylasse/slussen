@@ -272,13 +272,20 @@ data class BankConsentLine(
 data class WaitingRequest(val requestId: Long, val bankReference: String, val expiresAt: Instant)
 
 /**
+ * A Bank the Data Provider names for some of its Bank Accounts that has no Bank Consent of it (BR-003, BR-009, BR-010):
+ * granted again without a choice, since the Bank is known.
+ */
+data class BankWithoutConsent(val bankId: Long, val bankName: String, val bankAccounts: List<String>)
+
+/**
  * The Bank Consents section of a Data Provider's page (BR-008, BR-011): the exact return address Slussen sends, to
- * register with the Data Provider ([ownAddress] when it is the application's own), each Bank Consent, and the Consent
- * Requests that wait for their answer.
+ * register with the Data Provider ([ownAddress] when it is the application's own), each Bank Consent, the Consent
+ * Requests that wait for their answer, and the Banks whose Bank Accounts miss a Bank Consent.
  */
 data class BankConsentsPage(
     val returnAddress: String,
     val ownAddress: Boolean,
     val consents: List<BankConsentLine>,
     val waiting: List<WaitingRequest>,
+    val withoutConsent: List<BankWithoutConsent> = emptyList(),
 )

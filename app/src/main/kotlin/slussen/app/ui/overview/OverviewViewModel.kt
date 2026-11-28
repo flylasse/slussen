@@ -9,6 +9,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import slussen.app.ui.ReadAgain
 import slussen.app.ui.Texts
+import slussen.core.port.ServiceKey
 import slussen.app.ui.UiServices
 import slussen.app.ui.components.BudgetAppLineUi
 import slussen.core.status.StatusesAsOf
@@ -61,7 +62,8 @@ data class OverviewUi(
     val firstUploadMatching: FirstUploadMatchingUi?,
     /** A7, BR-010 (`overview.html#backup-warning`): the backup size warning, or null. */
     val backupWarning: NoticeUi?,
-    val expiringConsents: List<String>,
+    /** Step 2, UC-008 BR-002: each Bank Consent that expires within the consent warning lead time, with its renew action (UC-007 BR-003). */
+    val expiringConsents: List<ExpiringConsentUi>,
     val budgets: List<BudgetLine>,
     val noBankAccountAdded: Boolean,
     val message: String?,
@@ -77,11 +79,12 @@ data class OverviewUi(
     val firstRun: FirstRunUi? = null,
     /** P9-14: one line saying what a Fetch does in this build, next to the Fetch action. */
     val fetchNote: String? = null,
-    /** Step 2 (P9-13): under the expiring Bank Consents, why they cannot be renewed in this build. */
-    val expiringConsentNote: String? = null,
     /** UC-001 BR-014: the stored Fetch Schedule; the question about notifications is asked only while it is above 0. */
     val fetchSchedule: Int = 0,
 )
+
+/** Step 2: an expiring Bank Consent with its renew action, which opens the sheet of its Bank on its Data Provider's page (UC-007 BR-003). */
+data class ExpiringConsentUi(val text: String, val action: String, val service: ServiceKey, val bankId: Long)
 
 /** UC-001 BR-014 (`overview.html#notification-ask`): when the Overview asks the device's one question about notifications. Pure. */
 object NotificationQuestion {
@@ -231,8 +234,14 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
                         "Android backs up nothing · ${Texts.NO_BACKUP_ACTION}",
                 )
             },
+            // UC-008 BR-002: each expiring Bank Consent with its expiry date and the renew action (UC-007 BR-003).
             expiringConsents = overview.expiringBankConsents.map {
-                "Bank Consent of ${it.bankName} through ${it.dataProviderName} expires ${formats.date(it.expiresAt)} · Renew"
+                ExpiringConsentUi(
+                    "Bank Consent of ${it.bankName} through ${it.dataProviderName} expires ${formats.date(it.expiresAt)}",
+                    "Renew",
+                    ServiceKey.dataProvider(it.dataProviderId),
+                    it.bankId,
+                )
             },
             budgets = overview.budgets.map { budget ->
                 BudgetLine(
@@ -260,12 +269,6 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
             fetchResults = fetchResults,
             fetchWarning = pendingWarnings.firstOrNull(),
             fetchNote = Texts.fetchNote(overview.budgetAppName),
-            // Step 2 (P9-13): the renew action needs Grant Bank Consent (UC-007), which this build does not have.
-            expiringConsentNote = if (overview.expiringBankConsents.isEmpty()) {
-                null
-            } else {
-                "${Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD}, so it cannot be renewed here."
-            },
             fetchSchedule = overview.fetchSchedule,
         )
     }

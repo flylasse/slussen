@@ -102,8 +102,9 @@ sealed interface FetchReport {
     ) : FetchReport
 
     /**
-     * A Data Provider that needs a Bank Consent is not contacted by this build: its Bank Sessions come with the slice
-     * that builds Grant Bank Consent (UC-007), and without a valid Bank Consent no Bank is contacted (BR-008).
+     * A Data Provider that needs a Bank Consent is not read by this build, also when a Bank Consent is granted: its Fetch
+     * through the Bank Sessions comes with a later phase (S-B-47), and without a valid Bank Consent no Bank is contacted
+     * (BR-008). Nothing is sent and nothing stored; the Bank Consents stay as they are.
      */
     data class NeedsBankConsent(
         override val service: ServiceKey,

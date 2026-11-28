@@ -65,7 +65,7 @@ class UC001FetchTransactionsScreenIT {
     }
     @Test
     @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
-    @DisplayName("A4, BR-008 (P9-13): the page of a Data Provider that needs a Bank Consent shows its Fetch unavailable, saying plainly that Bank Consents are not in this build")
+    @DisplayName("A4, BR-008 (P9-13, phase E4): the page of a Data Provider that needs a Bank Consent shows its Fetch unavailable, saying plainly that its Bank Accounts are not read in this build yet")
     fun bankConsentProviderCannotFetchInThisBuild() = compose.use {
         val fixture = ScreenFixture()
         runBlocking { fixture.slice.credentials.enter(fixture.slice.openBankingKey, fixture.slice.input("setupKey" to ExampleData.SETUP_KEY)) }
@@ -78,7 +78,7 @@ class UC001FetchTransactionsScreenIT {
         }
 
         onNodeWithText("Fetch Aurora Open Banking").assertIsNotEnabled()
-        onNodeWithText("Bank Consents are not in this build yet; Aurora Open Banking cannot fetch until they are.").assertExists()
+        onNodeWithText("Bank Accounts through Aurora Open Banking are not read in this build yet · nothing is sent, the Bank Consents stay as they are, no action is needed.").assertExists()
         org.junit.jupiter.api.Assertions.assertEquals(0, fixture.slice.openBanking.fetches)
     }
 }

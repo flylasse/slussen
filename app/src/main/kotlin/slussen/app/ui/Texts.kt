@@ -45,14 +45,11 @@ import java.time.Instant
 /** The texts the screens show for the core's results, in Slussen's glossary terms. */
 object Texts {
     /**
-     * P9-13: Bank Consents (UC-007) are not built yet, said plainly wherever a Data Provider that needs one would act,
-     * instead of naming a feature this build does not have.
+     * P9-13 (phase E4): Bank Consents are granted in this build (UC-007), but a Data Provider that needs one is not read
+     * yet: said plainly wherever its Fetch would act, with nothing sent and no action needed (NFR-023).
      */
-    const val BANK_CONSENTS_NOT_IN_THIS_BUILD = "Bank Consents are not in this build yet"
-
-    /** P9-13: why a Data Provider that needs a Bank Consent cannot fetch in this build. */
-    fun cannotFetchWithoutBankConsents(dataProviderName: String): String =
-        "$BANK_CONSENTS_NOT_IN_THIS_BUILD; $dataProviderName cannot fetch until they are"
+    fun notReadInThisBuild(dataProviderName: String): String =
+        "Bank Accounts through $dataProviderName are not read in this build yet · nothing is sent, the Bank Consents stay as they are, no action is needed"
 
     /**
      * P9-14 (`overview.html#open-this-build`): what a Fetch does, since UC-001 step 10 compares with the Budget App, and
@@ -195,9 +192,9 @@ object Texts {
         is FetchReport.CredentialsRefused ->
             FetchResultUi("Not fetched: credentials refused · enter them again", null, FetchResultKind.Failed, tap)
         is FetchReport.CredentialsMissing -> FetchResultUi("Not fetched: credentials missing · enter them", null, FetchResultKind.NotFetched, tap)
-        // P9-13: said plainly; no Bank is contacted without a valid Bank Consent (UC-001 BR-008), and this build grants none yet.
+        // P9-13: said plainly; no Bank is contacted without a valid Bank Consent (UC-001 BR-008), and this build reads none through one yet.
         is FetchReport.NeedsBankConsent ->
-            FetchResultUi("Not fetched: ${cannotFetchWithoutBankConsents(report.dataProviderName)}", null, FetchResultKind.NotFetched, tap)
+            FetchResultUi("Not fetched: ${notReadInThisBuild(report.dataProviderName)}", null, FetchResultKind.NotFetched, tap)
         is FetchReport.WarningToConfirm -> FetchResultUi(fetchWarning(report, formats).title, null, FetchResultKind.NotFetched, tap)
         is FetchReport.NotSent -> FetchResultUi("Not fetched: ${gateRefusal(report.reason)}", null, FetchResultKind.NotFetched, tap)
     }
@@ -392,12 +389,10 @@ object Texts {
                 "Started from empty records with every default, as there was no last good copy · $kept · what was set up before " +
                     "is not in these records: set Slussen up again with the card below$below"
             }
-            // Not said here yet: granting each Bank Consent again, and that a Bank Consent also brings back the Offered Bank Accounts. This
-            // build cannot grant a Bank Consent, so none was lost; Wave 6 (Bank Consents) restores both clauses.
-            // UC-008 BR-012: The service credentials have no last good copy and start empty; the next action is to enter the credentials of each service again.
+            // UC-008 BR-012: The service credentials and Bank Consents have no last good copy and start empty; the next actions are to enter the credentials of each service again and to grant each Bank Consent again.
             StoredPart.CredentialsConsentsAndOfferedBankAccounts ->
                 "Started empty: this part has no last good copy · $kept · enter the credentials of each service again in " +
-                    "Settings; the Offered Bank Accounts come back with the next Fetch"
+                    "Settings and grant each Bank Consent again; the Offered Bank Accounts come back with the next Fetch or Bank Consent"
             // UC-008 BR-012: The Decision Journal has no last good copy, starts empty, is never said to start from one, and needs no action.
             StoredPart.DecisionJournal ->
                 "Started empty: the Decision Journal has no last good copy · $kept · nothing else is affected, no action is needed"
@@ -462,12 +457,16 @@ object Texts {
             "Next: choose the Budgets in ${next.budgetAppName}" to "Then connect a Data Provider and map its Bank Accounts."
         NextThing.EnterDataProviderCredentials ->
             "Next: enter the credentials of a Data Provider" to "Then fetch it and map its Bank Accounts."
-        // P9-13 (#16): Bank Consents are not in this build, so granting one is never named as the next step.
+        // UC-013 BR-008: fetching a Data Provider or granting a Bank Consent of one that needs it, on its page in Settings (UC-007).
         is NextThing.FetchOrGrantBankConsent -> {
-            val waiting = next.toGrant.takeIf { it.isNotEmpty() }
-                ?.let { " ${it.joinToString(" and ")} ${if (it.size == 1) "needs" else "need"} a Bank Consent: $BANK_CONSENTS_NOT_IN_THIS_BUILD." }
+            val waiting = next.toGrant.takeIf { it.isNotEmpty() && next.toFetch.isNotEmpty() }
+                ?.let { " ${it.joinToString(" and ")} ${if (it.size == 1) "needs" else "need"} a Bank Consent: grant it on its page in Settings." }
                 .orEmpty()
-            val title = if (next.toFetch.isEmpty()) "Next: enter the credentials of a Data Provider that needs no Bank Consent" else "Next: fetch ${next.toFetch.joinToString(" or ")}"
+            val title = if (next.toFetch.isEmpty()) {
+                "Next: grant a Bank Consent on the page of ${next.toGrant.joinToString(" or ")}"
+            } else {
+                "Next: fetch ${next.toFetch.joinToString(" or ")}"
+            }
             title to "Its Bank Accounts are then imported and mapped in Account Mappings.$waiting"
         }
         is NextThing.MapBankAccounts ->

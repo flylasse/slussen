@@ -230,7 +230,14 @@ sealed interface StatusesAsOf {
 data class BudgetAppRead(val lastReadAt: Instant?, val notRead: List<String>, val failedAt: Instant?)
 
 /** A Bank Consent that expires within the consent warning lead time (step 2, BR-002), with its renew action. */
-data class ExpiringBankConsent(val bankName: String, val dataProviderName: String, val expiresAt: Instant)
+data class ExpiringBankConsent(
+    val bankName: String,
+    val dataProviderName: String,
+    val expiresAt: Instant,
+    /** The Bank and Data Provider of the Bank Consent, for the renew action (UC-007 BR-003). */
+    val bankId: Long = 0,
+    val dataProviderId: Long = 0,
+)
 
 /** A7, BR-010: the backed-up data nears Android's backup limit. */
 data class BackupWarning(val backedUpBytes: Long, val limitBytes: Long)

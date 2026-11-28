@@ -201,7 +201,7 @@ class FetchTransactions(
         // UC-014 BR-005: A Data Provider that refused Slussen's credentials is not contacted until new ones are accepted.
         if (refusedCredentials(provider)) return FetchReport.CredentialsRefused(key, name)
         // The Unattended Access limit of A13 (BR-012) comes with the Bank Sessions: per Bank Account at step 3 here, and in the request gate.
-        // UC-001 BR-008: No Bank is contacted without a valid Bank Consent; the Bank Sessions come with Grant Bank Consent (UC-007).
+        // UC-001 BR-008: No Bank is contacted without a valid Bank Consent; with one, the read through its Bank Session is not in this build yet, so nothing is sent.
         if (stored.needsBankConsent) return FetchReport.NeedsBankConsent(key, name)
         val startedAt = clock.instant()
         val backOffs = fetches.backOffsOf(stored.id)

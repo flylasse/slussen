@@ -173,7 +173,7 @@ class UC008CheckImportStatusScreenIT {
                     blocked = listOf(
                         BlockedLine("Blocked: Kestrel Feeds, credentials missing", RemedyAction("Enter credentials", true, ServiceKey.dataProvider(1), null)),
                         BlockedLine("Blocked: Kestrel Feeds, Fetch failed", RemedyAction("Fetch again", true, ServiceKey.dataProvider(1), null)),
-                        BlockedLine("Blocked: Aurora Current, missing Bank Consent", RemedyAction("Grant Bank Consent", false, null, "Bank Consents are not in this build yet")),
+                        BlockedLine("Blocked: Aurora Current, missing Bank Consent", RemedyAction("Grant Bank Consent", true, ServiceKey.dataProvider(2), null)),
                     ),
                 ),
             ),
@@ -183,8 +183,7 @@ class UC008CheckImportStatusScreenIT {
         )
         setContent { SlussenTheme { BudgetScreen(ui, onRemedy = { opened = it.service }, onStartFirstUploadMatching = {}) } }
 
-        onNodeWithText("Grant Bank Consent").assertIsNotEnabled()
-        onNodeWithText("Bank Consents are not in this build yet").assertExists()
+        onNodeWithText("Grant Bank Consent").assertIsEnabled()
         onNodeWithText("Nothing is uploaded in this version", substring = true).assertExists()
         onNodeWithText("Fetch again").assertIsEnabled()
         onNodeWithText("Enter credentials").performClick()

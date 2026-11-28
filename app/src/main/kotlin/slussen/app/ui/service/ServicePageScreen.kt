@@ -74,7 +74,8 @@ class PageSettingActions(
  * form its part declares, and what else belongs to it. For the Budget App the Budgets in use, their choice and, under
  * each, its Budget Accounts with "Receives from Slussen" (UC-013 steps 2-4, A9); for a Data Provider its Fetch (UC-001,
  * A16 with its confirmation of a warning), its Fetch Cooldown and Request Limit (UC-010 A11) and its Offered Bank Accounts
- * with an import switch each (UC-013 steps 5-7, A3, A6, A10, A11). The Bank Consents come with UC-007. Every action
+ * with an import switch each (UC-013 steps 5-7, A3, A6, A10, A11), and for one that needs a Bank Consent its Bank
+ * Consents (UC-007 BR-008, `consent.html`). Every action
  * answers at its own control (NFR-023, UX-D4): the check of credentials at Save (the checking and check-refused states
  * of a Data Provider's page), a refusal at a Fetch on the page (its refused state), a change of the Fetch Cooldown or
  * the Request Limit at its line (`#fetch-cooldown-saved`, `#local-action-states`).
@@ -99,6 +100,8 @@ fun ServicePageScreen(
     onConfirmFetch: () -> Unit,
     onCancelFetch: () -> Unit,
     onUploadAsCleared: (Boolean) -> Unit = {},
+    /** UC-007 BR-008: the Bank Consents of a Data Provider that needs one; null on every other page. */
+    bankConsents: (@Composable () -> Unit)? = null,
 ) {
     val values = remember { mutableStateMapOf<String, String>() }
     LazyColumn(modifier = Modifier.padding(horizontal = 12.dp)) {
@@ -111,7 +114,10 @@ fun ServicePageScreen(
             SlussenCard {
                 Muted(ui.credentials)
                 if (ui.entering) {
-                    ui.fields.forEach { field -> CredentialFieldInput(field, values[field.key].orEmpty(), !ui.checking) { values[field.key] = it } }
+                    ui.fields.forEach { field ->
+                        CredentialFieldInput(field, values[field.key].orEmpty(), !ui.checking, ui.fieldNotes[field.key]) { values[field.key] = it }
+                    }
+                    ui.ownReturnAddressNote?.let { Muted(it) }
                     // A1 of UC-014: the answer of the check, at the field it answers.
                     ui.credentialAnswer?.let { AnswerLine(it) }
                     Row {
@@ -140,6 +146,7 @@ fun ServicePageScreen(
             }
             val snack = ui.snack
             if (snack != null) SnackLine(snack, connect)
+            bankConsents?.invoke()
             if (ui.fetchCooldown != null) {
                 SectionTitle("Fetch")
                 SlussenCard {
@@ -247,7 +254,7 @@ fun ServicePageScreen(
 
 /** One declared field: text, secret (hidden while typed) or a file chosen with the device's file picker (UC-014 BR-002). */
 @Composable
-private fun CredentialFieldInput(field: FieldUi, value: String, enabled: Boolean, onValue: (String) -> Unit) {
+private fun CredentialFieldInput(field: FieldUi, value: String, enabled: Boolean, note: String?, onValue: (String) -> Unit) {
     when (field.kind) {
         FieldKind.File -> {
             val context = LocalContext.current
@@ -268,7 +275,10 @@ private fun CredentialFieldInput(field: FieldUi, value: String, enabled: Boolean
             enabled = enabled,
             singleLine = true,
             placeholder = { Text(field.description) },
-            supportingText = { Text(field.description) },
+            // UC-014 BR-002: an optional field says so (S-B-51); a refusal of the entry with it filled in is said at it (A1).
+            label = if (field.optional) ({ Text("Optional") }) else null,
+            isError = note != null,
+            supportingText = { Text(note ?: field.description) },
             visualTransformation = if (field.kind == FieldKind.Secret) PasswordVisualTransformation() else VisualTransformation.None,
         )
     }

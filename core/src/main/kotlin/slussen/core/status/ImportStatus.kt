@@ -551,7 +551,7 @@ class ImportStatus(
         return snapshot.consents
             .filter { it.refusedAt == null && it.expiresAt.isAfter(snapshot.now) && !it.expiresAt.isAfter(horizon) }
             .sortedBy { it.expiresAt }
-            .map { ExpiringBankConsent(snapshot.banks[it.bankId]?.name.orEmpty(), dataProviderName(it.dataProviderId), it.expiresAt) }
+            .map { ExpiringBankConsent(snapshot.banks[it.bankId]?.name.orEmpty(), dataProviderName(it.dataProviderId), it.expiresAt, it.bankId, it.dataProviderId) }
     }
 
     private companion object {

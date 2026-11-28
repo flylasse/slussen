@@ -1,5 +1,7 @@
 package slussen.app.ui.overview
 
+import slussen.core.port.ServiceKey
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,6 +54,7 @@ fun OverviewScreen(
     onCancelFetch: () -> Unit,
     onReadAgain: () -> Unit = {},
     onRemedy: (RemedyAction) -> Unit = {},
+    onRenew: (ServiceKey, Long) -> Unit = { _, _ -> },
 ) {
     val firstRun = ui.firstRun
     if (firstRun != null) {
@@ -93,7 +96,13 @@ fun OverviewScreen(
                 if (ui.fetchNote != null) Muted(ui.fetchNote)
             }
         }
-        items(ui.expiringConsents) { Banner(it, ui.expiringConsentNote) }
+        // UC-008 BR-002: each expiring Bank Consent with its expiry date and the renew action (UC-007 BR-003).
+        items(ui.expiringConsents) { expiring ->
+            SlussenCard(border = SlussenColors.Amber) {
+                Text(expiring.text, color = SlussenColors.Amber, fontSize = 13.sp)
+                OutlinedButton(onClick = { onRenew(expiring.service, expiring.bankId) }) { Text(expiring.action) }
+            }
+        }
         items(ui.budgets) { budget ->
             SlussenCard(modifier = Modifier.clickable { onBudget(budget.budgetId) }) {
                 Row {

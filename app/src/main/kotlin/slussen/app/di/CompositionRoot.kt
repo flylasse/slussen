@@ -14,6 +14,9 @@ import slussen.budgetapp.ynab.YnabBudgetApp
 import slussen.core.comparison.Comparison
 import slussen.core.comparison.ComparisonNotices
 import slussen.core.connection.BudgetsAndBankAccounts
+import slussen.core.consent.BankConsents
+import slussen.app.ui.consent.ConsentProvider
+import slussen.app.ui.consent.ConsentReturn
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
 import slussen.core.fetch.FetchNotices
@@ -54,7 +57,7 @@ import java.util.Locale
  * plug-in receives only the diagnostic [SlussenLog] at construction. It creates the one [OperationCoordinator]
  * (ADR-007 §1) and wires the core's services to the storage of `:persistence`.
  */
-class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLoggingSwitch = DetailedLoggingSwitch()) {
+class CompositionRoot(private val log: SlussenLog, private val detailedLogging: DetailedLoggingSwitch = DetailedLoggingSwitch()) {
     val plugins: Plugins = Plugins(
         dataProviders = listOf(SimpleFinDataProvider(log), EnableBankingDataProvider(log)),
         budgetApp = YnabBudgetApp(log),
@@ -123,6 +126,13 @@ class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLogg
         val notification = NewTransactionNotification(notificationDevice) { status.newTransactionNumber() }
         // UC-001 BR-014: Slussen works the number out from stored data at every start and after every operation of the coordinator.
         scope.launch { notification.follow(coordinator.ended) }
+        // UC-007 BR-011: Slussen's own return address is formed from the build's application id, which is the package name; no Data Provider's name is in it (K-04).
+        val returnAddress = ConsentReturn.ownReturnAddress(context.packageName)
+        // UC-008 BR-001: Grant Bank Consent (UC-007) is constructed without contacting anything; it reads Bank Consent operations only of a Data Provider that needs a Bank Consent.
+        val bankConsents = BankConsents(
+            registered, credentials, storage.consents, storage.connections, storage.offered, storage.fetches, storage.providerRequests,
+            coordinator, storage.settings, clock, RandomSource { random.nextBytes(it) }, returnAddress, log,
+        )
         return UiServices(
             credentials = credentials,
             settingsOverview = settingsOverview,
@@ -180,6 +190,9 @@ class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLogg
             fetchSchedule = fetchSchedule,
             notificationsAllowed = notificationDevice::allowed,
             updateNotification = notification::update,
+            bankConsents = bankConsents,
+            consentProviders = registered.dataProviders.filter { it.stored.needsBankConsent }.map { ConsentProvider(it.key, it.stored.name) },
+            applicationReturnAddress = returnAddress,
         )
     }
 

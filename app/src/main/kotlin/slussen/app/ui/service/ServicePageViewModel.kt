@@ -43,8 +43,17 @@ import slussen.pluginapi.credential.CredentialInput
 import slussen.pluginapi.credential.FieldKind
 import slussen.pluginapi.value.Secret
 
-/** One credential field as the service's part declares it (UC-014 BR-002). */
-data class FieldUi(val key: String, val kind: FieldKind, val description: String)
+/** One credential field as the service's part declares it (UC-014 BR-002); an [optional] one may be left empty (S-B-51). */
+data class FieldUi(val key: String, val kind: FieldKind, val description: String, val optional: Boolean = false)
+
+/**
+ * UC-014 A1 at the field: the optional fields the Operator filled in when the part refused the entry, each with what to
+ * do; saving without them is always possible. The part's check says only that the entry was refused, so the note names
+ * the optional value as one possible cause (S-B-51, E3 review item 3).
+ */
+fun refusedOptionalFields(fields: List<FieldUi>, values: Map<String, String>): Map<String, String> =
+    fields.filter { it.optional && values[it.key].orEmpty().isNotBlank() }
+        .associate { it.key to "Refused with this value · correct it, or leave it empty, which is allowed" }
 
 /**
  * Editing the Request Limit of a Data Provider that publishes none (UC-010 steps 2-4, A1, A11;
@@ -190,6 +199,10 @@ data class ServicePageUi(
     val removing: Boolean = false,
     /** UC-010 A9, BR-010: Upload as Cleared on the Budget App's page when it supports the Cleared marker; null otherwise. */
     val uploadAsCleared: ClearedSwitchUi? = null,
+    /** UC-014 A1: what the last refusal says at an optional field, by its key. */
+    val fieldNotes: Map<String, String> = emptyMap(),
+    /** UC-007 BR-011, UC-014 BR-002: for a Data Provider that needs a Bank Consent, Slussen's own return address, sent when none is entered. */
+    val ownReturnAddressNote: String? = null,
 )
 
 /**
@@ -251,6 +264,9 @@ class ServicePageViewModel(
 
     /** UC-014 A1: the last check was refused, so the form offers to try again. */
     private var refusedAtCheck = false
+
+    /** UC-014 A1: what the last refusal says at an optional field the Operator filled in. */
+    private var fieldNotes: Map<String, String> = emptyMap()
 
     /** UC-010 A9 (NFR-023): Upload as Cleared while it is stored, and the answer of its last change, at its switch. */
     private var clearedPending: String? = null
@@ -360,9 +376,9 @@ class ServicePageViewModel(
             // A3 of UC-013 (P9-05): one sentence while nothing is offered.
             emptyText = when (offered.remedy) {
                 OfferRemedy.StartFetch -> "None yet · a Fetch lists the Bank Accounts $name offers; no transactions are fetched until a Bank Account is added"
-                // P9-13: a Bank Consent shows the Bank Accounts, and this build has none yet.
+                // A3 of UC-013: a Bank Consent of a Bank lists its Bank Accounts (UC-007 step 9).
                 OfferRemedy.GrantBankConsent ->
-                    "None yet · a Bank Consent of a Bank lists its Bank Accounts here · ${Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD}"
+                    "None yet · a Bank Consent of a Bank lists its Bank Accounts here: grant one under Bank Consents"
                 null -> null
             },
             nothingNew = if (offered.nothingNew) "Nothing new to import · every Offered Bank Account is added, not imported or reports a balance" else null,
@@ -420,7 +436,7 @@ class ServicePageViewModel(
                 null
             },
             credentials = if (refused) refusedCredentials(page) else Texts.credentialStatus(page.credentialStatus, formats),
-            fields = page.credentialFields.map { FieldUi(it.key, it.kind, it.description) },
+            fields = fieldsOf(page),
             entering = entering,
             removalQuestion = removalQuestion,
             canRemove = page.credentialStatus != CredentialStatus.Missing,
@@ -452,10 +468,10 @@ class ServicePageViewModel(
             budgets = if (page.isBudgetApp) budgetsWithAnswers() else null,
             offered = if (page.isBudgetApp) null else offeredWithAnswers(),
             snack = snack,
-            // UC-001 BR-008: No Bank is contacted without a valid Bank Consent; this build grants none, so the Fetch is unavailable (P9-13).
+            // UC-001 BR-008: No Bank is contacted without a valid Bank Consent; this build reads none through one yet, so the Fetch is unavailable (P9-13).
             canFetch = !page.isBudgetApp && !page.needsBankConsent,
             fetchWarning = fetchWarning,
-            fetchUnavailable = if (!page.isBudgetApp && page.needsBankConsent) "${Texts.cannotFetchWithoutBankConsents(page.name)}." else null,
+            fetchUnavailable = if (!page.isBudgetApp && page.needsBankConsent) "${Texts.notReadInThisBuild(page.name)}." else null,
             fetchButton = fetchButton(page.name, canFetch = !page.isBudgetApp && !page.needsBankConsent, isBudgetApp = page.isBudgetApp),
             fetchResult = fetchResult,
             // UC-014 BR-005: Refused or missing credentials lead first to the action that enters them here (UX-21).
@@ -473,8 +489,16 @@ class ServicePageViewModel(
             fetchCooldownAnswer = fetchCooldownAnswer,
             requestLimitAnswer = requestLimitAnswer,
             removing = removing,
+            fieldNotes = fieldNotes,
+            ownReturnAddressNote = if (!page.isBudgetApp && page.needsBankConsent && services.applicationReturnAddress.isNotEmpty()) {
+                "Left empty, the return address is Slussen's own: ${services.applicationReturnAddress}"
+            } else {
+                null
+            },
         )
     }
+
+    private fun fieldsOf(page: ServicePage) = page.credentialFields.map { FieldUi(it.key, it.kind, it.description, it.optional) }
 
     /** UC-014 BR-005 (UX-21, the refused state of a Data Provider's page): the refusal stays in view instead of "Accepted". */
     private fun refusedCredentials(page: ServicePage): String {
@@ -539,7 +563,8 @@ class ServicePageViewModel(
         if (checking) return
         checking = true
         credentialAnswer = null
-        mutableState.value = current.copy(checking = true, credentialAnswer = null, message = null)
+        fieldNotes = emptyMap()
+        mutableState.value = current.copy(checking = true, credentialAnswer = null, message = null, fieldNotes = emptyMap())
         viewModelScope.launch {
             val input = CredentialInput(values.mapValues { Secret(it.value) })
             val outcome = orWhenNotStored<CredentialOutcome?>(null) { services.credentials.enter(service, input) }
@@ -567,6 +592,8 @@ class ServicePageViewModel(
             }
             val text = Texts.outcome(page.name, outcome, services.formats)
             refusedAtCheck = outcome == CredentialOutcome.Refused
+            // A1 of UC-014: an optional value filled in may be why the entry was refused: said at its field.
+            fieldNotes = if (outcome == CredentialOutcome.Refused) refusedOptionalFields(fieldsOf(page), values) else emptyMap()
             credentialAnswer = when (outcome) {
                 is CredentialOutcome.Accepted -> AnswerUi(text, AnswerKind.Done)
                 // A1: refused at the check; nothing is stored and the earlier credentials stay (BR-005).

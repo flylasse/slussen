@@ -59,6 +59,10 @@ class UiFixture(
         budgetAppName = slice.plugins.budgetApp.profile.name,
         fetchSchedule = slussen.app.schedule.FetchSchedule(scheduleWork) { slice.settings.current().scheduledFetchesPerDay },
         notificationsAllowed = { notificationsAllowed },
+        bankConsents = slice.bankConsents,
+        consentProviders = slice.plugins.dataProviders.filter { it.stored.needsBankConsent }
+            .map { slussen.app.ui.consent.ConsentProvider(it.key, it.stored.name) },
+        applicationReturnAddress = slussen.testing.ExampleData.CONSENT_RETURN_ADDRESS,
     )
 }
 

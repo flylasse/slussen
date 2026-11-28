@@ -102,7 +102,10 @@ class UC008CheckImportStatusViewModelTest {
         val aurora = runBlocking { slice.connectionStore.bankNamed("Aurora Bank").id }
         slice.importStatusStore.consents += StoredBankConsent(1, aurora, slice.openBankingId, slice.clock.instant(), slice.clock.instant().plus(Duration.ofDays(4)))
 
-        assertEquals(listOf("Bank Consent of Aurora Bank through Aurora Open Banking expires 2026-10-19 · Renew"), overview().expiringConsents)
+        assertEquals(
+            listOf(ExpiringConsentUi("Bank Consent of Aurora Bank through Aurora Open Banking expires 2026-10-19", "Renew", slice.openBankingKey, aurora)),
+            overview().expiringConsents,
+        )
     }
 
     /** UC-008 BR-009: the explanation, the same in every case, with the Budget App's name. */
@@ -249,7 +252,7 @@ class UC008CheckImportStatusViewModelTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A1: Stored Data Cannot Be Read", businessRules = ["BR-012"], requirements = ["NFR-005"])
-    @DisplayName("A1, BR-012 (overview.html#damaged, issue #26): the part with the service credentials is named, started empty, with entering the credentials again in Settings as the next action and the Offered Bank Accounts coming back with the next Fetch")
+    @DisplayName("A1, BR-012 (overview.html#damaged, issue #26): the part with the service credentials is named, started empty, with entering the credentials and granting each Bank Consent again as the next actions, and the Offered Bank Accounts coming back with the next Fetch or Bank Consent")
     fun unreadableServiceCredentials() {
         val notices = noticesOf(UnreadablePart(StoredPart.CredentialsConsentsAndOfferedBankAccounts, startedFromLastGoodCopy = false))
 
@@ -258,7 +261,8 @@ class UC008CheckImportStatusViewModelTest {
                 NoticeUi(
                     "Stored data could not be read: service credentials, Bank Consents and Offered Bank Accounts",
                     "Started empty: this part has no last good copy · the unreadable original is kept on this device · enter the " +
-                        "credentials of each service again in Settings; the Offered Bank Accounts come back with the next Fetch",
+                        "credentials of each service again in Settings and grant each Bank Consent again; the Offered Bank Accounts come " +
+                        "back with the next Fetch or Bank Consent",
                 ),
             ),
             notices,
@@ -365,7 +369,7 @@ class UC008CheckImportStatusViewModelTest {
             FirstRunUi(
                 "Set up Slussen in Settings",
                 "Next: fetch Kestrel Feeds",
-                "Its Bank Accounts are then imported and mapped in Account Mappings. Aurora Open Banking needs a Bank Consent: Bank Consents are not in this build yet.",
+                "Its Bank Accounts are then imported and mapped in Account Mappings. Aurora Open Banking needs a Bank Consent: grant it on its page in Settings.",
             ),
             overview().firstRun,
         )
@@ -500,7 +504,7 @@ class UC008CheckImportStatusViewModelTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "A6: Operator Takes the Remedy", businessRules = ["BR-006"])
-    @DisplayName("A6, BR-006 (P9-13, P9-15): a failed Fetch, of the Source or of one Bank Account, offers Fetch again on its Data Provider's page; a missing Bank Consent says plainly that Bank Consents are not in this build")
+    @DisplayName("A6, BR-006 (P9-13, P9-15): a failed Fetch, of the Source or of one Bank Account, offers Fetch again on its Data Provider's page; a missing Bank Consent offers Grant Bank Consent on its Data Provider's page")
     fun remediesSayWhatThisBuildDoes() {
         val checking = household()
         slice.importStatusStore.fetches += StoredFetch(
@@ -539,7 +543,7 @@ class UC008CheckImportStatusViewModelTest {
 
         val summer = BudgetViewModel(fixture.services, budgetId("Summer House")).also { it.load() }.state.value!!
         assertEquals(
-            RemedyAction("Grant Bank Consent", available = false, service = null, note = "Bank Consents are not in this build yet"),
+            RemedyAction("Grant Bank Consent", available = true, service = slice.openBankingKey, note = null),
             summer.bankAccounts.single().blocked.single().action,
         )
     }
@@ -589,13 +593,14 @@ class UC008CheckImportStatusViewModelTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-002"])
-    @DisplayName("Step 2 (P9-13): an expiring Bank Consent is shown with the plain note that Bank Consents are not in this build, so it cannot be renewed here")
+    @DisplayName("Step 2 (phase E4): an expiring Bank Consent's renew action is live, and nothing says that Bank Consents come later")
     fun expiringBankConsentSaysWhatThisBuildDoes() {
         household()
         val aurora = runBlocking { slice.connectionStore.bankNamed("Aurora Bank").id }
         slice.importStatusStore.consents += StoredBankConsent(1, aurora, slice.openBankingId, slice.clock.instant(), slice.clock.instant().plus(Duration.ofDays(4)))
 
-        assertEquals("Bank Consents are not in this build yet, so it cannot be renewed here.", overview().expiringConsentNote)
+        assertEquals("Renew", overview().expiringConsents.single().action)
+        assertFalse(overview().toString().contains("not in this build"))
     }
 
     // ---- Step 5: one Bank Account's screen (bank-account.html) --------------------------------------------------------

@@ -186,7 +186,7 @@ class UC008CheckImportStatusTest {
 
         val warned = slice.status.open().expiringBankConsents
 
-        assertEquals(listOf(ExpiringBankConsent("Aurora Bank", "Aurora Open Banking", now.plus(Duration.ofDays(4)))), warned)
+        assertEquals(listOf(ExpiringBankConsent("Aurora Bank", "Aurora Open Banking", now.plus(Duration.ofDays(4)), aurora, slice.openBankingId)), warned)
         slice.settings.settings = slice.settings.settings.copy(consentWarningDays = 10)
         assertEquals(listOf("Aurora Bank", "Vesta Sparbank"), slice.status.open().expiringBankConsents.map { it.bankName })
     }

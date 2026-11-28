@@ -917,6 +917,41 @@ class UC007GrantBankConsentTest {
 
     @Test
     @UseCase(id = "UC-007", scenario = "A2: Result Not Accepted", businessRules = ["BR-002"])
+    @DisplayName("BR-002: the time the screen took when the answer reached Slussen decides the lifetime, not the later time it is handed in; a time after now counts as now")
+    fun theArrivalTheScreenTook() = runTest {
+        started()
+        val answer = answerTo(lastState())
+        slice.clock.advance(Duration.ofMinutes(14))
+        val arrived = now
+        slice.clock.advance(Duration.ofMinutes(5))
+        assertTrue(consents.complete(answer, arrivedAt = arrived) is CompletionOutcome.Granted)
+
+        started()
+        val late = answerTo(lastState())
+        slice.clock.advance(Duration.ofMinutes(16))
+        assertEquals(
+            CompletionOutcome.NotAccepted(AnswerNotAccepted.LifetimeEnded),
+            consents.complete(late, arrivedAt = now.plus(Duration.ofDays(1))),
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "Main Success Scenario", businessRules = ["BR-003", "BR-008", "BR-010"])
+    @DisplayName("BR-003, BR-010: the page names each Bank the Data Provider names for its Bank Accounts that has no Bank Consent, with those Bank Accounts, and it is granted again without a choice")
+    fun banksWithoutABankConsent() = runTest {
+        granted()
+        val bankId = slice.connectionStore.banks().single().id
+        added(81, "lasting-household", bankId, name = "Household")
+        assertEquals(emptyList<BankWithoutConsent>(), consents.page(key).withoutConsent)
+
+        consents.revoke(key, bankId)
+
+        assertEquals(listOf(BankWithoutConsent(bankId, bank, listOf("Household"))), consents.page(key).withoutConsent)
+        assertTrue(consents.renew(key, bankId, browserAvailable = true) is StartOutcome.Started)
+    }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "A2: Result Not Accepted", businessRules = ["BR-002"])
     @DisplayName("S-B-52: an answer that arrives while the Data Provider's credentials are missing is left unconsumed and can be answered once they are accepted")
     fun anAnswerWithoutCredentialsIsLeftUnconsumed() = runTest {
         started()

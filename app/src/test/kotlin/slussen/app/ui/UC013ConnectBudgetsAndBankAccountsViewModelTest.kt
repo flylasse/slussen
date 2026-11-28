@@ -366,9 +366,9 @@ class UC013ConnectBudgetsAndBankAccountsViewModelTest {
             feedsPage.ui().offered!!.emptyText,
         )
         assertTrue(feedsPage.ui().canFetch)
-        // P9-13: the same sentence says plainly that Bank Consents are not in this build yet.
+        // A3 of UC-013: the same sentence names Bank Consents, granted on this page (UC-007).
         assertEquals(
-            "None yet · a Bank Consent of a Bank lists its Bank Accounts here · Bank Consents are not in this build yet",
+            "None yet · a Bank Consent of a Bank lists its Bank Accounts here: grant one under Bank Consents",
             openBankingPage.ui().offered!!.emptyText,
         )
     }

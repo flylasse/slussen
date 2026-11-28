@@ -2,6 +2,7 @@ package slussen.app.ui
 
 import android.Manifest
 import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -80,22 +81,62 @@ import slussen.app.ui.theme.SlussenColors
 import slussen.app.ui.transfers.TransfersScreen
 import slussen.app.ui.transfers.TransfersViewModel
 import slussen.app.ui.theme.SlussenTheme
+import slussen.app.ui.consent.ArrivedIntent
+import slussen.app.ui.consent.BankConsentsSection
+import slussen.app.ui.consent.BankConsentsViewModel
+import slussen.app.ui.consent.ConsentAnswers
+import slussen.app.ui.consent.ConsentBanner
+import slussen.app.ui.consent.ConsentBannerTexts
+import slussen.app.ui.consent.ConsentReturn
+import slussen.app.ui.consent.bankConsentActionsOf
+import slussen.app.platform.browser.ConsentBrowser
 import slussen.core.port.ServiceKey
+import kotlinx.coroutines.delay
+import java.time.Duration
+import java.util.Locale
 
 /** The launcher Activity: the screens of this build on the core's services, once the composition root has started. */
 class SlussenActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val application = application as SlussenApplication
+        // Step 6 of UC-007: Slussen was stopped while the Operator was at the Bank: the answer is in the launching intent.
+        take(intent, restored = savedInstanceState != null)
         setContent {
             SlussenTheme {
                 val services by application.services.collectAsState()
                 Box(Modifier.fillMaxSize().background(SlussenColors.Background).safeDrawingPadding()) {
                     val started = services
-                    if (started == null) Muted("Opening Slussen…") else SlussenScreens(started)
+                    if (started == null) Muted("Opening Slussen…") else SlussenScreens(started, application.consentAnswers)
                 }
             }
         }
+    }
+
+    /** UC-007 step 6: the answer reaches the running Slussen (the activity is `singleTask`). */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        take(intent, restored = false)
+    }
+
+    // UC-007 BR-011: Slussen's return address hands the answer back to Slussen, which hands it to the core at once, off the main thread, once.
+    /**
+     * Hands an answer at the return address to [SlussenApplication.consentAnswers] with the time it arrived; an intent
+     * handed again (restored, or brought back from recents) is not an answer again. The address is then removed from the
+     * intent, and never logged or kept in saved state (BR-006).
+     */
+    private fun take(intent: Intent?, restored: Boolean) {
+        intent ?: return
+        val arrived = ArrivedIntent(
+            action = intent.action,
+            address = intent.dataString,
+            restored = restored,
+            fromRecents = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0,
+        )
+        val address = ConsentReturn.answerIn(arrived, packageName) ?: return
+        intent.data = null
+        setIntent(intent)
+        (application as SlussenApplication).consentAnswers.returned(address)
     }
 }
 
@@ -140,7 +181,7 @@ sealed interface Screen {
  * Settings, whose entries open the service pages, the File Format pages and the Account Mappings (UC-013 BR-008, S-40).
  */
 @Composable
-fun SlussenScreens(services: UiServices) {
+fun SlussenScreens(services: UiServices, consentAnswers: ConsentAnswers) {
     val stack = remember { mutableStateListOf<Screen>(Screen.Overview) }
     val current = stack.last()
     // Review B6 F7: the screen that back returned to, so that it shows again what was open on it; null after go and tab.
@@ -210,6 +251,17 @@ fun SlussenScreens(services: UiServices) {
         onWithdraw = fileImport::withdraw,
         onAccountMappings = { go(Screen.AccountMappings) },
     )
+    // UC-007 BR-003: the Overview's Renew (UC-008 BR-002) opens the sheet of that Bank on its Data Provider's page.
+    var renewRequest by remember { mutableStateOf<Pair<ServiceKey, Long>?>(null) }
+    val consentState by consentAnswers.state.collectAsState()
+    // A10 of UC-007: when a waiting Consent Request's lifetime ends, it is read again, and one without a result is said to be not granted.
+    val nextExpiry = consentState.waiting.minOfOrNull { it.expiresAt }
+    LaunchedEffect(nextExpiry) {
+        val at = nextExpiry ?: return@LaunchedEffect
+        val wait = Duration.between(services.clock.instant(), at).toMillis().coerceAtLeast(0) + 1_000
+        delay(wait)
+        consentAnswers.readWaiting()
+    }
     Scaffold(
         containerColor = SlussenColors.Background,
         bottomBar = {
@@ -230,6 +282,15 @@ fun SlussenScreens(services: UiServices) {
         },
     ) { padding ->
         Column(Modifier.padding(padding).padding(top = 8.dp)) {
+            // Review D4 items 1-2: a Consent Request under way, or its result, is seen whichever screen the Operator returns to.
+            ConsentBannerTexts.of(consentState, services, (current as? Screen.Service)?.service)?.let { banner ->
+                ConsentBanner(
+                    banner,
+                    onOpen = { service -> go(Screen.Service(service)) },
+                    onCancel = consentAnswers::cancel,
+                    onDismiss = consentAnswers::dismiss,
+                )
+            }
             when (current) {
                 Screen.Overview -> {
                     LaunchedEffect(current) { overview.load() }
@@ -248,6 +309,10 @@ fun SlussenScreens(services: UiServices) {
                             onCancelFetch = overview::cancelFetch,
                             onReadAgain = overview::readAgain,
                             onRemedy = ::remedy,
+                            onRenew = { service, bankId ->
+                                renewRequest = service to bankId
+                                go(Screen.Service(service))
+                            },
                         )
                     }
                 }
@@ -356,6 +421,25 @@ fun SlussenScreens(services: UiServices) {
                         ServicePageViewModel(services, current.service)
                     }
                     LaunchedEffect(current) { vm.load() }
+                    // UC-007 BR-008: the Bank Consents of a Data Provider that needs one, on its page.
+                    val context = LocalContext.current
+                    val browser = remember(context) { ConsentBrowser(context) }
+                    val consents: BankConsentsViewModel = viewModel(key = "bank-consents-${current.service.dataProviderId}") {
+                        BankConsentsViewModel(services, current.service, consentAnswers, Locale.getDefault().country, browser::available)
+                    }
+                    LaunchedEffect(current) {
+                        val renew = renewRequest?.takeIf { it.first == current.service }?.second
+                        if (renew != null) renewRequest = null
+                        consents.load(renew = renew)
+                    }
+                    // Review D4 items 1-2: leaving the page ends an open choice, and an answer shown on it.
+                    DisposableEffect(current) { onDispose { consents.left() } }
+                    val toOpen by consents.toOpen.collectAsState()
+                    // Step 4 of UC-007: the Bank's page opens in the browser once; no browser is answered at the control (A11), never a crash.
+                    LaunchedEffect(toOpen) {
+                        toOpen?.let { open -> consents.opened(browser.open(open.address.address)) }
+                    }
+                    val consentsUi = consents.state.collectAsState().value
                     val pageUi = vm.state.collectAsState().value
                     val pageNotOpened = vm.notOpened.collectAsState().value
                     // NFR-023: a page whose stored data cannot be read says so, with Try again and Back.
@@ -397,6 +481,9 @@ fun SlussenScreens(services: UiServices) {
                             onConfirmFetch = vm::confirmFetch,
                             onCancelFetch = vm::cancelFetch,
                             onUploadAsCleared = vm::switchUploadAsCleared,
+                            bankConsents = consentsUi?.let { section ->
+                                { BankConsentsSection(section, bankConsentActionsOf(consents) { go(Screen.AccountMappings) }) }
+                            },
                         )
                     }
                 }
