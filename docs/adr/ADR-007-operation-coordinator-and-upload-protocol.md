@@ -81,12 +81,24 @@ plan is being written).
 | Prepare an Upload Plan (UC-006) | admitted only when §3 allows it | refused (one plan at a time) | refused |
 | Confirm the plan, cancel or leave (UC-006 steps 4-5, A2, BR-019) | not applicable | admitted for that plan only | refused (no second confirmation) |
 | Confirm First Upload Matching (UC-008 A9) | admitted | refused | refused |
+| Start Over (UC-010 A12) | admitted only while no other operation runs or waits, no Consent Request is unanswered within its lifetime and no Journal Export is being written; it then holds the lane until its process ends | refused | refused |
 
 "Refused" returns a typed reason that the screen shows; nothing is half started. A deferred Scheduled Fetch is
 remembered in `coordinator_state` (`scheduled_fetch_deferred`) and started, once, when the mode returns to Normal in
 the running process (UC-006 BR-005); a start of Slussen never starts it (UC-008 BR-001), and when no process sees the
 mode return, the next run of the Fetch Schedule fetches. The flag is cleared in the storage transaction that records
 the start of a Scheduled Fetch, so an ended process neither loses the deferral nor runs it twice (UC-001 BR-013).
+
+Start Over (UC-010 A12) asks for the lane without waiting for it. While another operation holds the lane, a Scheduled
+Fetch among them, it is refused with what runs; the Operator asks again once that has ended. A Consent Request that is
+unanswered and within its lifetime refuses it too, so that no Bank's result arrives for a consent Slussen could no longer
+end (the Operator can abandon the request, UC-007 A10), and so does a Journal Export whose file is being written, since
+that part runs with the lane free (UC-011). Once admitted, Start Over holds the lane until its process ends (ADR-002 §3
+O-17): an operation asked for meanwhile waits and ends with the process, a Scheduled Fetch that falls due and an import
+waiting to start included, and none runs on the data being deleted. The Scheduled Fetch worker runs in the app's one
+process, so a worker that runs holds the lane or waits for it, and ends with that process. A deferred Scheduled Fetch
+(`scheduled_fetch_deferred`) is deleted with `slussen.db`; the new installation's Fetch Schedule starts at its own first
+start (UC-001 BR-013).
 
 ### 3. When an Upload Plan may be prepared
 

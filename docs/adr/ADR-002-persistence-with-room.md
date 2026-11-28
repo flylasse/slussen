@@ -265,6 +265,49 @@ a step from two calls. Each operation that changes something an Upload Plan depe
 | O-14 | `UploadStore.recordClearing` | The result of one clearing (ADR-007 §6 step 8): a new `transfer_counterpart` with the leg's `sent_record_id`, its `budget_app_reference` and `state` Cleared (with `cleared_at`) or Uncleared; or an existing one set to Cleared with `cleared_at`. It never inserts, resets or changes a `sent_record` | UC-006 steps 10, BR-009, BR-010, BR-011, A11 |
 | O-15 | `ConnectionStore.serveBudgets`, `ConnectionStore.leaveOut`, `ConnectionStore.addBankAccount`, `ConnectionStore.bringBack`, `ConnectionStore.setManuallyKept` | Serve: set `budget.served` for the chosen Budgets, refused for a Budget into which a Bank Account is mapped (UC-013 A2). Leave out: one `left_out_bank_account` for the Offered Bank Account whose import the Operator switched off, at once and without a confirmation, or one for each of them when the Operator switches off every one (UC-013 steps 6-7, A12, BR-011, BR-012). Add: a new `bank_account` with its generated identifier, proposed name, optional Start Date, how the Source identifies it, `identified_at`, for a File Format the optional `balance_data_provider_id` with the `balance_provider_reference` of the Offered Bank Account chosen for its balance, deleting its `left_out_bank_account` when it was left out (UC-013 A4, BR-006), and its `account_mapping`, refused when the Budget Account already receives through an Account Mapping, its Budget has another currency (UC-013 A5) or it is a Manually Kept Account (BR-014). Bring back: delete one `left_out_bank_account` when its import is switched on again (UC-013 A10). Mark and unmark: set or clear `budget_account.manually_kept` when the Operator switches "Receives from Slussen" off or on, setting refused while it receives through an Account Mapping (UC-013 A9, BR-014) | UC-013 steps 3-13, BR-001, BR-003, BR-011, BR-012, BR-014, A2, A4, A5, A9, A10, A12; FR-097, FR-098, FR-105, FR-106 |
 | O-16 | `CredentialStore.replace`, `CredentialStore.remove` (`device.db`) | Replace: the encrypted `service_credential` of one service, only after the service accepted it, in place of the earlier one. Remove: delete it (§2a) | UC-014 steps 4, A1, A3; NFR-021 |
+| O-17 | `StartOverStore.recordStartOver`, then the start sequence (§6) | Start Over: records durably, in the start intent, that a new installation is owed; the next start deletes everything Slussen stores before Room opens a database, in the order below, and starts as a new installation | UC-010 A12; FR-107; UC-006 BR-017 |
+
+**Start Over (O-17).** No transaction spans the three databases, the files and the Keystore, so Start Over is made
+safe by its order and by the start intent of §6, not by a transaction. In this order:
+
+1. **End the Bank Consents.** On the lane, which it holds alone (ADR-007 §2), the core asks the Data Provider to end
+   each stored Bank Consent, as UC-007 A7 step 3 does, through the gate and with the Operator present; nothing is
+   deleted yet. A Data Provider that cannot be reached, that refuses, whose credentials are missing or refused, or whose
+   gate holds the request back does not stop Start Over; its Bank is named in the result.
+2. **Record the obligation.** `slussen.start-intent` is written as §6 step 3 writes it (a temporary file, flushed,
+   renamed, the directory flushed), with the cause New Installation on its first line and `Start Over` on its second.
+   From then on every start resumes from it (§6 step 1). When it cannot be written, nothing is deleted and Start Over is
+   answered as not done.
+3. **End the process's own state.** The Fetch Schedule's work is cancelled and removed from WorkManager's own records,
+   the New Transaction Notification is removed, and the process ends without releasing the lane, so that nothing runs
+   on the old data again and nothing of it stays in memory (screens, the answers of Consent Requests, an import's state,
+   the Decision Journal's queue). The app is started again at once. The names of the Banks of step 1 go to the new process
+   in the intent that starts the app, are held in its memory until the Operator closes them, and are never written to a
+   file; a process that ends before he has seen them loses them. When the app cannot be started again, the lane stays
+   held and the screen asks the Operator to close Slussen and open it again.
+4. **Delete, at the next start, before Room opens anything.** The start sequence, resuming from an intent that carries
+   `Start Over`, deletes in this order: `slussen.lastgood.db` and its temporary file, so that no later start can bring
+   the old data back (§8 step 3); `slussen.db` with its rollback journal, any `-wal` and `-shm`, and every original of it
+   set aside as unreadable (§8 step 3); `device.db` with the same files and originals, then the Keystore key
+   `slussen.service-credential` (§2a); `journal.db` with the same files and originals; and `installation.id`. Each file
+   is checked absent after its deletion: one that cannot be deleted stops the start with the intent kept, so that no
+   database is opened over part of the old data, and the next start deletes again from the beginning. A key the Keystore
+   does not delete does not stop it: with `device.db` gone it encrypts nothing.
+5. **Start as a new installation.** The sequence goes on at §6 step 4 with the cause New Installation: a new
+   `installation.id`; Room creates the three databases with a new installation's content (the default
+   `operator_settings`, the default Transfer Descriptions, and through O-11 the Data Providers and File Formats of the
+   build); O-12 opens a First Upload Matching with cause New Installation; the intent is deleted (§6 step 6). The app then
+   cancels any work step 3 left and sets the Fetch Schedule's work as a first start does (UC-001 BR-013).
+
+What an ended process leaves: before step 2, everything as it was, and no Start Over (a Bank Consent already ended at
+its Data Provider is refused at the next Fetch, UC-001 A9, and the Operator can start over again); from step 2 on, an
+intent with which the next start finishes the deletion and opens a First Upload Matching. So no start finds Sent Records
+or Import Identifiers gone while it does not open a First Upload Matching, and no Upload Plan is prepared from what is
+left before First Upload Matching is confirmed (§6, ADR-007 §3). An end during step 4 or step 5, before the intent is
+deleted, repeats step 4 on what is there, with the same result. What stays is not Slussen's: the app's own installation,
+the device's notification permission, WorkManager's own database (which holds no Slussen data, §1, and none of
+Slussen's work after step 3), and what the Data Providers, the Banks and the Budget App hold, a Bank Consent not ended
+among them.
 
 A crash at any point leaves each operation either complete or absent. Each has an instrumented test that injects a
 failure before the commit and checks that nothing of it is visible (ADR-005 §7, E-05). Because O-4 stores the cursor

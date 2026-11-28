@@ -402,7 +402,7 @@
 <p class="screen-sub">Operator Settings</p>
 <div class="body">
 <div class="sec-t">Transfers</div><div class="card"><div class="cfg-row"><span class="nm">Transfer detection <span class="hint">Always on</span></span></div><a class="cfg-row" href="transfer-descriptions.html#lists"><span class="nm">Card Payment Descriptions <span class="hint">Entries: 10 · defaults ship with the build</span></span> <span class="go">›</span></a> <a class="cfg-row" href="transfer-descriptions.html#lists"><span class="nm">Bank Transfer Descriptions <span class="hint">Entries: 7 · defaults ship with the build</span></span> <span class="go">›</span></a><div class="cfg-row"><span class="nm">Transfer pairing days <span class="hint">Days between two Transfer Legs · default 5 · 0 to 30</span></span> <span class="val ">5</span></div><div class="cfg-row"><span class="nm">Lonely Transfer grace period <span class="hint">Days · default 6 · 0 to 30</span></span> <span class="val ">6 days</span></div></div><div class="sec-t">Status and warnings</div><div class="card"><div class="cfg-row"><span class="nm">Outdated-balance limit <span class="hint">Hours · default 36 · 1 to 720</span></span> <span class="val ">36 h</span></div><div class="cfg-row"><span class="nm">Consent warning lead time <span class="hint">Days before expiry · default 7 · 1 to 60</span></span> <span class="val ">7 days</span></div><div class="cfg-row"><span class="nm">Consent Request lifetime <span class="hint">Minutes · default 15 · 5 to 30</span></span> <span class="val ">15 min</span></div><div class="cfg-row"><span class="nm">Backup warning threshold <span class="hint">Share of Android's backup size limit · default 80% · 50% to 95%</span></span> <span class="val ">80%</span></div></div><div class="sec-t">Decision Journal and logs</div><div class="card"><div class="cfg-row"><span class="nm">Decision Journal <span class="hint">On by default</span></span> <span class="toggle"></span></div><div class="cfg-row"><span class="nm">Size limit <span class="hint">MB · default 50 · 10 to 500 · current size 12.4 MB</span></span> <span class="val ">50 MB</span></div><div class="cfg-row"><span class="nm">Warning threshold <span class="hint">Share of the size limit · default 80% · 50% to 95%</span></span> <span class="val ">80%</span></div><a class="cfg-row" href="#clear-journal"><span class="nm" style="color:var(--app-red)">Clear Decision Journal…</span></a><div class="cfg-row"><span class="nm">Detailed Logging <span class="hint">Off by default</span></span> <a class="toggle off" href="#detailed-logging"></a></div></div>
-<div class="sec-t">This app</div><div class="card"><div class="cfg-row"><span class="nm">Version <span class="hint">The version name of this build; a debug build says so (UC-010 BR-011)</span></span> <span class="val ">0.1.1</span></div></div></div>
+<div class="sec-t">This app</div><div class="card"><div class="cfg-row"><span class="nm">Version <span class="hint">The version name of this build; a debug build says so (UC-010 BR-011)</span></span> <span class="val ">0.1.1</span></div><a class="cfg-row" href="#start-over"><span class="nm" style="color:var(--app-red)">Start over… <span class="hint">Delete everything Slussen stores and start as newly installed</span></span></a></div></div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
@@ -508,6 +508,67 @@
 <div class="sec-t">Fetching</div><div class="card"><div class="cfg-row"><span class="nm">Fetch Schedule <span class="hint">Per 24 hours · default 2 · 0 to 2 (0 is off)</span></span> <span class="val ">2</span></div><div class="src-note">Notifications are not allowed for Slussen: the number of waiting transactions is not shown. The device's settings for Slussen allow them; nothing else is needed.</div><div class="cfg-row"><span class="nm">Fetch period <span class="hint">Days back a Fetch asks for · default 30 · 7 to 180</span></span> <span class="val ">30 days</span></div></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+</div>
+</section>
+<section>
+<h2>Start Over</h2>
+<p class="lede">UC-010 A12, FR-107: from the end of Settings, part 2. The statement names everything that is deleted with the number of Bank Accounts and Bank Transactions, and is confirmed in a dialog like clearing the Decision Journal, whose red action names what it does. Slussen first asks the Data Provider to end each Bank Consent, then deletes everything and starts as newly installed, on Settings, naming each Bank whose consent was not confirmed as ended. Afterwards nothing is uploaded until First Upload Matching is confirmed (UC-006 BR-017).</p>
+<div class="flow">
+<div class="state" id="start-over">
+<div class="step-label"><span class="n">UC-010 A12 1-2</span><p><b>The statement and the confirmation.</b> Two taps in two places: the row opens the dialog, and only its red action deletes. Cancel deletes nothing.</p></div>
+<div class="phone">
+<div class="screen-title">Settings</div>
+<p class="screen-sub">Operator Settings</p>
+<div class="body">
+<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">Version</span></div><div class="cfg-row"><span class="nm">Start over…</span></div></div><div style="height:380px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:30px;margin:0"><h4>Start over?</h4><p>Slussen deletes everything it stores and starts as newly installed. This cannot be undone.</p><p><b>Deleted:</b> the chosen Budgets and their Budget Accounts; the <b>6 Bank Accounts</b> with their Account Mappings and Start Dates; the Left-Out Bank Accounts; the <b>1,284 Bank Transactions</b> with their Review Decisions and Transfer Decisions; the Sent Record; the credentials of YNAB and every Data Provider; the Bank Consents; the Operator Settings; the Decision Journal.</p><p>First Slussen asks Enable Banking to end the Bank Consents of <b>Aurora Sparbank (FI)</b> and <b>Nordvik Bank (SE)</b>. A Bank Consent it cannot end stays at the Bank until it expires; you can end it at the Bank.</p><p>Afterwards, as after a new installation, nothing is uploaded until First Upload Matching is confirmed.</p><div class="actions"><a class="c" href="#list-2">Cancel</a> <a class="x" href="#start-over-running">Delete everything</a></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="start-over-running">
+<div class="step-label"><span class="n">UC-010 A12 4 · NFR-023</span><p><b>Under way, at its own row.</b> The Bank Consents are ended one after another; nothing is deleted until each was asked. Every other action waits, and Slussen then starts again by itself.</p></div>
+<div class="phone">
+<div class="screen-title">Settings</div>
+<p class="screen-sub">Operator Settings</p>
+<div class="body">
+<div class="sec-t">This app</div><div class="card"><div class="cfg-row"><span class="nm">Version <span class="hint">The version name of this build</span></span> <span class="val ">0.1.1</span></div><div class="cfg-row"><span class="nm" style="color:var(--app-red)">Start over… <span class="hint">Delete everything Slussen stores and start as newly installed</span></span></div><div class="btn busy"><span class="spin"></span> Asking Enable Banking to end the Bank Consent of Aurora Sparbank (FI)</div><p class="note">Nothing is deleted yet. Slussen then deletes everything and starts again by itself.</p></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="start-over-unavailable">
+<div class="step-label"><span class="n">UC-010 A12 3 · ADR-007 §2</span><p><b>Not now.</b> Something else is under way: an operation that runs or waits (a Scheduled Fetch among them), a Consent Request waiting for the Bank's result, a Journal Export being written, or an Upload Plan. The answer says what, at the row; nothing was deleted.</p></div>
+<div class="phone">
+<div class="screen-title">Settings</div>
+<p class="screen-sub">Operator Settings</p>
+<div class="body">
+<div class="sec-t">This app</div><div class="card"><div class="cfg-row"><span class="nm">Version <span class="hint">The version name of this build</span></span> <span class="val ">0.1.1</span></div><a class="cfg-row" href="#start-over"><span class="nm" style="color:var(--app-red)">Start over… <span class="hint">Delete everything Slussen stores and start as newly installed</span></span></a><p class="note"><b>Not started over: a Fetch of SimpleFIN that the Fetch Schedule started is running.</b> Nothing was deleted. Start over once it has ended.</p><p class="note dim">Other answers: "a Consent Request for Aurora Sparbank (FI) waits for the Bank's result: cancel it on Enable Banking's page, or wait until its time ends"; "a Journal Export is being written"; "an Upload Plan awaits confirmation".</p></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="start-over-failed">
+<div class="step-label"><span class="n">UC-010 A12 · NFR-023</span><p><b>Not done.</b> The stored data could not be read for the statement, or Slussen could not record that it starts over: nothing was deleted, and a Bank Consent already ended stays ended. When Slussen could not start again by itself, it asks to be opened again and finishes then.</p></div>
+<div class="phone">
+<div class="screen-title">Settings</div>
+<p class="screen-sub">Operator Settings</p>
+<div class="body">
+<div class="sec-t">This app</div><div class="card"><div class="cfg-row"><span class="nm">Version <span class="hint">The version name of this build</span></span> <span class="val ">0.1.1</span></div><a class="cfg-row" href="#start-over"><span class="nm" style="color:var(--app-red)">Start over… <span class="hint">Delete everything Slussen stores and start as newly installed</span></span></a><p class="note"><b>Not started over: it could not be recorded.</b> Nothing was deleted. The Bank Consents Slussen asked Enable Banking to end are no longer usable: grant them again, or start over again.</p><p class="note dim">Other answer: "Everything is ready to be deleted: close Slussen and open it again to finish starting over."</p></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="started-over">
+<div class="step-label"><span class="n">UC-010 A12 4 · UC-006 BR-017</span><p><b>Started over.</b> Slussen opens again on Settings as newly installed, with the Overview of a first run behind it (<a href="overview.html#new-installation">Overview</a>) and a First Upload Matching open. The card names each Bank whose Bank Consent was not confirmed as ended, also one not contacted; it is shown until OK and not kept.</p></div>
+<div class="phone">
+<div class="screen-title">Settings</div>
+<p class="screen-sub">Set up Slussen from the top</p>
+<div class="body">
+<div class="card amber"><b>Slussen started over.</b> <span class="muted">Everything it stored was deleted.</span><div class="hair"></div><span class="small">Not confirmed as ended at the Bank: <b>Nordvik Bank (SE)</b> (Enable Banking did not confirm it). Not contacted: <b>Aurora Sparbank (FI)</b> (Enable Banking's credentials were missing). Each stays at its Bank until it expires; you can end it at the Bank.</span><a class="btn" href="#first-run">OK</a></div><div class="sec-t">Services and Account Mappings</div><div class="card"><a class="svc next" href="connections.html#ynab-token"><span class="nm">YNAB <span class="hint">Budget App</span></span> <span class="st">Not set up · next: enter YNAB credentials</span> <span class="go">›</span></a><a class="svc" href="connections.html#simplefin-token"><span class="nm">SimpleFIN <span class="hint">Data Provider · US Banks</span></span> <span class="st">Not set up</span> <span class="go">›</span></a><a class="svc" href="connections.html#enable-banking-token"><span class="nm">Enable Banking <span class="hint">Data Provider · European Banks</span></span> <span class="st">Not set up</span> <span class="go">›</span></a><div class="svc off"><span class="nm">Account Mappings <span class="hint">Bank Accounts → Budget Accounts</span></span> <span class="st">Not yet: choose a Budget in YNAB first</span></div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#started-over"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 </div>
