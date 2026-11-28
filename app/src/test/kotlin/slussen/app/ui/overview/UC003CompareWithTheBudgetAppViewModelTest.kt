@@ -229,6 +229,31 @@ class UC003CompareWithTheBudgetAppViewModelTest {
 
     @Test
     @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read", requirements = ["NFR-023"])
+    @DisplayName("A1, S-B-79 (C2 review item 6): a Budget the Budget App refuses for a reason of its own is not read, no status changes, and the Operator is told the reason in the Budget App's line and the Budget's statuses")
+    fun refusalOfTheBudgetAppTellsItsReason() {
+        val checking = budgets()
+        stored(checking)
+        val reasons = mapOf(
+            FailureKind.RefusedSubscriptionLapsed to "the service refused: the subscription of its account has lapsed",
+            FailureKind.RefusedTrialEnded to "the service refused: the trial of its account has ended",
+            FailureKind.RefusedDataLimitReached to "the service refused: the request would exceed one of its data limits",
+            FailureKind.RefusedAddressUnconfirmed to "the service refused: the email address of its account is not confirmed",
+            FailureKind.RefusedOtherReason to "the service refused the request for a reason of its own",
+        )
+        val viewModel = overview()
+        reasons.forEach { (kind, text) ->
+            slice.budgetApp.reader.changesAnswer = { ReadResult.TransientFailure(kind) }
+            viewModel.readAgain()
+            val ui = viewModel.state.value!!
+            assertEquals("$name not read 14:00: $text", ui.budgetAppLine.result!!.text)
+            assertEquals(FetchResultKind.Failed, ui.budgetAppLine.result!!.kind)
+            assertEquals("No Transaction Statuses yet: the read of 14:00 failed: $text", ui.budgets.single { it.name == "Household" }.statuses)
+            assertEquals("Eligible 0 · waiting for a decision 0 · not compared yet 1", ui.budgets.single { it.name == "Household" }.counts)
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read", requirements = ["NFR-023"])
     @DisplayName("A1 (budget.html#ynab-read-states, #first-read-failed): when no Budget can be read, the line says so with its time and the statuses it keeps; before any successful read there are none, and nothing is counted")
     fun noBudgetRead() {
         val checking = budgets()

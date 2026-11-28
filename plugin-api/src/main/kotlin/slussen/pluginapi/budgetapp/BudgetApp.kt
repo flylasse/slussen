@@ -81,9 +81,15 @@ public data class BudgetRead(
     val name: String,
     val currency: CurrencyCode,
     val budgetAccounts: List<BudgetAccountRead>,
-)
+) {
+    /** Shows no reference or name (ADR-006 §2, C2 review item 7). */
+    override fun toString(): String = "BudgetRead(budgetAccounts=${budgetAccounts.size})"
+}
 
-public data class BudgetAccountRead(val reference: String, val name: String, val balance: Amount)
+public data class BudgetAccountRead(val reference: String, val name: String, val balance: Amount) {
+    /** Shows no reference, name or balance (ADR-006 §2, NFR-007). */
+    override fun toString(): String = "BudgetAccountRead"
+}
 
 public sealed interface TransactionLookup {
     public data class Found(val transaction: BudgetAppTransactionRead) : TransactionLookup
@@ -112,7 +118,11 @@ public data class BudgetAppTransactionRead(
     val state: ReadState,
     val cleared: Boolean,
     val approved: Boolean,
-)
+) {
+    /** Shows no reference, date, amount, payee, memo or Import Identifier (ADR-006 §2, NFR-007, C2 review item 7). */
+    override fun toString(): String =
+        "BudgetAppTransactionRead(entry=$entry, linked=${transferLink != null}, state=${state::class.simpleName}, cleared=$cleared, approved=$approved)"
+}
 
 /**
  * Typed (entered by hand), Imported (written by an importer), TransferSide (created by the Budget App as the other side
@@ -120,14 +130,20 @@ public data class BudgetAppTransactionRead(
  */
 public enum class EntryKind { Typed, Imported, TransferSide }
 
-public data class TransferLink(val transactionReference: String, val budgetAccountReference: String)
+public data class TransferLink(val transactionReference: String, val budgetAccountReference: String) {
+    /** Shows no reference (ADR-006 §2). */
+    override fun toString(): String = "TransferLink"
+}
 
 public sealed interface ReadState {
     public data object Present : ReadState
 
     public data object Deleted : ReadState
 
-    public data class Merged(val intoReference: String) : ReadState
+    public data class Merged(val intoReference: String) : ReadState {
+        /** Shows no reference (ADR-006 §2). */
+        override fun toString(): String = "Merged"
+    }
 }
 
 /** Writing (ADR-001 §4.2.4). Every created transaction awaits the Operator's approval in the Budget App (F-5). */
@@ -182,8 +198,12 @@ public sealed interface ItemOutcome {
         override fun toString(): String = "AlreadyPresent(reference ${if (reference == null) "not known" else "known"})"
     }
 
-    /** [reason] is the Budget App's text, shown to the Operator and never journaled or logged (UC-006 A9). */
-    public data class Rejected(val reason: String) : ItemOutcome {
+    /**
+     * [reason] is the Budget App's text, shown to the Operator and never journaled or logged (UC-006 A9). [refusal] is
+     * the kind of a refusal the Budget App gave for a reason of its own that is not about the item (a lapsed
+     * subscription, an ended trial, a data limit, an unconfirmed address, another), null when the item itself was refused.
+     */
+    public data class Rejected(val reason: String, val refusal: FailureKind? = null) : ItemOutcome {
         /** Shows no reason: the Budget App's text may repeat a payee or memo (ADR-006 §4). */
         override fun toString(): String = "Rejected"
     }

@@ -10,6 +10,7 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -219,45 +220,6 @@ class YnabBudgetAppTest : BudgetAppContractTest() {
 
     override fun changesNeverAnswering() = changes(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
 
-    private fun writing(vararg answers: MockResponse, items: List<CreateItem> = listOf(ITEM_A, ITEM_B)): WriteScenario {
-        answers.forEach(server::enqueue)
-        return WriteScenario(app().writer, Secret(PLANTED_TOKEN), BUDGET, items)
-    }
-
-    override fun createAnswered() = writing(listCreated(listOf(saved(REF_A, ID_A), saved(REF_B, ID_B))))
-
-    override fun expectedCreated(): List<ItemOutcome> = listOf(ItemOutcome.Created(REF_A), ItemOutcome.Created(REF_B))
-
-    override fun createWithHeldImportIdentifier() = writing(listCreated(listOf(saved(REF_A, ID_A)), duplicates = listOf(ID_B)))
-
-    override fun expectedWithHeldImportIdentifier(): List<ItemOutcome> = listOf(ItemOutcome.Created(REF_A), ItemOutcome.AlreadyPresent(null))
-
-    override fun createCredentialsRefused() = writing(MockResponse().setResponseCode(401).setBody(UNAUTHORIZED))
-
-    override fun createNeverAnswering() = writing(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
-
-    /** The second answer would create both items, so a list sent again by OkHttp or the part would show as Created. */
-    override fun createConnectionLostAfterSending() = writing(
-        MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST),
-        listCreated(listOf(saved(REF_A, ID_A), saved(REF_B, ID_B))),
-    )
-
-    override fun createOnRefusingDevice(threads: RecordingRequestThreads) =
-        WriteScenario(refusingDevice(threads).writer, Secret(PLANTED_TOKEN), BUDGET, listOf(ITEM_A, ITEM_B))
-
-    override fun sentApproved(): List<Boolean> = approvedFlagsOf(server.received())
-
-    private fun clearing(answer: MockResponse): ClearScenario {
-        server.enqueue(answer)
-        return ClearScenario(app().writer, Secret(PLANTED_TOKEN), BUDGET, REF_COUNTERPART)
-    }
-
-    override fun clearAnswered() = clearing(MockResponse().setBody("""{"data":{"transaction_ids":["$REF_COUNTERPART"],"transactions":[${saved(REF_COUNTERPART, null, cleared = "cleared")}],"server_knowledge":93}}"""))
-
-    override fun clearRefused() = clearing(error(400, "400", "bad_request"))
-
-    override fun clearNeverAnswering() = clearing(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
-
     private fun lookingUp(answer: MockResponse): LookupScenario {
         server.enqueue(answer)
         return LookupScenario(app().reader, Secret(PLANTED_TOKEN), BUDGET, REF_T)
@@ -278,16 +240,24 @@ class YnabBudgetAppTest : BudgetAppContractTest() {
 
     override fun lookupNeverAnswering() = lookingUp(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
 
-    override fun plantedWriteValues(): List<String> = YnabWriteExamples.planted
+    override fun plantedReadValues(): List<String> = YnabWriteExamples.planted + listOf(
+        "Corner Grocer", "Invented memo", "Harbor Fuel", "Pinecrest Bakery", "Harbor Pharmacy", "Example Household", "Example Checking",
+        "Example Card", "Example Summer House", "budget-0001", "account-0001", "account-0002", "tx-0001", "tx-0005", "tx-0007",
+        "SLS1-aaaaaaaaaaaaaaaaaaaaaaaaaa", "42500", "4140050", "1268400", "150000",
+    )
 
-    /** The documented refusals that are not of the access token (ADR-001 §4.2.5 Refusals), and a 403 whose code cannot be read. */
-    private val refusalsNotOfTheToken: List<MockResponse>
+    /**
+     * The documented refusals that are not of the access token (ADR-001 §4.2.5 Refusals), and a 403 whose code cannot
+     * be read, each with the failure kind that tells its reason (S-B-79).
+     */
+    private val refusalsNotOfTheToken: List<Pair<MockResponse, FailureKind>>
         get() = listOf(
-            error(403, "403.1", "subscription_lapsed"),
-            error(403, "403.2", "trial_expired"),
-            error(403, "403.4", "data_limit_reached"),
-            error(403, "403.5", "email_unconfirmed"),
-            MockResponse().setResponseCode(403).setBody("not json"),
+            error(403, "403.1", "subscription_lapsed") to FailureKind.RefusedSubscriptionLapsed,
+            error(403, "403.2", "trial_expired") to FailureKind.RefusedTrialEnded,
+            error(403, "403.4", "data_limit_reached") to FailureKind.RefusedDataLimitReached,
+            error(403, "403.5", "email_unconfirmed") to FailureKind.RefusedAddressUnconfirmed,
+            MockResponse().setResponseCode(403).setBody("not json") to FailureKind.RefusedOtherReason,
+            error(403, "403.9", "invented_refusal") to FailureKind.RefusedOtherReason,
         )
 
     @Test
@@ -304,41 +274,45 @@ class YnabBudgetAppTest : BudgetAppContractTest() {
 
     @Test
     @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read")
-    @DisplayName("W4-0 review item 5, ADR-001 §4.2.5 Refusals: a lapsed subscription, an expired trial, a data limit, an unconfirmed address and a 403 whose code cannot be read are TransientFailure(ServiceUnavailable) of a read, never refused credentials")
-    fun otherRefusalsOfAReadAreServiceUnavailable() {
-        refusalsNotOfTheToken.forEach { answer ->
+    @DisplayName("W4-0 review item 5, C2 review item 6, ADR-001 §4.2.5 Refusals: a lapsed subscription, an expired trial, a data limit, an unconfirmed address and a 403 whose code cannot be read are a failure of a read with that reason, never refused credentials")
+    fun otherRefusalsOfAReadTellTheirReason() {
+        val context = TestRequestContext(credential = Secret(PLANTED_TOKEN))
+        refusalsNotOfTheToken.forEach { (answer, kind) ->
             server.enqueue(answer)
-            assertEquals(
-                ReadResult.TransientFailure(FailureKind.ServiceUnavailable),
-                runBlocking { app().reader.readBudgets(TestRequestContext(credential = Secret(PLANTED_TOKEN))) },
-            )
-        }
-        refusalsNotOfTheToken.forEach { answer ->
+            assertEquals(ReadResult.TransientFailure(kind), runBlocking { app().reader.readBudgets(context) })
             server.enqueue(answer)
-            assertEquals(
-                ReadResult.TransientFailure(FailureKind.ServiceUnavailable),
-                runBlocking { app().reader.readChanges("budget-0001", null, FROM, TestRequestContext(credential = Secret(PLANTED_TOKEN))) },
-            )
-        }
-        refusalsNotOfTheToken.forEach { answer ->
+            assertEquals(ReadResult.TransientFailure(kind), runBlocking { app().reader.readChanges("budget-0001", null, FROM, context) })
             server.enqueue(answer)
-            assertEquals(
-                ReadResult.TransientFailure(FailureKind.ServiceUnavailable),
-                runBlocking { app().reader.readTransaction(BUDGET, REF_T, TestRequestContext(credential = Secret(PLANTED_TOKEN))) },
-            )
+            assertEquals(ReadResult.TransientFailure(kind), runBlocking { app().reader.readTransaction(BUDGET, REF_T, context) })
         }
     }
 
     @Test
     @UseCase(id = "UC-014", scenario = "A2: Service Cannot Be Reached")
-    @DisplayName("W4-0 review item 5: a token check YNAB answers with a refusal that is not of the token (403.1, 403.2, 403.4, 403.5, an unreadable 403) is a TransientFailure(ServiceUnavailable), not Refused; 403.3 is Refused")
+    @DisplayName("W4-0 review item 5, C2 review item 6: a token check YNAB answers with a refusal that is not of the token (403.1, 403.2, 403.4, 403.5, an unreadable 403) is a failure with that reason, not Refused; 403.3 is Refused")
     fun otherRefusalsOfATokenCheckAreNotRefusedCredentials() {
-        refusalsNotOfTheToken.forEach { answer ->
+        refusalsNotOfTheToken.forEach { (answer, kind) ->
             server.enqueue(answer)
-            assertEquals(CredentialCheck.TransientFailure(FailureKind.ServiceUnavailable), runBlocking { app().credentials.check(tokenInput(), TestRequestContext()) })
+            assertEquals(CredentialCheck.TransientFailure(kind), runBlocking { app().credentials.check(tokenInput(), TestRequestContext()) })
         }
         server.enqueue(error(403, "403.3", "unauthorized_scope"))
         assertEquals(CredentialCheck.Refused, runBlocking { app().credentials.check(tokenInput(), TestRequestContext()) })
+    }
+
+    @Test
+    @UseCase(id = "UC-003", scenario = "A1: Budget App Cannot Be Read")
+    @DisplayName("C2 review item 1, ADR-001 §4.0: a read answered 503 with Retry-After: 0, or 408, is not sent again by OkHttp: the server receives exactly one request")
+    fun noStatusMakesTheLibrarySendAReadAgain() {
+        listOf(MockResponse().setResponseCode(503).setHeader("Retry-After", "0"), MockResponse().setResponseCode(408)).forEach { answer ->
+            server.shutdown()
+            server = MockWebServer().apply { start() }
+            server.enqueue(answer)
+            server.enqueue(MockResponse().setBody(BUDGETS_ANSWER))
+            val result = runBlocking { app().reader.readBudgets(TestRequestContext(credential = Secret(PLANTED_TOKEN))) }
+            assertTrue(result is ReadResult.TransientFailure, "the read was sent again: $result")
+            Thread.sleep(300)
+            assertEquals(1, server.requestCount, "OkHttp sent the read again after $answer")
+        }
     }
 
     @Test

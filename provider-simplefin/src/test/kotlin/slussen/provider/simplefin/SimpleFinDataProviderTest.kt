@@ -678,6 +678,21 @@ class SimpleFinDataProviderTest : DataProviderFetchContractTest() {
         override fun detail(event: LogEvent, message: () -> String) {}
     }
 
+    @Test
+    @DisplayName("C2 review item 1, ADR-001 §4.0: an answer 503 with Retry-After: 0, and an answer 408, are not sent again by OkHttp: the server receives exactly one request for each")
+    fun noStatusMakesTheLibrarySendAgain() {
+        listOf(MockResponse().setResponseCode(503).setHeader("Retry-After", "0"), MockResponse().setResponseCode(408)).forEach { answer ->
+            server.shutdown()
+            server = MockWebServer().apply { start() }
+            server.enqueue(answer)
+            server.enqueue(MockResponse().setBody(accessAddress()))
+            val result = runBlocking { provider().credentials.check(input(), TestRequestContext()) }
+            assertTrue(result !is CredentialCheck.Accepted, "the check was sent again and accepted: $result")
+            Thread.sleep(300)
+            assertEquals(1, server.requestCount, "OkHttp sent the request again after $answer")
+        }
+    }
+
     private companion object {
         const val CLAIM_PATH = "/claim/invented-claim-Z9X4"
         const val PLANTED_USER = "invented-user-K2"

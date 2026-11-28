@@ -295,6 +295,12 @@ object Texts {
             "the Bank does not give the fetch period asked for · set a shorter fetch period in Settings, or fetch soon after renewing the Bank Consent"
         // A8 of UC-001 (S-B-55): no remedy is offered, since renewing gives the same again.
         FailureKind.NotHeldByBankSession -> "this Bank has more Bank Accounts than Slussen keeps for one Bank Consent, so this one cannot be read"
+        // S-B-79: a refusal of the service for a reason of its own, not of the credentials, told with that reason.
+        FailureKind.RefusedSubscriptionLapsed -> "the service refused: the subscription of its account has lapsed"
+        FailureKind.RefusedTrialEnded -> "the service refused: the trial of its account has ended"
+        FailureKind.RefusedDataLimitReached -> "the service refused: the request would exceed one of its data limits"
+        FailureKind.RefusedAddressUnconfirmed -> "the service refused: the email address of its account is not confirmed"
+        FailureKind.RefusedOtherReason -> "the service refused the request for a reason of its own"
         null -> "it did not answer"
     }
 

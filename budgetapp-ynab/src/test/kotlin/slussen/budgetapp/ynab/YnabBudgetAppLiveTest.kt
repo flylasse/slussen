@@ -30,7 +30,8 @@ import java.util.Properties
  * `--tests '…YnabBudgetAppLiveTest.<method>'` for one).
  *
  * Each test writes invented transactions, dated some days before today in UTC, into the throwaway Budget only: every
- * test that writes first checks that the Budget's name contains "throwaway". The whole class makes about 120 requests,
+ * test that writes first checks that the Budget's name contains "throwaway"; case (17) needs a second Budget so named. The
+ * whole class makes about 140 requests,
  * within YNAB's 200 an hour. Two tests need a step in YNAB's own screens or a second run on another day; each prints
  * what to do.
  */
@@ -115,22 +116,37 @@ class YnabBudgetAppLiveTest {
         assertTrue(present(live.lookup(counterpart.reference), "the other side is not found").cleared)
     }
 
+    /**
+     * E-10 (6), Q-04: passes when YNAB matched the linked transfer onto the transfer entered as by hand (one side names
+     * the other by `matched_transaction_id`), fails when a second pair appears (two unmatched sides of the amount in the
+     * first Budget Account), and otherwise is skipped with both counts, since what was read cannot tell.
+     */
     @Test
     @UseCase(id = "UC-006", scenario = "Main Success Scenario", businessRules = ["BR-009"])
-    @DisplayName("E-10 (6), Q-04: a linked transfer sent where a transfer of the same amount entered as by hand is already in both Budget Accounts: prints whether YNAB matches it or a second pair appears")
+    @DisplayName("E-10 (6), Q-04: a linked transfer sent where a transfer of the same amount entered as by hand is already in both Budget Accounts is matched by YNAB, not made a second pair")
     fun linkedTransferOntoATypedOne() {
         val accounts = live.openAccounts()
         val date = live.today.minusDays(4)
-        val memo = "E10 ${live.run} case 6 typed"
-        live.typedEntry(accounts.first, -67_890, date, memo, payeeId = live.transferPayeeOf(accounts.card))
-        val leg = live.item(accounts.first, 6, 1, -67_890, date = date, other = accounts.card)
-        val outcome = live.create(leg).single()
-        val inFirst = live.changes(null).transactions.filter { it.budgetAccountReference == accounts.first && it.amount.thousandths == -67_890L && it.date == date && it.state == ReadState.Present }
-        val inCard = live.changes(null).transactions.filter { it.budgetAccountReference == accounts.card && it.amount.thousandths == 67_890L && it.date == date && it.state == ReadState.Present }
-        println("E-10 (6): outcome ${outcome::class.simpleName}; ${inFirst.size} side(s) in the first Budget Account, ${inCard.size} in the card's: ${if (inFirst.size == 1 && inCard.size == 1) "YNAB matched it" else "a second pair appeared"}")
-        assertTrue(inFirst.isNotEmpty() && inCard.isNotEmpty())
+        val amount = live.runAmount(6, 0)
+        live.typedEntry(accounts.first, amount, date, "E10 ${live.run} case 6 typed", payeeId = live.transferPayeeOf(accounts.card))
+        val outcome = live.create(live.item(accounts.first, 6, 1, amount, date = date, other = accounts.card)).single()
+        val read = live.rawTransactions(date.minusDays(1)).filter { it["deleted"].toString() == "false" }
+        val inFirst = read.filter { it.text("account_id") == accounts.first && it["amount"].toString() == amount.toString() }
+        val inCard = read.filter { it.text("account_id") == accounts.card && it["amount"].toString() == (-amount).toString() }
+        val matched = inFirst.any { it["matched_transaction_id"].toString() != "null" }
+        println("E-10 (6): outcome ${outcome::class.simpleName}; ${inFirst.size} side(s) in the first Budget Account, ${inCard.size} in the card's; matched: $matched")
+        when {
+            matched -> Unit
+            inFirst.size >= 2 -> fail<Unit>("E-10 (6): a second pair appeared: YNAB did not match the linked transfer onto the one entered as by hand")
+            else -> Assumptions.abort<Unit>("E-10 (6): what was read cannot tell whether YNAB matched: ${inFirst.size} and ${inCard.size} side(s)")
+        }
     }
 
+    /**
+     * E-10 (7): each Typed Entry and its Import have an amount of their own, derived from this run (C2 review item 4), so
+     * an earlier run cannot be counted; a match is told by `matched_transaction_id` on either of the two, not by how
+     * many transactions remain, which does not depend on whether a match awaits approval.
+     */
     @Test
     @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-006"], requirements = ["C-009"])
     @DisplayName("E-10 (7): an Import is matched to a Typed Entry of the same Budget Account and amount 10 days before and after, and not 11 days after")
@@ -138,32 +154,39 @@ class YnabBudgetAppLiveTest {
         val accounts = live.openAccounts()
         val typed = live.today.minusDays(25)
         val cases = listOf(10L to true, -10L to true, 11L to false)
-        cases.indices.forEach { n -> live.typedEntry(accounts.second, -78_000L - n, typed, "E10 ${live.run} case 7 typed $n") }
-        cases.forEachIndexed { n, (days, _) -> created(live.create(live.item(accounts.second, 7, n, -78_000L - n, date = typed.plusDays(days))).single()) }
-        val read = live.changes(null, from = typed.minusDays(15)).transactions.filter { it.budgetAccountReference == accounts.second && it.state == ReadState.Present }
+        cases.indices.forEach { n -> live.typedEntry(accounts.second, live.runAmount(7, n), typed, "E10 ${live.run} case 7 typed $n") }
+        cases.forEachIndexed { n, (days, _) -> created(live.create(live.item(accounts.second, 7, n, live.runAmount(7, n), date = typed.plusDays(days))).single()) }
+        val read = live.rawTransactions(typed.minusDays(15)).filter { it.text("account_id") == accounts.second }
         cases.forEachIndexed { n, (days, matches) ->
-            val sides = read.filter { it.amount.thousandths == -78_000L - n }
-            println("E-10 (7): ${if (days > 0) "+" else ""}$days days: ${sides.size} transaction(s) remain")
-            assertEquals(if (matches) 1 else 2, sides.size, "at $days days")
+            val sides = read.filter { it["amount"].toString() == live.runAmount(7, n).toString() }
+            val matched = sides.any { it["matched_transaction_id"].toString() != "null" }
+            println("E-10 (7): ${if (days > 0) "+" else ""}$days days: ${sides.size} transaction(s), matched: $matched")
+            assertEquals(matches, matched, "at $days days")
         }
     }
 
+    /**
+     * E-10 (8): both transactions are created waiting for approval, so the test waits for what only the Operator's
+     * approval of the match in YNAB's screens can cause, a transaction of this run's amount reported approved; then it
+     * prints what YNAB reported from the cursor taken before the Import, and passes only when the reader gives Merged.
+     */
     @Test
     @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-005"])
     @DisplayName("E-10 (8): a match approved in YNAB's screens, then read by last_knowledge_of_server: prints which transaction remains and which is reported deleted, and the reader gives Merged")
     fun approvedMatchReadsAsMerged() {
         val accounts = live.openAccounts()
         val date = live.today.minusDays(6)
+        val amount = live.runAmount(8, 0)
         val memo = "E10 ${live.run} case 8 typed"
-        live.typedEntry(accounts.first, -89_010, date, memo)
+        live.typedEntry(accounts.first, amount, date, memo)
         val cursor = live.changes(null).next
-        val import = live.item(accounts.first, 8, 1, -89_010, date = date)
-        created(live.create(import).single())
-        val merged = live.waitFor("in YNAB, open the throwaway Budget, find the matched transaction of -89.01 with the memo \"$memo\" and approve the match") {
-            live.changes(cursor).transactions.takeIf { changes -> changes.any { it.approved || it.state != ReadState.Present } }
+        created(live.create(live.item(accounts.first, 8, 1, amount, date = date)).single())
+        live.waitFor("in YNAB, open the throwaway Budget, find the matched transaction of ${-amount / 1000.0} with the memo \"$memo\" and approve the match") {
+            live.changes(cursor).transactions.firstOrNull { it.amount.thousandths == amount && it.approved }
         }
-        merged.forEach { println("E-10 (8): ${it.entry} with Import Identifier ${if (it.importIdentifier == null) "none" else "the import's"}: ${it.state::class.simpleName}") }
-        assertTrue(merged.any { it.state is ReadState.Merged }, "no transaction read as Merged: ${merged.map { it.state }}")
+        val reported = live.changes(cursor).transactions.filter { it.amount.thousandths == amount }
+        reported.forEach { println("E-10 (8): ${it.entry} with Import Identifier ${if (it.importIdentifier == null) "none" else "the import's"}: ${it.state::class.simpleName}, approved ${it.approved}") }
+        assertTrue(reported.any { it.state is ReadState.Merged }, "no transaction read as Merged: ${reported.map { it.state }}")
     }
 
     @Test
@@ -231,6 +254,10 @@ class YnabBudgetAppLiveTest {
         assertTrue(outcome is ItemOutcome.Rejected, "a closed Budget Account accepted a transaction: $outcome")
     }
 
+    /**
+     * E-10 (15): proves that a cursor about a day old still reports a deletion, not that a cursor as old as a real
+     * restore can be (a backup may be weeks or months old); YNAB documents no age. The amounts are this run's own.
+     */
     @Test
     @UseCase(id = "UC-003", scenario = "Main Success Scenario", businessRules = ["BR-016"])
     @DisplayName("E-10 (15): a read from an old cursor, as after a restore: a first run saves a cursor under build/ and creates two transactions; the Operator deletes one; a run on a later day reads from the saved cursor and must report the deletion and the other transaction")
@@ -239,8 +266,8 @@ class YnabBudgetAppLiveTest {
         if (!saved.exists()) {
             val accounts = live.openAccounts()
             val cursor = live.changes(null).next
-            val kept = created(live.create(live.item(accounts.first, 15, 1, -15_670)).single())
-            val deleted = created(live.create(live.item(accounts.first, 15, 2, -15_680)).single())
+            val kept = created(live.create(live.item(accounts.first, 15, 1, live.runAmount(15, 1))).single())
+            val deleted = created(live.create(live.item(accounts.first, 15, 2, live.runAmount(15, 2))).single())
             saved.parentFile.mkdirs()
             Properties().apply {
                 setProperty("cursor", cursor.value)
@@ -249,7 +276,7 @@ class YnabBudgetAppLiveTest {
                 setProperty("day", live.today.toString())
                 saved.outputStream().use { store(it, "E-10 (15): no secret; never committed") }
             }
-            Assumptions.abort<Unit>("E-10 (15), first run done: in YNAB, delete the transaction of -15.68 with the memo \"E10 ${live.run} case 15 item 2\", then run this test again tomorrow or later.")
+            Assumptions.abort<Unit>("E-10 (15), first run done: in YNAB, delete the transaction of ${live.runAmount(15, 2) / 1000.0} with the memo \"E10 ${live.run} case 15 item 2\", then run this test again tomorrow or later.")
         }
         val stage = Properties().apply { saved.inputStream().use { load(it) } }
         if (LocalDate.parse(stage.getProperty("day")) >= live.today) {
@@ -273,5 +300,33 @@ class YnabBudgetAppLiveTest {
             .map { it.jsonObject }.map { listOf(it.text("id"), it["transfer_payee_id"].toString(), it["closed"].toString()) }.toSet()
         assertEquals(transactions("budgets"), transactions("plans"))
         assertEquals(accounts("budgets"), accounts("plans"))
+    }
+
+    /**
+     * E-10 (17), S-B-79: what YNAB answers to a create that names a Budget Account of another Budget. The writer never
+     * sends one (it checks every item against the Budget Accounts it read for the Budget), so the test sends it as a
+     * single create of YNAB's documentation. It needs a second Budget of the same YNAB user whose name also contains
+     * "throwaway", with an open Budget Account; it passes when YNAB refuses, printing the answer's status and code, and
+     * fails, deleting it again, when YNAB creates it.
+     */
+    @Test
+    @UseCase(id = "UC-006", scenario = "A8: Outcome Unknown", businessRules = ["BR-007"])
+    @DisplayName("E-10 (17): a create to the Budget named with a Budget Account of another Budget is refused by YNAB (status printed), and the writer sends no such item and answers Unknown")
+    fun budgetAccountOfAnotherBudgetIsNeverCreated() {
+        live.openAccounts()
+        val other = live.budgetsListed().firstOrNull { it.text("id") != live.budget && it.text("name").contains("throwaway", ignoreCase = true) }
+            ?: fail("E-10 (17) needs a second Budget of the same YNAB user whose name contains \"throwaway\", with an open Budget Account.")
+        val account = other.getValue("accounts").jsonArray.map { it.jsonObject }.firstOrNull { it["closed"].toString() == "false" && it["deleted"].toString() == "false" }
+            ?.text("id") ?: fail("E-10 (17): the second throwaway Budget has no open Budget Account.")
+        val item = live.item(account, 17, 1, live.runAmount(17, 1))
+        assertEquals(listOf(ItemOutcome.Unknown), live.create(item), "the writer sent or settled an item of another Budget's Budget Account")
+        val (status, body) = live.singleCreate(item)
+        val code = runCatching { live.data(body) }.fold({ "none" }, { body.substringAfter("\"id\":\"", "?").substringBefore('"') })
+        println("E-10 (17): YNAB answered $status (error code $code) to a create naming another Budget's Budget Account")
+        if (status == 201) {
+            val created = live.data(body).getValue("transaction").jsonObject.text("id")
+            runCatching { live.delete(created) }
+            fail<Unit>("E-10 (17): YNAB created a transaction for a Budget Account of another Budget (deleted again where it could be)")
+        }
     }
 }

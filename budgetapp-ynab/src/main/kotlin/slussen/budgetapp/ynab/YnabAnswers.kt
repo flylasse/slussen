@@ -13,6 +13,7 @@ import slussen.pluginapi.budgetapp.BudgetAppTransactionRead
 import slussen.pluginapi.budgetapp.EntryKind
 import slussen.pluginapi.budgetapp.ReadState
 import slussen.pluginapi.budgetapp.TransferLink
+import slussen.pluginapi.request.FailureKind
 import slussen.pluginapi.request.RequestContext
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.SensitiveApi
@@ -35,6 +36,22 @@ internal fun HttpAnswer.Answered.refusal(): Refusal? = when (status) {
         if (error?.textOrNull("id") == "403.3" || error?.textOrNull("name") == "unauthorized_scope") Refusal.OfTheToken else Refusal.ByTheBudgetApp
     }
     else -> null
+}
+
+/**
+ * The kind of a refusal of the Budget App that is not of the token (ADR-001 §4.2.5 Refusals, S-B-79), read from YNAB's
+ * code: `403.1` a lapsed subscription, `403.2` an ended trial, `403.4` a data limit, `403.5` an unconfirmed address;
+ * any other `403`, also one whose code cannot be read, another refusal. Null for every answer that is no such refusal.
+ */
+internal fun HttpAnswer.Answered.refusalKind(): FailureKind? {
+    if (refusal() != Refusal.ByTheBudgetApp) return null
+    return when (errorOf(body)?.textOrNull("id")) {
+        "403.1" -> FailureKind.RefusedSubscriptionLapsed
+        "403.2" -> FailureKind.RefusedTrialEnded
+        "403.4" -> FailureKind.RefusedDataLimitReached
+        "403.5" -> FailureKind.RefusedAddressUnconfirmed
+        else -> FailureKind.RefusedOtherReason
+    }
 }
 
 /** YNAB's `error.detail` of an error answer, or null when it cannot be read or is blank. */

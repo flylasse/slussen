@@ -86,4 +86,22 @@ public enum class FailureKind {
      * Bank Consent (UC-001 A8, S-B-55).
      */
     NotHeldByBankSession,
+
+    // The service refused the request for a reason of its own that is not about the credentials (ADR-001 §4.2.5
+    // Refusals, S-B-79): one kind for each reason of a closed set, so that the Operator is told which.
+
+    /** The service refused the request: the subscription of the service's account has lapsed. */
+    RefusedSubscriptionLapsed,
+
+    /** The service refused the request: the trial of the service's account has ended. */
+    RefusedTrialEnded,
+
+    /** The service refused the request: it would exceed a data limit of the service. */
+    RefusedDataLimitReached,
+
+    /** The service refused the request: the email address of the service's account is not confirmed. */
+    RefusedAddressUnconfirmed,
+
+    /** The service refused the request for another reason, or one whose kind cannot be read; not of the credentials. */
+    RefusedOtherReason,
 }

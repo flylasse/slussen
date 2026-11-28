@@ -67,6 +67,50 @@ class ScriptedBudgetAppWriterTest {
     }
 
     @Test
+    @DisplayName("C2 review item 3: like the YNAB writer, it asks the gate before the read of the Budget Accounts, before the list and before each single send after a refused list; a lost single answer ends the sending and keeps the outcomes already answered")
+    fun gateQuestionsAndTheResendOneByOne() {
+        val writer = ScriptedBudgetAppWriter()
+        writer.listRefused = true
+        writer.script = { item ->
+            if (item.importIdentifier == "id-2") ScriptedBudgetAppWriter.Script.WrittenAnswerLost else ScriptedBudgetAppWriter.Script.Answers(ItemOutcome.Created("ref-${item.importIdentifier}"))
+        }
+        val asked = mutableListOf<slussen.pluginapi.request.RequestKind>()
+        val result = runBlocking { writer.create("budget-1", listOf(item("id-1"), item("id-2"), item("id-3")), context(RequestGate { asked += it.kind; Admission.Allowed })) }
+        assertEquals(CreateResult.Answered(listOf(ItemOutcome.Created("ref-id-1"), ItemOutcome.Unknown, ItemOutcome.Unknown)), result)
+        val read = slussen.pluginapi.request.RequestKind.BudgetAppRead
+        val write = slussen.pluginapi.request.RequestKind.BudgetAppWrite
+        assertEquals(listOf(read, write, write, write), asked, "the read, the list, and the first two single sends")
+        assertEquals(listOf("id-1", "id-2"), writer.written.map { it.importIdentifier })
+    }
+
+    @Test
+    @DisplayName("C2 review item 3: a clearing can be scripted cleared with its answer lost, cancelled before it reaches the Budget App, or delayed past the request timeout")
+    fun clearingScripts() {
+        val lost = ScriptedBudgetAppWriter().apply { clearScript = { ScriptedBudgetAppWriter.ClearScript.ClearedAnswerLost } }
+        assertEquals(ClearResult.Unknown, runBlocking { lost.markCleared("budget-1", "ref-7", context()) })
+        assertEquals(listOf("ref-7"), lost.cleared)
+
+        val waiting = CompletableDeferred<Unit>()
+        val held = ScriptedBudgetAppWriter().apply { beforeClear = { waiting.complete(Unit); awaitCancellation() } }
+        var result: ClearResult? = null
+        runBlocking {
+            val running = launch { result = held.markCleared("budget-1", "ref-8", context()) }
+            waiting.await()
+            running.cancelAndJoin()
+        }
+        assertEquals(ClearResult.NotCleared, result)
+        assertEquals(emptyList<String>(), held.cleared)
+
+        val slow = ScriptedBudgetAppWriter().apply { afterClear = { kotlinx.coroutines.delay(10_000) } }
+        val timedOut = object : RequestContext {
+            override val gate = RequestGate { Admission.Allowed }
+            override val timeout = RequestTimeout(Duration.ofMillis(200))
+            override val credential = Secret("invented-token")
+        }
+        assertEquals(ClearResult.Unknown, runBlocking { slow.markCleared("budget-1", "ref-9", timedOut) })
+    }
+
+    @Test
     @DisplayName("A call cancelled during its delay before the write writes nothing; one cancelled after it is written and its answer lost; both answer Unknown")
     fun delaysAndCancellations() {
         listOf(true, false).forEach { beforeTheWrite ->

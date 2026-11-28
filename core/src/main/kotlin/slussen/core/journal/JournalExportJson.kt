@@ -191,6 +191,12 @@ internal class JournalExportJson(private val out: Writer) {
                 // Kinds of a Data Provider's read through a Bank Session; the Budget App gives neither.
                 slussen.pluginapi.request.FailureKind.PeriodNotGiven, slussen.pluginapi.request.FailureKind.NotHeldByBankSession ->
                     "The Budget App's answer could not be read."
+                // S-B-79: the Budget App's refusal for a reason of its own, told with that reason.
+                slussen.pluginapi.request.FailureKind.RefusedSubscriptionLapsed -> "The Budget App refused the read: the subscription of its account has lapsed."
+                slussen.pluginapi.request.FailureKind.RefusedTrialEnded -> "The Budget App refused the read: the trial of its account has ended."
+                slussen.pluginapi.request.FailureKind.RefusedDataLimitReached -> "The Budget App refused the read: it would exceed a data limit of the Budget App."
+                slussen.pluginapi.request.FailureKind.RefusedAddressUnconfirmed -> "The Budget App refused the read: the email address of its account is not confirmed."
+                slussen.pluginapi.request.FailureKind.RefusedOtherReason -> "The Budget App refused the read for a reason of its own."
             }
             BudgetNotRead.NotSent -> "The read of the Budget App was not completed."
         }

@@ -88,13 +88,14 @@ internal class YnabReader(private val base: HttpUrl, private val http: OkHttpCli
 
     /**
      * A read YNAB did not answer with success (ADR-001 §4.2.5 Refusals): a refusal of the access token is refused
-     * credentials (UC-003 A2); YNAB's refusal for another reason is that it cannot serve the read now (UC-003 A1);
+     * credentials (UC-003 A2); YNAB's refusal for another reason is a failed read with that reason (UC-003 A1, S-B-79);
      * every other status is a failure of its kind.
      */
     private fun failedRead(answer: HttpAnswer.Answered): ReadResult<Nothing> = when (answer.refusal()) {
         // UC-014 BR-005: Only an answer that the access token is not accepted is refused credentials (ADR-001 §4.2.5).
         Refusal.OfTheToken -> ReadResult.CredentialsRefused
-        Refusal.ByTheBudgetApp -> ReadResult.TransientFailure(FailureKind.ServiceUnavailable)
+        // S-B-79: YNAB's refusal for a reason of its own is told with that reason.
+        Refusal.ByTheBudgetApp -> ReadResult.TransientFailure(answer.refusalKind()!!)
         null -> ReadResult.TransientFailure(failureOf(answer.status))
     }
 

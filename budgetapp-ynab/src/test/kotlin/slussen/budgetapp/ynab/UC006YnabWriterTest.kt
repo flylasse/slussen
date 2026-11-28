@@ -24,10 +24,10 @@ import slussen.budgetapp.ynab.YnabWriteExamples.ACCOUNTS_ANSWER
 import slussen.budgetapp.ynab.YnabWriteExamples.AMOUNT_T
 import slussen.budgetapp.ynab.YnabWriteExamples.BUDGET
 import slussen.budgetapp.ynab.YnabWriteExamples.CLOSED_ACCOUNT
-import slussen.budgetapp.ynab.YnabWriteExamples.DELETED_BUDGET_ACCOUNT
 import slussen.budgetapp.ynab.YnabWriteExamples.ID_A
 import slussen.budgetapp.ynab.YnabWriteExamples.ID_B
 import slussen.budgetapp.ynab.YnabWriteExamples.ID_C
+import slussen.budgetapp.ynab.YnabWriteExamples.DELETED_BUDGET_ACCOUNT
 import slussen.budgetapp.ynab.YnabWriteExamples.ID_T
 import slussen.budgetapp.ynab.YnabWriteExamples.ITEM_A
 import slussen.budgetapp.ynab.YnabWriteExamples.ITEM_B
@@ -78,6 +78,7 @@ import slussen.pluginapi.testfixtures.WrittenLog
 import slussen.pluginapi.value.Amount
 import slussen.pluginapi.value.Secret
 import java.time.Duration
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -91,9 +92,37 @@ class UC006YnabWriterTest {
     private val http = OkHttpClient()
     private val log = WrittenLog()
 
+    /** The answers to the requests that are not the read of the Budget Accounts, in order. */
+    private val answers = LinkedBlockingQueue<MockResponse>()
+
+    /** The answers to the reads of the Budget Accounts, in order; when none is queued, [ACCOUNTS_ANSWER]. */
+    private val accountsAnswers = LinkedBlockingQueue<MockResponse>()
+
+    /** How many requests other than a read of the Budget Accounts the server received. */
+    private val writesReceived = AtomicInteger()
+
+    private fun isAccountsRead(request: RecordedRequest) = request.method == "GET" && request.requestUrl!!.encodedPath.endsWith("/accounts")
+
+    /**
+     * A test server that answers every read of the Budget Accounts, which the writer sends first in every call
+     * (S-B-79), with [accountsAnswers] or [ACCOUNTS_ANSWER], and every other request with the next of [answers].
+     */
+    private fun started(): MockWebServer = MockWebServer().apply {
+        dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                if (isAccountsRead(request)) {
+                    accountsAnswers.poll() ?: MockResponse().setBody(ACCOUNTS_ANSWER)
+                } else {
+                    writesReceived.incrementAndGet()
+                    answers.poll() ?: MockResponse().setResponseCode(500).setBody("no answer queued")
+                }
+        }
+        start()
+    }
+
     @BeforeEach
     fun startServer() {
-        server = MockWebServer().apply { start() }
+        server = started()
     }
 
     @AfterEach
@@ -104,8 +133,19 @@ class UC006YnabWriterTest {
     /** A new test server with nothing queued, for the next case of a test that tries several. */
     private fun fresh() {
         server.shutdown()
-        server = MockWebServer().apply { start() }
+        answers.clear()
+        accountsAnswers.clear()
+        writesReceived.set(0)
+        server = started()
     }
+
+    /** How many requests other than a read of the Budget Accounts were sent. */
+    private fun writesSent(): Int = writesReceived.get()
+
+    /** Every request not taken yet, the reads of the Budget Accounts left out. */
+    private fun writes(): List<RecordedRequest> = server.received().filterNot(::isAccountsRead)
+
+    private fun accounts(vararg answers: MockResponse) = accountsAnswers.addAll(answers)
 
     private fun writer(): BudgetAppWriter = YnabBudgetApp(log, server.url("/v1/"), http).writer
 
@@ -120,7 +160,7 @@ class UC006YnabWriterTest {
 
     private fun answered(vararg outcomes: ItemOutcome) = CreateResult.Answered(outcomes.toList())
 
-    private fun enqueue(vararg answers: MockResponse) = answers.forEach(server::enqueue)
+    private fun enqueue(vararg queued: MockResponse) = answers.addAll(queued)
 
     private fun status(code: Int, body: String = "") = MockResponse().setResponseCode(code).setBody(body)
 
@@ -162,10 +202,14 @@ class UC006YnabWriterTest {
         val gate = RecordingRequestGate()
         val result = create(listOf(ITEM_A, ITEM_B), gate)
         assertEquals(answered(Created(REF_A), Created(REF_B)), result)
-        val requests = server.received()
+        val requests = writes()
         assertEquals(1, requests.size)
         assertRequest(requests.single(), "POST", "/v1/budgets/$BUDGET/transactions", listBodyOf(bodyA, bodyB))
-        assertEquals(listOf(RequestSummary(RequestKind.BudgetAppWrite, null, null, unattended = false)), gate.requests)
+        assertEquals(
+            listOf(RequestKind.BudgetAppRead, RequestKind.BudgetAppWrite).map { RequestSummary(it, null, null, unattended = false) },
+            gate.requests,
+            "the Budget Accounts are read first (S-B-79), then the list is admitted as a write",
+        )
     }
 
     @Test
@@ -206,9 +250,9 @@ class UC006YnabWriterTest {
             ).forEach { answer ->
                 fresh()
                 enqueue(answer)
-                val before = server.requestCount
+                val before = writesSent()
                 assertEquals(answered(Unknown), create(listOf(ITEM_A)), "for $answer")
-                assertEquals(before + 1, server.requestCount, "for $answer")
+                assertEquals(before + 1, writesSent(), "for $answer")
             }
             assertEquals(0, elsewhere.requestCount, "a redirect was followed")
         } finally {
@@ -222,9 +266,9 @@ class UC006YnabWriterTest {
     fun refusedTokenToTheListIsCredentialsRefused() {
         listOf(status(401, """{"error":{"id":"401","name":"not_authorized","detail":"x"}}"""), status(401), error(403, "403.3", "unauthorized_scope")).forEach { answer ->
             enqueue(answer)
-            val before = server.requestCount
+            val before = writesSent()
             assertEquals(CreateResult.CredentialsRefused, create(listOf(ITEM_A, ITEM_B)))
-            assertEquals(before + 1, server.requestCount)
+            assertEquals(before + 1, writesSent())
         }
     }
 
@@ -233,7 +277,7 @@ class UC006YnabWriterTest {
     @DisplayName("ADR-001 §4.2.4: an empty call sends nothing and answers no outcome")
     fun emptyCallSendsNothing() {
         assertEquals(answered(), create(emptyList()))
-        assertEquals(0, server.requestCount)
+        assertEquals(0, server.requestCount, "not even the Budget Accounts are read")
     }
 
     // --- What is sent: amounts, Import Identifiers, shortening -------------------------------------------------------
@@ -250,7 +294,7 @@ class UC006YnabWriterTest {
         val result = create(listOf(tooLarge, largest, lowest, smallest)) as CreateResult.Answered
         assertTrue(result.outcomes[0] is Rejected && result.outcomes[2] is Rejected, "${result.outcomes}")
         assertEquals(listOf(Created(REF_B), Created(REF_C)), listOf(result.outcomes[1], result.outcomes[3]))
-        val body = server.received().single().body.readUtf8()
+        val body = writes().single().body.readUtf8()
         assertTrue(""""amount":9007199254740991,""" in body && """"amount":-9007199254740991,""" in body, body)
         assertFalse(ID_A in body, "a refused item was sent")
     }
@@ -272,24 +316,25 @@ class UC006YnabWriterTest {
         ) as CreateResult.Answered
         assertEquals(listOf(Created(REF_A), Created(REF_B)), result.outcomes.take(2))
         assertTrue(result.outcomes.drop(2).all { it is Rejected }, "${result.outcomes}")
-        val body = server.received().single().body.readUtf8()
+        val body = writes().single().body.readUtf8()
         assertTrue(""""import_id":"SLS1-Ab+/=:._~ \"é\\x-0123456789abcd"""" in body, body)
         assertTrue(""""import_id":"$longest"}""" in body, body)
         assertFalse(longest + "z" in body)
     }
 
     @Test
-    @UseCase(id = "UC-006", scenario = "Main Success Scenario", businessRules = ["BR-015"], requirements = ["C-009"])
-    @DisplayName("BR-015: a payee longer than 200 and a memo longer than 500 UTF-16 code units are cut at a code point boundary, never inside a surrogate pair; shorter ones are sent unchanged")
-    fun payeeAndMemoAreShortened() {
-        val payee = "p".repeat(199) + "😀" + "tail"
-        val memo = "m".repeat(500) + "rest"
-        val exact = "e".repeat(198) + "😀"
-        enqueue(listCreated(listOf(saved(REF_A, ID_A), saved(REF_B, ID_B))))
-        create(listOf(ITEM_A.copy(payee = payee, memo = memo), ITEM_B.copy(payee = exact)))
-        val body = server.received().single().body.readUtf8()
-        assertTrue(""""payee_name":"${"p".repeat(199)}","memo":"${"m".repeat(500)}",""" in body, body)
-        assertTrue(""""payee_name":"$exact",""" in body, body)
+    @UseCase(id = "UC-006", scenario = "A9: Budget App Rejects Transactions", businessRules = ["BR-015"], requirements = ["C-009"])
+    @DisplayName("C2 review item 8, ADR-001 §4.2.4: the core shortens payee and memo; the writer cuts nothing, so an item whose payee is longer than 200 or whose memo is longer than 500 UTF-16 code units is Rejected before sending; one at the limit is sent unchanged")
+    fun tooLongPayeeOrMemoIsRefusedBeforeSending() {
+        val atTheLimit = "e".repeat(198) + "\uD83D\uDE00"
+        enqueue(listCreated(listOf(saved(REF_C, ID_C))))
+        val result = create(listOf(ITEM_A.copy(payee = "p".repeat(201)), ITEM_B.copy(memo = "m".repeat(501)), ITEM_C.copy(payee = atTheLimit, memo = "m".repeat(500))))
+        val outcomes = (result as CreateResult.Answered).outcomes
+        assertTrue(outcomes[0] is Rejected && outcomes[1] is Rejected, "$outcomes")
+        assertEquals(Created(REF_C), outcomes[2])
+        val body = writes().single().body.readUtf8()
+        assertTrue(""""payee_name":"$atTheLimit","memo":"${"m".repeat(500)}",""" in body, body)
+        assertFalse(ID_A in body || ID_B in body, "a refused item was sent")
     }
 
     // --- A linked transfer -----------------------------------------------------------------------------------------
@@ -299,7 +344,6 @@ class UC006YnabWriterTest {
     @DisplayName("BR-009, ADR-001 §4.2.5 The transfer payee: a call holding a linked transfer first reads the Budget Accounts once, as a read, then sends the leg with the other Budget Account's transfer payee as payee_id and no payee_name, ordinary items beside it")
     fun linkedTransferGoesThroughTheTransferPayee() {
         enqueue(
-            MockResponse().setBody(ACCOUNTS_ANSWER),
             listCreated(listOf(saved(REF_T, ID_T, amount = AMOUNT_T, transferAccount = OTHER_ACCOUNT, transferTransaction = REF_COUNTERPART), saved(REF_A, ID_A))),
         )
         val gate = RecordingRequestGate()
@@ -315,43 +359,59 @@ class UC006YnabWriterTest {
     @DisplayName("ADR-001 §4.2.2, §4.2.5: a linked transfer whose other Budget Account is missing, deleted, closed, without a transfer payee, or the item's own is Rejected with that reason and not sent; the other items are sent")
     fun unlinkableTransferIsRejectedBeforeSending() {
         val others = listOf(MISSING_ACCOUNT, DELETED_BUDGET_ACCOUNT, CLOSED_ACCOUNT, NO_PAYEE_ACCOUNT, ACCOUNT)
-        enqueue(MockResponse().setBody(ACCOUNTS_ANSWER), listCreated(listOf(saved(REF_A, ID_A))))
+        enqueue(listCreated(listOf(saved(REF_A, ID_A))))
         val items = others.mapIndexed { n, other -> ITEM_T.copy(importIdentifier = "SLS1-pl4ntedimportidentifier00${50 + n}", transferBudgetAccountReference = other) }
         val result = create(items + ITEM_A) as CreateResult.Answered
         assertTrue(result.outcomes.take(others.size).all { it is Rejected && it.reason.isNotBlank() }, "${result.outcomes}")
         assertEquals(Created(REF_A), result.outcomes.last())
-        val (_, list) = server.received()
-        assertEquals(listBodyOf(bodyA), list.body.readUtf8())
+        assertEquals(listBodyOf(bodyA), writes().single().body.readUtf8())
     }
 
     @Test
     @UseCase(id = "UC-006", scenario = "A8: Outcome Unknown", businessRules = ["BR-007"])
-    @DisplayName("ADR-001 §4.2.5: when the read of the Budget Accounts gets no usable answer, every linked item is Unknown and not sent, and the other items are sent")
-    fun failedAccountsReadLeavesLinkedItemsUnknown() {
-        listOf(error(503, "503", "service_unavailable"), status(200, "not json"), error(403, "403.1", "subscription_lapsed"), dropped).forEach { answer ->
+    @DisplayName("C2 review item 2, S-B-79: when the read of the Budget Accounts gets no usable answer, no item can be checked against the Budget, so every item is Unknown and nothing is sent")
+    fun failedAccountsReadSendsNothing() {
+        listOf(error(503, "503", "service_unavailable"), status(200, "not json"), error(403, "403.1", "subscription_lapsed"), error(404, "404.2", "resource_not_found"), dropped).forEach { answer ->
             fresh()
-            enqueue(answer, listCreated(listOf(saved(REF_A, ID_A))))
-            assertEquals(answered(Unknown, Created(REF_A)), create(listOf(ITEM_T, ITEM_A)), "for $answer")
-            val requests = server.received()
-            assertEquals(2, requests.size, "the read is sent once, then the list: for $answer")
-            assertEquals(listBodyOf(bodyA), requests[1].body.readUtf8())
+            accounts(answer)
+            enqueue(listCreated(listOf(saved(REF_A, ID_A))))
+            assertEquals(answered(Unknown, Unknown), create(listOf(ITEM_T, ITEM_A)), "for $answer")
+            Thread.sleep(SETTLE_MILLIS)
+            assertEquals(1, server.requestCount, "the read is sent once and no list follows: for $answer")
         }
-        enqueue(error(503, "503", "service_unavailable"))
-        assertEquals(answered(Unknown), create(listOf(ITEM_T)))
-        assertEquals(1, server.received().size, "with no other item, no list is sent")
+    }
+
+    @Test
+    @UseCase(id = "UC-006", scenario = "A8: Outcome Unknown", businessRules = ["BR-007"])
+    @DisplayName("C2 review item 2, S-B-79: an item whose Budget Account is not among the Budget Accounts read for the Budget in the same call, or is deleted there, is not sent and is Unknown, never Rejected; the other items are sent; a closed Budget Account of the Budget is sent and YNAB answers for it")
+    fun budgetAccountNotInTheBudgetIsNotSent() {
+        enqueue(listCreated(listOf(saved(REF_A, ID_A), saved(REF_C, ID_C, account = CLOSED_ACCOUNT))))
+        val result = create(
+            listOf(
+                ITEM_A,
+                ITEM_B.copy(budgetAccountReference = MISSING_ACCOUNT),
+                ITEM_B.copy(budgetAccountReference = DELETED_BUDGET_ACCOUNT, importIdentifier = "SLS1-pl4ntedimportidentifier0007"),
+                ITEM_C.copy(budgetAccountReference = CLOSED_ACCOUNT),
+            ),
+        )
+        assertEquals(answered(Created(REF_A), Unknown, Unknown, Created(REF_C)), result)
+        val body = writes().single().body.readUtf8()
+        assertFalse(MISSING_ACCOUNT in body || DELETED_BUDGET_ACCOUNT in body, body)
+        assertTrue(ID_A in body && ID_C in body, body)
     }
 
     @Test
     @UseCase(id = "UC-006", scenario = "A8: Outcome Unknown")
     @DisplayName("ADR-001 §4.2.5: a refusal of the token to the read of the Budget Accounts is CredentialsRefused and a refusal by the gate StoppedByGate, with nothing written")
     fun refusedAccountsReadWritesNothing() {
-        enqueue(status(401))
+        accounts(status(401))
         assertEquals(CreateResult.CredentialsRefused, create(listOf(ITEM_T, ITEM_A)))
-        enqueue(error(403, "403.3", "unauthorized_scope"))
+        accounts(error(403, "403.3", "unauthorized_scope"))
         assertEquals(CreateResult.CredentialsRefused, create(listOf(ITEM_T, ITEM_A)))
         assertEquals(2, server.requestCount)
         assertEquals(CreateResult.StoppedByGate(RefusalReason.OperationEnded), create(listOf(ITEM_T, ITEM_A), refusingFrom(1)))
         assertEquals(2, server.requestCount)
+        assertEquals(0, writesSent())
     }
 
     // --- A refused list, sent again one by one (Q-08) ----------------------------------------------------------------
@@ -374,11 +434,11 @@ class UC006YnabWriterTest {
             enqueue(refusal, singleCreated(saved(REF_A, ID_A)), error(400, "400", "bad_request"), singleCreated(saved(REF_C, ID_C)))
             val gate = RecordingRequestGate()
             assertEquals(answered(Created(REF_A), Rejected(REFUSAL), Created(REF_C)), create(listOf(ITEM_A, ITEM_B, ITEM_C), gate), "for $refusal")
-            val requests = server.received()
+            val requests = writes()
             assertEquals(4, requests.size, "one list and one single request per item: for $refusal")
             assertEquals(listBodyOf(bodyA, bodyB, bodyC), requests[0].body.readUtf8())
             listOf(bodyA, bodyB, bodyC).forEachIndexed { n, body -> assertRequest(requests[n + 1], "POST", "/v1/budgets/$BUDGET/transactions", singleBodyOf(body)) }
-            assertEquals(List(4) { RequestKind.BudgetAppWrite }, gate.requests.map { it.kind }, "every request admitted by the gate as a write")
+            assertEquals(listOf(RequestKind.BudgetAppRead) + List(4) { RequestKind.BudgetAppWrite }, gate.requests.map { it.kind }, "the read of the Budget Accounts, then every write, each admitted by the gate")
         }
     }
 
@@ -391,7 +451,7 @@ class UC006YnabWriterTest {
         enqueue(error(400, "400", "bad_request"), singleCreated(saved(REF_A, ID_A)), answer, singleCreated(saved(REF_C, ID_C)))
         val result = create(listOf(ITEM_A, ITEM_B, ITEM_C), gate, timeout)
         Thread.sleep(SETTLE_MILLIS)
-        return result to server.requestCount
+        return result to writesSent()
     }
 
     private fun assertGoesOn(answer: MockResponse, outcome: ItemOutcome) {
@@ -412,9 +472,9 @@ class UC006YnabWriterTest {
     @DisplayName("W4-0 review item 8: to a single send, a 201 carrying another Import Identifier, none, or another Budget Account is Unknown, and the sending goes on")
     fun singleSendCreatedWithAnotherImportIdentifier() {
         assertGoesOn(singleCreated(saved(REF_B, ID_C)), Unknown)
-        server.received()
+        writes()
         assertGoesOn(singleCreated(saved(REF_B, null)), Unknown)
-        server.received()
+        writes()
         assertGoesOn(singleCreated(saved(REF_B, ID_B, account = OTHER_ACCOUNT)), Unknown)
     }
 
@@ -430,11 +490,16 @@ class UC006YnabWriterTest {
 
     @Test
     @UseCase(id = "UC-006", scenario = "A9: Budget App Rejects Transactions")
-    @DisplayName("A9: to a single send, a 403 that is not a refusal of the token (403.1, 403.2, 403.4, 403.5) is Rejected with YNAB's error.detail")
+    @DisplayName("A9, C2 review item 6: to a single send, a 403 that is not a refusal of the token (403.1, 403.2, 403.4, 403.5) is Rejected with YNAB's error.detail and the kind of the refusal")
     fun singleSendRefusedByTheBudgetApp() {
-        listOf("403.1" to "subscription_lapsed", "403.2" to "trial_expired", "403.4" to "data_limit_reached", "403.5" to "email_unconfirmed").forEach { (id, name) ->
-            assertGoesOn(error(403, id, name), Rejected(REFUSAL))
-            server.received()
+        listOf(
+            Triple("403.1", "subscription_lapsed", FailureKind.RefusedSubscriptionLapsed),
+            Triple("403.2", "trial_expired", FailureKind.RefusedTrialEnded),
+            Triple("403.4", "data_limit_reached", FailureKind.RefusedDataLimitReached),
+            Triple("403.5", "email_unconfirmed", FailureKind.RefusedAddressUnconfirmed),
+        ).forEach { (id, name, kind) ->
+            assertGoesOn(error(403, id, name), Rejected(REFUSAL, kind))
+            writes()
         }
     }
 
@@ -445,7 +510,7 @@ class UC006YnabWriterTest {
         val (result, sent) = resendWhereTheSecondGets(status(403, "not json"))
         assertEquals(4, sent)
         val outcome = (result as CreateResult.Answered).outcomes[1]
-        assertTrue(outcome is Rejected && outcome.reason.isNotBlank(), "was $outcome")
+        assertTrue(outcome is Rejected && outcome.reason.isNotBlank() && outcome.refusal == FailureKind.RefusedOtherReason, "was $outcome")
     }
 
     @Test
@@ -473,7 +538,7 @@ class UC006YnabWriterTest {
     @DisplayName("ADR-001 §4.2.5: a 500 or a 503 to a single send ends the sending")
     fun singleSendServerError() {
         assertEndsTheSending(error(500, "500", "internal_server_error"))
-        server.received()
+        writes()
         assertEndsTheSending(error(503, "503", "service_unavailable"))
     }
 
@@ -493,7 +558,7 @@ class UC006YnabWriterTest {
         } finally {
             elsewhere.shutdown()
         }
-        server.received()
+        writes()
         assertEndsTheSending(error(422, "422", "unprocessable"))
     }
 
@@ -512,8 +577,8 @@ class UC006YnabWriterTest {
     @DisplayName("ADR-001 §4.2.4: a refusal by the gate of a single send, after the list was sent, ends the sending with Unknown, never StoppedByGate")
     fun singleSendStoppedByGate() {
         enqueue(error(400, "400", "bad_request"), singleCreated(saved(REF_A, ID_A)), singleCreated(saved(REF_B, ID_B)))
-        assertEquals(answered(Created(REF_A), Unknown, Unknown), create(listOf(ITEM_A, ITEM_B, ITEM_C), refusingFrom(3)))
-        assertEquals(2, server.requestCount)
+        assertEquals(answered(Created(REF_A), Unknown, Unknown), create(listOf(ITEM_A, ITEM_B, ITEM_C), refusingFrom(4)))
+        assertEquals(2, writesSent())
     }
 
     @Test
@@ -521,10 +586,10 @@ class UC006YnabWriterTest {
     @DisplayName("ADR-001 §4.0: a cancellation while a single send waits for its answer ends the sending; that item and the rest are Unknown, and the call is cancelled")
     fun singleSendCancelledAfterItLeft() {
         enqueue(error(400, "400", "bad_request"), singleCreated(saved(REF_A, ID_A)), never)
-        val result = cancelledWhen({ server.requestCount >= 3 }) { writer().create(BUDGET, listOf(ITEM_A, ITEM_B, ITEM_C), context(timeout = Duration.ofSeconds(30))) }
+        val result = cancelledWhen({ writesSent() >= 3 }) { writer().create(BUDGET, listOf(ITEM_A, ITEM_B, ITEM_C), context(timeout = Duration.ofSeconds(30))) }
         assertEquals(answered(Created(REF_A), Unknown, Unknown), result)
         Thread.sleep(SETTLE_MILLIS)
-        assertEquals(3, server.requestCount)
+        assertEquals(3, writesSent())
         runBlocking { withTimeout(4_000) { while (http.dispatcher.runningCallsCount() > 0) delay(10) } }
     }
 
@@ -533,11 +598,11 @@ class UC006YnabWriterTest {
     @DisplayName("ADR-001 §4.0: a cancellation before a single send left sends nothing more; that item and the rest are Unknown")
     fun singleSendCancelledBeforeItLeft() {
         enqueue(error(400, "400", "bad_request"), singleCreated(saved(REF_A, ID_A)), singleCreated(saved(REF_B, ID_B)))
-        val gate = HoldingFrom(3)
+        val gate = HoldingFrom(4)
         val result = cancelledWhen({ gate.holding }) { writer().create(BUDGET, listOf(ITEM_A, ITEM_B, ITEM_C), context(gate)) }
         assertEquals(answered(Created(REF_A), Unknown, Unknown), result)
         Thread.sleep(SETTLE_MILLIS)
-        assertEquals(2, server.requestCount)
+        assertEquals(2, writesSent())
     }
 
     // --- A list that gets no answer -------------------------------------------------------------------------------
@@ -549,18 +614,49 @@ class UC006YnabWriterTest {
         enqueue(dropped, listCreated(listOf(saved(REF_A, ID_A), saved(REF_B, ID_B))))
         assertEquals(answered(Unknown, Unknown), create(listOf(ITEM_A, ITEM_B)))
         Thread.sleep(SETTLE_MILLIS)
-        assertEquals(1, server.requestCount, "the list was sent again")
-        server.received()
-        enqueue(MockResponse().setBody(ACCOUNTS_ANSWER), dropped, listCreated(listOf(saved(REF_T, ID_T), saved(REF_A, ID_A))))
+        assertEquals(1, writesSent(), "the list was sent again")
+        fresh()
+        enqueue(dropped, listCreated(listOf(saved(REF_T, ID_T), saved(REF_A, ID_A))))
         assertEquals(answered(Unknown, Unknown), create(listOf(ITEM_T, ITEM_A)))
         Thread.sleep(SETTLE_MILLIS)
-        assertEquals(3, server.requestCount, "the list was sent again on a new connection")
+        assertEquals(1, writesSent(), "the list was sent again on a new connection")
         fresh()
         enqueue(listCreated(listOf(saved(REF_A, ID_A))), dropped, listCreated(listOf(saved(REF_B, ID_B))))
         assertEquals(answered(Created(REF_A)), create(listOf(ITEM_A)))
         assertEquals(answered(Unknown), create(listOf(ITEM_B)), "the list was sent again on the connection OkHttp kept")
         Thread.sleep(SETTLE_MILLIS)
-        assertEquals(2, server.requestCount, "the list was sent again on the connection OkHttp kept")
+        assertEquals(2, writesSent(), "the list was sent again on the connection OkHttp kept")
+    }
+
+    @Test
+    @UseCase(id = "UC-006", scenario = "A8: Outcome Unknown", businessRules = ["BR-007"])
+    @DisplayName("C2 review item 1, ADR-001 §4.0: a list answered 503 with Retry-After: 0, or 408, is Unknown for every item and OkHttp does not send it again: exactly one list arrives")
+    fun noStatusMakesTheLibrarySendAListAgain() {
+        listOf(MockResponse().setResponseCode(503).setHeader("Retry-After", "0"), MockResponse().setResponseCode(408), MockResponse().setResponseCode(408).setHeader("Retry-After", "0")).forEach { answer ->
+            fresh()
+            enqueue(answer, listCreated(listOf(saved(REF_A, ID_A), saved(REF_B, ID_B))))
+            assertEquals(answered(Unknown, Unknown), create(listOf(ITEM_A, ITEM_B)), "for $answer")
+            Thread.sleep(SETTLE_MILLIS)
+            assertEquals(1, writesSent(), "OkHttp sent the list again after $answer")
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-006", scenario = "A8: Outcome Unknown", businessRules = ["BR-007"])
+    @DisplayName("C2 review item 1: a single send answered 503 with Retry-After: 0 ends the sending and is not sent again by OkHttp")
+    fun singleSendRetryAfterZero() = assertEndsTheSending(MockResponse().setResponseCode(503).setHeader("Retry-After", "0"))
+
+    @Test
+    @UseCase(id = "UC-006", scenario = "A11: Marking a Transfer Counterpart Cleared Fails")
+    @DisplayName("C2 review item 1: a clearing answered 503 with Retry-After: 0, or 408, is Unknown and sent once")
+    fun noStatusMakesTheLibrarySendAClearingAgain() {
+        listOf(MockResponse().setResponseCode(503).setHeader("Retry-After", "0"), MockResponse().setResponseCode(408)).forEach { answer ->
+            fresh()
+            enqueue(answer, clearedAnswer("cleared"))
+            assertEquals(ClearResult.Unknown, clear(), "for $answer")
+            Thread.sleep(SETTLE_MILLIS)
+            assertEquals(1, writesSent(), "OkHttp sent the clearing again after $answer")
+        }
     }
 
     @Test
@@ -570,20 +666,20 @@ class UC006YnabWriterTest {
         enqueue(never, listCreated(listOf(saved(REF_A, ID_A))))
         assertEquals(answered(Unknown), create(listOf(ITEM_A), timeout = Duration.ofMillis(700)))
         Thread.sleep(SETTLE_MILLIS)
-        assertEquals(1, server.requestCount)
+        assertEquals(1, writesSent())
     }
 
     @Test
     @UseCase(id = "UC-006", scenario = "A8: Outcome Unknown")
     @DisplayName("ADR-001 §4.0: a list cancelled while it waits for the gate sends nothing; one cancelled after it left is Unknown and not sent again")
     fun cancelledList() {
-        val gate = HoldingFrom(1)
+        val gate = HoldingFrom(2)
         assertEquals(answered(Unknown, Unknown), cancelledWhen({ gate.holding }) { writer().create(BUDGET, listOf(ITEM_A, ITEM_B), context(gate)) })
-        assertEquals(0, server.requestCount)
+        assertEquals(0, writesSent())
         enqueue(never)
-        assertEquals(answered(Unknown), cancelledWhen({ server.requestCount >= 1 }) { writer().create(BUDGET, listOf(ITEM_A), context(timeout = Duration.ofSeconds(30))) })
+        assertEquals(answered(Unknown), cancelledWhen({ writesSent() >= 1 }) { writer().create(BUDGET, listOf(ITEM_A), context(timeout = Duration.ofSeconds(30))) })
         Thread.sleep(SETTLE_MILLIS)
-        assertEquals(1, server.requestCount)
+        assertEquals(1, writesSent())
     }
 
     @Test
@@ -591,9 +687,9 @@ class UC006YnabWriterTest {
     @DisplayName("ADR-001 §4.2.4: a list refused by the gate, with nothing written before, is StoppedByGate with the gate's reason, and nothing is sent")
     fun gateRefusedList() {
         assertEquals(CreateResult.StoppedByGate(RefusalReason.OperationEnded), create(listOf(ITEM_A), refusingFrom(1)))
-        enqueue(MockResponse().setBody(ACCOUNTS_ANSWER))
+        assertEquals(0, server.requestCount, "nothing was sent, not even the read of the Budget Accounts")
         assertEquals(CreateResult.StoppedByGate(RefusalReason.OperationEnded), create(listOf(ITEM_T, ITEM_A), refusingFrom(2)))
-        assertEquals(1, server.requestCount, "only the read of the Budget Accounts was sent")
+        assertEquals(0, writesSent(), "only the read of the Budget Accounts was sent")
     }
 
     // --- Marking Cleared -------------------------------------------------------------------------------------------
@@ -603,13 +699,20 @@ class UC006YnabWriterTest {
 
     @Test
     @UseCase(id = "UC-006", scenario = "Main Success Scenario", businessRules = ["BR-009", "BR-011"])
-    @DisplayName("BR-011, ADR-001 §4.2.5 Marking Cleared: one PATCH with one transaction holding only id and cleared, byte for byte, admitted as a write; 200 with it cleared or reconciled is Cleared")
+    @DisplayName("BR-011, ADR-001 §4.2.5 Marking Cleared: one PATCH with one transaction holding only id and cleared, byte for byte, admitted as a write; 200 with it cleared or reconciled is Cleared, in a list or as the one transaction saved")
     fun counterpartIsMarkedCleared() {
-        enqueue(clearedAnswer("cleared"), clearedAnswer("reconciled"))
+        enqueue(
+            clearedAnswer("cleared"),
+            clearedAnswer("reconciled"),
+            MockResponse().setBody("""{"data":{"transaction_ids":["$REF_COUNTERPART"],"transaction":${saved(REF_COUNTERPART, null, cleared = "cleared")},"server_knowledge":96}}"""),
+            MockResponse().setBody("""{"data":{"transaction_ids":["$REF_COUNTERPART"],"transaction":${saved(REF_COUNTERPART, null, cleared = "uncleared")},"server_knowledge":97}}"""),
+        )
         val gate = RecordingRequestGate()
         assertEquals(ClearResult.Cleared, clear(gate))
         assertEquals(ClearResult.Cleared, clear())
-        val request = server.received().first()
+        assertEquals(ClearResult.Cleared, clear(), "C2 review item 5: the answer names the one transaction it saved")
+        assertEquals(ClearResult.NotCleared, clear(), "C2 review item 5: the one transaction saved is not cleared")
+        val request = writes().first()
         assertRequest(request, "PATCH", "/v1/budgets/$BUDGET/transactions", """{"transactions":[{"id":"$REF_COUNTERPART","cleared":"cleared"}]}""")
         assertEquals(listOf(RequestKind.BudgetAppWrite), gate.requests.map { it.kind })
     }
@@ -628,11 +731,11 @@ class UC006YnabWriterTest {
             enqueue(answer)
             assertEquals(ClearResult.NotCleared, clear(), "for $answer")
         }
-        val sent = server.requestCount
+        val sent = writesSent()
         assertEquals(ClearResult.NotCleared, clear(refusingFrom(1)))
         val gate = HoldingFrom(1)
         assertEquals(ClearResult.NotCleared, cancelledWhen({ gate.holding }) { writer().markCleared(BUDGET, REF_COUNTERPART, context(gate)) })
-        assertEquals(sent, server.requestCount)
+        assertEquals(sent, writesSent())
     }
 
     @Test
@@ -642,16 +745,16 @@ class UC006YnabWriterTest {
         listOf(error(429, "429", "too_many_requests"), error(500, "500", "internal_server_error"), status(302).setHeader("Location", "http://elsewhere.invalid/"), status(200, "not json"), dropped).forEach { answer ->
             fresh()
             enqueue(answer)
-            val before = server.requestCount
+            val before = writesSent()
             assertEquals(ClearResult.Unknown, clear(), "for $answer")
             Thread.sleep(SETTLE_MILLIS)
-            assertEquals(before + 1, server.requestCount, "for $answer")
+            assertEquals(before + 1, writesSent(), "for $answer")
         }
         enqueue(never)
         assertEquals(ClearResult.Unknown, clear(timeout = Duration.ofMillis(700)))
         enqueue(never)
-        val before = server.requestCount
-        assertEquals(ClearResult.Unknown, cancelledWhen({ server.requestCount > before }) { writer().markCleared(BUDGET, REF_COUNTERPART, context(timeout = Duration.ofSeconds(30))) })
+        val before = writesSent()
+        assertEquals(ClearResult.Unknown, cancelledWhen({ writesSent() > before }) { writer().markCleared(BUDGET, REF_COUNTERPART, context(timeout = Duration.ofSeconds(30))) })
     }
 
     // --- Reading one transaction -----------------------------------------------------------------------------------
@@ -668,7 +771,7 @@ class UC006YnabWriterTest {
             TransferLink(REF_COUNTERPART, OTHER_ACCOUNT), ReadState.Present, cleared = true, approved = false,
         )
         assertEquals(ReadResult.Answered(TransactionLookup.Found(expected)), result)
-        assertRequest(server.received().single(), "GET", "/v1/budgets/$BUDGET/transactions/$REF_T", null)
+        assertRequest(writes().single(), "GET", "/v1/budgets/$BUDGET/transactions/$REF_T", null)
         assertEquals(listOf(RequestKind.BudgetAppRead), gate.requests.map { it.kind })
     }
 
@@ -678,7 +781,7 @@ class UC006YnabWriterTest {
     fun oneTransactionAnswers() {
         val reader = YnabBudgetApp(log, server.url("/v1/"), http).reader
         fun read(answer: MockResponse): ReadResult<TransactionLookup> {
-            server.enqueue(answer)
+            enqueue(answer)
             return runBlocking { reader.readTransaction(BUDGET, REF_T, context()) }
         }
         val deleted = read(MockResponse().setBody("""{"data":{"transaction":${saved(REF_T, ID_T, deleted = true)},"server_knowledge":1}}"""))
@@ -700,7 +803,7 @@ class UC006YnabWriterTest {
         val shown = mutableListOf<String>()
         listOf(false, true).forEach { detailed ->
             log.detailed = detailed
-            enqueue(MockResponse().setBody(ACCOUNTS_ANSWER), error(400, "400", "bad_request"), singleCreated(saved(REF_T, ID_T)), error(400, "400", "bad_request", REFUSAL), error(409, "409", "conflict"))
+            enqueue(error(400, "400", "bad_request"), singleCreated(saved(REF_T, ID_T)), error(400, "400", "bad_request", REFUSAL), error(409, "409", "conflict"))
             val result = create(listOf(ITEM_T, ITEM_A, ITEM_B, ITEM_T.copy(transferBudgetAccountReference = CLOSED_ACCOUNT, importIdentifier = ID_C)))
             shown += result.toString()
             shown += (result as CreateResult.Answered).outcomes.map { it.toString() }
@@ -710,8 +813,11 @@ class UC006YnabWriterTest {
             shown += create(listOf(ITEM_C), timeout = Duration.ofMillis(500)).toString()
             enqueue(clearedAnswer("cleared"))
             shown += clear().toString()
-            enqueue(MockResponse().setBody("""{"data":{"transaction":${saved(REF_T, ID_T)},"server_knowledge":1}}"""))
-            runBlocking { YnabBudgetApp(log, server.url("/v1/"), http).reader.readTransaction(BUDGET, REF_T, context()) }
+            enqueue(MockResponse().setBody("""{"data":{"transaction":${saved(REF_T, ID_T, transferAccount = OTHER_ACCOUNT, transferTransaction = REF_COUNTERPART)},"server_knowledge":1}}"""))
+            val looked = runBlocking { YnabBudgetApp(log, server.url("/v1/"), http).reader.readTransaction(BUDGET, REF_T, context()) }
+            // C2 review item 7: a read's transaction, its transfer link and its state show nothing planted either.
+            shown += looked.toString()
+            ((looked as? ReadResult.Answered)?.value as? TransactionLookup.Found)?.transaction?.let { shown += listOf(it.toString(), it.transferLink.toString(), it.state.toString()) }
         }
         shown += log.written
         assertTrue(log.written.isNotEmpty(), "the writer logs what it did")

@@ -60,7 +60,8 @@ internal enum class Lost { Timeout, ConnectionLost, CancelledAfterItLeft, Cancel
 /**
  * The YNAB writer (ADR-001 §4.2.4, §4.2.5): it sends exactly the items it is handed, each at most once in a list and at
  * most once alone, every request admitted by the gate first, and reports one outcome per item. It decides nothing
- * about what to send: an item it cannot send as it is handed (an amount it cannot send exactly, an Import Identifier
+ * about what to send: an item it cannot send as it is handed (an amount it cannot send exactly, a payee or memo longer
+ * than YNAB accepts, which the core shortens (ADR-001 §4.2.4), an Import Identifier
  * YNAB cannot hold, a transfer it cannot link) is `Rejected` before anything is sent; an item whose request got no
  * answer is `Unknown` and is never sent again, by this writer or by its HTTP library (no redirect followed, no retry).
  *
@@ -78,25 +79,30 @@ internal class YnabWriter(
 
     override suspend fun create(budgetReference: String, items: List<CreateItem>, context: RequestContext): CreateResult {
         requireNotNull(context.credential) { "The core contacts YNAB only with stored credentials." }
+        if (items.isEmpty()) return CreateResult.Answered(emptyList())
         val outcomes = arrayOfNulls<ItemOutcome>(items.size)
         items.forEachIndexed { index, item -> refusalBeforeSending(item)?.let { outcomes[index] = ItemOutcome.Rejected(it) } }
 
         val payees = mutableMapOf<Int, String>()
-        val linked = items.indices.filter { outcomes[it] == null && items[it].transferBudgetAccountReference != null }
-        if (linked.isNotEmpty()) {
-            when (val read = readTransferPayees(budgetReference, context)) {
-                is PayeesRead.Read -> linked.forEach { index ->
-                    // UC-006 BR-009: A Transfer is written as one linked transfer through the other Budget Account's transfer payee.
-                    when (val payee = read.payeeOf(items[index].transferBudgetAccountReference!!)) {
-                        is TransferPayee.Found -> payees[index] = payee.id
-                        is TransferPayee.Unusable -> outcomes[index] = ItemOutcome.Rejected(payee.reason)
-                    }
+        when (val read = readBudgetAccounts(budgetReference, context)) {
+            is AccountsRead.Read -> items.indices.filter { outcomes[it] == null }.forEach { index ->
+                val item = items[index]
+                // UC-006 BR-007: an item whose Budget Account is not in the Budget named, as read in this call, is never sent and is Unknown, never Rejected (S-B-79).
+                if (!read.holds(item.budgetAccountReference)) {
+                    outcomes[index] = ItemOutcome.Unknown
+                    return@forEach
                 }
-                PayeesRead.TokenRefused -> return CreateResult.CredentialsRefused
-                is PayeesRead.Stopped -> return CreateResult.StoppedByGate(read.reason)
-                PayeesRead.Cancelled -> return answered(outcomes)
-                PayeesRead.Unusable -> linked.forEach { outcomes[it] = ItemOutcome.Unknown }
+                val other = item.transferBudgetAccountReference ?: return@forEach
+                // UC-006 BR-009: A Transfer is written as one linked transfer through the other Budget Account's transfer payee.
+                when (val payee = read.payeeOf(other)) {
+                    is TransferPayee.Found -> payees[index] = payee.id
+                    is TransferPayee.Unusable -> outcomes[index] = ItemOutcome.Rejected(payee.reason)
+                }
             }
+            AccountsRead.TokenRefused -> return CreateResult.CredentialsRefused
+            is AccountsRead.Stopped -> return CreateResult.StoppedByGate(read.reason)
+            // S-B-79: without the Budget Accounts of the Budget no item can be checked, so none is sent.
+            AccountsRead.Cancelled, AccountsRead.Unusable -> return answered(outcomes)
         }
 
         val toSend = items.indices.filter { outcomes[it] == null }
@@ -181,7 +187,8 @@ internal class YnabWriter(
                 }
             }
             answer.status == 409 -> ItemOutcome.AlreadyPresent(null)
-            answer.status == 400 || refusal == Refusal.ByTheBudgetApp -> ItemOutcome.Rejected(answer.errorDetail() ?: UNREADABLE_REASON)
+            // S-B-79: a refusal of the Budget App for a reason of its own carries that reason's kind.
+            answer.status == 400 || refusal == Refusal.ByTheBudgetApp -> ItemOutcome.Rejected(answer.errorDetail() ?: UNREADABLE_REASON, answer.refusalKind())
             // ADR-001 §4.2.4: an item refused because its Budget Account may not be in the Budget named is Unknown, never Rejected.
             answer.status == 404 -> ItemOutcome.Unknown
             else -> null
@@ -225,6 +232,9 @@ internal class YnabWriter(
         item.importIdentifier.isBlank() -> "The transaction has no Import Identifier, so it was not sent."
         item.importIdentifier.length > importIdentifierMaxLength -> "The Import Identifier is longer than YNAB accepts, so it was not sent."
         item.transferBudgetAccountReference == item.budgetAccountReference -> "A transfer to its own Budget Account cannot be linked in YNAB, so it was not sent."
+        // UC-006 BR-015: the core shortens payee and memo (ADR-001 §4.2.4); the writer cuts nothing, so a longer text is not sent.
+        (item.payee?.length ?: 0) > payeeMaxLength -> "The payee is longer than YNAB accepts, so the transaction was not sent."
+        (item.memo?.length ?: 0) > memoMaxLength -> "The memo is longer than YNAB accepts, so the transaction was not sent."
         else -> null
     }
 
@@ -238,8 +248,8 @@ internal class YnabWriter(
         put("account_id", item.budgetAccountReference)
         put("date", item.date.toString())
         put("amount", item.amount.thousandths)
-        if (transferPayee != null) put("payee_id", transferPayee) else put("payee_name", item.payee?.let { shortened(it, payeeMaxLength) })
-        put("memo", item.memo?.let { shortened(it, memoMaxLength) })
+        if (transferPayee != null) put("payee_id", transferPayee) else put("payee_name", item.payee)
+        put("memo", item.memo)
         put("cleared", if (item.cleared) "cleared" else "uncleared")
         // UC-006 BR-008: Every created transaction waits for the Operator's approval; nothing is ever sent approved.
         put("approved", false)
@@ -270,37 +280,42 @@ internal class YnabWriter(
         }
     }
 
-    /** Cleared when YNAB's `200` names the counterpart `cleared` or `reconciled`, NotCleared when it does not. */
+    /**
+     * Cleared when YNAB's `200` names the counterpart `cleared` or `reconciled`, NotCleared when it does not. YNAB's
+     * `SaveTransactionsResponse` names what it saved as a list (`transactions`) or as one transaction (`transaction`);
+     * both are read (C2 review item 5).
+     */
     private fun clearedIn(body: String, counterpartReference: String): ClearResult {
         val data = Json.parseToJsonElement(body).jsonObject.getValue("data").jsonObject
-        val saved = (data["transactions"]?.jsonArray ?: JsonArray(emptyList())).map { it.jsonObject }
+        val saved = (data["transactions"]?.jsonArray?.map { it.jsonObject } ?: emptyList()) +
+            listOfNotNull(data["transaction"]?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.jsonObject)
         val counterpart = saved.singleOrNull { it.text("id") == counterpartReference }
         return if (counterpart != null && counterpart.text("cleared") in setOf("cleared", "reconciled")) ClearResult.Cleared else ClearResult.NotCleared
     }
 
     /**
-     * The Budget Accounts of the Budget with their transfer payees (ADR-001 §4.2.5 The transfer payee): one read, through
-     * the gate as a read.
+     * The Budget Accounts of the Budget with their transfer payees (ADR-001 §4.2.5 The transfer payee, S-B-79): one read
+     * in every call before anything is sent, through the gate as a read.
      */
-    private suspend fun readTransferPayees(budgetReference: String, context: RequestContext): PayeesRead {
+    private suspend fun readBudgetAccounts(budgetReference: String, context: RequestContext): AccountsRead {
         val request = authorized(base.ofBudget(budgetReference, "accounts"), context).build()
         return when (val attempt = attempt(context, request, RequestKind.BudgetAppRead)) {
-            is Attempt.Stopped -> PayeesRead.Stopped(attempt.reason)
+            is Attempt.Stopped -> AccountsRead.Stopped(attempt.reason)
             is Attempt.NoAnswer -> {
                 lost(attempt.how)
-                if (attempt.how == Lost.CancelledBeforeItLeft || attempt.how == Lost.CancelledAfterItLeft) PayeesRead.Cancelled else PayeesRead.Unusable
+                if (attempt.how == Lost.CancelledBeforeItLeft || attempt.how == Lost.CancelledAfterItLeft) AccountsRead.Cancelled else AccountsRead.Unusable
             }
             is Attempt.Answered -> when {
-                attempt.answer.status == 200 -> parsedOrNull { accountsOf(attempt.answer.body) } ?: PayeesRead.Unusable
-                attempt.answer.refusal() == Refusal.OfTheToken -> PayeesRead.TokenRefused
-                else -> PayeesRead.Unusable
+                attempt.answer.status == 200 -> parsedOrNull { accountsOf(attempt.answer.body) } ?: AccountsRead.Unusable
+                attempt.answer.refusal() == Refusal.OfTheToken -> AccountsRead.TokenRefused
+                else -> AccountsRead.Unusable
             }
         }
     }
 
-    private fun accountsOf(body: String): PayeesRead.Read {
+    private fun accountsOf(body: String): AccountsRead.Read {
         val accounts = Json.parseToJsonElement(body).jsonObject.getValue("data").jsonObject.getValue("accounts").jsonArray.map { it.jsonObject }
-        return PayeesRead.Read(
+        return AccountsRead.Read(
             accounts.associate { account ->
                 account.text("id") to BudgetAccountState(
                     closed = requireNotNull(account.getValue("closed").jsonPrimitive.booleanOrNull),
@@ -321,8 +336,11 @@ internal class YnabWriter(
         data class Unusable(val reason: String) : TransferPayee
     }
 
-    private sealed interface PayeesRead {
-        class Read(private val accounts: Map<String, BudgetAccountState>) : PayeesRead {
+    private sealed interface AccountsRead {
+        class Read(private val accounts: Map<String, BudgetAccountState>) : AccountsRead {
+            /** S-B-79: the Budget Account is in the Budget named, as read in this call, and not deleted there. */
+            fun holds(budgetAccount: String): Boolean = accounts[budgetAccount]?.deleted == false
+
             /** ADR-001 §4.2.2, §4.2.5: a missing, deleted or closed other Budget Account, or one without a transfer payee, cannot be linked. */
             fun payeeOf(otherBudgetAccount: String): TransferPayee {
                 val account = accounts[otherBudgetAccount]
@@ -338,13 +356,13 @@ internal class YnabWriter(
             override fun toString(): String = "Read"
         }
 
-        data object TokenRefused : PayeesRead
+        data object TokenRefused : AccountsRead
 
-        data class Stopped(val reason: RefusalReason) : PayeesRead
+        data class Stopped(val reason: RefusalReason) : AccountsRead
 
-        data object Cancelled : PayeesRead
+        data object Cancelled : AccountsRead
 
-        data object Unusable : PayeesRead
+        data object Unusable : AccountsRead
     }
 
     /** What one request came to: refused by the gate (nothing left), no answer, or an answer. */
@@ -408,12 +426,4 @@ internal class YnabWriter(
 
         const val UNREADABLE_REASON = "YNAB refused this transaction and gave no reason that could be read."
     }
-}
-
-/** [text] as YNAB accepts it (UC-006 BR-015, ADR-001 §4.2.4): at most [max] UTF-16 code units, cut at a code point boundary. */
-internal fun shortened(text: String, max: Int): String {
-    if (text.length <= max) return text
-    // UC-006 BR-015: A payee or memo longer than YNAB accepts is cut at a code point boundary, never inside a surrogate pair.
-    val end = if (Character.isLowSurrogate(text[max]) && Character.isHighSurrogate(text[max - 1])) max - 1 else max
-    return text.substring(0, end)
 }

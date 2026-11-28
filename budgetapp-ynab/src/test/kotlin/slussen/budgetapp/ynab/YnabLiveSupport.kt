@@ -56,6 +56,29 @@ internal class YnabLive {
 
     fun importIdentifier(case: Int, n: Int): String = "E10-$run-$case-$n"
 
+    /** The smallest amount the Budget's currency allows, in milliunits (YNAB's `currency_format.decimal_digits`). */
+    private val step: Long by lazy {
+        val digits = budgetsListed().single { it.text("id") == budget }.getValue("currency_format").jsonObject.whole("decimal_digits")
+        generateSequence(1L) { it * 10 }.elementAt((3 - digits.toInt()).coerceIn(0, 3))
+    }
+
+    /**
+     * An outflow no earlier run can have written within the read windows of these tests (C2 review item 4): it is
+     * derived from the minute of this run, which repeats only after 90 000 minutes (62 days, more than the 60 days the
+     * tests read back), from the case and from [n], and is a whole number of the currency's smallest unit.
+     */
+    fun runAmount(case: Int, n: Int): Long {
+        val minute = (System.currentTimeMillis() / 60_000) % 90_000
+        return -(1_000 + (minute * 20 + case) * 4 + n) * step
+    }
+
+    /** Every Budget the token's user holds, with its Budget Accounts (OpenAPI `PlanSummary`). */
+    fun budgetsListed(): List<JsonObject> = data(get("budgets?include_accounts=true")).getValue("budgets").jsonArray.map { it.jsonObject }
+
+    /** The throwaway Budget's transactions as YNAB answers them, dated from [since] on (with `matched_transaction_id`). */
+    fun rawTransactions(since: LocalDate): List<JsonObject> =
+        data(get("budgets/$budget/transactions?since_date=$since")).getValue("transactions").jsonArray.map { it.jsonObject }
+
     fun item(account: String, case: Int, n: Int, amount: Long, date: LocalDate = today.minusDays(3), cleared: Boolean = false, other: String? = null) =
         CreateItem(account, importIdentifier(case, n), date, Amount(amount), if (other == null) "E10 live payee $case" else null, "E10 $run case $case item $n", cleared, other)
 
@@ -87,7 +110,7 @@ internal class YnabLive {
      * Budget of the Operator's money by a mistaken property.
      */
     fun openAccounts(): OpenAccounts {
-        val name = data(get("budgets")).getValue("budgets").jsonArray.map { it.jsonObject }.single { it.text("id") == budget }.text("name")
+        val name = budgetsListed().single { it.text("id") == budget }.text("name")
         if (!name.contains("throwaway", ignoreCase = true)) {
             fail<Unit>("The Budget of slussenLiveTestYnabBudgetId is not named as a throwaway Budget: the live tests that write run only on a Budget whose name contains \"throwaway\" (C-011).")
         }
@@ -110,10 +133,13 @@ internal class YnabLive {
     }
 
     /** A single create as YNAB's documentation describes it, for the status of its answer alone. */
-    fun singleCreateStatus(item: CreateItem): Int {
+    fun singleCreateStatus(item: CreateItem): Int = singleCreate(item).first
+
+    /** The status of a single create as YNAB's documentation describes it, and its body. */
+    fun singleCreate(item: CreateItem): Pair<Int, String> {
         val body = """{"transaction":{"account_id":"${item.budgetAccountReference}","date":"${item.date}","amount":${item.amount.thousandths},""" +
             """"payee_name":"E10 live payee","memo":null,"cleared":"uncleared","approved":false,"import_id":"${item.importIdentifier}"}}"""
-        return call(Request.Builder().url(BASE + "budgets/$budget/transactions").post(body.toRequestBody(JSON))).first
+        return call(Request.Builder().url(BASE + "budgets/$budget/transactions").post(body.toRequestBody(JSON)))
     }
 
     fun delete(reference: String) {
