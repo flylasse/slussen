@@ -96,7 +96,15 @@ internal class EnableBankingFetch(
         }
         val progress = Progress()
         // ADR-001 §4.1.1: a selected Bank Account no Bank Session holds (its Bank has none, or the session kept no uid for it) is not contacted.
-        planned.filter { it.session == null }.forEach { progress.results[it.read.providerReference] = delivered(it.read, null, failed(FailureKind.UnreadableAnswer)) }
+        // S-B-55: where a Bank Session could not keep all its Bank Accounts, that is the reason, without a remedy that cannot work.
+        val full = sessions.filter { it.notAllKept }
+        planned.filter { it.session == null }.forEach {
+            progress.results[it.read.providerReference] = if (full.isEmpty()) {
+                delivered(it.read, null, failed(FailureKind.UnreadableAnswer))
+            } else {
+                delivered(it.read, full.singleOrNull()?.bankReference, failed(FailureKind.NotHeldByBankSession))
+            }
+        }
         val byBank = planned.filter { it.session != null }.groupBy { it.session!!.bankReference }
         for ((_, ofBank) in byBank) {
             readBank(ofBank, request, context, signer, progress)
@@ -118,7 +126,7 @@ internal class EnableBankingFetch(
         for (planned in ofBank) {
             val reference = planned.read.providerReference
             when {
-                progress.stopped -> progress.results[reference] = delivered(planned.read, bank, BankAccountResult.NotRead(NotReadCause.StoppedWithTheSource))
+                progress.stopped -> progress.results[reference] = delivered(planned.read, bank, notReadAfter(progress.source))
                 bankStopped -> progress.results[reference] = delivered(planned.read, bank, BankAccountResult.NotRead(NotReadCause.StoppedWithItsBank))
                 else -> {
                     val outcome = readBankAccount(planned.read, session, presence, request, context, signer, progress)
@@ -139,6 +147,13 @@ internal class EnableBankingFetch(
         }
     }
 
+    /**
+     * What a Bank Account not read yet is when the whole Data Provider stopped (S-B-55): after a request that got no
+     * answer, or the Data Provider's own failing, it is failed with that reason; otherwise not read with the source.
+     */
+    private fun notReadAfter(source: SourceOutcome): BankAccountResult =
+        (source as? SourceOutcome.TransientFailure)?.let { failed(it.kind) } ?: BankAccountResult.NotRead(NotReadCause.StoppedWithTheSource)
+
     /** What reading one Bank Account came to, and what it stopped beyond it. */
     private sealed interface AccountOutcome {
         class Done(val result: BankAccountResult, val currency: CurrencyCode? = null) : AccountOutcome
@@ -153,10 +168,8 @@ internal class EnableBankingFetch(
 
     private fun presenceOf(asked: OperatorPresence, session: BankSessionValue): Presence {
         // ADR-001 §4.1.1: a request of an Unattended Fetch carries no PSU header, as Enable Banking asks for data fetching the application starts itself.
-        if (asked == OperatorPresence.Unattended || !showsPresence(session.psuHeaders)) return Presence(emptyMap())
-        val language = language().trim().takeIf { it.isNotEmpty() && it != UNDETERMINED_LANGUAGE } ?: return Presence(emptyMap())
-        // ADR-001 §4.1.1: never Psu-Ip-Address (Slussen asks no third party for the device's address) and never Psu-Geo-Location (NFR-022).
-        return Presence(mapOf(USER_AGENT_HEADER to USER_AGENT, LANGUAGE_HEADER to language))
+        if (asked == OperatorPresence.Unattended) return Presence(emptyMap())
+        return Presence(presenceHeaders(session.psuHeaders, language()).orEmpty())
     }
 
     private suspend fun readBankAccount(
@@ -178,7 +191,8 @@ internal class EnableBankingFetch(
             val summary = RequestSummary(RequestKind.Balance, bank, reference, presence.unattended)
             when (val step = send(accountAddress(uid, "balances"), summary, presence, context, signer, progress)) {
                 is Step.Ok -> balance = chosenBalance(step.body, currency)
-                is Step.Stop -> return step.outcome(bank, laterPage = false)
+                // S-B-55: a failure that concerns only the balance gives no Account Balance, and the transactions are still read.
+                is Step.Stop -> if (!step.concernsThisBankAccountOnly) return step.outcome(bank, laterPage = false)
             }
         }
         if (read.read == ReadKind.Balance) return AccountOutcome.Done(BankAccountResult.Read(emptyList(), balance?.amount, balance?.reportedAt), currency)
@@ -263,6 +277,9 @@ internal class EnableBankingFetch(
         /** The request did not give a page or balances; [outcome] says what that ends. */
         class Stop(private val stop: Stopping) : Step {
             fun outcome(bank: String, laterPage: Boolean): AccountOutcome = stop.outcome(bank, laterPage)
+
+            /** A failure the Data Provider named for this Bank Account alone, not for its Bank, the session or the Data Provider. */
+            val concernsThisBankAccountOnly: Boolean get() = stop is Stopping.Account
         }
     }
 
@@ -300,10 +317,12 @@ internal class EnableBankingFetch(
                 AccountOutcome.BankStopped(outcome(bank), BankAccountResult.NotRead(NotReadCause.StoppedWithItsBank))
         }
 
-        /** UC-001 A5, A6, A7: the whole Data Provider stops. */
+        /** UC-001 A5, A6, A7: the whole Data Provider stops; after a failure in transit this Bank Account is failed with it (S-B-55). */
         class Source(private val outcome: SourceOutcome) : Stopping {
-            override fun outcome(bank: String, laterPage: Boolean) =
-                AccountOutcome.SourceStopped(outcome, BankAccountResult.NotRead(NotReadCause.StoppedWithTheSource))
+            override fun outcome(bank: String, laterPage: Boolean) = AccountOutcome.SourceStopped(
+                outcome,
+                (outcome as? SourceOutcome.TransientFailure)?.let { failed(it.kind) } ?: BankAccountResult.NotRead(NotReadCause.StoppedWithTheSource),
+            )
         }
     }
 
@@ -335,10 +354,11 @@ internal class EnableBankingFetch(
                 val code = body?.get("error").text()
                 if (code != null || answer.status !in 200..299) log.answered(answer.status)
                 when {
+                    // A5 of UC-001 (S-B-55): the status that asks to wait decides, whatever code comes with it; the Bank's own rate limit is that Bank's.
+                    answer.status == 429 && code == BANK_RATE_LIMIT -> Step.Stop(Stopping.Bank { BankOutcome.AskedToWait(it, null) })
+                    answer.status == 429 -> Step.Stop(Stopping.Source(SourceOutcome.AskedToWait(null)))
                     code != null -> Step.Stop(stoppingFor(code))
                     answer.status in 200..299 -> body?.let { Step.Ok(it) } ?: Step.Stop(Stopping.Account(FailureKind.UnreadableAnswer))
-                    // ADR-001 §4.1.1: another answer 429 asks the whole Data Provider to wait, with no end.
-                    answer.status == 429 -> Step.Stop(Stopping.Source(SourceOutcome.AskedToWait(null)))
                     // A6 of UC-001: Enable Banking itself cannot serve now; no Back-off (BR-005).
                     answer.status >= 500 -> Step.Stop(Stopping.Source(SourceOutcome.TransientFailure(FailureKind.ServiceUnavailable)))
                     // A redirect, which is not followed, and any other answer without a code: unreadable for this Bank Account.
@@ -350,7 +370,7 @@ internal class EnableBankingFetch(
 
     private fun stoppingFor(code: String): Stopping = when (code) {
         // A5 of UC-001: the Bank's rate limit is a request to wait of that Bank, with no end: the default wait applies (BR-004).
-        "ASPSP_RATE_LIMIT_EXCEEDED" -> Stopping.Bank { BankOutcome.AskedToWait(it, null) }
+        BANK_RATE_LIMIT -> Stopping.Bank { BankOutcome.AskedToWait(it, null) }
         // A9 of UC-001: the Bank no longer accepts its Bank Consent.
         "EXPIRED_SESSION", "REVOKED_SESSION", "CLOSED_SESSION", "SESSION_DOES_NOT_EXIST" -> Stopping.Bank { BankOutcome.ConsentRefused(it) }
         // A7 of UC-001: the application's credentials are refused.
@@ -358,6 +378,8 @@ internal class EnableBankingFetch(
         // UC-001 BR-005: (A8) the Bank failed for this Bank Account; no Back-off and no retry.
         "ASPSP_ERROR", "ASPSP_TIMEOUT" -> Stopping.Account(FailureKind.ServiceUnavailable)
         "WRONG_CONTINUATION_KEY" -> Stopping.Account(FailureKind.Incomplete)
+        // A8 of UC-001 (S-B-55): the Bank does not give the fetch period asked for; nothing is asked again with another period.
+        "WRONG_TRANSACTIONS_PERIOD" -> Stopping.Account(FailureKind.PeriodNotGiven)
         // A8 of UC-001: any other code, the PSU header codes included.
         else -> Stopping.Account(FailureKind.UnreadableAnswer)
     }
@@ -522,13 +544,7 @@ internal class EnableBankingFetch(
     )
 
     private companion object {
-        /** `Psu-User-Agent`: the application's name. §5 of ADR-001 gives a plug-in nothing else of the build to name it by. */
-        const val USER_AGENT = "Slussen"
-        const val USER_AGENT_HEADER = "Psu-User-Agent"
-        const val LANGUAGE_HEADER = "Psu-Accept-Language"
-
-        /** The language tag of a device that gives no language (`Locale.ROOT`): no language is sent, so no header of presence. */
-        const val UNDETERMINED_LANGUAGE = "und"
+        const val BANK_RATE_LIMIT = "ASPSP_RATE_LIMIT_EXCEEDED"
 
         /** ADR-001 §4.1.1: interim booked, else closing booked. */
         val BOOKED_BALANCE_TYPES = listOf("ITBD", "CLBD")

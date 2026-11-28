@@ -98,6 +98,8 @@ internal class BankSessionValue(
     val psuHeaders: List<String>,
     val uids: Map<String, String>,
     val balanceCurrencies: Map<String, String> = emptyMap(),
+    /** True when a Bank Account the Bank Consent covers could not be kept with its `uid` within [MAX_LENGTH] (S-B-55). */
+    val notAllKept: Boolean = false,
 ) {
     fun toSession(): ConsentSession = ConsentSession(encoded())
 
@@ -107,6 +109,7 @@ internal class BankSessionValue(
         put(PSU_HEADERS, JsonArray(psuHeaders.map(::JsonPrimitive)))
         put(UIDS, JsonObject(uids.mapValues { JsonPrimitive(it.value) }))
         put(BALANCE_CURRENCIES, JsonObject(balanceCurrencies.mapValues { JsonPrimitive(it.value) }))
+        if (notAllKept) put(NOT_ALL_KEPT, true)
     }.toString()
 
     override fun toString(): String = "BankSessionValue(****)"
@@ -123,23 +126,28 @@ internal class BankSessionValue(
         private const val PSU_HEADERS = "required_psu_headers"
         private const val UIDS = "uids"
         private const val BALANCE_CURRENCIES = "balance_currencies"
+        private const val NOT_ALL_KEPT = "not_all_kept"
 
         /**
-         * The Bank Session with as many of [readable], in their order, as fit within [MAX_LENGTH]; a Bank Account whose
-         * `uid` does not fit is delivered but cannot be read, as one without `uid` (ADR-001 §4.1.1). Null when not even
-         * the session itself fits.
+         * The Bank Session with as many of [readable], in their order, as fit within [MAX_LENGTH] (S-B-55): each with its
+         * `uid` and its balance currency, else with its `uid` only (read, with no Account Balance); a Bank Account whose
+         * `uid` does not fit is delivered but cannot be read, and the session then says that not all were kept. Null when
+         * not even the session itself fits.
          */
         fun fitting(sessionId: String, bankReference: String, psuHeaders: List<String>, readable: List<Readable>): BankSessionValue? {
-            var kept = BankSessionValue(sessionId, bankReference, psuHeaders, emptyMap())
+            // The mark is counted in from the start, so that setting it never makes the session too long.
+            var kept = BankSessionValue(sessionId, bankReference, psuHeaders, emptyMap(), notAllKept = true)
             if (kept.encoded().length > MAX_LENGTH) return null
+            var dropped = false
             for (account in readable) {
-                val more = BankSessionValue(
-                    sessionId, bankReference, psuHeaders, kept.uids + (account.reference to account.uid),
-                    account.balanceCurrency?.let { kept.balanceCurrencies + (account.reference to it) } ?: kept.balanceCurrencies,
-                )
-                if (more.encoded().length <= MAX_LENGTH) kept = more
+                val uids = kept.uids + (account.reference to account.uid)
+                val withCurrency = account.balanceCurrency?.let {
+                    BankSessionValue(sessionId, bankReference, psuHeaders, uids, kept.balanceCurrencies + (account.reference to it), notAllKept = true)
+                }
+                val withoutCurrency = BankSessionValue(sessionId, bankReference, psuHeaders, uids, kept.balanceCurrencies, notAllKept = true)
+                kept = listOfNotNull(withCurrency, withoutCurrency).firstOrNull { it.encoded().length <= MAX_LENGTH } ?: kept.also { dropped = true }
             }
-            return kept
+            return BankSessionValue(sessionId, bankReference, psuHeaders, kept.uids, kept.balanceCurrencies, notAllKept = dropped)
         }
 
         /**
@@ -156,7 +164,8 @@ internal class BankSessionValue(
             val currencies = kept[BALANCE_CURRENCIES]?.let { element ->
                 element.asObject()?.mapValues { (_, currency) -> currency.text() ?: return null } ?: return null
             }.orEmpty()
-            return BankSessionValue(id, bank, headers, uids, currencies)
+            val notAllKept = (kept[NOT_ALL_KEPT] as? JsonPrimitive)?.takeIf { !it.isString }?.content == "true"
+            return BankSessionValue(id, bank, headers, uids, currencies, notAllKept)
         }
     }
 }
@@ -164,11 +173,24 @@ internal class BankSessionValue(
 /** The headers of the Operator's presence Slussen can give truly (ADR-001 §4.1.1, S-B-46), in lower case. */
 internal val PRESENCE_HEADERS = setOf("psu-user-agent", "psu-accept-language")
 
+/** The application's name, as `Psu-User-Agent` gives it (ADR-001 §4.1.1, S-B-55). */
+internal const val USER_AGENT = "Slussen"
+
+/** The language tag of a device that gives no language (`Locale.ROOT`). */
+private const val UNDETERMINED_LANGUAGE = "und"
+
 /**
- * UC-001 BR-012 (S-B-46): a Bank's requests can show the Operator's presence only when every PSU header it requires is
- * one Slussen can truly send; a Bank requires either all of its headers or none.
+ * UC-001 BR-012 (S-B-46, S-B-55): the headers of the Operator's presence a request to a Bank that requires
+ * [requiredHeaders] carries, with the device's [language], or null when it can carry none: when the Bank requires a
+ * header Slussen cannot truly send, or the device gives no language. A Bank requires all of its headers or none. What
+ * `showsPresence` says and what a request sends both come from this one rule.
  */
-internal fun showsPresence(requiredHeaders: List<String>): Boolean = requiredHeaders.all { it.lowercase() in PRESENCE_HEADERS }
+internal fun presenceHeaders(requiredHeaders: List<String>, language: String): Map<String, String>? {
+    if (!requiredHeaders.all { it.lowercase() in PRESENCE_HEADERS }) return null
+    val sent = language.trim().takeIf { it.isNotEmpty() && it != UNDETERMINED_LANGUAGE } ?: return null
+    // ADR-001 §4.1.1: never Psu-Ip-Address (Slussen asks no third party for the device's address) and never Psu-Geo-Location (NFR-022).
+    return mapOf("Psu-User-Agent" to USER_AGENT, "Psu-Accept-Language" to sent)
+}
 
 /**
  * The parameters Enable Banking adds to the query of the return address (ADR-001 §4.1.1: `code` and `state`, or `error`

@@ -77,4 +77,13 @@ public enum class FailureKind {
 
     /** A paged read did not finish (UC-001 A8). */
     Incomplete,
+
+    /** The Bank does not give the fetch period asked for (UC-001 A8, S-B-55); nothing is asked again with another period. */
+    PeriodNotGiven,
+
+    /**
+     * The Bank Account cannot be read through its Bank Session: its Bank has more Bank Accounts than Slussen keeps for one
+     * Bank Consent (UC-001 A8, S-B-55).
+     */
+    NotHeldByBankSession,
 }

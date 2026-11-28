@@ -195,7 +195,15 @@ object Texts {
     /** A4, A10, A1 for one Bank of UC-001: nothing was sent, each Bank Account left out with its reason and action. */
     private fun nothingToRead(report: FetchReport.NothingToRead, formats: Formats, tap: Int): FetchResultUi {
         val reasons = consentDetails(report.missingConsent, report.notRecognised, emptyList(), report.banksWaiting, formats)
-        return if (reasons.isEmpty()) {
+        return if (reasons.isEmpty() && report.bankConsentGranted) {
+            // S-B-55: the Bank Consent is there; what is missing is the Bank Accounts added from it (UC-013).
+            FetchResultUi(
+                "Not fetched: a Bank Consent is granted, but none of its Bank Accounts is added yet",
+                "Add them under Offered Bank Accounts on this page · nothing was sent",
+                FetchResultKind.NotFetched,
+                tap,
+            )
+        } else if (reasons.isEmpty()) {
             FetchResultUi(
                 "Not fetched: no Bank Account to read through ${report.dataProviderName} yet",
                 "Grant a Bank Consent on its page, then add its Bank Accounts · nothing was sent",
@@ -222,13 +230,12 @@ object Texts {
         notRecognised.takeIf { it.isNotEmpty() }?.let { "unrecognised Bank Account: ${it.joinToString(", ")}, not read · identify it" },
     ) + banksWaiting.map { "waiting for the provider: ${it.bankName} until ${formats.dateTime(it.until)}, stored data unchanged" }
 
-    /** A8 of UC-001: a failure of one Bank Account with its reason; through a Bank Consent, an unreadable one may be one its Bank Session cannot read (E3 review). */
+    /** A8 of UC-001: a failure of one Bank Account with its reason, and a remedy only where one can work (S-B-55). */
     private fun failedDetail(report: FetchReport.Fetched): String? {
         if (report.failed.isEmpty()) return null
         if (report.failedWith.isEmpty()) return "failed: ${report.failed.joinToString(", ")}, stored data unchanged"
         return "failed: " + report.failed.joinToString(", ") { name ->
             when (val kind = report.failedWith[name]) {
-                FailureKind.UnreadableAnswer -> "$name (its answer could not be read, or its Bank Consent cannot read it: renew the Bank Consent if it stays)"
                 null -> name
                 else -> "$name (${failure(kind)})"
             }
@@ -281,6 +288,11 @@ object Texts {
         FailureKind.ServiceUnavailable -> "the service is unavailable"
         FailureKind.UnreadableAnswer -> "its answer could not be read"
         FailureKind.Incomplete -> "the answer was incomplete"
+        // A8 of UC-001 (S-B-55): the Bank's own limit of the history it gives, with the two remedies that can work.
+        FailureKind.PeriodNotGiven ->
+            "the Bank does not give the fetch period asked for · set a shorter fetch period in Settings, or fetch soon after renewing the Bank Consent"
+        // A8 of UC-001 (S-B-55): no remedy is offered, since renewing gives the same again.
+        FailureKind.NotHeldByBankSession -> "this Bank has more Bank Accounts than Slussen keeps for one Bank Consent, so this one cannot be read"
         null -> "it did not answer"
     }
 

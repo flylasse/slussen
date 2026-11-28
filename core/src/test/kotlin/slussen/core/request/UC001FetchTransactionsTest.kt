@@ -1087,7 +1087,7 @@ class UC001FetchTransactionsTest {
 
         val reports = (slice.fetch.fetch(slice.openBankingKey) as FetchStart.Ran).reports
 
-        assertEquals(listOf(FetchReport.NothingToRead(slice.openBankingKey, "Aurora Open Banking")), reports)
+        assertEquals(listOf(FetchReport.NothingToRead(slice.openBankingKey, "Aurora Open Banking", bankConsentGranted = true)), reports)
         assertEquals(0, slice.openBanking.fetches)
         assertEquals(sentBefore, slice.bankConsent.sent.size)
         assertTrue(slice.importStatusStore.fetches.isEmpty())

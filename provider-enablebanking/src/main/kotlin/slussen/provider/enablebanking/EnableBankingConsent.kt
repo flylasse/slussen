@@ -56,6 +56,8 @@ internal class EnableBankingConsent(
     private val http: OkHttpClient,
     private val clock: Clock,
     private val log: ConsentLog,
+    /** The device's language, so that [showsPresence] says what a Fetch's request sends (S-B-55). */
+    private val language: () -> String = { java.util.Locale.getDefault().toLanguageTag() },
 ) : BankConsentCapability {
 
     // ---- The Banks (ADR-001 §4.1.1 "Banks and their reference") -----------------------------------------------------
@@ -362,7 +364,7 @@ internal class EnableBankingConsent(
 
     // UC-001 BR-012: A Bank's requests can show the Operator's presence only when it requires no PSU header Slussen cannot truly send (S-B-46).
     override fun showsPresence(session: ConsentSession): Boolean = try {
-        BankSessionValue.read(session)?.psuHeaders?.let(::showsPresence) ?: false
+        BankSessionValue.read(session)?.psuHeaders?.let { presenceHeaders(it, language()) != null } ?: false
     } catch (e: Exception) {
         false
     }

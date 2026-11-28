@@ -126,6 +126,8 @@ sealed interface FetchReport {
         val missingConsent: List<String> = emptyList(),
         val notRecognised: List<String> = emptyList(),
         val banksWaiting: List<BankWaiting> = emptyList(),
+        /** S-B-55: a Bank Consent of this Data Provider is valid, but none of the Bank Accounts it covers is added yet. */
+        val bankConsentGranted: Boolean = false,
     ) : FetchReport
 
     /**

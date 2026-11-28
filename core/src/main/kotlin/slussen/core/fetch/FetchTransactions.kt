@@ -318,6 +318,7 @@ class FetchTransactions(
             missingConsent = consented.missingConsent.map { it.name },
             notRecognised = consented.notRecognised.map { it.name },
             banksWaiting = consented.waiting,
+            bankConsentGranted = !anySelected && consented.anyValidConsent,
         )
     }
 
@@ -364,23 +365,16 @@ class FetchTransactions(
         startedBy: StartedBy,
         consented: ConsentedSelection?,
     ): FetchReport {
+        if (consented != null) return answeredThroughBankSessions(provider, response, toRead, startedAt, cooldown, backOffs, startedBy, consented)
         val key = provider.key
         val stored = provider.stored
         val name = stored.name
-        val outcome = response.sourceOutcome
-        // ADR-001 §4.1: a refusal of the gate for the whole Data Provider ends what was still to read; what was read before it is kept.
-        val stoppedAfterReading = outcome is SourceOutcome.StoppedByGate &&
-            (response.bankAccounts.any { it.result is BankAccountResult.Read || it.result is BankAccountResult.Failed } || response.bankOutcomes.isNotEmpty())
-        // A5 for one Bank, A9: what each Bank answered for itself holds for that Bank only (BR-010), whatever stopped the rest.
-        val banks = consented?.let { bankOutcomes(stored, response, it, startedAt) } ?: BankAnswers()
-        return when {
-            outcome == SourceOutcome.Completed || outcome is SourceOutcome.AskedToWait || outcome == SourceOutcome.RequestLimitWarning || stoppedAfterReading -> {
+        // Per-Bank outcomes (A5 for one Bank, A9) concern only Data Providers that need a Bank Consent: answeredThroughBankSessions.
+        return when (val outcome = response.sourceOutcome) {
+            SourceOutcome.Completed, is SourceOutcome.AskedToWait, SourceOutcome.RequestLimitWarning -> {
                 val waitingUntil = (outcome as? SourceOutcome.AskedToWait)?.let { startWait(stored, it.until, startedAt) }
                 val warning = if (outcome == SourceOutcome.RequestLimitWarning) startWarning(stored, backOffs, startedAt) else null
-                // A5: nothing was delivered while the whole Data Provider asks to wait; through Bank Sessions, nothing was read.
-                val nothingRead = response.bankAccounts.isEmpty() ||
-                    (consented != null && response.bankAccounts.all { it.result is BankAccountResult.NotRead } && banks.consentRefused.isEmpty())
-                if (waitingUntil != null && nothingRead) {
+                if (waitingUntil != null && response.bankAccounts.isEmpty()) {
                     record(stored, startedAt, FetchOutcome.WaitingForBackOff, startedBy)
                     return FetchReport.WaitingForProvider(key, name, waitingUntil)
                 }
@@ -393,31 +387,11 @@ class FetchTransactions(
                 // UC-001 BR-006: A read within the Fetch Cooldown is recorded as served from it, so it neither starts nor extends it.
                 val fetchId = record(stored, startedAt, if (cooldown == null) FetchOutcome.Fetched else FetchOutcome.ServedFromFetchCooldown, startedBy)
                 // A2 step 3: a Fetch Served From Fetch Cooldown carries the outcome of each Bank Account it read.
-                val refusedBanks = banks.consentRefused.toSet()
-                val fetched = storeDeliveries(
-                    fetchId, stored, usable, shared, toRead, startedAt, answeredAt, waiting = waitingUntil != null,
-                    // A9 step 2: the Bank Accounts of a Bank that refused its Bank Consent, not read, record Not Consented.
-                    notConsented = { bankAccount -> consented?.bankOf(bankAccount) in refusedBanks },
-                ).let { outcomes ->
+                val fetched = storeDeliveries(fetchId, stored, usable, shared, toRead, startedAt, answeredAt, waiting = waitingUntil != null).let { outcomes ->
                     kept.copy(
                         notDelivered = outcomes.notDelivered,
                         signInNeeded = outcomes.signInNeeded,
                         balancesInOtherCurrency = outcomes.balancesInOtherCurrency,
-                    )
-                }.let { fetched ->
-                    if (consented == null) return@let fetched
-                    // A4, A10: the Bank Accounts left out before anything was sent, each with its outcome; nothing of them changes.
-                    consented.leftOutResults(fetchId).forEach { fetches.storeBankAccountDelivery(it) }
-                    val failedKinds = usable.mapNotNull { one -> (one.result as? BankAccountResult.Failed)?.let { one.providerReference to it.kind } }.toMap()
-                    fetched.copy(
-                        failedWith = toRead.mapNotNull { s -> failedKinds[s.read.providerReference]?.let { s.bankAccount.name to it } }.toMap(),
-                        missingConsent = consented.missingConsent.map { it.name },
-                        notRecognised = consented.notRecognised.map { it.name },
-                        consentRefused = banks.consentRefused,
-                        banksWaiting = consented.waiting + banks.waiting,
-                        stoppedByGate = (outcome as? SourceOutcome.StoppedByGate)?.reason,
-                        requestLimitFreesUpAt = (outcome as? SourceOutcome.StoppedByGate)?.takeIf { it.reason == RefusalReason.RequestLimitReached }
-                            ?.let { requestLimitFreesUpAt(providerRequests, stored, clock.instant()) },
                     )
                 }
                 if (cooldown == null) {
@@ -427,17 +401,102 @@ class FetchTransactions(
                 }
             }
             // UC-001 BR-005: A timeout, an outage or an unreadable answer starts no Back-off; the Operator can fetch again at any time, and a Scheduled Fetch that meets it is not repeated (A14).
-            outcome is SourceOutcome.TransientFailure -> {
+            is SourceOutcome.TransientFailure -> {
                 record(stored, startedAt, FetchOutcome.Failed, startedBy)
                 FetchReport.Failed(key, name, outcome.kind, startedAt)
             }
             // UC-014 BR-005: A Data Provider that refuses Slussen's credentials is not contacted until new ones are accepted.
-            outcome == SourceOutcome.CredentialsRefused -> {
+            SourceOutcome.CredentialsRefused -> {
                 credentials.markRefused(key)
                 record(stored, startedAt, FetchOutcome.CredentialsRefused, startedBy)
                 FetchReport.CredentialsRefused(key, name)
             }
-            else -> stoppedByGate(stored, key, (outcome as SourceOutcome.StoppedByGate).reason, startedAt, startedBy)
+            is SourceOutcome.StoppedByGate -> stoppedByGate(stored, key, outcome.reason, startedAt, startedBy)
+        }
+    }
+
+    /**
+     * Steps 6-11 through a Data Provider that needs a Bank Consent (S-B-47, S-B-55): what each Bank answered for itself
+     * holds for that Bank only (A5, A9), counted from the time of the answer; what the Fetch read completely is stored
+     * whatever stopped the rest: a request to wait (A5), a refusal of the credentials (A7), a failure in transit (A6),
+     * whose Bank Accounts not read are failed with its reason, or the gate (BR-007). The Fetch is recorded as Fetched
+     * when it read a Bank Account or reported a failure of one, as Failed after a failure in transit that left nothing
+     * read, and as Credentials Refused after that refusal.
+     */
+    private suspend fun answeredThroughBankSessions(
+        provider: RegisteredDataProvider,
+        response: FetchResponse,
+        toRead: List<Selected>,
+        startedAt: Instant,
+        cooldown: Cooldown?,
+        backOffs: List<StoredBackOff>,
+        startedBy: StartedBy,
+        consented: ConsentedSelection,
+    ): FetchReport {
+        val key = provider.key
+        val stored = provider.stored
+        val name = stored.name
+        val outcome = response.sourceOutcome
+        // UC-001 BR-004: a request to wait, of a Bank or of the whole Data Provider, counts from the time of the answer.
+        val answeredAt = clock.instant()
+        val banks = bankOutcomes(stored, response, consented, answeredAt)
+        val waitingUntil = (outcome as? SourceOutcome.AskedToWait)?.let { startWait(stored, it.until, answeredAt) }
+        val warning = if (outcome == SourceOutcome.RequestLimitWarning) startWarning(stored, backOffs, answeredAt) else null
+        // UC-014 BR-005: A Data Provider that refuses Slussen's credentials is not contacted until new ones are accepted.
+        if (outcome == SourceOutcome.CredentialsRefused) credentials.markRefused(key)
+        val anyRead = response.bankAccounts.any { it.result is BankAccountResult.Read }
+        val anyResult = response.bankAccounts.any { it.result !is BankAccountResult.NotRead } || banks.consentRefused.isNotEmpty()
+        when {
+            outcome is SourceOutcome.StoppedByGate && !anyResult && response.bankOutcomes.isEmpty() ->
+                return stoppedByGate(stored, key, outcome.reason, startedAt, startedBy)
+            // A5: nothing was read while the whole Data Provider asks to wait.
+            waitingUntil != null && !anyResult -> {
+                record(stored, startedAt, FetchOutcome.WaitingForBackOff, startedBy)
+                return FetchReport.WaitingForProvider(key, name, waitingUntil)
+            }
+        }
+        val failedInTransit = outcome as? SourceOutcome.TransientFailure
+        val recorded = when {
+            outcome == SourceOutcome.CredentialsRefused -> FetchOutcome.CredentialsRefused
+            // A6: a failure in transit before anything was read; the Bank Accounts it reached are failed with it.
+            failedInTransit != null && !anyRead -> FetchOutcome.Failed
+            // UC-001 BR-006: A read within the Fetch Cooldown is recorded as served from it, so it neither starts nor extends it.
+            cooldown == null -> FetchOutcome.Fetched
+            else -> FetchOutcome.ServedFromFetchCooldown
+        }
+        // UC-009 BR-004: a reference that two delivered Bank Accounts share identifies neither.
+        val shared = response.bankAccounts.groupingBy { it.providerReference }.eachCount().filterValues { it > 1 }.keys
+        val usable = response.bankAccounts.filter { it.providerReference !in shared }
+        val kept = keep(provider, usable, toRead, startedAt, waitingUntil, warning).copy(sharedReference = response.bankAccounts.size - usable.size)
+        val fetchId = record(stored, startedAt, recorded, startedBy)
+        val refusedBanks = banks.consentRefused.toSet()
+        val outcomes = storeDeliveries(
+            fetchId, stored, usable, shared, toRead, startedAt, answeredAt, waiting = waitingUntil != null,
+            // A9 step 2: the Bank Accounts of a Bank that refused its Bank Consent, not read, record Not Consented.
+            notConsented = { bankAccount -> consented.bankOf(bankAccount) in refusedBanks },
+        )
+        // A4, A10: the Bank Accounts left out before anything was sent, each with its outcome; nothing of them changes.
+        consented.leftOutResults(fetchId).forEach { fetches.storeBankAccountDelivery(it) }
+        val failedKinds = usable.mapNotNull { one -> (one.result as? BankAccountResult.Failed)?.let { one.providerReference to it.kind } }.toMap()
+        val fetched = kept.copy(
+            notDelivered = outcomes.notDelivered,
+            signInNeeded = outcomes.signInNeeded,
+            balancesInOtherCurrency = outcomes.balancesInOtherCurrency,
+            failedWith = toRead.mapNotNull { s -> failedKinds[s.read.providerReference]?.let { s.bankAccount.name to it } }.toMap(),
+            missingConsent = consented.missingConsent.map { it.name },
+            notRecognised = consented.notRecognised.map { it.name },
+            consentRefused = banks.consentRefused,
+            banksWaiting = consented.waiting + banks.waiting,
+            stoppedByGate = (outcome as? SourceOutcome.StoppedByGate)?.reason,
+            requestLimitFreesUpAt = (outcome as? SourceOutcome.StoppedByGate)?.takeIf { it.reason == RefusalReason.RequestLimitReached }
+                ?.let { requestLimitFreesUpAt(providerRequests, stored, clock.instant()) },
+        )
+        return when (recorded) {
+            FetchOutcome.CredentialsRefused -> FetchReport.CredentialsRefused(key, name)
+            FetchOutcome.Failed -> FetchReport.Failed(key, name, failedInTransit!!.kind, startedAt)
+            FetchOutcome.ServedFromFetchCooldown ->
+                FetchReport.ServedFromFetchCooldown(key, name, cooldown!!.lastFetchAt, cooldown.endsAt, read = fetched, requestLimitFreesUpAt = null)
+            else -> fetched
         }
     }
 

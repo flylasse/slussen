@@ -61,6 +61,8 @@ internal class ConsentedSelection(
     /** UC-001 A1, BR-004: its Bank asked Slussen to wait. */
     val waiting: List<BankWaiting>,
     val bankIds: Map<String, Long>,
+    /** S-B-55: a Bank Consent of the Data Provider is valid now, with its Bank Session. */
+    val anyValidConsent: Boolean = false,
 ) {
     fun sessions(toRead: List<BankAccountToRead>): Map<String, ConsentSession> {
         val references = toRead.map { it.providerReference }.toSet()
@@ -139,7 +141,8 @@ internal class ConsentedSelection(
                     else -> readable += ConsentedRead(bankAccount, read, bankName, session.session)
                 }
             }
-            return ConsentedSelection(readable, missing, notRecognised, waiting.values.toList(), banks.entries.associate { it.value to it.key })
+            val anyValid = stored.any { it.expiredFrom.isAfter(now) && sessions[it.id] != null }
+            return ConsentedSelection(readable, missing, notRecognised, waiting.values.toList(), banks.entries.associate { it.value to it.key }, anyValid)
         }
     }
 }

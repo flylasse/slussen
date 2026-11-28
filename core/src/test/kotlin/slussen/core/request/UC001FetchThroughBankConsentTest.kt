@@ -397,6 +397,185 @@ class UC001FetchThroughBankConsentTest {
         )
     }
 
+    // ---- A failure in transit (S-B-55) ----------------------------------------------------------------------------------
+
+    private fun delivered(reference: String, bank: String, result: BankAccountResult) = DeliveredBankAccount(reference, bank, null, null, EUR, null, result)
+
+    /** Aurora's household read completely; Vesta's two Bank Accounts got no answer. */
+    private suspend fun threeBankAccounts(): Triple<Long, Long, Long> {
+        grant(AURORA, "aurora-household")
+        grant(VESTA, "vesta-savings", "vesta-current")
+        return Triple(
+            add("aurora-household", "Household Current", AURORA, "Current"),
+            add("vesta-savings", "Vesta Savings", VESTA, "Savings"),
+            add("vesta-current", "Vesta Current", VESTA, "Card"),
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A6: Data Provider Does Not Answer Usably", businessRules = ["BR-005", "BR-006", "BR-010"])
+    @DisplayName("A6 (S-B-55): what was read completely before a request got no answer is stored; the Bank Accounts not read are failed with that reason, told per Bank Account; the Fetch Cooldown starts because one was read")
+    fun readBeforeAFailureInTransitIsStored() = runTest {
+        val (household, savings, current) = threeBankAccounts()
+        provider.fetchAnswer = {
+            FetchResponse(
+                SourceOutcome.TransientFailure(FailureKind.Timeout),
+                emptyList(),
+                listOf(
+                    delivered("aurora-household", AURORA, BankAccountResult.Read(listOf(booked("2026-10-10", -5)), null)),
+                    delivered("vesta-savings", VESTA, BankAccountResult.Failed(FailureKind.Timeout)),
+                    delivered("vesta-current", VESTA, BankAccountResult.Failed(FailureKind.Timeout)),
+                ),
+            )
+        }
+        val requestsBefore = slice.providerRequests.requests.size
+
+        val report = fetch() as FetchReport.Fetched
+
+        assertEquals(1, slice.importStatusStore.bankTransactionsOf(household).size)
+        assertEquals(mapOf("Vesta Savings" to FailureKind.Timeout, "Vesta Current" to FailureKind.Timeout), report.failedWith)
+        assertEquals(FetchOutcome.Fetched, slice.importStatusStore.fetchesOf(slice.openBankingId).first().outcome)
+        assertEquals(
+            setOf(
+                StoredFetchResult(household, FetchResultOutcome.Fetched, 1),
+                StoredFetchResult(savings, FetchResultOutcome.Failed, 0),
+                StoredFetchResult(current, FetchResultOutcome.Failed, 0),
+            ),
+            lastResults().toSet(),
+        )
+        assertEquals(requestsBefore + 1, slice.providerRequests.requests.size)
+        slice.clock.advance(Duration.ofMinutes(5))
+        assertTrue(fetch() is FetchReport.ServedFromFetchCooldown, "BR-006: a Fetch that read a Bank Account starts the Fetch Cooldown")
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A6: Data Provider Does Not Answer Usably", businessRules = ["BR-005", "BR-006"])
+    @DisplayName("A6 (S-B-55): when nothing was read before the failure in transit, the Fetch is Failed, each Bank Account failed with its reason, and no Fetch Cooldown starts")
+    fun failureInTransitBeforeAnyRead() = runTest {
+        val (household, savings, current) = threeBankAccounts()
+        provider.fetchAnswer = { request ->
+            FetchResponse(
+                SourceOutcome.TransientFailure(FailureKind.ConnectionLost),
+                emptyList(),
+                selectedOf(request).map { delivered(it, if (it.startsWith("aurora")) AURORA else VESTA, BankAccountResult.Failed(FailureKind.ConnectionLost)) },
+            )
+        }
+
+        val report = fetch()
+
+        assertEquals(FetchReport.Failed(key, "Aurora Open Banking", FailureKind.ConnectionLost, now), report)
+        assertEquals(FetchOutcome.Failed, slice.importStatusStore.fetchesOf(slice.openBankingId).first().outcome)
+        assertEquals(setOf(household, savings, current).map { StoredFetchResult(it, FetchResultOutcome.Failed, 0) }.toSet(), lastResults().toSet())
+        answering()
+        slice.clock.advance(Duration.ofMinutes(5))
+        assertTrue(fetch() is FetchReport.Fetched)
+        assertEquals(2, provider.fetches)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account", businessRules = ["BR-010"])
+    @DisplayName("A8 (S-B-55): a Bank whose Bank Account fails with a code of its own leaves the next Bank's read stored")
+    fun namedFailureLeavesTheNextBank() = runTest {
+        val (household, savings, current) = threeBankAccounts()
+        provider.fetchAnswer = {
+            FetchResponse(
+                SourceOutcome.Completed,
+                emptyList(),
+                listOf(
+                    delivered("aurora-household", AURORA, BankAccountResult.Failed(FailureKind.PeriodNotGiven)),
+                    delivered("vesta-savings", VESTA, BankAccountResult.Read(listOf(booked("2026-10-10", 7)), null)),
+                    delivered("vesta-current", VESTA, BankAccountResult.Read(emptyList(), null)),
+                ),
+            )
+        }
+
+        val report = fetch() as FetchReport.Fetched
+
+        assertEquals(mapOf("Household Current" to FailureKind.PeriodNotGiven), report.failedWith)
+        assertEquals(
+            setOf(
+                StoredFetchResult(household, FetchResultOutcome.Failed, 0),
+                StoredFetchResult(savings, FetchResultOutcome.Fetched, 1),
+                StoredFetchResult(current, FetchResultOutcome.Fetched, 0),
+            ),
+            lastResults().toSet(),
+        )
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A7: Data Provider Refuses Slussen's Credentials", businessRules = ["BR-010"])
+    @DisplayName("A7 (S-B-55): what was read before the Data Provider refused the credentials is stored; the Fetch is recorded Credentials Refused and the credentials are marked refused")
+    fun readBeforeCredentialsRefusedIsStored() = runTest {
+        val (household, savings, _) = threeBankAccounts()
+        provider.fetchAnswer = {
+            FetchResponse(
+                SourceOutcome.CredentialsRefused,
+                emptyList(),
+                listOf(
+                    delivered("aurora-household", AURORA, BankAccountResult.Read(listOf(booked("2026-10-10", -5)), null)),
+                    delivered("vesta-savings", VESTA, BankAccountResult.NotRead(NotReadCause.StoppedWithTheSource)),
+                    delivered("vesta-current", VESTA, BankAccountResult.NotRead(NotReadCause.StoppedWithTheSource)),
+                ),
+            )
+        }
+
+        assertEquals(FetchReport.CredentialsRefused(key, "Aurora Open Banking"), fetch())
+
+        assertEquals(1, slice.importStatusStore.bankTransactionsOf(household).size)
+        assertTrue(slice.importStatusStore.bankTransactionsOf(savings).isEmpty())
+        assertEquals(FetchOutcome.CredentialsRefused, slice.importStatusStore.fetchesOf(slice.openBankingId).first().outcome)
+        assertEquals(slussen.core.credential.CredentialStatus.Refused, slice.credentials.status(key))
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A5: Data Provider Asks Slussen to Wait", businessRules = ["BR-004"])
+    @DisplayName("A5 (S-B-55): a Bank's Back-off counts from the time of the Bank's answer, not from the start of the Fetch")
+    fun bankBackOffCountsFromTheAnswer() = runTest {
+        grant(AURORA, "aurora-household")
+        add("aurora-household", "Household Current", AURORA, "Current")
+        val started = now
+        provider.beforeAnswer = { slice.clock.advance(Duration.ofSeconds(40)) }
+        provider.fetchAnswer = {
+            FetchResponse(SourceOutcome.Completed, listOf(BankOutcome.AskedToWait(AURORA, null)), listOf(delivered("aurora-household", AURORA, BankAccountResult.NotRead(NotReadCause.StoppedWithItsBank))))
+        }
+
+        fetch()
+
+        val wait = slice.importStatusStore.backOffsOf(slice.openBankingId).single()
+        assertEquals(started.plusSeconds(40), wait.startsAt)
+        assertEquals(started.plusSeconds(40).plus(Duration.ofHours(slice.settings.current().defaultWaitHours.toLong())), wait.endsAt)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A9: Bank Consent Refused Before Its Expiry", businessRules = ["BR-010"])
+    @DisplayName("A5, A9: an outcome the Data Provider gives for a Bank the Fetch handed no Bank Session for changes nothing of that Bank")
+    fun outcomeOfABankNotHandedIsIgnored() = runTest {
+        grant(AURORA, "aurora-household")
+        grant(VESTA, "vesta-savings")
+        add("aurora-household", "Household Current", AURORA, "Current")
+        provider.fetchAnswer = {
+            FetchResponse(
+                SourceOutcome.Completed,
+                listOf(BankOutcome.AskedToWait(VESTA, null), BankOutcome.ConsentRefused(VESTA)),
+                listOf(delivered("aurora-household", AURORA, BankAccountResult.Read(emptyList(), null))),
+            )
+        }
+
+        fetch()
+
+        assertTrue(slice.importStatusStore.backOffsOf(slice.openBankingId).isEmpty())
+        assertTrue(slice.consentStore.bankConsents().none { it.refusedAt != null })
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
+    @DisplayName("S-B-55: with a Bank Consent granted and none of its Bank Accounts added, nothing is sent and the report says that a Bank Consent is granted")
+    fun grantedButNoneAdded() = runTest {
+        grant(AURORA, "aurora-household")
+        assertEquals(FetchReport.NothingToRead(key, "Aurora Open Banking", bankConsentGranted = true), fetch())
+        assertEquals(0, provider.fetches)
+    }
+
     // ---- The Offered Bank Accounts and the Fetch Cooldown ----------------------------------------------------------------
 
     @Test

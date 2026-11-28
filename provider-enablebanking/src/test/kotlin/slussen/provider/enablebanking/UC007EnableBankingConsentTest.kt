@@ -472,6 +472,21 @@ class UC007EnableBankingConsentTest {
     }
 
     @Test
+    @UseCase(id = "UC-007", scenario = "Main Success Scenario", businessRules = ["BR-009"])
+    @DisplayName("Step 8 (S-B-55): a Bank Account whose balance currency does not fit the Bank Session keeps its identifier without it; when an identifier does not fit, the session says that not all were kept")
+    fun sessionKeepsIdentifiersBeforeCurrencies() {
+        val many = (1..60).joinToString(",") { """{"uid":"${"u".repeat(36)}$it","identification_hash":"${"h".repeat(60)}$it","cash_account_type":"CACC","currency":"EUR"}""" }
+        server.answer("POST", "/sessions", """{"session_id":"$SESSION_ID","accounts":[$many],"aspsp":{"name":"Aurora Sparbank","country":"FI"},"psu_type":"personal","access":{"valid_until":"${ConsentServer.VALID_UNTIL}"}}""")
+        val kept = BankSessionValue.read((call { consent.completeConsent(granting, handle, context()) } as ConsentCompletion.Completed).session)!!
+        assertTrue(kept.uids.size > kept.balanceCurrencies.size, "${kept.uids.size} ${kept.balanceCurrencies.size}")
+        assertTrue(kept.uids.keys.containsAll(kept.balanceCurrencies.keys))
+        assertTrue(kept.notAllKept)
+
+        server.answer("POST", "/sessions", ConsentServer.session)
+        assertFalse(BankSessionValue.read((call { consent.completeConsent(granting, handle, context()) } as ConsentCompletion.Completed).session)!!.notAllKept)
+    }
+
+    @Test
     @UseCase(id = "UC-007", scenario = "A4: Data Provider Does Not Confirm the Consent")
     @DisplayName("A2, A4: each refusal of the completion is read from its error code: an expired, wrong or used code is not understood, the credentials refused, another code a refusal")
     fun completionErrors() {

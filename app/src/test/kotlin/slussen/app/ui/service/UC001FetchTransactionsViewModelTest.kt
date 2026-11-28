@@ -712,6 +712,43 @@ class UC001FetchTransactionsViewModelTest {
         assertEquals(slussen.app.ui.components.FetchResultKind.Failed, result.kind)
     }
 
+    @Test
+    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account", businessRules = ["BR-009"])
+    @DisplayName("A8 (S-B-55): a Bank that does not give the fetch period, and a Bank Account its Bank Session could not keep, are each told with a reason of its own; only the period has remedies")
+    fun failuresThroughABankConsentHaveTheirReasons() {
+        aBankAccountThroughABankConsent()
+        listOf(
+            FailureKind.PeriodNotGiven to "failed: Household Current (the Bank does not give the fetch period asked for · set a shorter fetch period in Settings, or fetch soon after renewing the Bank Consent), stored data unchanged",
+            FailureKind.NotHeldByBankSession to "failed: Household Current (this Bank has more Bank Accounts than Slussen keeps for one Bank Consent, so this one cannot be read), stored data unchanged",
+            FailureKind.UnreadableAnswer to "failed: Household Current (its answer could not be read), stored data unchanged",
+        ).forEachIndexed { at, (kind, text) ->
+            slice.clock.advance(Duration.ofDays(1))
+            slice.openBanking.fetchAnswer = { FetchResponse(SourceOutcome.Completed, emptyList(), listOf(DeliveredBankAccount("aurora-household", AURORA, null, null, ExampleData.EUR, null, BankAccountResult.Failed(kind)))) }
+            val page = page(slice.openBankingKey)
+            page.fetch()
+            assertTrue(text in page.ui().fetchResult!!.detail!!, "$at: ${page.ui().fetchResult}")
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
+    @DisplayName("S-B-55: with a Bank Consent granted and none of its Bank Accounts added, the result says to add them")
+    fun grantedButNoneAddedSaysToAddThem() {
+        aBankAccountThroughABankConsent()
+        runBlocking { slice.connectionStore.bankAccountList.clear() }
+        val page = page(slice.openBankingKey)
+        page.fetch()
+        assertEquals(
+            FetchResultUi(
+                "Not fetched: a Bank Consent is granted, but none of its Bank Accounts is added yet",
+                "Add them under Offered Bank Accounts on this page · nothing was sent",
+                FetchResultKind.NotFetched,
+                tap = 1,
+            ),
+            page.ui().fetchResult,
+        )
+    }
+
     private companion object {
         const val AURORA = "Aurora Sparbank (FI)"
     }

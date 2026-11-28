@@ -188,6 +188,9 @@ internal class JournalExportJson(private val out: Writer) {
                 slussen.pluginapi.request.FailureKind.ServiceUnavailable -> "The Budget App could not serve the read then."
                 slussen.pluginapi.request.FailureKind.UnreadableAnswer -> "The Budget App's answer could not be read."
                 slussen.pluginapi.request.FailureKind.Incomplete -> "The Budget App's answer was incomplete."
+                // Kinds of a Data Provider's read through a Bank Session; the Budget App gives neither.
+                slussen.pluginapi.request.FailureKind.PeriodNotGiven, slussen.pluginapi.request.FailureKind.NotHeldByBankSession ->
+                    "The Budget App's answer could not be read."
             }
             BudgetNotRead.NotSent -> "The read of the Budget App was not completed."
         }

@@ -54,7 +54,7 @@ class EnableBankingDataProvider internal constructor(
     override val credentials: CredentialCapability = EnableBankingCredentials(base, http, clock)
 
     /** The Bank Consent operations (UC-007; ADR-001 §4.1, §4.1.1): declared, since this part needs a Bank Consent. */
-    override val bankConsent: BankConsentCapability = EnableBankingConsent(base, http, clock, ConsentLog(log))
+    override val bankConsent: BankConsentCapability = EnableBankingConsent(base, http, clock, ConsentLog(log), language)
 
     private val reading = EnableBankingFetch(base, http, clock, language, FetchLog(log))
 

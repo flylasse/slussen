@@ -93,6 +93,7 @@ class UC001EnableBankingFetchTest {
         mapOf(HOUSEHOLD to "EUR", SAVINGS to "EUR"),
     )
     private val kuusi = BankSessionValue(SESSION_KUUSI, KUUSI, listOf("Psu-Ip-Address", "Psu-User-Agent"), mapOf(KUUSI_CURRENT to UID_KUUSI), mapOf(KUUSI_CURRENT to "EUR"))
+    private val vesta = BankSessionValue(SESSION_VESTA, VESTA, emptyList(), mapOf(VESTA_CURRENT to UID_VESTA), mapOf(VESTA_CURRENT to "SEK"))
 
     @AfterEach
     fun stopServer() = server.shutdown()
@@ -100,7 +101,7 @@ class UC001EnableBankingFetchTest {
     private fun request(
         vararg read: BankAccountToRead,
         presence: OperatorPresence = OperatorPresence.OperatorPresent,
-        sessions: Map<String, ConsentSession> = mapOf(AURORA to aurora.toSession(), KUUSI to kuusi.toSession()),
+        sessions: Map<String, ConsentSession> = mapOf(AURORA to aurora.toSession(), KUUSI to kuusi.toSession(), VESTA to vesta.toSession()),
         periodFrom: LocalDate = from,
         periodTo: LocalDate = to,
     ) = FetchRequest(BankAccountSelection.Selected(read.toList()), periodFrom, periodTo, presence, sessions)
@@ -594,19 +595,91 @@ class UC001EnableBankingFetchTest {
     }
 
     @Test
-    @UseCase(id = "UC-001", scenario = "A6: Data Provider Does Not Answer Usably", businessRules = ["BR-005"])
-    @DisplayName("A6 (ADR-001 §4.0): an unavailable Data Provider, a timeout and a lost connection are a TransientFailure of the whole Data Provider, with nothing more sent")
-    fun transientFailures() {
-        server.page(UID_HOUSEHOLD, null, MockResponse().setResponseCode(503).setBody("invented outage page"))
-        assertEquals(SourceOutcome.TransientFailure(FailureKind.ServiceUnavailable), fetch(request(transactionsOnly(HOUSEHOLD), transactionsOnly(SAVINGS))).sourceOutcome)
-        assertTrue(server.requestsOf(UID_SAVINGS).isEmpty())
-        server.page(UID_HOUSEHOLD, null, MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
-        val started = System.nanoTime()
-        assertEquals(SourceOutcome.TransientFailure(FailureKind.Timeout), fetch(request(transactionsOnly(HOUSEHOLD)), timeout = Duration.ofMillis(300)).sourceOutcome)
-        assertTrue(Duration.ofNanos(System.nanoTime() - started) < Duration.ofSeconds(5))
-        server.page(UID_HOUSEHOLD, null, MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
-        val lost = fetch(request(transactionsOnly(HOUSEHOLD)))
-        assertEquals(SourceOutcome.TransientFailure(FailureKind.ConnectionLost), lost.sourceOutcome, "$lost")
+    @UseCase(id = "UC-001", scenario = "A6: Data Provider Does Not Answer Usably", businessRules = ["BR-005", "BR-010"])
+    @DisplayName("A6 (S-B-55): a request with no answer, or the Data Provider's own failing, ends the Fetch for what is not read yet: those Bank Accounts are Failed with that reason and not contacted; what was read completely is delivered")
+    fun failureInTransitEndsTheRestOnly() {
+        listOf(
+            MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE) to FailureKind.Timeout,
+            MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST) to FailureKind.ConnectionLost,
+            MockResponse().setResponseCode(503).setBody("invented outage page") to FailureKind.ServiceUnavailable,
+            MockResponse().setResponseCode(500).setBody("""{"message":"invented","error":null}""") to FailureKind.ServiceUnavailable,
+        ).forEach { (failing, kind) ->
+            server.received.clear()
+            server.page(UID_HOUSEHOLD, null, listOf(entry()))
+            server.page(UID_KUUSI, null, failing)
+            server.page(UID_VESTA, null, listOf(entry(currency = "SEK")))
+
+            val response = fetch(request(transactionsOnly(HOUSEHOLD), transactionsOnly(KUUSI_CURRENT), transactionsOnly(VESTA_CURRENT)), timeout = Duration.ofMillis(300))
+
+            assertEquals(SourceOutcome.TransientFailure(kind), response.sourceOutcome, "$kind")
+            assertTrue(response.of(HOUSEHOLD).result is BankAccountResult.Read, "$kind")
+            assertEquals(BankAccountResult.Failed(kind), response.of(KUUSI_CURRENT).result, "$kind")
+            assertEquals(BankAccountResult.Failed(kind), response.of(VESTA_CURRENT).result, "$kind")
+            assertTrue(server.requestsOf(UID_VESTA).isEmpty(), "$kind")
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account", businessRules = ["BR-005", "BR-010"])
+    @DisplayName("A8 (S-B-55): a failure the Data Provider names by its code fails that Bank Account only, also with a status of the 500s, and the next Bank is read")
+    fun namedFailureWithA500FailsOneBankAccount() {
+        server.page(UID_KUUSI, null, error(500, "ASPSP_ERROR"))
+        server.page(UID_VESTA, null, listOf(entry(currency = "SEK")))
+        val response = fetch(request(transactionsOnly(KUUSI_CURRENT), transactionsOnly(VESTA_CURRENT)))
+        assertEquals(SourceOutcome.Completed, response.sourceOutcome)
+        assertEquals(BankAccountResult.Failed(FailureKind.ServiceUnavailable), response.of(KUUSI_CURRENT).result)
+        assertTrue(response.of(VESTA_CURRENT).result is BankAccountResult.Read)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account", businessRules = ["BR-009", "BR-010"])
+    @DisplayName("A8, BR-009 (S-B-55): a Bank that does not give the fetch period asked for fails that Bank Account with that reason; nothing is asked again with another period, and the next Bank Account is read")
+    fun periodNotGiven() {
+        server.page(UID_HOUSEHOLD, null, error(422, "WRONG_TRANSACTIONS_PERIOD"))
+        server.page(UID_SAVINGS, null, listOf(entry()))
+        val response = fetch(request(transactionsOnly(HOUSEHOLD), transactionsOnly(SAVINGS)))
+        assertEquals(BankAccountResult.Failed(FailureKind.PeriodNotGiven), response.of(HOUSEHOLD).result)
+        assertEquals(1, server.requestsOf(UID_HOUSEHOLD).size)
+        assertTrue(response.of(SAVINGS).result is BankAccountResult.Read)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account", businessRules = ["BR-010"])
+    @DisplayName("Step 8 (S-B-55): a failure of the balance request that concerns only the balance gives no Account Balance, and the transactions are still read")
+    fun balanceFailureLeavesTheTransactions() {
+        listOf(error(400, "ASPSP_ERROR"), error(400, "INVENTED_BALANCE_CODE"), MockResponse().setResponseCode(404), ok("not json")).forEach { failing ->
+            server.balances(UID_HOUSEHOLD, failing)
+            server.page(UID_HOUSEHOLD, null, listOf(entry()))
+            val result = fetch(request(both(HOUSEHOLD))).of(HOUSEHOLD).result
+            assertEquals(BankAccountResult.Read(listOf(booked(thousandths = -12_500)), null, null), result)
+        }
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A5: Data Provider Asks Slussen to Wait", businessRules = ["BR-004"])
+    @DisplayName("A5, A9 (S-B-55): a balance request the Bank answers with its rate limit, or with a session that is gone, keeps that meaning: nothing more is asked of that Bank")
+    fun balanceAnswerOfTheBankKeepsItsMeaning() {
+        server.balances(UID_HOUSEHOLD, error(429, "ASPSP_RATE_LIMIT_EXCEEDED"))
+        val waiting = fetch(request(both(HOUSEHOLD)))
+        assertEquals(listOf<BankOutcome>(BankOutcome.AskedToWait(AURORA, null)), waiting.bankOutcomes)
+        assertEquals(1, server.requestsOf(UID_HOUSEHOLD).size)
+        server.received.clear()
+        server.balances(UID_HOUSEHOLD, error(401, "EXPIRED_SESSION"))
+        val refused = fetch(request(both(HOUSEHOLD)))
+        assertEquals(listOf<BankOutcome>(BankOutcome.ConsentRefused(AURORA)), refused.bankOutcomes)
+        assertEquals(1, server.requestsOf(UID_HOUSEHOLD).size)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A5: Data Provider Asks Slussen to Wait", businessRules = ["BR-004"])
+    @DisplayName("A5 (S-B-55): the status that asks to wait decides, whatever other code comes with it: the whole Data Provider waits and nothing more is sent")
+    fun waitStatusDecides() {
+        server.page(UID_HOUSEHOLD, null, error(429, "ASPSP_ERROR"))
+        server.page(UID_KUUSI, null, listOf(entry()))
+        val response = fetch(request(transactionsOnly(HOUSEHOLD), transactionsOnly(KUUSI_CURRENT)))
+        assertEquals(SourceOutcome.AskedToWait(null), response.sourceOutcome)
+        assertEquals(BankAccountResult.NotRead(NotReadCause.StoppedWithTheSource), response.of(KUUSI_CURRENT).result)
+        assertTrue(server.requestsOf(UID_KUUSI).isEmpty())
     }
 
     @Test
@@ -684,17 +757,76 @@ class UC001EnableBankingFetchTest {
     }
 
     @Test
-    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account", requirements = ["NFR-012"])
-    @DisplayName("NFR-012, NFR-008: no text of the Data Provider, no session, uid or credential appears in a result's toString() or the log")
+    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account", requirements = ["NFR-012", "NFR-008"])
+    @DisplayName("NFR-012, NFR-008: no text of the Data Provider, no session, uid, key, Bank Account number or credential appears in a toString() or the log, with Detailed Logging on or off; no payee or memo in the log")
     fun nothingSensitiveLeavesThePart() {
-        server.balances(UID_HOUSEHOLD, error(400, "ASPSP_ERROR", "PLANTED-ERROR-TEXT-41"))
-        server.page(UID_SAVINGS, null, listOf(entry()), next = "PLANTED-KEY-SECRET")
-        server.page(UID_SAVINGS, "PLANTED-KEY-SECRET", error(422, "WRONG_CONTINUATION_KEY", "PLANTED-ERROR-TEXT-42"))
-        val response = fetch(request(both(HOUSEHOLD), transactionsOnly(SAVINGS)))
-        val shown = listOf(response.toString()) + response.bankAccounts.map { it.toString() } + log.lines
-        listOf("PLANTED-ERROR-TEXT-41", "PLANTED-ERROR-TEXT-42", "PLANTED-KEY-SECRET", SESSION_AURORA, UID_HOUSEHOLD, UID_SAVINGS, ConsentServer.APPLICATION_ID)
-            .forEach { planted -> shown.forEach { assertFalse(planted in it, "$planted shown: $it") } }
-        listOf(HOUSEHOLD, SAVINGS).forEach { reference -> log.lines.forEach { assertFalse(reference in it, "$reference logged: $it") } }
+        listOf(true, false).forEach { detailed ->
+            server.received.clear()
+            val written = CapturingLog(detailed)
+            val part = EnableBankingDataProvider(written, server.url(), OkHttpClient(), Clock.fixed(now, ZoneOffset.UTC), language = { "fi-FI" })
+            val withNumber = buildJsonObject {
+                putJsonObject("transaction_amount") { put("amount", "3.00"); put("currency", "EUR") }
+                put("credit_debit_indicator", "DBIT")
+                put("status", "BOOK")
+                put("booking_date", "2026-11-20")
+                putJsonObject("creditor") { put("name", "PLANTED-PAYEE-77") }
+                putJsonObject("creditor_account") { put("iban", "FI00PLANTED-OTHER-IBAN-55") }
+                put("remittance_information", buildJsonArray { add(JsonPrimitive("PLANTED-MEMO-88")) })
+            }
+            server.balances(UID_HOUSEHOLD, error(400, "ASPSP_ERROR", "PLANTED-ERROR-TEXT-41"))
+            server.page(UID_HOUSEHOLD, null, listOf(withNumber))
+            server.page(UID_SAVINGS, null, listOf(entry()), next = "PLANTED-KEY-SECRET")
+            server.page(UID_SAVINGS, "PLANTED-KEY-SECRET", error(422, "WRONG_CONTINUATION_KEY", "PLANTED-ERROR-TEXT-42"))
+            val response = runBlocking { part.fetch(request(both(HOUSEHOLD), transactionsOnly(SAVINGS)), TestRequestContext(credential = ConsentServer.credential())) }
+            assertTrue(response.of(HOUSEHOLD).result is BankAccountResult.Read)
+            val shown = listOf(response.toString()) + response.bankAccounts.map { it.toString() } + written.lines
+            listOf(
+                "PLANTED-ERROR-TEXT-41", "PLANTED-ERROR-TEXT-42", "PLANTED-KEY-SECRET", "FI00PLANTED-OTHER-IBAN-55",
+                SESSION_AURORA, UID_HOUSEHOLD, UID_SAVINGS, ConsentServer.APPLICATION_ID,
+            ).forEach { planted -> shown.forEach { assertFalse(planted in it, "$planted shown ($detailed): $it") } }
+            listOf(HOUSEHOLD, SAVINGS, "PLANTED-PAYEE-77", "PLANTED-MEMO-88").forEach { planted ->
+                written.lines.forEach { assertFalse(planted in it, "$planted logged ($detailed): $it") }
+            }
+        }
+    }
+
+    // ---- The Bank Session ----------------------------------------------------------------------------------------------
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A4: Bank Without Valid Bank Consent", businessRules = ["BR-008"])
+    @DisplayName("A4: a Bank Session handed under another Bank's reference than its own is not used, and nothing is sent through it")
+    fun sessionUnderAnotherBanksReferenceIsNotUsed() {
+        server.page(UID_HOUSEHOLD, null, listOf(entry()))
+        val response = fetch(request(transactionsOnly(HOUSEHOLD), sessions = mapOf(KUUSI to aurora.toSession())))
+        assertEquals(BankAccountResult.Failed(FailureKind.UnreadableAnswer), response.of(HOUSEHOLD).result)
+        assertEquals(0, server.received.size)
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "Main Success Scenario")
+    @DisplayName("S-B-55: a Bank Session of the earlier form, without the currencies, is read: its transactions, no Account Balance and no balances request")
+    fun earlierSessionIsRead() {
+        val earlier = kotlinx.serialization.json.buildJsonObject {
+            put("session_id", SESSION_AURORA)
+            put("bank", AURORA)
+            put("required_psu_headers", buildJsonArray { add(JsonPrimitive("Psu-User-Agent")) })
+            putJsonObject("uids") { put(HOUSEHOLD, UID_HOUSEHOLD) }
+        }.toString()
+        server.page(UID_HOUSEHOLD, null, listOf(entry()))
+        val response = fetch(request(both(HOUSEHOLD), sessions = mapOf(AURORA to ConsentSession(earlier))))
+        assertEquals(BankAccountResult.Read(listOf(booked(thousandths = -12_500)), null, null), response.of(HOUSEHOLD).result)
+        assertEquals(listOf("transactions"), server.requestsOf(UID_HOUSEHOLD).map { it.requestUrl!!.pathSegments[2] })
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A8: Failure for One Bank Account")
+    @DisplayName("S-B-55 (E3 review): a Bank Account the Bank Session could not keep, because its Bank has more than one Bank Session holds, fails with that reason of its own, not as an unreadable answer")
+    fun bankAccountNotKeptHasItsOwnReason() {
+        val full = BankSessionValue(SESSION_AURORA, AURORA, listOf("Psu-User-Agent"), mapOf(HOUSEHOLD to UID_HOUSEHOLD), notAllKept = true)
+        val response = fetch(request(transactionsOnly(SAVINGS), sessions = mapOf(AURORA to full.toSession())))
+        assertEquals(BankAccountResult.Failed(FailureKind.NotHeldByBankSession), response.of(SAVINGS).result)
+        assertEquals(AURORA, response.of(SAVINGS).bankReference)
+        assertEquals(0, server.received.size)
     }
 
     // ---- The Operator's presence -------------------------------------------------------------------------------------
@@ -729,6 +861,23 @@ class UC001EnableBankingFetchTest {
         server.received.forEach { sent -> assertTrue(sent.headers.names().none { it.startsWith("Psu-", ignoreCase = true) }, "${sent.headers.names()}") }
         assertEquals(2, gate.requests.size)
         assertTrue(gate.requests.all { it.unattended })
+    }
+
+    @Test
+    @UseCase(id = "UC-001", scenario = "A22: Fetch at a Bank That Counts It as Unattended", businessRules = ["BR-012"])
+    @DisplayName("BR-012 (S-B-55): with a device language that cannot be sent, showsPresence says no and no header of presence is sent, so A22 is asked for what is counted as unattended")
+    fun presenceAgreesWithWhatIsSent() {
+        listOf("und", "", "  ").forEach { language ->
+            server.received.clear()
+            val part = EnableBankingDataProvider(log, server.url(), OkHttpClient(), Clock.fixed(now, ZoneOffset.UTC), language = { language })
+            server.page(UID_HOUSEHOLD, null, listOf(entry()))
+            val gate = RecordingRequestGate()
+            runBlocking { part.fetch(request(transactionsOnly(HOUSEHOLD)), TestRequestContext(gate, credential = ConsentServer.credential())) }
+            assertFalse(part.bankConsent.showsPresence(aurora.toSession()), "'$language'")
+            assertTrue(gate.requests.all { it.unattended }, "'$language'")
+            assertTrue(server.received.single().headers.names().none { it.startsWith("Psu-", ignoreCase = true) }, "'$language'")
+        }
+        assertTrue(provider.bankConsent.showsPresence(aurora.toSession()))
     }
 
     // ---- The dates asked -----------------------------------------------------------------------------------------------
@@ -771,7 +920,8 @@ class UC001EnableBankingFetchTest {
         override suspend fun admit(request: RequestSummary): Admission = if (refuses(request)) Admission.Refused(scope, reason) else Admission.Allowed
     }
 
-    private class CapturingLog : SlussenLog {
+    /** A log that writes the detail only while Detailed Logging is on, as the app's adapter does (ADR-006 §1). */
+    private class CapturingLog(private val detailed: Boolean = true) : SlussenLog {
         val lines = CopyOnWriteArrayList<String>()
 
         override fun event(event: LogEvent, vararg facts: LogFact) {
@@ -779,7 +929,7 @@ class UC001EnableBankingFetchTest {
         }
 
         override fun detail(event: LogEvent, message: () -> String) {
-            lines += "$event ${message()}"
+            if (detailed) lines += "$event ${message()}"
         }
     }
 
@@ -787,6 +937,10 @@ class UC001EnableBankingFetchTest {
         val EUR = CurrencyCode("EUR")
         const val AURORA = "Aurora Sparbank (FI)"
         const val KUUSI = "Kuusi Pankki (FI)"
+        const val VESTA = "Vesta Bank (SE)"
+        const val SESSION_VESTA = "PLANTED-SESSION-VESTA-3c"
+        const val VESTA_CURRENT = "PLANTED-HASH-VESTA=="
+        const val UID_VESTA = "PLANTED-UID-VESTA-05"
         const val SESSION_AURORA = "PLANTED-SESSION-AURORA-1a"
         const val SESSION_KUUSI = "PLANTED-SESSION-KUUSI-2b"
         const val HOUSEHOLD = "PLANTED-HASH-HOUSEHOLD=="
