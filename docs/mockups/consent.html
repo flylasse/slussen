@@ -289,7 +289,7 @@
 <p class="sub">One Strong Customer Authentication per Bank, valid until the expiry the Bank or Data Provider reports.</p>
 <section>
 <h2>Bank Consents</h2>
-<p class="lede">Adopted from the predecessor: one sheet for granting and renewing, opened from every place that shows a missing or expiring Bank Consent, with the steps in order and the result in the sheet. Changed: the steps follow UC-007 without assuming how the result returns (no paste field), the Consent Request's one-time use and lifetime are stated, revoking is confirmed and deletes everything stored, and the covered Bank Accounts are identified or sent to confirmation.</p>
+<p class="lede">Adopted from the predecessor: one sheet for granting and renewing, opened from every place that shows a missing or expiring Bank Consent, with the steps in order and the result in the sheet. Changed: the steps follow UC-007; the result returns to Slussen's own return address, with a field to paste it when the browser does not hand it back (BR-011), the Consent Request's one-time use and lifetime are stated, revoking is confirmed and deletes everything stored, and the covered Bank Accounts are identified or sent to confirmation.</p>
 <div class="flow">
 <div class="state" id="list">
 <div class="step-label"><span class="n">UC-007 1 · BR-008</span><p><b>Bank Consents on the <a href="connections.html#enable-banking">Enable Banking page</a></b>, opened from its entry in Settings (S-26, S-40). Grant, renew and revoke are also offered wherever Slussen shows a Bank Consent as missing, expiring or expired (UC-007 BR-003). Same state as that page, after Vesta Sparbank was renewed; the expired state is shown <a href="#expired">next</a>.</p></div>
@@ -297,7 +297,7 @@
 <div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
-<div class="sec-t">Bank Consents · 2</div><div class="card amber"><div class="src-row"><span class="dot amber"></span> <span class="nm">Aurora Bank</span> <span class="warn">Expires 2026-10-19</span></div><div class="src-note">Covers Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar</div><a class="btn primary" href="#grant">Renew</a> <a class="btn danger" href="#revoke">Revoke</a></div><div class="card"><div class="src-row"><span class="dot"></span> <span class="nm">Vesta Sparbank</span> <span class="ok">Valid until 2027-04-12</span></div><div class="src-note">Covers Vesta Card</div><a class="btn primary" href="#grant">Renew</a> <a class="btn danger" href="#revoke">Revoke</a></div><a class="btn primary" href="#grant" style="margin:0 0 9px">Grant Bank Consent for another Bank</a>
+<div class="sec-t">Bank Consents · 2</div><div class="card amber"><div class="src-row"><span class="dot amber"></span> <span class="nm">Aurora Bank</span> <span class="warn">Expires 2026-10-19</span></div><div class="src-note">Covers Aurora Current, Aurora Savings, Aurora Joint, Aurora Dollar</div><a class="btn primary" href="#grant">Renew</a> <a class="btn danger" href="#revoke">Revoke</a></div><div class="card"><div class="src-row"><span class="dot"></span> <span class="nm">Vesta Sparbank</span> <span class="ok">Valid until 2027-04-12</span></div><div class="src-note">Covers Vesta Card</div><a class="btn primary" href="#grant">Renew</a> <a class="btn danger" href="#revoke">Revoke</a></div><a class="btn primary" href="#choose-bank" style="margin:0 0 9px">Grant Bank Consent for another Bank</a>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
@@ -319,7 +319,7 @@
 <div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
-<div class="ghost"><div class="sec-t">Bank Consents · 2</div></div><div class="sheet blue"><div class="grab"></div><h4>Renew Bank Consent · Vesta Sparbank</h4><p class="ctx">Enable Banking · one sign-in for every Bank Account at the Bank</p><div class="stepn"><span class="i">1</span> <span><span class="t">Open Vesta Sparbank's Strong Customer Authentication</span> </span></div><span class="pair"><a class="cta-btn" href="#granted">Open my Bank</a></span><div class="stepn"><span class="i">2</span> <span><span class="t">Complete it with your Bank, for example with BankID</span></span></div><div class="stepn"><span class="i">3</span> <span><span class="t">Return to Slussen with the result</span> <span class="d">Until 14:47</span></span></div></div>
+<div class="ghost"><div class="sec-t">Bank Consents · 2</div></div><div class="sheet blue"><div class="grab"></div><h4>Renew Bank Consent · Vesta Sparbank</h4><p class="ctx">Enable Banking · one sign-in for every Bank Account at the Bank</p><div class="stepn"><span class="i">1</span> <span><span class="t">Open Vesta Sparbank's Strong Customer Authentication</span> </span></div><span class="pair"><a class="cta-btn" href="#waiting">Open my Bank</a></span><div class="stepn"><span class="i">2</span> <span><span class="t">Complete it with your Bank, for example with BankID</span></span></div><div class="stepn"><span class="i">3</span> <span><span class="t">Return to Slussen with the result</span> <span class="d">Until 14:47</span></span></div></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>
@@ -364,6 +364,94 @@
 <p class="screen-sub">Bank Consents</p>
 <div class="body">
 <div class="card red"><div class="src-row"><span class="dot red"></span> <span class="nm">Vesta Sparbank</span> <span class="bad">Enable Banking refused</span></div><div class="src-note">Enable Banking refused · nothing stored · try again later</div></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="choose-bank">
+<div class="step-label"><span class="n">UC-007 1 · BR-010</span><p><b>Choosing the Bank</b> for a Bank that has no Bank Consent: the Banks Enable Banking lists for one country, starting at the device's country; the search narrows the list on the phone. The list is asked once each time this opens or the country changes, and is not stored. Two Banks of one name in two countries are two Banks, named with their country.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
+<p class="screen-sub">Bank Consents</p>
+<div class="body">
+<div class="ghost"><div class="sec-t">Bank Consents · 2</div></div><div class="sheet blue"><div class="grab"></div><h4>Grant Bank Consent · choose the Bank</h4><p class="ctx">Banks Enable Banking reaches</p><div class="cfg-row"><span class="nm">Country</span> <span class="val">SE · Sweden</span> <span class="go">›</span></div><div class="cfg-row"><span class="nm dim">Search by name</span> <span class="val">ves</span></div><a class="pick" href="#grant"><span class="radio"></span><span><span class="nm">Vesta Sparbank (SE)</span></span></a><a class="pick" href="#grant"><span class="radio"></span><span><span class="nm">Vestra Bank (SE)</span></span></a><p class="note">Aurora Bank (SE) already has a Bank Consent: renew it from its card.</p></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="waiting">
+<div class="step-label"><span class="n">UC-007 4–6 · BR-011 · A10</span><p><b>Waiting for the result</b> after the Bank's page opened in the browser. The browser normally returns to Slussen by itself; when it does not, paste the address it shows. Cancel abandons the Consent Request (<a href="#abandoned">abandoned</a>).</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
+<p class="screen-sub">Bank Consents</p>
+<div class="body">
+<div class="ghost"><div class="sec-t">Bank Consents · 2</div></div><div class="sheet blue"><div class="grab"></div><h4>Renew Bank Consent · Vesta Sparbank</h4><p class="ctx">Waiting for the result · until 14:47</p><div class="stepn"><span class="i">1</span> <span><span class="t">Complete the sign-in with your Bank in the browser</span></span></div><div class="stepn"><span class="i">2</span> <span><span class="t">Back to Slussen</span> <span class="d">Not back by itself? Paste the address your browser shows after the sign-in.</span></span></div><div class="cfg-row"><span class="nm dim">Paste the address</span> <span class="val">slussen.app.debug://consent?…</span></div><span class="pair" style="margin-top:8px"><a class="cta-btn" href="#granted">Use this address</a> <a class="cta-btn ghost" href="#abandoned">Cancel</a></span></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="abandoned">
+<div class="step-label"><span class="n">UC-007 A10</span><p><b>Consent Request abandoned</b>: cancelled while waiting, or no result before its lifetime ended. No later answer to it is accepted.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
+<p class="screen-sub">Bank Consents</p>
+<div class="body">
+<div class="sheet amber"><div class="grab"></div><h4>Bank Consent not granted · Vesta Sparbank</h4><p class="ctx">The Consent Request was cancelled, or no result arrived in time.</p><p class="note">Any earlier Bank Consent of Vesta Sparbank is unchanged.</p><a class="cta" href="#grant">Start again</a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="address-refused">
+<div class="step-label"><span class="n">UC-007 A3 · BR-011</span><p><b>Enable Banking refuses the return address.</b> The answer names the exact address to register in your own Enable Banking application; nothing is stored.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
+<p class="screen-sub">Bank Consents</p>
+<div class="body">
+<div class="card red"><div class="src-row"><span class="dot red"></span> <span class="nm">Vesta Sparbank</span> <span class="bad">Return address not accepted</span></div><div class="src-note">Register <code>slussen.app.debug://consent</code> as a return address of your application at Enable Banking, then try again · nothing stored</div><a class="btn" href="#none-yet">Copy the address</a> <a class="btn primary" href="#grant">Try again</a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="failed">
+<div class="step-label"><span class="n">UC-007 A8</span><p><b>Enable Banking could not be reached</b> when listing, starting or completing. When completing, the Consent Request was already answered: the Bank may hold a consent that never reached Slussen, which is never used.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
+<p class="screen-sub">Bank Consents</p>
+<div class="body">
+<div class="sheet amber"><div class="grab"></div><h4>Bank Consent not granted · Vesta Sparbank</h4><p class="ctx">Enable Banking did not answer · 14:39</p><p class="note">Nothing stored; any earlier Bank Consent of Vesta Sparbank is unchanged. Your Bank may have granted a consent that did not reach Slussen: it is never used and ends at its expiry, or end it at your Bank.</p><a class="cta" href="#grant">Start again</a></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="held-back">
+<div class="step-label"><span class="n">UC-007 A9</span><p><b>Held back by the request gate</b>: the Request Limit is reached, or a Back-off holds for Enable Banking or the Bank. Nothing is sent.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
+<p class="screen-sub">Bank Consents</p>
+<div class="body">
+<div class="sheet amber"><div class="grab"></div><h4>Bank Consent not started · Vesta Sparbank</h4><p class="ctx"><span class="chip amber">Request Limit reached</span> until 18:05</p><p class="note">Nothing sent and nothing stored. Try again once it ends.</p></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="no-browser">
+<div class="step-label"><span class="n">UC-007 A11</span><p><b>No browser on the phone</b>: nothing is started or sent.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
+<p class="screen-sub">Bank Consents</p>
+<div class="body">
+<div class="sheet amber"><div class="grab"></div><h4>Bank Consent not started · Vesta Sparbank</h4><p class="ctx">A browser is needed to open your Bank's sign-in.</p><p class="note">Install or enable a browser on this phone, then try again. Nothing was sent.</p></div>
+</div>
+<div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="none-yet">
+<div class="step-label"><span class="n">UC-007 BR-008 · BR-011</span><p><b>No Bank Consent yet</b>: the Bank Consents section of the Enable Banking page, with the exact return address to register in your Enable Banking application.</p></div>
+<div class="phone">
+<div class="screen-title"><a class="back" href="connections.html#enable-banking">‹</a> Enable Banking</div>
+<p class="screen-sub">Bank Consents</p>
+<div class="body">
+<div class="sec-t">Bank Consents · 0</div><div class="card"><div class="src-note">No Bank Consent yet.</div><div class="kv"><span class="k">Return address to register</span> <span class="v"><code>slussen.app.debug://consent</code></span></div><a class="btn" href="#none-yet">Copy</a></div><a class="btn primary" href="#choose-bank" style="margin:0 0 9px">Grant Bank Consent</a>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html"><span class="ic">⚙</span> Settings</a></div>
 </div>

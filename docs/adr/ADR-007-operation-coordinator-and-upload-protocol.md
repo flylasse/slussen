@@ -75,7 +75,7 @@ plan is being written).
 | Scheduled Fetch (UC-001 A12) | admitted | deferred until the mode is Normal again | deferred |
 | Import a Transaction File (UC-002) | admitted | refused | refused |
 | Read the Budget App and compare (UC-003), Journal Export (UC-011) | admitted | refused | only as the reads of §6 steps 4, 8 and 9 of the running Upload |
-| Start, answer or revoke a Consent Request or Bank Consent (UC-007) | admitted | refused | refused |
+| List the Banks, start, answer, abandon or revoke a Consent Request or Bank Consent (UC-007) | admitted | refused | refused |
 | Account Mapping change, rename, Start Date (UC-009), Operator Setting change (UC-010), choosing served Budgets and adding Bank Accounts (UC-013), entering, changing or removing service credentials (UC-014) | admitted | refused | refused |
 | Review Decision, Transfer Decision (UC-004, UC-005), with the Funded By or Transfer Partner the Operator keeps from a Transfer Decision (UC-005 A3, BR-006) | admitted | admitted; the plan is replaced (§5) | refused until the Upload ends |
 | Prepare an Upload Plan (UC-006) | admitted only when §3 allows it | refused (one plan at a time) | refused |
@@ -96,7 +96,8 @@ Preparation is admitted only when all of these hold; otherwise the reason is sho
   UC-001 BR-013);
 - no First Upload Matching is open (`FIRST_UPLOAD_MATCHING.confirmed_at` empty for none; UC-006 BR-017, A13);
 - no Consent Request is unanswered and within its lifetime, so that the return from Strong Customer Authentication
-  can never arrive while a plan is open (the Operator can abandon the Consent Request to proceed);
+  can never arrive while a plan is open (the Operator can abandon the Consent Request to proceed: UC-007 A10, which
+  deletes it through O-10);
 - no Comparison is pending (§3a);
 - no read of the read period is owed for a Budget of the plan (`budget_read_state.period_read_owed`, set when a
   served Budget gains a Budget Account or an Operator Setting change makes the read period longer: UC-003 BR-016,

@@ -48,7 +48,7 @@
 **Trigger:** Operator chooses to remove the credentials of the Budget App or of a Data Provider (step 2)  
 **Flow:**
 
-1. Slussen asks the Operator to confirm, stating that the service will not be contacted until new credentials are entered.
+1. Slussen asks the Operator to confirm, stating that the service will not be contacted until new credentials are entered, and, for a Data Provider with Bank Consents, that they are kept and stay in force at their Banks, unused until credentials are entered again, and that only revoking each first (UC-007 A7) ends them.
 2. Operator confirms, or cancels and the use case ends.
 3. Slussen deletes the credentials and shows the service with the Blocked Reason "credentials missing" for the Sources or Budgets concerned (BR-005); a Data Provider that still has a Bank Account, and the Budget App while it serves a Budget, keep the status "credentials missing" (BR-007).
 4. Slussen records the removal in the Decision Journal.

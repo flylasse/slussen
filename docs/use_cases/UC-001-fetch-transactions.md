@@ -116,7 +116,7 @@
 **Trigger:** The Data Provider reports that a Bank no longer accepts its Bank Consent (step 5)  
 **Flow:**
 
-1. Slussen treats the Bank Consent as expired from now on and starts no Back-off for that Bank.
+1. Slussen treats the Bank Consent as expired from now on, by storing the time of the refusal with it (`BANK_CONSENT.refused_at`), and starts no Back-off for that Bank.
 2. Slussen keeps the previously stored data of that Bank's Bank Accounts unchanged and records the outcome Not Consented for them.
 3. Slussen shows the Blocked Reason "missing consent" with the action that grants it again (UC-007).
 4. Use case continues at step 6 for the other Bank Accounts.
@@ -153,7 +153,7 @@
 
 ### A13: Unattended Access Limit Reached
 
-**Trigger:** In a Scheduled Fetch, a Bank Account read through a Data Provider that needs a Bank Consent has had 4 Unattended Accesses of its transactions or of its balance in the preceding 24 hours, the limit PSD2 sets (C-006) (step 3)  
+**Trigger:** In a Scheduled Fetch, or in a Fetch the Operator started whose requests to that Bank cannot show that the Operator is present (BR-012), a Bank Account read through a Data Provider that needs a Bank Consent has had 4 Unattended Accesses of its transactions or of its balance in the preceding 24 hours, the limit PSD2 sets (C-006) (step 3)  
 **Flow:**
 
 1. Slussen leaves that Bank Account out without contacting its Bank.
@@ -301,7 +301,7 @@ For a Bank Account whose transactions come from Transaction Files, the Account B
 
 ### BR-012: Operator Present or Unattended
 
-A Fetch the Operator starts is made with the Operator present and is never counted against the Unattended Access limit. A Scheduled Fetch is unattended: through a Data Provider that needs a Bank Consent, it reads the transactions of a Bank Account at most 4 times and its balance at most 4 times in any 24 hours (C-006), counted from the Provider Requests of the preceding 24 hours.
+A Fetch the Operator starts is made with the Operator present and is not counted against the Unattended Access limit, as far as its requests show the Bank that the Operator is present. A Scheduled Fetch is unattended: through a Data Provider that needs a Bank Consent, it reads the transactions of a Bank Account at most 4 times and its balance at most 4 times in any 24 hours (C-006), counted from the Provider Requests of the preceding 24 hours. A request that cannot show the Bank the Operator's presence counts as unattended whoever started it: for a Bank that requires a sign of presence the device cannot truly give, such as its address on the internet, which Slussen never asks a third party for, the request is sent without any and is an Unattended Access (ADR-001 §4.1.1). Slussen counts each unattended request of kind Transactions or Balance of one Bank Account, each page of a paged read as one, so that its count is never below that of a Bank that counts each request; a Bank that counts otherwise, for example per Bank Consent, answers that its limit is reached, which is a request to wait for that Bank (BR-004, A5).
 
 ### BR-013: Fetch Schedule
 

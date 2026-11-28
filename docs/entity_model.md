@@ -292,10 +292,12 @@ The Bank's permission, granted by the Operator through Strong Customer Authentic
 | data_provider_id | Data Provider that reads with the consent         | Long      | 19               | Not Null, Foreign Key (DATA_PROVIDER.id) |
 | granted_at       | Time the Operator granted or renewed the consent  | DateTime  | -                | Not Null                                 |
 | expires_at       | Expiry date the Bank or Data Provider reported when the consent was granted | DateTime  | -                | Not Null                                 |
+| refused_at       | Time the Data Provider first reported that the Bank no longer accepts the consent, empty until then (UC-001 A9) | DateTime  | -                | Optional                                 |
 
 #### Constraints
 
 - `expires_at` is after `granted_at`; Slussen assumes no fixed consent length.
+- A Bank Consent is valid while `refused_at` is empty and `expires_at` lies in the future; once `refused_at` is filled it counts as expired from that time, covers no Bank Account in a Fetch (UC-001 A4) and is shown as expired with that time, until a grant or renewal replaces it; `expires_at` is kept as reported.
 - A Bank has at most one Bank Consent per Data Provider; renewing replaces it.
 - A Bank Consent covers each `BANK_ACCOUNT` whose `provider_bank_id` is its `bank_id` and whose `data_provider_id` or `balance_data_provider_id` is its `data_provider_id`, whatever the Bank Account's `bank_id` (UC-007 BR-009).
 - Revoking a Bank Consent removes it together with its Bank Session (`BANK_SESSION`), also when the Data Provider does not confirm the end of the consent.
@@ -309,7 +311,7 @@ The session at a Data Provider that a granted Bank Consent opens and through whi
 |-------------------|--------------------------------------------------------------------------------------|-----------|------------------|-----------------------------------------|
 | id                | Unique identifier                                                                    | Long      | 19               | Primary Key, Sequence                   |
 | bank_consent_id   | Bank Consent that opened the session                                                 | Long      | 19               | Not Null, Foreign Key (BANK_CONSENT.id) |
-| session_reference | Identifier the Data Provider gives the session, used in every read of the Bank's Bank Accounts | String    | 200              | Not Null                                |
+| session_reference | Identifier the Data Provider gives the session, with what its part keeps to read the session's Bank Accounts by their lasting reference (ADR-001 §4.1), used in every read of the Bank's Bank Accounts | String    | 4000             | Not Null                                |
 | opened_at         | Time the Data Provider opened the session                                            | DateTime  | -                | Not Null                                |
 
 #### Constraints
@@ -417,14 +419,14 @@ One request Slussen sent to a Data Provider, kept so that the Request Limit and 
 | data_provider_id | Data Provider the request was sent to                                                       | Long      | 19               | Not Null, Foreign Key (DATA_PROVIDER.id) |
 | bank_account_id  | Bank Account the request read, empty for a request that reads no single Bank Account        | Long      | 19               | Optional                                 |
 | request_kind     | What the request read                                                                       | String    | 20               | Not Null, Values: Transactions, Balance, Other |
-| unattended       | True when a Scheduled Fetch sent the request without the Operator present                   | Boolean   | 1                | Not Null                                 |
+| unattended       | True when the request was sent without showing the Bank that the Operator is present: every request of a Scheduled Fetch, and a request of a Fetch the Operator started that could not show it (UC-001 BR-012) | Boolean   | 1                | Not Null                                 |
 | sent_at          | Time Slussen sent the request                                                               | DateTime  | -                | Not Null                                 |
 
 #### Constraints
 
 - A Provider Request is kept for at least 24 hours after `sent_at`, the window of the Data Providers' own limits and of C-006, and survives a restart of the app.
 - For a Data Provider that needs a Bank Consent, the unattended Provider Requests of one Bank Account sent in the preceding 24 hours number at most 4 with `request_kind` Transactions and at most 4 with `request_kind` Balance (C-006).
-- A Provider Request of a Fetch the Operator started is never `unattended`.
+- A Provider Request of a Fetch the Operator started is `unattended` only when the request could not show the Bank that the Operator is present (UC-001 BR-012); a request of a Bank Consent operation never is.
 
 ### ACCOUNT_BALANCE
 

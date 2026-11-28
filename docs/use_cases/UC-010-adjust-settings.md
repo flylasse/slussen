@@ -127,9 +127,9 @@
 **Trigger:** Operator chooses, on Settings, to start Slussen over (step 2)  
 **Flow:**
 
-1. Slussen states everything it will delete: the chosen Budgets and their Budget Accounts, the Bank Accounts with their Account Mappings and Start Dates, the Left-Out Bank Accounts, the Bank Transactions with their Review Decisions and Transfer Decisions, the Sent Record, the service credentials, the Bank Consents, the Operator Settings and the Decision Journal, with the number of Bank Accounts and Bank Transactions; and that, as after a new installation, nothing is uploaded until First Upload Matching is confirmed (UC-006 BR-017).
+1. Slussen states everything it will delete: the chosen Budgets and their Budget Accounts, the Bank Accounts with their Account Mappings and Start Dates, the Left-Out Bank Accounts, the Bank Transactions with their Review Decisions and Transfer Decisions, the Sent Record, the service credentials, the Bank Consents, which it first asks the Data Provider to end (step 3), the Operator Settings and the Decision Journal, with the number of Bank Accounts and Bank Transactions; and that, as after a new installation, nothing is uploaded until First Upload Matching is confirmed (UC-006 BR-017).
 2. Operator confirms, or cancels and the use case ends with nothing deleted.
-3. Slussen deletes everything it stores and starts as a new installation, opening a First Upload Matching (UC-006 BR-017).
+3. Slussen first asks the Data Provider to end each Bank Consent, as UC-007 A7 step 3 does, then deletes everything it stores, whatever the answers, and starts as a new installation, opening a First Upload Matching (UC-006 BR-017); it names each Bank whose Bank Consent the Data Provider did not confirm as ended at the Bank, also one it could not contact, so that the Operator can end it at the Bank.
 4. Use case ends.
 
 ## Postconditions

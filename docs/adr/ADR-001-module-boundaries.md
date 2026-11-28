@@ -219,6 +219,7 @@ data class RequestSummary(
     val kind: RequestKind,                              // Transactions, Balance, Other (PROVIDER_REQUEST.request_kind); BudgetAppRead, BudgetAppWrite
     val bankReference: String?,                         // the Bank the request concerns, when it concerns one
     val bankAccountReference: String?,                  // the Bank Account it reads, when it reads one
+    val unattended: Boolean,                            // as the request is sent: true unless it shows the Bank that the Operator is present (S-B-46)
 )
 
 sealed interface Admission {
@@ -235,7 +236,11 @@ enum class RefusalScope { BankAccount, Bank, Source }  // Source = the whole Dat
   it answers `Allowed`, so a crash after admission counts the request rather than losing it. It refuses with scope
   Source for a reached Request Limit or a Back-off of the Data Provider, scope Bank for a Back-off of one Bank, and
   scope BankAccount for a reached Unattended Access limit (C-006, UC-001 BR-004, BR-012). Requests of Bank Consent
-  operations are counted as `request_kind` Other, with the Operator present.
+  operations are counted as `request_kind` Other, with the Operator present. The gate stores `unattended` and the Bank
+  Account of `bankAccountReference` with the Provider Request, and counts an unattended request against the
+  Unattended Access limit whatever started it (UC-001 BR-012). A plug-in sends `unattended` true for every request of
+  an `Unattended` Fetch, and also for a request of a Fetch the Operator started when the request carries nothing that
+  tells the Bank the Operator is present (§4.1.1).
 - For the Budget App, the gate counts nothing (the specification sets no limit), but refuses every request once the
   operation that admitted it (ADR-007 §1) has ended or been cancelled, so that no request leaves after its operation.
 - **Timeout and cancellation.** The plug-in gives each request a call timeout equal to `timeout` (OkHttp
@@ -348,7 +353,18 @@ sealed interface ProviderTransaction {
 - **Offered Bank Accounts (S-08, A-15).** `bankAccounts` lists every Bank Account the Data Provider delivered, with
   the description UC-009 step 3 shows. The core replaces the stored Offered Bank Accounts of that Data Provider (or of
   one Bank through it) with this list in one storage operation (ADR-002 §3, O-2), keeping only `last_four_digits` and
-  the fingerprint of each number (UC-009 BR-009).
+  the fingerprint of each number (UC-009 BR-009). A Data Provider that needs a Bank Consent delivers a Bank's Bank
+  Accounts with the grant or renewal of that Bank's Bank Consent (`ConsentCompletion.Completed`); in a Fetch it lists
+  only the Bank Accounts it was asked to read, and the core replaces no Offered Bank Account from such a Fetch, so that
+  a Fetch that skipped a Bank or read part of it removes none of that Bank's Offered Bank Accounts (S-B-42).
+- **References that last (S-B-42).** `providerReference` is the same for the same Bank Account in every answer of its
+  Data Provider, across Bank Sessions, renewals and reinstalls (UC-009 BR-004, UC-013 BR-011). A Data Provider whose
+  own identifier of a Bank Account lasts only for one session gives as `providerReference` an identifier that lasts and
+  resolves the session's own identifier itself, from what it keeps in the `ConsentSession`, without a further request.
+  A Bank Account for which it has no identifier that lasts is not delivered; it is never delivered under a reference
+  that may change. `bankReference` names exactly one Bank of the Data Provider, also where two Banks of one name are in
+  two countries, is the same in the Bank list, in every Bank Account delivered and in every `BankOutcome`, and is the
+  name Slussen shows for the Bank (`BANK.name`), so the core needs no other key for a Bank.
 - **The time of a balance (S-T-04, issue #16).** `Read.balanceReportedAt` is the time the Data Provider says the
   balance was reported (SimpleFIN `balance-date`), or null when it gives none; the core stores it as
   `ACCOUNT_BALANCE.reported_at`, or the time it received the answer when it is null. A balance in another currency
@@ -373,14 +389,35 @@ sealed interface ProviderTransaction {
 
 ```kotlin
 interface BankConsentCapability {
+    suspend fun banks(country: String, context: RequestContext): BankList      // S-B-42
+        // Listed(banks: List<BankChoice(bankReference, name)>) | Refused(kind) | TransientFailure(kind) | StoppedByGate(reason)
     suspend fun startConsentRequest(bank: String, returnAddress: String, state: Secret, context: RequestContext): ConsentStart
-        // Started(consentAddress, handle: Secret?) | Refused(kind) | TransientFailure(kind)
+        // Started(consentAddress, handle: Secret?) | Refused(kind) | TransientFailure(kind) | StoppedByGate(reason)
+    fun stateOf(answer: ConsentAnswer): Secret?                                 // S-B-42; sends nothing
     suspend fun completeConsent(answer: ConsentAnswer, handle: Secret?, context: RequestContext): ConsentCompletion
-        // Completed(expiresAt, bankAccounts: List<DeliveredBankAccount>, session: ConsentSession) | NotConfirmed(kind) | TransientFailure(kind)
-    suspend fun revoke(session: ConsentSession, context: RequestContext): RevokeResult   // Ended | NotConfirmed
+        // Completed(expiresAt, bankAccounts: List<DeliveredBankAccount>, session: ConsentSession) | NotCompleted
+        // | NotConfirmed(kind) | TransientFailure(kind) | StoppedByGate(reason)
+    suspend fun revoke(session: ConsentSession, context: RequestContext): RevokeResult
+        // Ended | EndedAtDataProvider | NotConfirmed | StoppedByGate(reason)
 }
 ```
 
+- **The Banks (S-B-42; UC-007 BR-010).** `banks` lists the Banks the Data Provider reaches in one country (ISO 3166
+  two-letter code), each with its `bankReference` and the name to show; it is one request of kind Other through the
+  gate, attended, and is sent when the Operator opens the choice of a Bank or chooses another country, never stored.
+  `bank` in `startConsentRequest` is one of these references.
+- **The answer (S-B-42).** `stateOf` reads the `state` value from the answer as the Data Provider returns it (the
+  core's return address with what the Data Provider added), or gives null when it carries none; the core digests it
+  and finds the Consent Request by that digest only. `NotCompleted` is the answer of a Strong Customer Authentication
+  the Operator cancelled or the Bank refused (UC-007 A1); the plug-in tells it from an unreadable answer, which is
+  `NotConfirmed(AnswerNotUnderstood)` (A2).
+- **Validity (S-B-42; C-007, UC-007 BR-004).** The plug-in asks for the longest Bank Consent the Data Provider declares
+  for that Bank, never a length of Slussen's own, and `expiresAt` is the expiry the Data Provider reports with the
+  completion.
+- **Refusals (S-B-42).** `ConsentFailureKind` gains `ReturnAddressRefused`: the Data Provider does not accept the
+  return address (UC-007 BR-011, A3). `StoppedByGate` answers a refusal of the gate, with no request sent in its scope.
+  `EndedAtDataProvider` means the Data Provider ended its session and says it ends the consent at the Bank only where
+  the Bank allows it; `Ended` means it confirmed the end at the Bank (UC-007 A7).
 - The core, not the plug-in, creates the `state` value (256 bits from `RandomSource`, ADR-008 §7) and stores only its SHA-256 digest with
   the Consent Request, together with the plug-in's opaque `handle`, in `device.db` (ADR-002 §1, §2). The answer from
   the Bank's Strong Customer Authentication is matched by the digest of the `state` it carries. Checking that it is
@@ -395,6 +432,120 @@ interface BankConsentCapability {
   Limit, refuses `startConsentRequest` and `completeConsent` with the reason shown; `revoke` is then not sent, and the
   core still deletes the stored Bank Consent, its Bank Session and every Consent Request of the Bank, and tells the
   Operator the Data Provider was not contacted (UC-007 A7, BR-007).
+
+#### 4.1.1 The Enable Banking part (S-B-42, S-B-46, S-B-47)
+
+What `:provider-enablebanking` sends and how it reads the answers. Source: Enable Banking's API reference
+(https://enablebanking.com/docs/api/reference/, with its OpenAPI description `enablebanking-api.yaml`) and FAQ
+(https://enablebanking.com/docs/faq/), read on 2026-11-28. Where they are silent, the rule below takes the reading
+that guesses nothing; such rules are marked "not documented". Every request goes through the gate (§4.0); every
+error is read from the answer's `error` code, not from its HTTP status, as the FAQ advises.
+
+**Banks and their reference.** A Bank is an ASPSP, which Enable Banking identifies by its name and country together
+(FAQ "Is there a unique ASPSP identifier?"). `bankReference` is the ASPSP's `name`, a space and its `country` in
+parentheses (`Example Bank (FI)`); the plug-in reads the name and country back from the last parentheses. `banks` is
+one `GET /aspsps` with `country`, `psu_type` personal and `service` AIS; the reference describes no paging of the answer. A Bank whose
+reference is longer than `BANK.name` holds is left out of the list.
+
+**Starting.** `startConsentRequest` sends `GET /aspsps` for the Bank's country again, so that a renamed Bank is
+refused instead of started under an old name (FAQ, rebrands), then `POST /auth` with `aspsp` (name and country),
+`psu_type` personal, `redirect_url` the return address, `state` the core's value, and `access.valid_until` the
+Bank's `maximum_consent_validity` (seconds, declared per ASPSP) counted from the moment the request is sent, less the
+request timeout (NFR-016), so that it never exceeds the maximum when the request arrives. The `handle` holds the
+`authorization_id` and the Bank's `required_psu_headers`. `consentAddress` is the answer's `url`; it carries a value
+of the session and is never logged (UC-007 BR-006). A Bank missing from the list is `Refused(RefusedByDataProvider)`;
+`REDIRECT_URI_NOT_ALLOWED` is `Refused(ReturnAddressRefused)`; `WRONG_ASPSP_PROVIDED` and `WRONG_REQUEST_PARAMETERS`
+are `Refused(RefusedByDataProvider)`; `UNAUTHORIZED_ACCESS` and `AUTHORIZATION_NOT_PROVIDED` are
+`Refused(CredentialsRefused)`. How long the `url` stays usable is not documented: the Consent Request lifetime
+decides (UC-007 BR-002). Whether a custom-scheme `redirect_url` is accepted is not documented; the application must
+list the address among its redirect URLs (Control Panel, "URLs whitelisted").
+
+**The answer.** Enable Banking adds `code` and `state`, or `error` and `error_description`, to the query of the return
+address (reference, its first flow diagram). `stateOf` reads `state`. An answer with `error` is `NotCompleted`:
+a cancellation (`access_denied`) and a refusal by the Bank are not told apart, both are UC-007 A1. An answer with
+neither `code` nor `error` is `NotConfirmed(AnswerNotUnderstood)`.
+
+**Completing.** `completeConsent` sends `POST /sessions` with the `code`. `expiresAt` is the answer's
+`access.valid_until`: Enable Banking keeps the session exactly as long as asked, also when the Bank adjusts its own
+consent (reference, `Access.valid_until`), and the session may still end earlier (FAQ, `EXPIRED_SESSION`), which
+UC-001 A9 handles. `EXPIRED_AUTHORIZATION_CODE`, `WRONG_AUTHORIZATION_CODE` and `ALREADY_AUTHORIZED` are
+`NotConfirmed(AnswerNotUnderstood)` (UC-007 A2); `UNAUTHORIZED_ACCESS` and `AUTHORIZATION_NOT_PROVIDED` are
+`NotConfirmed(CredentialsRefused)`; another refusal is `NotConfirmed(RefusedByDataProvider)` (A4). How
+long a `code` is valid is not documented. Each delivered Bank Account comes from one entry of `accounts`:
+`providerReference` is its `identification_hash`, which Enable Banking gives for matching an entry across sessions (reference, `AccountResource`; FAQ "How should re-authorisation be performed"), never its `uid`, which is
+valid only while the session is authorised; `name` its `details`, else its `product`, never `name`, which is the
+holder's name; `kind` from `cash_account_type` (`CACC` current, `SVGS` savings, `CARD` credit card, any other code as
+delivered); `currency` its `currency`, none when it is `XXX` (unknown or several, FAQ); `number` its
+`account_id.iban`, else `account_id.other.identification`. An entry without `identification_hash` is not delivered.
+Two entries with the same `identification_hash` are delivered as they are, and the core stops for both (UC-009
+BR-004). No balance is asked for at completion. A restricted production application receives only the entries linked
+to it in Enable Banking's Control Panel (FAQ): a completion may cover no Bank Account. The `ConsentSession` holds the
+`session_id`, the Bank's required PSU headers from the `handle` and, for each delivered Bank Account, its `uid` by its
+`providerReference` (`BANK_SESSION.session_reference`, ADR-002 §2), so that a Fetch sends no request to learn them.
+
+**Revoking.** `revoke` sends `DELETE /sessions/{session_id}`. Its success is `EndedAtDataProvider`: Enable Banking
+closes the Bank's consent "automatically if possible" (reference, "Delete session"). Any error, also for a session
+that has already ended, is `NotConfirmed`.
+
+**The Operator's presence (S-B-46; C-006, UC-001 BR-012).** A request counts at the Bank as made with the Operator
+present only when it carries a PSU header, and a Bank that declares `required_psu_headers` accepts either all of them
+or none (FAQ, "What are the PSU headers … used for?", `PSU_HEADER_NOT_PROVIDED`). The headers Slussen can give truly
+are `Psu-User-Agent` (the application id and version name) and `Psu-Accept-Language` (the device's language). It
+never sends `Psu-Ip-Address`: the device does not know the address the Bank would see without asking a third party,
+which Slussen does not do (the Operator's decision of 2026-11-26), and the address it has on its own network is not that one.
+It never sends `Psu-Geo-Location` (no such permission, NFR-022). So a request of a Fetch the Operator started carries
+those two headers when the Bank requires none or only those; otherwise it carries none and its `RequestSummary` is
+`unattended`. A request of an `Unattended` Fetch carries no PSU header, as the FAQ asks for data fetching the
+application starts itself.
+
+**Fetching (S-B-47).** `FetchRequest.sessions` holds the Bank Session of each Bank with a Bank Consent that is valid
+(UC-001 A4); the plug-in reads only the selected Bank Accounts of those Banks and sends nothing for a Bank without a
+session, and nothing at all when no Bank Account is selected. For each selected Bank Account it sends, by the `uid`
+its `ConsentSession` holds, `GET /accounts/{uid}/balances` when the balance is to be read and `GET
+/accounts/{uid}/transactions` with `date_from` and `date_to` the fetch period (dates in UTC, as Enable Banking assumes)
+and no `transaction_status` filter, when the transactions are to be read. A selected Bank Account whose reference the
+session does not hold is `Failed(UnreadableAnswer)`. It sends no `GET /sessions/{session_id}` and no request for an entry's details:
+whether those contact the Bank is not documented. Each page of the transactions is a request through the gate:
+while the answer has a `continuation_key`, also with an empty page, it asks again with that key and the same other
+parameters (FAQ, continuation key); a page the gate refuses, or a `WRONG_CONTINUATION_KEY`, ends that Bank Account as
+`Failed(Incomplete)` (§4.1).
+
+**The balance (S-B-47; risk R5 of the survey).** Of the `balances` given, the Account Balance is the one with
+`balance_type` `ITBD` (interim booked), else `CLBD` (closing booked), each a booked balance as the booked transactions
+are; never an available, expected, opening, earlier, value-date, informational or other balance, which can hold a
+credit limit, pending items or another day. Of several of the chosen type, the one in the Bank Account's currency;
+when that is not exactly one, or none of the two types is given, the plug-in gives no balance. Its amount is taken
+with its own sign, a minus being money the Operator owes. For an entry whose `cash_account_type` is `CARD` it gives
+no balance: how a card's balance is signed is not documented. `balanceReportedAt` is `last_change_date_time`, else the
+start of `reference_date` in UTC, else null.
+
+**Transactions (S-B-47; UC-001 BR-002, BR-016).** Each entry of `transactions` becomes one `ProviderTransaction`,
+exactly as follows; nothing missing is taken from another field:
+- `booked`: true for `status` `BOOK`; false for `PDNG`, `HOLD`, `SCHD`, `CNCL` and `RJCT`, which the core leaves out
+  (BR-002); for `OTHR` or no `status` the entry is `Uninterpretable` with `booked` null and `UnreadableStructure`.
+- `bookedDate`: `booking_date`, never `value_date` or `transaction_date`; missing is `MissingDate`, not a date is
+  `UnreadableDate`.
+- `amount`: `transaction_amount.amount` with the sign of `credit_debit_indicator`, `CRDT` an inflow and `DBIT` an
+  outflow. Whether the amount carries a sign of its own is not documented: a leading minus is taken only with `DBIT`
+  and is then the same outflow; a minus with `CRDT`, no indicator, more decimals than thousandths or no number is
+  `UnreadableAmount`, and a missing amount `MissingAmount`.
+- `currency`: `transaction_amount.currency`; missing is `MissingCurrency`.
+- `payee`: for `DBIT` `creditor.name`, for `CRDT` `debtor.name`, exactly as delivered; none when it is missing.
+- `memo`: the lines of `remittance_information` in their order, joined by one space, each exactly as delivered; none
+  when there is no line. The payee and memo enter the Import Identifier of kind `F` (ADR-008 §2), so this form never
+  changes once a build has sent one.
+- `stableReference`: null, also when `entry_reference` is given (§4.1 table; plan §6 Q-05, issue #7). The FAQ says
+  `entry_reference` is unique and lasting for most Banks but missing or duplicated at some; the Operator decided that a
+  Bank's references are trusted only after he has seen real ones.
+
+**Errors in a Fetch (S-B-47).** `ASPSP_RATE_LIMIT_EXCEEDED` is `BankOutcome.AskedToWait` for that Bank with no end
+(the FAQ's advice of 6 hours is not a period the answer names, so the default wait applies, UC-001 BR-004); another
+answer 429 is `SourceOutcome.AskedToWait` with no end. `EXPIRED_SESSION`, `REVOKED_SESSION`, `CLOSED_SESSION` and
+`SESSION_DOES_NOT_EXIST` are `BankOutcome.ConsentRefused` for that Bank (UC-001 A9). `UNAUTHORIZED_ACCESS` and
+`AUTHORIZATION_NOT_PROVIDED` are `SourceOutcome.CredentialsRefused`. `ASPSP_ERROR` and `ASPSP_TIMEOUT` are
+`Failed(ServiceUnavailable)` for that Bank Account, with no Back-off and no retry (UC-001 BR-005). Any other error,
+`PSU_HEADER_NOT_PROVIDED` and `PSU_HEADER_INVALID` included, is `Failed(UnreadableAnswer)` for the Bank Account the
+request read. A timeout or a lost connection is a `TransientFailure` as §4.0 says.
 
 #### 4.2 Budget App (`slussen.pluginapi.budgetapp`)
 
@@ -790,6 +941,11 @@ variant) holds exactly this list and fails on any other permission, so a library
 ships. A permission a library brings that no use case needs is removed from the merged manifest, never added to the
 list: WorkManager's `android.permission.FOREGROUND_SERVICE`, since a Scheduled Fetch runs no foreground work. The
 check's list is changed only together with NFR-022 and this table, never on its own to make a build pass.
+The return address of a Bank Consent (UC-007 BR-011) is an intent filter of the app's own activity for the scheme
+`<applicationId>`, and the check that the device has a browser is a `<queries>` element; neither is a permission, so
+this list does not change for UC-007 (S-B-43). `slussen.app.di` forms the return address from the build's
+`applicationId` and hands it to the core; no Data Provider's name is in it, in the manifest or in any text of the
+screens (K-04).
 
 UI: one ViewModel per screen in `slussen.app.ui.<screen>`; composables receive state and callbacks only. Background
 work: the Scheduled Fetch runs as a WorkManager periodic worker in `slussen.app.schedule`, which asks the coordinator

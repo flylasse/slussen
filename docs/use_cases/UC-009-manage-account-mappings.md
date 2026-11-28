@@ -228,7 +228,7 @@ A credit card Bank Account can have a Funded By and every other Bank Account a T
 
 ### BR-009: Offered Bank Accounts Are Kept Until the Next Delivery
 
-The Bank Accounts a Data Provider offered in a Fetch (UC-001) or with a Bank Consent (UC-007) are kept as Offered Bank Accounts until the Data Provider next delivers its Bank Accounts, so that a Bank Account can be added (UC-013), confirmed or identified again from stored data without contacting the Data Provider. Of each Bank Account number, only the last four digits are kept for display, the part of a Bank Account or card number that banks and card issuers conventionally show; the full number is never stored. Offered Bank Accounts are never included in device backups or transfers and are not restored after a reinstall.
+The Bank Accounts a Data Provider offered in a Fetch (UC-001) or with a Bank Consent (UC-007) are kept as Offered Bank Accounts until the Data Provider next delivers its Bank Accounts (a Data Provider that needs a Bank Consent delivers those of a Bank only with that Bank's Bank Consent, ADR-001 §4.1), so that a Bank Account can be added (UC-013), confirmed or identified again from stored data without contacting the Data Provider. Of each Bank Account number, only the last four digits are kept for display, the part of a Bank Account or card number that banks and card issuers conventionally show; the full number is never stored. Offered Bank Accounts are never included in device backups or transfers and are not restored after a reinstall.
 
 ### BR-010: A Generated Identifier Ties Everything to a Bank Account
 
