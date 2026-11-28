@@ -153,13 +153,13 @@
 
 ### A13: Unattended Access Limit Reached
 
-**Trigger:** In a Scheduled Fetch, a Bank Account read through a Data Provider that needs a Bank Consent has had 4 Unattended Accesses of its transactions or of its balance in the preceding 24 hours, the limit PSD2 sets (C-006), counted as BR-012 says, when the request gate is asked to admit that read (step 4)  
+**Trigger:** In a Scheduled Fetch, a Bank Account read through a Data Provider that needs a Bank Consent has had 4 Unattended Accesses of its transactions, or 4 of its balance, in the preceding 24 hours, the limit PSD2 sets (C-006), counted as BR-012 says, a request sent exactly 24 hours before included, when its reads are chosen and when the request gate is asked to admit that read (step 4)  
 **Flow:**
 
-1. Slussen leaves that Bank Account out without contacting its Bank.
-2. Slussen shows the Blocked Reason "access limit reached" for the Bank Account with the time the limit frees up.
-3. Slussen records the outcome Access Limit Reached for that Bank Account.
-4. Use case continues at step 4 for the other Bank Accounts, or ends when no Bank Account is left to read.
+1. Slussen leaves out that read without contacting its Bank for it, and reads the Bank Account's other read when that is below the limit.
+2. Slussen shows the Blocked Reason "access limit reached" for the Bank Account, with which read waits for Scheduled Fetches and the time each is free again, and that a Fetch the Operator starts reads it.
+3. Slussen records the outcome Access Limit Reached for that Bank Account when its transactions were left out, and stores its balance when that was read; when only its balance was left out, its outcome is that of its transactions read.
+4. Use case continues at step 4 for the other Bank Accounts; when every selected Bank Account was left out, nothing is sent, the Fetch is recorded with the outcome Access Limit Reached, and the use case ends.
 
 ### A14: Transient Failure in a Scheduled Fetch
 

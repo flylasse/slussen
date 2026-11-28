@@ -231,11 +231,14 @@ enum class RefusalScope { BankAccount, Bank, Source }  // Source = the whole Dat
 
 - The plug-in calls `gate.admit` before **every** request it sends, including each page of a paged read and every
   request of a Bank Consent operation (A-12). On `Refused` it sends nothing in that scope and goes on with what is
-  outside it (§4.1); a credential check returns `StoppedByGate` (§4.5). It never counts, waits or retries on its own.
+  outside it (§4.1); a credential check returns `StoppedByGate` (§4.5). A refusal of scope BankAccount for the
+  Unattended Access limit ends only the read it refused, the Bank Account's transactions or its balance, and its other
+  read goes on (S-B-56). It never counts, waits or retries on its own.
 - For a Data Provider, the core's gate stores the Provider Request (`PROVIDER_REQUEST`, UC-001 BR-007) durably before
   it answers `Allowed`, so a crash after admission counts the request rather than losing it. It refuses with scope
   Source for a reached Request Limit or a Back-off of the Data Provider, scope Bank for a Back-off of one Bank, and
-  scope BankAccount for a reached Unattended Access limit, in a Scheduled Fetch only (C-006, UC-001 BR-004, BR-012). Requests of Bank Consent
+  scope BankAccount for a reached Unattended Access limit, in a Scheduled Fetch only, counted for each kind of read
+  apart, the transactions and the balance, at the time the Fetch started (C-006, UC-001 BR-004, BR-012, S-B-56). Requests of Bank Consent
   operations are counted as `request_kind` Other, with the Operator present. The gate stores `unattended` and the Bank
   Account of `bankAccountReference` with the Provider Request, and counts an unattended request against the
   Unattended Access limit whatever started it (UC-001 BR-012). A plug-in sends `unattended` true for every request of

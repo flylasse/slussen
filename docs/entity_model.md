@@ -366,7 +366,7 @@ One read of transactions and balances from a Data Provider, started by the Opera
 | data_provider_id | Data Provider that was read                   | Long      | 19               | Not Null, Foreign Key (DATA_PROVIDER.id) |
 | started_at       | Time the Fetch started                        | DateTime  | -                | Not Null                                 |
 | started_by       | Whether the Operator started the Fetch, with the Operator present, or the Fetch Schedule started it, unattended | String    | 20               | Not Null, Values: Operator, Schedule     |
-| outcome          | What the Fetch achieved                       | String    | 30               | Not Null, Values: Fetched, Served From Fetch Cooldown, Waiting For Back-off, Request Limit Reached, Failed, Not Consented, Credentials Refused |
+| outcome          | What the Fetch achieved                       | String    | 30               | Not Null, Values: Fetched, Served From Fetch Cooldown, Waiting For Back-off, Request Limit Reached, Failed, Not Consented, Credentials Refused, Access Limit Reached |
 
 #### Constraints
 
@@ -425,7 +425,7 @@ One request Slussen sent to a Data Provider, kept so that the Request Limit and 
 #### Constraints
 
 - A Provider Request is kept for at least 24 hours after `sent_at`, the window of the Data Providers' own limits and of C-006, and survives a restart of the app.
-- For a Data Provider that needs a Bank Consent, the unattended Provider Requests of one Bank Account sent in the preceding 24 hours number at most 4 with `request_kind` Transactions and at most 4 with `request_kind` Balance (C-006).
+- For a Data Provider that needs a Bank Consent, a Scheduled Fetch sends an unattended Provider Request of one Bank Account with `request_kind` Transactions, or with `request_kind` Balance, only while fewer than 4 of that kind, the limit PSD2 sets (C-006), were sent in the preceding 24 hours, one sent exactly 24 hours before included; a Fetch the Operator started may add more (UC-001 BR-012).
 - A Provider Request of a Fetch the Operator started is `unattended` only when the request could not show the Bank that the Operator is present (UC-001 BR-012); a request of a Bank Consent operation never is.
 
 ### ACCOUNT_BALANCE
