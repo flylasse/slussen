@@ -103,6 +103,8 @@ fun SettingsScreen(
                                 Modifier.clickable { actions.onEdit(line.setting) }.testTag(line.tag),
                             )
                             line.answer?.let { AnswerLine(it) }
+                            // The next Scheduled Fetch and the notifications line (`#fetch-schedule`, `#notifications-off`).
+                            line.notes.forEach { Muted(it) }
                         }
                         is SettingItemUi.Switch -> {
                             val line = item.line

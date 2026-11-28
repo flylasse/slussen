@@ -12,6 +12,16 @@ import java.io.File
  * that uses the same convention plugins. The fixture's manifest is replaced by one that asks for the given permissions.
  */
 class DevicePermissionsBuildTest {
+    /** The permissions of NFR-022 and ADR-001 section 5, the receiver permission written as the manifest merger expands it. */
+    private val listed = arrayOf(
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.WAKE_LOCK",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.POST_NOTIFICATIONS",
+        "\${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+    )
+
     private fun GradleFixture.manifestAsking(vararg permissions: String) {
         val uses = permissions.joinToString("\n") { "    <uses-permission android:name=\"$it\" />" }
         File(directory, "app/src/main/AndroidManifest.xml").writeText(
@@ -26,10 +36,10 @@ class DevicePermissionsBuildTest {
     }
 
     @Test
-    @DisplayName("NFR-022, ADR-001 section 5, 6.4: network access and the app's own receiver permission pass; check runs the permission check of every variant and :app:assembleDebug runs it before packaging")
+    @DisplayName("NFR-022, ADR-001 section 5, 6.4: exactly the permissions of section 5 pass; check runs the permission check of every variant and :app:assembleDebug runs it before packaging")
     fun allowedPermissionsPass() {
         val fixture = GradleFixture("permissions-allowed")
-        fixture.manifestAsking("android.permission.INTERNET", "\${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
+        fixture.manifestAsking(*listed)
 
         val result = fixture.runner(":app:check", ":app:assembleDebug").build()
 
@@ -48,7 +58,7 @@ class DevicePermissionsBuildTest {
     @DisplayName("NFR-022, ADR-001 section 6.4, 6.6: a permission section 5 does not allow fails :app:assembleDebug naming each one, and no package is built")
     fun disallowedPermissionFailsPackagingNamingEach() {
         val fixture = GradleFixture("permissions-disallowed-assemble")
-        fixture.manifestAsking("android.permission.INTERNET", "android.permission.READ_CONTACTS", "android.permission.CAMERA")
+        fixture.manifestAsking(*listed, "android.permission.READ_CONTACTS", "android.permission.CAMERA")
 
         val result = fixture.runner(":app:assembleDebug").buildAndFail()
 
@@ -67,12 +77,37 @@ class DevicePermissionsBuildTest {
     @DisplayName("NFR-022, ADR-001 section 6.4: a permission section 5 does not allow fails :app:check")
     fun disallowedPermissionFailsCheck() {
         val fixture = GradleFixture("permissions-disallowed-check")
-        fixture.manifestAsking("android.permission.READ_CONTACTS")
+        fixture.manifestAsking(*listed, "android.permission.READ_CONTACTS")
 
         val result = fixture.runner(":app:check", "--continue").buildAndFail()
 
         assertEquals(TaskOutcome.FAILED, result.task(":app:verifyDebugPermissions")?.outcome)
         assertEquals(TaskOutcome.FAILED, result.task(":app:verifyReleasePermissions")?.outcome)
         assertTrue(result.output.contains("  - `android.permission.READ_CONTACTS`"), "the failure names the permission")
+    }
+
+    @Test
+    @DisplayName("NFR-022, ADR-001 section 5, 6.4: one permission fewer than section 5 lists fails :app:assembleDebug naming the one missing")
+    fun missingPermissionFailsNamingIt() {
+        val fixture = GradleFixture("permissions-missing")
+        fixture.manifestAsking(*listed.filter { it != "android.permission.POST_NOTIFICATIONS" }.toTypedArray())
+
+        val result = fixture.runner(":app:assembleDebug").buildAndFail()
+
+        assertEquals(TaskOutcome.FAILED, result.task(":app:verifyDebugPermissions")?.outcome)
+        assertTrue(result.output.contains("  - `android.permission.POST_NOTIFICATIONS`"), "the failure names the missing permission")
+        assertTrue(!result.output.contains("  - `android.permission.INTERNET`"), "a listed permission that is there is not named")
+    }
+
+    @Test
+    @DisplayName("NFR-022, ADR-001 section 5, 6.4: one permission more, WorkManager's foreground service, fails :app:check")
+    fun foregroundServiceFails() {
+        val fixture = GradleFixture("permissions-foreground-service")
+        fixture.manifestAsking(*listed, "android.permission.FOREGROUND_SERVICE")
+
+        val result = fixture.runner(":app:check", "--continue").buildAndFail()
+
+        assertEquals(TaskOutcome.FAILED, result.task(":app:verifyReleasePermissions")?.outcome)
+        assertTrue(result.output.contains("  - `android.permission.FOREGROUND_SERVICE`"), "the failure names the foreground service")
     }
 }

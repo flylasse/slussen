@@ -26,6 +26,13 @@ class UiFixture(
 ) {
     val slice = TestSlice(startKind, unreadableParts, identify)
     val zone: ZoneId = ZoneId.of("Europe/Stockholm")
+
+    /** The device's periodic work of the Fetch Schedule, replaced for the JVM (UC-001 BR-013). */
+    val scheduleWork = slussen.app.schedule.FakeFetchScheduleWork(slice.clock)
+
+    /** Whether the device allows Slussen's notifications (UC-001 BR-014); a test switches it. */
+    var notificationsAllowed: Boolean = true
+
     val services = UiServices(
         credentials = slice.credentials,
         settingsOverview = slice.settingsOverview,
@@ -50,6 +57,8 @@ class UiFixture(
         running = slice.coordinator.running,
         ended = slice.coordinator.ended,
         budgetAppName = slice.plugins.budgetApp.profile.name,
+        fetchSchedule = slussen.app.schedule.FetchSchedule(scheduleWork) { slice.settings.current().scheduledFetchesPerDay },
+        notificationsAllowed = { notificationsAllowed },
     )
 }
 

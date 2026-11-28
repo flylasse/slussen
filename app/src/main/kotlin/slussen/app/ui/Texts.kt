@@ -152,6 +152,10 @@ object Texts {
     /** P9-16 (`budget.html#fetch-states`): the text of the Fetch button while a Fetch of [subject] runs. */
     fun fetching(subject: String?): String = if (subject == null) "Fetching…" else "Fetching $subject…"
 
+    /** P9-16, ADR-007 §1: the Fetch button while [running], a Fetch, runs; a Scheduled Fetch says that the Fetch Schedule started it (NFR-023). */
+    fun fetching(running: RunningOperation): String =
+        fetching(running.subject) + if (running.startedBy == StartedBy.Schedule) " · a Scheduled Fetch, started by the Fetch Schedule" else ""
+
     /** P9-16: the short message for the result of one tap of a Fetch of one Data Provider. */
     fun fetchResult(report: FetchReport, formats: Formats, tap: Int): FetchResultUi = when (report) {
         is FetchReport.Fetched -> FetchResultUi("Fetched ${formats.time(report.fetchedAt)}", fetchedDetail(report, formats), FetchResultKind.Fetched, tap)
@@ -496,8 +500,14 @@ object Texts {
     /** NFR-023, ADR-007 §1: pressed while another operation runs, the action waits for it and says so. */
     fun readWaits(budgetAppName: String, running: RunningOperation): String = "${readAgain(budgetAppName)} · waits for: ${operation(running)}"
 
-    /** ADR-007 §1: the operation that runs now, as the screens name it. */
-    fun operation(running: RunningOperation): String = when (running.kind) {
+    /**
+     * ADR-007 §1: the operation that runs now, as the screens name it; one the Fetch Schedule started says so, so that an
+     * action waiting behind a Scheduled Fetch says why (NFR-023).
+     */
+    fun operation(running: RunningOperation): String =
+        operationOnly(running) + if (running.startedBy == StartedBy.Schedule) ", a Scheduled Fetch started by the Fetch Schedule" else ""
+
+    private fun operationOnly(running: RunningOperation): String = when (running.kind) {
         OperationKind.Fetch -> "Fetching ${running.subject ?: "a Data Provider"}"
         OperationKind.Comparison -> "Reading ${running.subject ?: "the Budget App"}"
         OperationKind.FileImport -> "Importing a Transaction File for ${running.subject ?: "a Bank Account"}"

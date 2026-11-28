@@ -248,6 +248,8 @@ data class Overview(
     val firstRun: FirstRunCard? = null,
     /** FR-040, UC-003 A1: when the Budget App was last read, and which Budgets were not. */
     val budgetAppRead: BudgetAppRead = BudgetAppRead(null, emptyList(), null),
+    /** UC-001 BR-014: the stored Fetch Schedule, so that the question about notifications is asked only while it is above 0. */
+    val fetchSchedule: Int = 0,
 )
 
 /** A10, BR-011: the only card shown while no Bank Account is added; it leads to Settings and names [next] (UC-013 BR-008). */

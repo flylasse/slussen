@@ -14,7 +14,10 @@ import slussen.app.platform.log.LogcatLog
 import slussen.app.ui.UiServices
 import java.time.Clock
 
-/** The app process. It owns the one composition root (ADR-001 §5) and starts it once, off the main thread. */
+/**
+ * The app process. It owns the one composition root (ADR-001 §5) and starts it once, off the main thread, in every
+ * process of the app: one the Operator opens and one a Scheduled Fetch's worker starts without a screen alike.
+ */
 class SlussenApplication : Application() {
     /** What the log reads Detailed Logging from: the stored Operator Setting (UC-010 A5, ADR-006 §3). */
     private val detailedLogging = DetailedLoggingSwitch()
@@ -31,8 +34,9 @@ class SlussenApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            started.value = compositionRoot.start(this@SlussenApplication, Clock.systemDefaultZone())
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        scope.launch {
+            started.value = compositionRoot.start(this@SlussenApplication, Clock.systemDefaultZone(), scope)
         }
     }
 }

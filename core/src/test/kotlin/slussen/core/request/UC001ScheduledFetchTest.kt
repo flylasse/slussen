@@ -621,6 +621,31 @@ class UC001ScheduledFetchTest {
     }
 
     @Test
+    @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-013"])
+    @DisplayName("ADR-007 §1, NFR-023: the operation shown as running says that the Fetch Schedule started it, so that an action waiting behind it says why; an Operator's Fetch says the Operator did")
+    fun runningScheduledFetchSaysTheFetchScheduleStartedIt() = runTest {
+        feedsWithChecking()
+        val hold = CompletableDeferred<Unit>()
+        slice.feeds.beforeAnswer = { hold.await() }
+        val scheduledOne = async { slice.fetch.scheduledFetch() }
+        runCurrent()
+
+        assertEquals(RunningOperation(OperationKind.Fetch, "Kestrel Feeds", StartedBy.Schedule), slice.coordinator.running.value)
+        hold.complete(Unit)
+        scheduledOne.await()
+        assertNull(slice.coordinator.running.value)
+
+        val again = CompletableDeferred<Unit>()
+        slice.feeds.beforeAnswer = { again.await() }
+        slice.clock.advance(Duration.ofDays(1))
+        val operators = async { slice.fetch.fetch(slice.feedsKey) }
+        runCurrent()
+        assertEquals(StartedBy.Operator, slice.coordinator.running.value?.startedBy)
+        again.complete(Unit)
+        operators.await()
+    }
+
+    @Test
     @UseCase(id = "UC-001", scenario = "A12: Scheduled Fetch", businessRules = ["BR-006", "BR-013"])
     @DisplayName("ADR-007 §1: a Fetch the Operator starts while a Scheduled Fetch runs waits for it, then is answered from the Fetch Cooldown")
     fun operatorsFetchWaitsForTheScheduledFetch() = runTest {

@@ -1,6 +1,12 @@
 package slussen.app.di
 
 import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import slussen.app.platform.notification.AndroidNotificationDevice
+import slussen.app.platform.notification.NewTransactionNotification
+import slussen.app.schedule.FetchSchedule
+import slussen.app.schedule.WorkManagerFetchSchedule
 import slussen.app.platform.version.installedAppVersion
 import slussen.app.ui.Formats
 import slussen.app.ui.UiServices
@@ -57,9 +63,12 @@ class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLogg
 
     /**
      * Opens the storage (the start sequence of ADR-002 §6 included), registers every plug-in of this build with what its
-     * part declares (O-11, ADR-001 §4.1, §4.3) and creates the core's services, before any operation is admitted.
+     * part declares (O-11, ADR-001 §4.1, §4.3) and creates the core's services, before any operation is admitted. It runs
+     * in every process of the app, the one a Scheduled Fetch's worker starts without a screen included: there it sets
+     * the Fetch Schedule's work at the start (UC-001 BR-013) and keeps the New Transaction Notification following the
+     * stored number in [scope] (UC-001 BR-014), and the worker uses the same services.
      */
-    suspend fun start(context: Context, clock: Clock): UiServices {
+    suspend fun start(context: Context, clock: Clock, scope: CoroutineScope): UiServices {
         val storage = SlussenStorage.open(context, clock)
         val appVersion = context.installedAppVersion()
         val random = SecureRandom()
@@ -106,6 +115,13 @@ class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLogg
             comparisonNotices = comparisonNotices,
             periodReadOwed = { storage.comparisons.periodReadOwed(it) },
         )
+        // UC-001 BR-013: Scheduled Fetches follow the Fetch Schedule, set by the first start of Slussen while the stored value is above 0, kept by a later start; the first run falls due a whole period later, so opening Slussen never fetches (BR-001).
+        val fetchSchedule = FetchSchedule(WorkManagerFetchSchedule(context)) { storage.settings.current().scheduledFetchesPerDay }
+        fetchSchedule.atStart()
+        val notificationDevice = AndroidNotificationDevice(context)
+        val notification = NewTransactionNotification(notificationDevice) { status.newTransactionNumber() }
+        // UC-001 BR-014: Slussen works the number out from stored data at every start and after every operation of the coordinator.
+        scope.launch { notification.follow(coordinator.ended) }
         return UiServices(
             credentials = credentials,
             settingsOverview = settingsOverview,
@@ -160,6 +176,8 @@ class CompositionRoot(log: SlussenLog, private val detailedLogging: DetailedLogg
             running = coordinator.running,
             ended = coordinator.ended,
             budgetAppName = registered.budgetApp.profile.name,
+            fetchSchedule = fetchSchedule,
+            notificationsAllowed = notificationDevice::allowed,
         )
     }
 

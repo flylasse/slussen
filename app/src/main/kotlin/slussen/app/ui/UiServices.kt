@@ -1,5 +1,7 @@
 package slussen.app.ui
 
+import slussen.app.schedule.FetchSchedule
+import slussen.app.schedule.FetchScheduleWork
 import slussen.core.connection.BudgetsAndBankAccounts
 import slussen.core.credential.ServiceCredentials
 import slussen.core.comparison.Comparison
@@ -59,4 +61,8 @@ class UiServices(
     val ended: StateFlow<Long>,
     /** The name of the Budget App of this build, as its part declares it (C-010). */
     val budgetAppName: String = "the Budget App",
+    /** The Fetch Schedule's periodic work (UC-001 BR-013): set again on a change (UC-010 A6), and its approximate next time. */
+    val fetchSchedule: FetchSchedule = FetchSchedule(FetchScheduleWork.None) { 0 },
+    /** Whether the device allows Slussen's notifications now (UC-001 BR-014), for the line on Settings and the question on the Overview. */
+    val notificationsAllowed: () -> Boolean = { true },
 )

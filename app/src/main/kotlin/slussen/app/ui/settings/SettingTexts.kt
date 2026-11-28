@@ -163,6 +163,17 @@ internal object SettingTexts {
     }
 
     /** A6 (`#fetch-schedule`): what the Fetch Schedule of [value] means. */
+    /** UC-001 BR-013 (`#fetch-schedule`): the approximate time of the next Scheduled Fetch, which the device may shift. */
+    fun nextScheduledFetch(at: String): String = "Next Scheduled Fetch about $at, as the device allows; the device can start it later."
+
+    /** UC-010 A6, NFR-023: the Fetch Schedule is stored, but the device did not take the new schedule now. */
+    fun scheduleNotSet(): String = "The device did not take the new schedule now; Slussen sets it at its next start. Nothing else is needed."
+
+    /** UC-001 BR-014 (`#notifications-off`): while notifications are not allowed. */
+    fun notificationsOff(): String =
+        "Notifications are not allowed for Slussen: the number of waiting transactions is not shown. The device's settings for " +
+            "Slussen allow them; nothing else is needed."
+
     fun fetchSchedule(value: Int?, default: Int): String {
         val will = when (value) {
             null -> "Slussen makes as many Scheduled Fetches in any 24 hours as the Fetch Schedule says"

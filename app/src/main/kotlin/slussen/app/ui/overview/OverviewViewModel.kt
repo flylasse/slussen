@@ -79,7 +79,21 @@ data class OverviewUi(
     val fetchNote: String? = null,
     /** Step 2 (P9-13): under the expiring Bank Consents, why they cannot be renewed in this build. */
     val expiringConsentNote: String? = null,
+    /** UC-001 BR-014: the stored Fetch Schedule; the question about notifications is asked only while it is above 0. */
+    val fetchSchedule: Int = 0,
 )
+
+/** UC-001 BR-014 (`overview.html#notification-ask`): when the Overview asks the device's one question about notifications. Pure. */
+object NotificationQuestion {
+    // UC-001 BR-014: Slussen asks once, when the Overview opens while the Fetch Schedule is above 0, Slussen's notifications are not allowed and the device has no answer of the Operator to that question yet; it keeps nothing of its own about the question.
+    /**
+     * Whether to ask, with the stored [fetchSchedule], whether notifications are [allowed], whether the device asks the
+     * Operator before an app shows notifications ([deviceAsks], Android 13 and later), and whether it has the Operator's
+     * answer already ([deviceHasAnswer]).
+     */
+    fun ask(fetchSchedule: Int, allowed: Boolean, deviceAsks: Boolean, deviceHasAnswer: Boolean): Boolean =
+        fetchSchedule > 0 && !allowed && deviceAsks && !deviceHasAnswer
+}
 
 /** The Overview tab (UC-008), from stored data only. */
 class OverviewViewModel(private val services: UiServices) : ViewModel() {
@@ -180,7 +194,7 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
     private fun fetchButton(canFetch: Boolean): FetchButtonUi {
         val now = running
         return if (now != null && now.kind == OperationKind.Fetch) {
-            FetchButtonUi(Texts.fetching(now.subject), enabled = false, running = true)
+            FetchButtonUi(Texts.fetching(now), enabled = false, running = true)
         } else {
             FetchButtonUi(FETCH_ALL, enabled = canFetch, running = false)
         }
@@ -252,6 +266,7 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
             } else {
                 "${Texts.BANK_CONSENTS_NOT_IN_THIS_BUILD}, so it cannot be renewed here."
             },
+            fetchSchedule = overview.fetchSchedule,
         )
     }
 
@@ -273,6 +288,7 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
             fetchResults = emptyList(),
             fetchWarning = null,
             firstRun = FirstRunUi("Set up Slussen in Settings", next, then),
+            fetchSchedule = overview.fetchSchedule,
         )
     }
 

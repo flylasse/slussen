@@ -278,7 +278,7 @@ class ServicePageViewModel(
         if (isBudgetApp) return null
         val now = running
         return if (now != null && now.kind == OperationKind.Fetch) {
-            FetchButtonUi(Texts.fetching(now.subject), enabled = false, running = true)
+            FetchButtonUi(Texts.fetching(now), enabled = false, running = true)
         } else {
             FetchButtonUi("Fetch $name", enabled = canFetch, running = false)
         }

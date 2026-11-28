@@ -31,6 +31,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
+    // The Scheduled Fetch's periodic work (ADR-001 §5, UC-001 A12, BR-013), in slussen.app.schedule; ADR-005 §1 pins its version.
+    implementation(libs.androidx.work.runtime)
     // The screen tests need the test activity in the debug manifest (ADR-005 §3).
     debugImplementation(libs.compose.ui.test.manifest)
 

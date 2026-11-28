@@ -1,6 +1,8 @@
 package slussen.app.ui
 
+import android.Manifest
 import android.content.ActivityNotFoundException
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -60,6 +62,7 @@ import slussen.app.ui.mappings.AccountMappingsScreen
 import slussen.app.ui.mappings.AccountMappingsViewModel
 import slussen.app.ui.mappings.cardActionsOf
 import slussen.app.ui.overview.OverviewScreen
+import slussen.app.ui.overview.NotificationQuestion
 import slussen.app.ui.overview.OverviewViewModel
 import slussen.app.ui.components.NotShown
 import slussen.app.ui.service.ConnectActions
@@ -164,6 +167,24 @@ fun SlussenScreens(services: UiServices) {
 
     val overview: OverviewViewModel = viewModel(key = "overview") { OverviewViewModel(services) }
     val overviewUi by overview.state.collectAsState()
+
+    // The device's one question about notifications (`overview.html#notification-ask`, NotificationQuestion), asked when
+    // the Overview opens; nothing is stored about it: the device keeps the answer, and one closed without an answer is
+    // asked at the next opening.
+    val activity = LocalContext.current as? ComponentActivity
+    var askedThisOpening by rememberSaveable { mutableStateOf(false) }
+    val notificationQuestion = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val fetchSchedule = overviewUi?.fetchSchedule
+    LaunchedEffect(current, fetchSchedule) {
+        if (current != Screen.Overview || askedThisOpening || fetchSchedule == null || activity == null) return@LaunchedEffect
+        val deviceAsks = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        if (!deviceAsks) return@LaunchedEffect
+        val deviceHasAnswer = activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+        if (NotificationQuestion.ask(fetchSchedule, services.notificationsAllowed(), deviceAsks, deviceHasAnswer)) {
+            askedThisOpening = true
+            notificationQuestion.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     // Import a Transaction File (UC-002): one import for the whole app, so that no second one starts and no answer is lost when a screen is left.
     val fileImport: TransactionFileImportViewModel = viewModel(key = "transaction-file-import") { TransactionFileImportViewModel(services) }

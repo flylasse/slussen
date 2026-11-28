@@ -34,6 +34,7 @@ import slussen.core.settings.EntryStatus
 import slussen.core.settings.MappingsWaitFor
 import slussen.core.settings.NextThing
 import slussen.core.settings.SettingsEntry
+import java.time.Instant
 
 /** What an entry at the top of Settings opens: a service's page or a File Format's page (UC-010 BR-010). */
 sealed interface EntryPage {
@@ -62,7 +63,16 @@ data class FetchPeriodUi(val value: String, val hint: String, val answer: Answer
  * its name, its default and range, its value, and the answer of its last change at its own line (NFR-023). [tag] names
  * the line for the screen tests.
  */
-data class SettingLineUi(val setting: NumberSetting, val name: String, val hint: String, val value: String, val answer: AnswerUi?, val tag: String)
+data class SettingLineUi(
+    val setting: NumberSetting,
+    val name: String,
+    val hint: String,
+    val value: String,
+    val answer: AnswerUi?,
+    val tag: String,
+    /** The lines under it: for the Fetch Schedule, its next Scheduled Fetch and whether notifications are allowed (UC-001 BR-013, BR-014). */
+    val notes: List<String> = emptyList(),
+)
 
 /**
  * An Operator Setting that is on or off (UC-010 A5; `settings.html#list-2`): its state, "Switching on…" or "Switching
@@ -224,6 +234,31 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
     /** A size limit or warning threshold that could not be stored, offered again at the next tap (failure postconditions). */
     private val journalRetries = mutableMapOf<JournalControlKind, String>()
 
+    /** UC-001 BR-013: when the next Scheduled Fetch falls due, approximately, as the device scheduled it; null when none is. */
+    private var nextScheduledFetch: Instant? = null
+
+    /** UC-010 A6: the Fetch Schedule was stored, but the device did not take the new schedule; it is set at the next start. */
+    private var scheduleNotSet = false
+
+    /** UC-001 BR-014: whether the device allows Slussen's notifications, as last read. */
+    private var notificationsAllowed = true
+
+    /** Reads what the device holds for the Fetch Schedule's line: its next Scheduled Fetch and whether notifications are allowed. */
+    private suspend fun readDevice() {
+        nextScheduledFetch = services.fetchSchedule.next()
+        notificationsAllowed = try {
+            services.notificationsAllowed()
+        } catch (failure: Exception) {
+            true
+        }
+    }
+
+    /** The lines under the Fetch Schedule (`#fetch-schedule`, `#notifications-off`). */
+    private fun fetchScheduleNotes(): List<String> = listOfNotNull(
+        if (scheduleNotSet) SettingTexts.scheduleNotSet() else nextScheduledFetch?.let { SettingTexts.nextScheduledFetch(services.formats.dateTime(it)) },
+        if (notificationsAllowed) null else SettingTexts.notificationsOff(),
+    )
+
     init {
         viewModelScope.launch {
             // NFR-023: when an operation ends, whichever screen started it, the stored values are shown again; an open dialog and the answers stay.
@@ -237,6 +272,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
             shown = services.generalSettings.shown()
             lists = services.descriptionLists.shown()
             journalShown = services.journalControl.shown()
+            readDevice()
             null
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -282,6 +318,8 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                 val general = services.generalSettings.shown().also { shown = it }
                 lists = services.descriptionLists.shown()
                 journalShown = services.journalControl.shown()
+                scheduleNotSet = false
+                readDevice()
                 mutableState.value = SettingsUi(
                     entries = top.entries.map { entry -> line(entry, top.next) },
                     accountMappings = mappingsLine(top.accountMappings, budgetAppName),
@@ -367,6 +405,7 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                 SettingLineUi(
                     setting, SettingTexts.name(setting), SettingTexts.hint(shown), SettingTexts.shortValue(setting, shown.value),
                     answers[setting], SettingTexts.tag(setting),
+                    notes = if (setting == NumberSetting.FetchSchedule) fetchScheduleNotes() else emptyList(),
                 ),
             )
         }
@@ -521,6 +560,11 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
                 // Steps 4-6 (`#saved`, `#saved-read-owed`, `#fetch-period-saved`): the line shows the new value and what followed.
                 is SettingOutcome.Stored -> {
                     retries.remove(setting)
+                    // A6: the schedule is set again from the time of the change (UC-001 BR-013).
+                    if (setting == NumberSetting.FetchSchedule) {
+                        scheduleNotSet = !services.fetchSchedule.set(outcome.value)
+                        readDevice()
+                    }
                     val notReadAgain = readAgain(stored = SettingValue.Number(setting, outcome.value))
                     val now = shown ?: return@launch
                     answers[setting] = AnswerUi(

@@ -81,9 +81,11 @@ sealed interface ScheduledAdmission<out T> {
 
 /**
  * The operation that runs on the lane now, and what it works on, such as the Data Provider a Fetch reads ([subject],
- * null until the operation names it). ADR-007 §1: the screen shows what is running.
+ * null until the operation names it), and who started it ([startedBy]): the Operator, or the Fetch Schedule for a
+ * Scheduled Fetch. ADR-007 §1: the screen shows what is running, so that an action waiting behind a Scheduled Fetch
+ * says why (NFR-023).
  */
-data class RunningOperation(val kind: OperationKind, val subject: String?)
+data class RunningOperation(val kind: OperationKind, val subject: String?, val startedBy: StartedBy = StartedBy.Operator)
 
 /**
  * Held by a running operation. Every request gate of the operation asks [active] and refuses once the operation has
@@ -143,7 +145,7 @@ class OperationCoordinator(private val store: CoordinatorStore) {
         }
         // ADR-007 §3: origin Schedule is admitted only as a Scheduled Fetch (runScheduledFetch); it never prepares an Upload Plan.
         check(startedBy == StartedBy.Operator) { "Only the Operator starts the operations of $kind (ADR-007 §2)." }
-        OperationResult.Ran(onLane(kind, block))
+        OperationResult.Ran(onLane(kind, StartedBy.Operator, block))
     }
 
     /**
@@ -166,7 +168,7 @@ class OperationCoordinator(private val store: CoordinatorStore) {
         }
         // UC-001 BR-013: The deferral is cleared in the storage transaction that records the start of a Scheduled Fetch.
         store.recordScheduledFetchStart()
-        ScheduledAdmission.Ran(onLane(OperationKind.Fetch, block))
+        ScheduledAdmission.Ran(onLane(OperationKind.Fetch, StartedBy.Schedule, block))
     }
 
     /**
@@ -184,14 +186,17 @@ class OperationCoordinator(private val store: CoordinatorStore) {
         }
         // UC-001 BR-013: The deferral is cleared in the storage transaction that records the start of a Scheduled Fetch, so that an ended process neither loses it nor runs it twice.
         if (!store.recordScheduledFetchStart()) return ScheduledAdmission.NoneDeferred
-        ScheduledAdmission.Ran(onLane(OperationKind.Fetch, block))
+        ScheduledAdmission.Ran(onLane(OperationKind.Fetch, StartedBy.Schedule, block))
     }
 
-    /** Runs [block] holding the lane: shown as running, with its permit ended and the ending counted afterwards. */
-    private suspend fun <T> onLane(kind: OperationKind, block: suspend (OperationPermit) -> T): T {
-        // ADR-007 §1: the operation on the lane is shown, with what it works on, until it ends.
-        runningNow.value = RunningOperation(kind, subject = null)
-        val permit = OperationPermit(kind) { subject -> runningNow.value = RunningOperation(kind, subject) }
+    /**
+     * Runs [block] holding the lane: shown as running, with who started it ([startedBy]), with its permit ended and the
+     * ending counted afterwards.
+     */
+    private suspend fun <T> onLane(kind: OperationKind, startedBy: StartedBy, block: suspend (OperationPermit) -> T): T {
+        // ADR-007 §1: the operation on the lane is shown, with what it works on and who started it, until it ends.
+        runningNow.value = RunningOperation(kind, subject = null, startedBy)
+        val permit = OperationPermit(kind) { subject -> runningNow.value = RunningOperation(kind, subject, startedBy) }
         try {
             return block(permit)
         } finally {

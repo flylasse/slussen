@@ -112,6 +112,13 @@ class ImportStatus(
         )
     }
 
+    /**
+     * UC-001 BR-014: the number of the New Transaction Notification, worked out from stored data at every start and
+     * after every operation ([NewTransactionNumber]); it reads no Source and records nothing (BR-001).
+     */
+    suspend fun newTransactionNumber(): Int =
+        NewTransactionNumber.of(connections.bankAccounts(), connections.budgets(), stored.transactionCounts())
+
     /** Steps 1-3, A10: the Operator opens Slussen; the start of the session is recorded in the Decision Journal. */
     suspend fun open(): Overview {
         journal.record(JournalEventKind.SessionStart, "Slussen opened")
@@ -134,6 +141,7 @@ class ImportStatus(
             budgetAppName = budgetAppName,
             firstRun = if (noBankAccountAdded) FirstRunCard(firstRunNext()) else null,
             budgetAppRead = budgetAppRead(summaries),
+            fetchSchedule = snapshot.settings.scheduledFetchesPerDay,
         )
     }
 
