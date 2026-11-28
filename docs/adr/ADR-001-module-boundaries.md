@@ -740,17 +740,23 @@ a YNAB plan, a Budget Account a YNAB `Account` (OpenAPI); amounts are YNAB's mil
   `CredentialsRefused` for a read, for a `create` call when nothing of it was written, and `NotCleared` for
   `markCleared`. Every other documented `403` is the Budget App's refusal with its reason, not of the credentials:
   `403.1` (`subscription_lapsed`), `403.2` (`trial_expired`), `403.4` (`data_limit_reached`) and `403.5`
-  (`email_unconfirmed`), and a `403` whose code cannot be read, are `TransientFailure(ServiceUnavailable)` for a read
-  (the service answered that it cannot serve the request now), are answered for a write as a refused list or a refused
-  single send below, and are `NotCleared` for `markCleared`. The rules below follow this one wherever they name `401`
+  (`email_unconfirmed`), and a `403` whose code cannot be read, are for a read and a credential check a failure of
+  its own kind that names the reason from a closed set (`FailureKind` RefusedSubscriptionLapsed, RefusedTrialEnded,
+  RefusedDataLimitReached, RefusedAddressUnconfirmed, and RefusedOtherReason for any other `403` or one whose code
+  cannot be read; S-B-79), which the Operator is told in Slussen's words, are answered for a write as a refused list
+  or a refused single send below, the single send's `Rejected` carrying that kind, and are `NotCleared` for
+  `markCleared`. The rules below follow this one wherever they name `401`
   or `403`; it holds for the reads built before this section too.
+- **The Budget Accounts of the Budget (S-B-79).** Before it sends anything of a `create` call, the part sends one
+  `GET /plans/{plan_id}/accounts`. An item whose Budget Account is missing from the answer or `deleted` is not sent and
+  is `Unknown`, never `Rejected`, so that the rule of §4.2.4 for a Budget Account that is not in the Budget named does
+  not rest on an answer of YNAB, which documents none for it; the other items are sent. When that read gets no usable
+  answer, every item of the call is `Unknown` and nothing is sent. A refusal of the token to that read is
+  `CredentialsRefused` and a refusal by the gate `StoppedByGate`, with nothing written.
 - **The transfer payee.** YNAB links a transfer when the sent transaction's `payee_id` is the `transfer_payee_id` of
-  the other Budget Account (OpenAPI, `payee_id`, `Account.transfer_payee_id`). When the items of a `create` call hold a linked
-  transfer, the part first sends one `GET /plans/{plan_id}/accounts`. An item whose other Budget Account is missing
-  from the answer, `deleted`, `closed` or without a `transfer_payee_id` is `Rejected` with that reason and not sent,
-  as §4.2.2 says of a Budget App that cannot link it; when that read gets no usable answer, every linked item of the
-  call is `Unknown` and not sent, and the other items are sent. A refusal of the token to that read is
-  `CredentialsRefused`, with nothing written.
+  the other Budget Account (OpenAPI, `payee_id`, `Account.transfer_payee_id`), read from the same answer. An item whose
+  other Budget Account is missing from the answer, `deleted`, `closed` or without a `transfer_payee_id` is `Rejected`
+  with that reason and not sent, as §4.2.2 says of a Budget App that cannot link it.
 - **Creating a list.** The items of one Budget Account are sent in one `POST /plans/{plan_id}/transactions` with a
   `transactions` array, each with `account_id`, `date`, `amount`, `memo` (or null), `cleared` `cleared` or
   `uncleared` as the item says, `approved` false (YNAB's default too: "If not supplied, transaction will be
@@ -808,8 +814,8 @@ a YNAB plan, a Budget Account a YNAB `Account` (OpenAPI); amounts are YNAB's mil
   request beyond it with `429`. The gate counts nothing for the Budget App (§4.0); a `429` is `Unknown` for a write,
   `Unknown` for a clearing and a failed read (UC-003 A1) for a read, and nothing is retried. One Upload costs, for
   its Budget: the read before the plan (UC-006 step 2), the read of the check before writing (ADR-007 §6 step 4), for
-  each Budget Account one write and, after a refused list, one write per item, one read of the Budget Accounts when it holds a
-  linked transfer, one read and one write per Transfer Counterpart cleared, and the read of the Comparison after.
+  each Budget Account one read of the Budget Accounts and one write and, after a refused list, one write per item, one
+  read and one write per Transfer Counterpart cleared, and the read of the Comparison after.
 
 #### 4.3 File Pre-processor (`slussen.pluginapi.fileformat`)
 
