@@ -308,6 +308,8 @@ Filled as the run goes: the Windows gate, `connectedDebugAndroidTest`, evidence 
 
 **Wave 3 (commit 30e393e or later).** `connectedDebugAndroidTest`: `UC010DecisionJournalPersistenceIT`, `UC011ExportTheDecisionJournalPersistenceIT`, the screen ITs of Settings, the description lists and the export. By hand: one export of the Decision Journal through Android's save dialog, with and without codes; the file opens as JSON and ends with its closing part.
 
+**Before any build goes onto the phone.** The version code is higher than the installed build's: from phase E1 on a build carries `device.db` version 2, and an older build meeting that file cannot open it (no data is lost; Android refuses a lower version code but accepts an equal one). Wave 7 raises the version.
+
 **Wave 5 (commit 32128f0 or later).** `connectedDebugAndroidTest`: `UC002ImportATransactionFilePersistenceIT`, `UC002ImportATransactionFileScreenIT`, `UC001FetchTransactionsPersistenceIT` (the deferral), `UC001FetchScheduleWorkIT` (the one check that there are never two periodic works). By hand, with a debug build:
 1. **The real HSA file.** Import one real export for its Bank Account. If it is rejected, the reason names the line and the rule: report it, the format's rules that only reject can be widened without changing any reference (ADR-001 §4.3.1; G-35). If it is imported: the count is right, a reinvestment into the cash position is left out and its dividend kept, and importing the same file again brings in nothing. Then a later, overlapping export: only the new transactions come in.
 2. **Android's document dialog**: cancelling it, a file from a cloud provider, leaving the screen while an import waits behind a Fetch (every import control says that it waits and offers Withdraw).
