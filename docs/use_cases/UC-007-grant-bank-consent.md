@@ -16,6 +16,7 @@
 
 - The Operator has entered service credentials, accepted by it, for a Data Provider that needs a Bank Consent (UC-014).
 - No Upload Plan is awaiting confirmation and no Upload is being written (UC-006 BR-005).
+- The Data Provider's credentials are entered and not refused (UC-014 BR-005), also when a result arrives: a result that arrives while they are missing or refused is left unconsumed, neither checked nor accepted, and its Consent Request can still be answered within the Consent Request lifetime once credentials are accepted again (BR-002).
 
 ## Main Success Scenario
 

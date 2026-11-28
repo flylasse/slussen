@@ -429,7 +429,9 @@ interface BankConsentCapability {
   `EndedAtDataProvider` means the Data Provider ended its session and says it ends the consent at the Bank only where
   the Bank allows it; `Ended` means it confirmed the end at the Bank (UC-007 A7).
 - The core, not the plug-in, creates the `state` value (256 bits from `RandomSource`, ADR-008 §7) and stores only its SHA-256 digest with
-  the Consent Request, together with the plug-in's opaque `handle`, in `device.db` (ADR-002 §1, §2). The answer from
+  the Consent Request; it digests the `state` that `stateOf` returns through `Secret.sha256()`, the one one-way derivation
+  of a `Secret`, behind its own opt-in `@OneWayDigestApi` that only `slussen.core.identity` uses (ADR-006 §2, B-08;
+  S-B-52), so that the core never reveals it, together with the plug-in's opaque `handle`, in `device.db` (ADR-002 §1, §2). The answer from
   the Bank's Strong Customer Authentication is matched by the digest of the `state` it carries. Checking that it is
   the most recent Consent Request of the Bank and Data Provider, within the Consent Request lifetime counted to the
   moment the answer arrived, and not answered before, and marking it answered, is one storage operation (O-10
@@ -1032,6 +1034,7 @@ the fakes of the contracts, which must implement and reference them freely; it i
 | B-05 | Classes in `slussen/app/schedule/` reference no class in `slussen/core/upload/` |
 | B-06 | `Secret.reveal` and `ConsentSession.reveal` are invoked only from classes of plug-in modules and `:persistence` (ADR-006 L-04) |
 | B-07 | Within `:core`, `java/security/MessageDigest` is referenced only from `slussen/core/identity/` (Import Identifier, `bank_account_fingerprint`, Consent Request `state` digest) |
+| B-08 | `Secret.sha256`, the one one-way derivation of a `Secret`, is invoked only from classes in `slussen/core/identity/` (ADR-006 §2, S-B-52) |
 
 Every bytecode rule first asserts that its scope holds at least one class.
 
