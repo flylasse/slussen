@@ -840,12 +840,23 @@ public abstract class BudgetAppContractTest : CredentialContractTest() {
 }
 
 /**
- * An invented file in the File Pre-processor's format that holds one line it cannot convert, and [valuesOfTheFile]: the
- * values written in that file (amounts, dates, payees, memos, other text of its lines) that a `Rejected.reason` must
- * never hold (ADR-001 §4.3, NFR-007).
+ * An invented file in the File Pre-processor's format that holds one line it cannot convert, for the rejection check
+ * of ADR-001 §4.4. What an implementer must give:
+ *
+ * - [file]: the whole file, in which exactly one line cannot be converted;
+ * - [unreadableLine]: that line exactly as it is written in [file], without its line end;
+ * - [valuesOfTheFile]: the values written in the file that a `Rejected.reason` must never hold (ADR-001 §4.3,
+ *   NFR-007). It must not be empty and must hold every value of [unreadableLine] (each of its amounts, dates, payees,
+ *   memos and other texts, the one that cannot be converted included) and should hold those of the other lines too.
+ *   Values short enough to occur by chance in any English sentence (a single digit, a word such as `Cash` that the
+ *   format itself names) are better made distinctive in the invented file than left out.
+ *
+ * The contract test checks that the list is not empty, that each listed value of the unreadable line occurs in it,
+ * and that the reason holds neither the line nor any listed value.
  */
 public class RejectedFileScenario(
     public val file: ByteArray,
+    public val unreadableLine: String,
     public val valuesOfTheFile: List<String>,
 )
 
@@ -875,11 +886,18 @@ public abstract class FilePreprocessorContractTest {
     @DisplayName("ADR-001 §4.4: a file with one unreadable line is Rejected as a whole, with a reason that holds no value of the file")
     public fun aFileWithOneUnreadableLineIsRejected() {
         val scenario = fileWithOneUnreadableLine()
+        assertTrue(scenario.valuesOfTheFile.isNotEmpty(), "the scenario lists no value of the file")
+        assertTrue(scenario.valuesOfTheFile.none { it.isEmpty() }, "a listed value of the file is empty")
+        assertTrue(scenario.unreadableLine.isNotEmpty(), "the unreadable line is not given")
+        assertTrue(String(scenario.file, Charsets.UTF_8).contains(scenario.unreadableLine), "the unreadable line is not in the file")
+        val ofTheLine = scenario.valuesOfTheFile.filter { scenario.unreadableLine.contains(it) }
+        assertTrue(ofTheLine.isNotEmpty(), "the scenario lists no value of the unreadable line")
         val result = filePreprocessor(WrittenLog()).convert(scenario.file.copyOf())
         assertTrue(result is ConversionResult.Rejected, "was ${result::class.simpleName}")
         val reason = (result as ConversionResult.Rejected).reason
         assertTrue(reason.isNotBlank(), "the reason is empty")
-        val revealed = scenario.valuesOfTheFile.filter { it.isNotEmpty() && reason.contains(it) }
+        assertFalse(reason.contains(scenario.unreadableLine), "the reason holds the unreadable line")
+        val revealed = scenario.valuesOfTheFile.filter { reason.contains(it) }
         assertTrue(revealed.isEmpty(), "the reason holds ${revealed.size} value(s) of the file")
     }
 

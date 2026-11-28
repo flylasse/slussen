@@ -46,8 +46,9 @@ internal object HsaCsvText {
 
     /**
      * The lines of [file], each without its line end: UTF-8, with or without the byte order mark at its start, every
-     * line ended by LF or by CRLF, one kind in the file. A CR not followed by LF, both kinds in one file, a byte that
-     * is not UTF-8, and a last line without a line end reject the file. No default charset is used.
+     * line ended by LF or by CRLF, one kind in the file; the last line may lack its line end. A CR not followed by LF
+     * (also one at the very end), both kinds in one file, and a byte that is not UTF-8 reject the file. No default
+     * charset is used.
      */
     fun linesOf(file: ByteArray): List<String> {
         val start = if (file.size >= 3 && file[0] == BOM_1 && file[1] == BOM_2 && file[2] == BOM_3) 3 else 0
@@ -73,8 +74,8 @@ internal object HsaCsvText {
                 index += 1
             }
         }
-        // ADR-001 §4.3.1 rule 1: every line ends with LF or CRLF; a file that stops inside a line is left open there, so it is rejected.
-        if (lineStart < text.length) unreadable(lines.size + 1, "has no line end; the file may be cut short.")
+        // ADR-001 §4.3.1 rule 1: the last line of the file may lack its line end; whether the file was cut short there is for the layout's rules.
+        if (lineStart < text.length) lines += text.substring(lineStart)
         return lines
     }
 

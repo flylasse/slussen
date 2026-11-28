@@ -59,6 +59,8 @@ class HsaCsvFilePreprocessor(private val log: SlussenLog) : FilePreprocessor {
         if (!lines[lastText].startsWith(DATE_DOWNLOADED)) {
             unreadable(lastText + 1, "the last line of the file does not begin with Date downloaded; the file may be cut short.")
         }
+        // Layout rule 4: the text holds no transaction line that would not be read (two exports in one file, or an empty line among the transaction lines).
+        (emptyLine + 1 until lines.size).forEach { index -> requireNoTransactionLine(index + 1, lines[index]) }
 
         val read = ArrayList<Line>()
         (3 until emptyLine).forEach { index ->
@@ -70,6 +72,23 @@ class HsaCsvFilePreprocessor(private val log: SlussenLog) : FilePreprocessor {
             read += line
         }
         return read.filterIndexed { index, line -> isTransaction(line, read.getOrNull(index + 1)) }.map(::standardOf)
+    }
+
+    /**
+     * Layout rule 4: a line of the text after the first empty line that is the header again, or gives exactly the
+     * header's fields (split as a transaction line is) with a first field of the form `MM/DD/YYYY`, rejects the file.
+     * A line that cannot be split so (an unclosed quote, for example) is text.
+     */
+    private fun requireNoTransactionLine(number: Int, text: String) {
+        if (text == HsaCsvColumns.header) unreadable(number, "the header again after the transaction lines; " + NOT_READ)
+        val fields = try {
+            HsaCsvText.fieldsOf(number, text)
+        } catch (notFields: UnreadableFile) {
+            return
+        }
+        if (fields.size == HsaCsvColumns.names.size && DATE.matches(fields[HsaCsvColumns.RUN_DATE - 1])) {
+            unreadable(number, "a transaction line after the empty line that ends the transaction lines; " + NOT_READ)
+        }
     }
 
     /** One transaction line: exactly the header's fields, and the columns §4.3.1 reads in their forms. */
@@ -185,6 +204,7 @@ class HsaCsvFilePreprocessor(private val log: SlussenLog) : FilePreprocessor {
         const val DATE_DOWNLOADED = "Date downloaded"
         const val THOUSANDTHS = 1000L
         const val NOT_A_DATE = "not a real date of the form MM/DD/YYYY."
+        const val NOT_READ = "it would not be read (two exports in one file, or an empty line among the transaction lines)."
         const val BALANCE_BREAK = "differs from the line below by neither the line's amount nor 0."
 
         /** The header's `($)`: every line is in US dollars (ADR-001 §4.3.1). */

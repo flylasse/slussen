@@ -35,10 +35,18 @@ class HsaCsvFilePreprocessorTest : FilePreprocessorContractTest() {
 
     override fun convertedFile(): ByteArray = hsaFile(VECTOR_1, VECTOR_2, REINVESTMENT, VECTOR_3)
 
-    override fun fileWithOneUnreadableLine(): RejectedFileScenario = RejectedFileScenario(
-        hsaFile(VECTOR_1, VECTOR_2.replace(",150,", ",\"1,50\",")),
-        listOf("11/23/2026", "11/25/2026", "PARTIC CONTR", "PARTICIPANT", "1,50", "2000", "No Description", "HARBOR PHARMACY", "-12.34", "1987.66"),
-    )
+    /** Line 5 has the amount `1,50`, which is no number of the format; every value of both lines is listed. */
+    override fun fileWithOneUnreadableLine(): RejectedFileScenario {
+        val unreadable = VECTOR_2.replace(",150,", ",\"1,50\",")
+        return RejectedFileScenario(
+            hsaFile(VECTOR_1, unreadable),
+            unreadable,
+            listOf(
+                "11/23/2026", "PARTIC CONTR CURRENT PARTICIPANT CUR YR", "PARTIC", "PARTICIPANT", "No Description", "1,50", "2000",
+                "11/25/2026", "DEBIT CARD PURCHASE HARBOR PHARMACY", "HARBOR", "-12.34", "1987.66",
+            ),
+        )
+    }
 
     private val usd = CurrencyCode("USD")
 
@@ -317,11 +325,57 @@ class HsaCsvFilePreprocessorTest : FilePreprocessorContractTest() {
         }
 
         @Test
+        @UseCase(id = "UC-002", scenario = "Main Success Scenario", businessRules = ["BR-007"])
+        @DisplayName("BR-007: the last line of the file may lack its line end: a file that ends right after the Date downloaded line, in LF and in CRLF, is accepted")
+        fun theLastLineMayLackItsLineEnd() {
+            val expected = converted(hsaFile(VECTOR_1, VECTOR_2))
+            assertEquals(expected, converted(bytesOf(hsaText(VECTOR_1, VECTOR_2).removeSuffix("\n"))))
+            assertEquals(expected, converted(bytesOf(hsaText(VECTOR_1, VECTOR_2, eol = "\r\n").removeSuffix("\r\n"))))
+            assertEquals(expected, converted(bytesOf(hsaText(VECTOR_1, VECTOR_2, eol = "\r\n").removeSuffix("\r\n"), bom = false)))
+        }
+
+        @Test
         @UseCase(id = "UC-002", scenario = "A2: File Cannot Be Converted Completely", businessRules = ["BR-001"])
-        @DisplayName("A2: a last line without a line end is rejected: §4.3.1 says the lines end with LF or CRLF and leaves a file that stops without one open")
-        fun theLastLineEnds() {
-            assertRejectedAt(6, bytesOf("\n\n$HEADER\n$VECTOR_1\n\nDate downloaded 11/26/2026 9:15 am"), "11/26")
-            assertRejectedAt(6, bytesOf("\r\n\r\n$HEADER\r\n$VECTOR_1\r\n\r\nDate downloaded 11/26/2026 9:15 am"), "11/26")
+        @DisplayName("A2, BR-001: a lone CR at the very end, and a file that ends inside a transaction line, right after the last transaction line or inside the words Date downloaded, are rejected")
+        fun aFileCutShortWithoutALineEnd() {
+            assertRejectedAt(9, bytesOf(hsaText(VECTOR_1, VECTOR_2).removeSuffix("\n") + "\r"))
+            assertRejectedAt(5, bytesOf("\n\n$HEADER\n$VECTOR_1\n${VECTOR_2.take(40)}"), "PARTIC")
+            assertRejectedAt(5, bytesOf("\n\n$HEADER\n$VECTOR_1\n$VECTOR_2"), "PARTIC")
+            assertRejectedAt(5, bytesOf("\n\n$HEADER\n$VECTOR_1\n$VECTOR_2\n"), "PARTIC")
+            assertRejectedAt(7, bytesOf("\n\n$HEADER\n$VECTOR_1\n$VECTOR_2\n\nDate downl"))
+            assertRejectedAt(7, bytesOf("\r\n\r\n$HEADER\r\n$VECTOR_1\r\n$VECTOR_2\r\n\r\nDate downl"))
+        }
+
+        @Test
+        @UseCase(id = "UC-002", scenario = "A2: File Cannot Be Converted Completely", businessRules = ["BR-001"])
+        @DisplayName("A2, BR-001: text after the first empty line that holds the header again, or a line with exactly the header's fields and a first field of the form MM/DD/YYYY, rejects the file at that line, naming the rule and no value")
+        fun transactionLinesAfterTheEmptyLine() {
+            // Two exports pasted into one file: line 9 ends the first, the second header is line 12.
+            val pasted = hsaText(VECTOR_1, VECTOR_2) + hsaText(VECTOR_3)
+            val twice = rejected(bytesOf(pasted))
+            assertTrue(twice.startsWith("Line 12:"), twice)
+            assertTrue(twice.contains("transaction lines"), twice)
+            // One empty line among the transaction lines: line 6 is the first transaction line below it.
+            val gap = hsaText(VECTOR_1, "", VECTOR_2)
+            val reason = rejected(bytesOf(gap))
+            assertTrue(reason.startsWith("Line 6:"), reason)
+            listOf("PARTIC", "150", "2000", "11/23").forEach { assertFalse(reason.contains(it), reason) }
+            // The form of a date is enough, also for a date that is not real, and a quoted first field.
+            assertRejectedAt(6, hsaFile(VECTOR_1, trailer = listOf(VECTOR_2.replace("11/23/2026", "\"19/39/2026\""), "Date downloaded 11/26/2026 9:15 am")), "PARTIC")
+        }
+
+        @Test
+        @UseCase(id = "UC-002", scenario = "Main Success Scenario", businessRules = ["BR-007"])
+        @DisplayName("BR-007: a legal text with commas and a date inside a sentence, a line of it with an unclosed quote, and a line of 13 fields whose first is no date are text, not transaction lines: the file is accepted")
+        fun legalTextStaysText() {
+            val text = listOf(
+                "11/26/2026, the date of this export, is shown, as are, among others, the balances, fees and,,,,,,,, more.",
+                "\"An unclosed quote, 11/26/2026,a,b,c,d,e,f,g,h,i,j,k",
+                "Note,Action,Symbol,Description,Type,Price,Quantity,Commission,Fees,Interest,Amount,Balance,Settlement",
+                "",
+                "Date downloaded 11/26/2026 9:15 am",
+            )
+            assertEquals(converted(hsaFile(VECTOR_1, VECTOR_2)), converted(hsaFile(VECTOR_1, VECTOR_2, trailer = text)))
         }
 
         @Test
