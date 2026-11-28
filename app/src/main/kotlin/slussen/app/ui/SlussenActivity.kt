@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -171,7 +172,7 @@ fun SlussenScreens(services: UiServices) {
     // The device's one question about notifications (`overview.html#notification-ask`, NotificationQuestion), asked when
     // the Overview opens; nothing is stored about it: the device keeps the answer, and one closed without an answer is
     // asked at the next opening.
-    val activity = LocalContext.current as? ComponentActivity
+    val activity = LocalActivity.current
     var askedThisOpening by rememberSaveable { mutableStateOf(false) }
     val notificationQuestion = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val fetchSchedule = overviewUi?.fetchSchedule
