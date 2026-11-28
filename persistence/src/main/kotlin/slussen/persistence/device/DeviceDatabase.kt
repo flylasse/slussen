@@ -39,6 +39,8 @@ abstract class DeviceDatabase : RoomDatabase() {
     abstract fun offeredBankAccounts(): OfferedBankAccountDao
 
     abstract fun consents(): ConsentDao
+
+    abstract fun banks(): DeviceBanksDao
 }
 
 /**

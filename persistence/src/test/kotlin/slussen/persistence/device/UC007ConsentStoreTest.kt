@@ -46,6 +46,8 @@ class UC007ConsentStoreTest {
         override suspend fun requestsOf(bankReference: String, dataProviderId: Long) =
             requestList.filter { it.bankReference == bankReference && it.dataProviderId == dataProviderId }.sortedBy { it.id }
 
+        override suspend fun requestsOfBank(bankReference: String) = requestList.filter { it.bankReference == bankReference }.sortedBy { it.id }
+
         override suspend fun correlationWithDigest(stateDigest: String) = correlationList.firstOrNull { it.stateDigest == stateDigest }
 
         override suspend fun correlationOf(requestId: Long) = correlationList.firstOrNull { it.consentRequestId == requestId }
@@ -103,7 +105,7 @@ class UC007ConsentStoreTest {
         businessRules = ["BR-002", "BR-003", "BR-007"],
         requirements = ["NFR-013"],
     )
-    @DisplayName("BR-002, BR-003, BR-007, A10 (O-10): every step of the scenario gives the same answer on the Room store of device.db and on the fake: a Consent Request answered once, within its lifetime, only while it is the most recent of its Bank; a Bank Consent stored only for an answered one, in place of the earlier one with its Bank Session; a refusal kept at its earliest time; Cancel deletes only an unanswered one; revoking removes the Bank Consent, its Bank Session and the Bank's Consent Requests with that Data Provider")
+    @DisplayName("BR-002, BR-003, BR-007, A10 (O-10): every step of the scenario gives the same answer on the Room store of device.db and on the fake: a Consent Request answered once, within its lifetime, only while it is the most recent of its Bank; a Bank Consent stored only for an answered one, in place of the earlier one with its Bank Session; a refusal kept at its earliest time; Cancel deletes only an unanswered one; revoking removes the Bank Consent, its Bank Session and every Consent Request of the Bank, whichever Data Provider")
     fun theRoomStoreAnswersAsTheFakeDoes() = runBlocking {
         val room = ConsentStoreScenario(RoomConsentStore(ListedConsentDao())).run()
         val fake = ConsentStoreScenario(InMemoryConsentStore()).run()

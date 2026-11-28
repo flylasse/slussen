@@ -2,6 +2,7 @@ package slussen.persistence
 
 import slussen.core.port.ConsentStore
 import slussen.core.port.ConsumedAnswer
+import slussen.core.port.DeviceBankReferences
 import slussen.core.port.GrantedBankConsent
 import slussen.core.port.NewConsentRequest
 import slussen.core.port.ReplacedConsent
@@ -11,6 +12,7 @@ import slussen.core.port.StoredConsentRequest
 import slussen.persistence.device.BankConsentEntity
 import slussen.persistence.device.ConsentDao
 import slussen.persistence.device.ConsentRequestEntity
+import slussen.persistence.device.DeviceBanksDao
 import slussen.persistence.device.stored
 import slussen.pluginapi.value.SensitiveApi
 import java.time.Instant
@@ -20,6 +22,11 @@ import java.time.Instant
  * as the revealed text of its `ConsentSession` and the plug-in's handle as its revealed text, only here (ADR-002 §2,
  * ADR-006 §2); of the `state` only its digest is ever given to this store.
  */
+/** [DeviceBankReferences] on `device.db` (ADR-002 §2): one transaction of [DeviceBanksDao]. */
+class RoomDeviceBankReferences(private val dao: DeviceBanksDao) : DeviceBankReferences {
+    override suspend fun removeAllNamingBanksOtherThan(heldBankIds: Set<Long>): Int = dao.removeAllNamingBanksOtherThan(heldBankIds)
+}
+
 class RoomConsentStore(private val dao: ConsentDao) : ConsentStore {
     override suspend fun bankConsents(): List<StoredBankConsent> = dao.consents().map { it.stored() }
 

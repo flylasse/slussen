@@ -2,6 +2,7 @@ package slussen.persistence
 
 import android.content.Context
 import androidx.room.withTransaction
+import slussen.core.connection.BanksOfDeviceData
 import slussen.core.port.BackOffCause
 import slussen.core.port.BackupSizeMonitor
 import slussen.core.port.BankAccountType
@@ -199,5 +200,9 @@ class SlussenStorage private constructor(
             main.firstUploadMatching().insert(FirstUploadMatchingEntity(cause = cause.text, openedAt = clock.instant(), comparedAt = null, confirmedAt = null))
             coordinatorDao.resetMode(RoomCoordinatorStore.textOf(CoordinatorMode.Normal))
         }
+        // ADR-002 §2: once slussen.db is open by whichever path of the start sequence, and before anything can create a
+        // Bank, device.db keeps nothing of a Bank slussen.db does not hold (after a last good copy, a restored backup or
+        // an empty slussen.db), so that no Bank created later under the same key inherits it.
+        BanksOfDeviceData(connections, RoomDeviceBankReferences(device.banks())).run()
     }
 }

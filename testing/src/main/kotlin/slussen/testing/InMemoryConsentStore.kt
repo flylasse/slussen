@@ -107,11 +107,19 @@ class InMemoryConsentStore(val consents: MutableList<StoredBankConsent> = mutabl
         true
     }
 
+    /** The Bank Consents, with their Bank Sessions, of every Bank not among [heldBankIds] removed ([InMemoryDeviceBankReferences]). */
+    suspend fun removeConsentsOfBanksOtherThan(heldBankIds: Set<Long>): Int = lock.withLock {
+        val gone = consents.filter { it.bankId !in heldBankIds }
+        sessions.removeAll { session -> gone.any { it.id == session.bankConsentId } }
+        consents.removeAll(gone)
+        gone.size
+    }
+
     override suspend fun revoke(bankId: Long, dataProviderId: Long, bankReference: String) = lock.withLock {
         consentOf(bankId, dataProviderId)?.let { consent ->
             sessions.removeAll { it.bankConsentId == consent.id }
             consents.remove(consent)
         }
-        requestsOf(bankReference, dataProviderId).forEach { deleteRequestWithCorrelation(it.id) }
+        requests.filter { it.bankReference == bankReference }.forEach { deleteRequestWithCorrelation(it.id) }
     }
 }

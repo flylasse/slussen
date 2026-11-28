@@ -101,6 +101,9 @@ class ConsentStoreScenario(private val store: ConsentStore) {
         note("other provider answered: " + store.consumeAnswer(digest(6), T2).text())
         note("other provider: " + store.replaceConsent(other.id, granted(AURORA_BANK, T2, "session-four")).text())
         store.startRequest(request(AURORA, OPEN_BANKING, 7, T2.plusSeconds(300)))
+        // UC-007 BR-007: revoking deletes every Consent Request of the Bank, also the unanswered one of another Data Provider.
+        store.startRequest(request(AURORA, OTHER_PROVIDER, 8, T2.plusSeconds(400)))
+        store.startRequest(request(VESTA, OTHER_PROVIDER, 9, T2.plusSeconds(400)))
         state("before the revocation")
 
         store.revoke(AURORA_BANK, OPEN_BANKING, AURORA)
@@ -154,8 +157,8 @@ class ConsentStoreScenario(private val store: ConsentStore) {
             "abandon Vesta again: false",
             "other provider answered: accepted request 6 answered=true handle=false",
             "other provider: stored consent bank=7 provider=3 granted=2027-05-01T09:00:00Z expires=2027-10-28T09:00:00Z refused=null session of consent=true opened=2027-05-01T09:00:00Z",
-            "before the revocation: consents (7, 2, 2027-10-28T09:02:00Z, refused null), (7, 3, 2027-10-28T09:00:00Z, refused null); sessions (of 7/2, 2027-05-01T09:02:00Z), (of 7/3, 2027-05-01T09:00:00Z); requests (Aurora Bank (FI), 3, 2027-05-01T09:00:00Z, answered true), (Aurora Bank (FI), 2, 2027-05-01T09:05:00Z, answered false)",
-            "after the revocation: consents (7, 3, 2027-10-28T09:00:00Z, refused null); sessions (of 7/3, 2027-05-01T09:00:00Z); requests (Aurora Bank (FI), 3, 2027-05-01T09:00:00Z, answered true)",
+            "before the revocation: consents (7, 2, 2027-10-28T09:02:00Z, refused null), (7, 3, 2027-10-28T09:00:00Z, refused null); sessions (of 7/2, 2027-05-01T09:02:00Z), (of 7/3, 2027-05-01T09:00:00Z); requests (Aurora Bank (FI), 2, 2027-05-01T09:05:00Z, answered false), (Aurora Bank (FI), 3, 2027-05-01T09:06:40Z, answered false), (Vesta Sparbank (SE), 3, 2027-05-01T09:06:40Z, answered false)",
+            "after the revocation: consents (7, 3, 2027-10-28T09:00:00Z, refused null); sessions (of 7/3, 2027-05-01T09:00:00Z); requests (Vesta Sparbank (SE), 3, 2027-05-01T09:06:40Z, answered false)",
             "revoke again: true",
         )
     }

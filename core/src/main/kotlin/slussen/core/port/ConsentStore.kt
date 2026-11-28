@@ -140,8 +140,23 @@ interface ConsentStore {
 
     /**
      * Revoke: deletes the Bank Consent of [bankId] and [dataProviderId] with its Bank Session, and every Consent
-     * Request of that Data Provider for the Bank named [bankReference] (its `BANK.name`) with its correlation, also
-     * when the Data Provider did not confirm the end (UC-007 BR-007, A7).
+     * Request of the Bank named [bankReference] (its `BANK.name`), whichever Data Provider it was started with, with
+     * its correlation, also when the Data Provider did not confirm the end (UC-007 BR-007, A7; ADR-002 §3 O-10).
      */
     suspend fun revoke(bankId: Long, dataProviderId: Long, bankReference: String)
+}
+
+/**
+ * The rows of `device.db` that name a Bank of `slussen.db` by its key, a plain column across the two databases that the
+ * core checks (ADR-002 §2): `bank_consent.bank_id`, with each Bank Consent's Bank Session, and
+ * `offered_bank_account.bank_id`. No other table of `device.db` names a Bank by its key (a Consent Request names it by
+ * its reference).
+ */
+interface DeviceBankReferences {
+    /**
+     * Removes, in one transaction of `device.db`, every Bank Consent with its Bank Session and every Offered Bank
+     * Account whose Bank is not among [heldBankIds]; an Offered Bank Account that names no Bank stays. Returns how many
+     * Bank Consents and Offered Bank Accounts it removed.
+     */
+    suspend fun removeAllNamingBanksOtherThan(heldBankIds: Set<Long>): Int
 }

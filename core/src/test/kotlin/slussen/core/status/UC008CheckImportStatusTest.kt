@@ -236,7 +236,7 @@ class UC008CheckImportStatusTest {
 
     @Test
     @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-002", "BR-006"])
-    @DisplayName("Step 8: a Bank Consent the Bank refused counts as expired from the time it was refused, whatever expiry was reported, and is no longer among the expiring ones (entity model BANK_CONSENT refused_at; UC-001 A9)")
+    @DisplayName("Step 8: a Bank Consent the Bank refused counts as expired from the time it was refused, whatever expiry was reported, is shown with that time and that the Bank refused it, and is no longer among the expiring ones (entity model BANK_CONSENT refused_at; UC-001 A9)")
     fun aRefusedBankConsentIsExpiredFromItsRefusal() = runTest {
         household()
         slice.importStatusStore.consents.clear()
@@ -246,7 +246,7 @@ class UC008CheckImportStatusTest {
 
         val current = workspaceAccount("Summer House", "Aurora Current").blocked
 
-        assertEquals(listOf(Blocked(BlockedReason.ExpiredBankConsent, Remedy.GrantBankConsent, refusedAt, "Aurora Current")), current)
+        assertEquals(listOf(Blocked(BlockedReason.ExpiredBankConsent, Remedy.GrantBankConsent, refusedAt, "Aurora Current", refusedByBank = true)), current)
         assertEquals(emptyList<ExpiringBankConsent>(), slice.status.open().expiringBankConsents)
     }
 

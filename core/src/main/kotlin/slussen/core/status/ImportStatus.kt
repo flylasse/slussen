@@ -449,7 +449,7 @@ class ImportStatus(
                     consent == null -> add(Blocked(BlockedReason.MissingBankConsent, Remedy.GrantBankConsent, null, subject))
                     // A Bank Consent the Bank refused counts as expired from the time it was refused (UC-001 A9, entity model BANK_CONSENT).
                     !consent.expiredFrom.isAfter(snapshot.now) ->
-                        add(Blocked(BlockedReason.ExpiredBankConsent, Remedy.GrantBankConsent, consent.expiredFrom, subject))
+                        add(Blocked(BlockedReason.ExpiredBankConsent, Remedy.GrantBankConsent, consent.expiredFrom, subject, refusedByBank = consent.refusedByBank))
                 }
             }
             // UC-001 BR-004: A Back-off of one Bank holds for each Bank Account read through its Data Provider whose provider_bank_id is that Bank.

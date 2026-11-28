@@ -83,6 +83,11 @@ data class Blocked(
     val at: Instant?,
     val subject: String,
     val dataProviderName: String? = null,
+    /**
+     * For an expired Bank Consent: true when the Bank refused it before its reported expiry, [at] then being the time of
+     * the refusal (UC-008 BR-006, UC-001 A9); false for an ordinary expiry and every other Blocked Reason.
+     */
+    val refusedByBank: Boolean = false,
 )
 
 /** Source Health: only the outcome of the last Fetch or Transaction File import (BR-003). */

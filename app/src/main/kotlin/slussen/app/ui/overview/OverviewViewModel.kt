@@ -242,7 +242,7 @@ class OverviewViewModel(private val services: UiServices) : ViewModel() {
                     // A1 of UC-003 (S-T-08): a Bank Transaction not compared yet is counted neither as Eligible nor as waiting.
                     counts = Texts.counts(budget.notYetUploaded, budget.notComparedYet),
                     blocked = budget.blocked.filterNot { it.reason == BlockedReason.UploadsWaitForFirstUploadMatching }
-                        .map { blocked -> "Blocked: ${blocked.subject}, ${Texts.blockedReason(blocked.reason, blocked.dataProviderName)}" }
+                        .map { blocked -> "Blocked: ${blocked.subject}, ${Texts.blockedReason(blocked)}" }
                         .distinct(),
                     // UC-008 BR-006: The Blocked Reason "Uploads wait for First Upload Matching", in the tone of BR-009.
                     firstUploadMatching = firstUploadMatching?.takeIf {

@@ -280,7 +280,11 @@ object Texts {
             status.lastFetchAt != null -> "Connected · last Fetch ${formats.dateTime(status.lastFetchAt!!)}"
             else -> "Connected · no Fetch yet"
         }
-        is ServiceStatus.BankConsentExpires -> "Connected · Bank Consent expires ${formats.date(status.expiresAt)}"
+        is ServiceStatus.BankConsentExpires -> if (status.refusedByBank) {
+            "Connected · Bank Consent expired: the Bank refused it ${formats.date(status.expiresAt)}"
+        } else {
+            "Connected · Bank Consent expires ${formats.date(status.expiresAt)}"
+        }
         ServiceStatus.CredentialsRefused -> "Credentials refused"
         ServiceStatus.CredentialsMissing -> "Credentials missing"
     }
@@ -298,6 +302,14 @@ object Texts {
             "${notice.dataProviderName} reported it in ${notice.reported.code}; it was not stored and no amount was converted. " +
             "Nothing is needed now. If it happens again, check at ${notice.dataProviderName} which currency it shows for " +
             "${notice.bankAccountName}."
+
+    /** A Blocked Reason in words; an expired Bank Consent the Bank refused says so (UC-008 BR-006, UC-001 A9 step 3). */
+    fun blockedReason(blocked: Blocked): String =
+        if (blocked.reason == BlockedReason.ExpiredBankConsent && blocked.refusedByBank) {
+            "Bank Consent expired: the Bank refused it"
+        } else {
+            blockedReason(blocked.reason, blocked.dataProviderName)
+        }
 
     fun blockedReason(reason: BlockedReason, dataProviderName: String? = null): String = when (reason) {
         BlockedReason.MissingBankConsent -> "missing Bank Consent"
@@ -343,7 +355,7 @@ object Texts {
                 else -> " · ${formats.dateTime(it)}"
             }
         }.orEmpty()
-        return "Blocked: ${blocked.subject}, ${blockedReason(blocked.reason, blocked.dataProviderName)}$at"
+        return "Blocked: ${blocked.subject}, ${blockedReason(blocked)}$at"
     }
 
     fun remedy(remedy: Remedy): String? = when (remedy) {

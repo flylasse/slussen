@@ -114,4 +114,52 @@ class UC007GrantBankConsentPersistenceIT {
         device = SlussenDatabases.openDevice(DeviceFiles.context)
         assertEquals("invented-session-reference", RoomConsentStore(device.consents()).bankSessions().single().session.reveal())
     }
+
+    @Test
+    @UseCase(id = "UC-007", businessRules = ["BR-009"])
+    @DisplayName("BR-009 (ADR-002 §2): at a start after slussen.db went back, the Bank Consent with its Bank Session and the Offered Bank Accounts of a Bank it no longer holds are removed, those of a Bank it holds stay, a Bank created afterwards under the same key is covered by no Bank Consent, and an ordinary start removes nothing")
+    fun deviceDbKeepsNothingOfABankThatIsGone() = runBlocking {
+        device.close()
+        val clock = java.time.Clock.fixed(at, java.time.ZoneOffset.UTC)
+        fun offered(reference: String, bankId: Long) = slussen.core.port.NewOfferedBankAccount(bankId, reference, null, reference, null, null, null, null, null, at)
+        suspend fun grant(storage: SlussenStorage, bankId: Long, digest: Char) {
+            val started = storage.consents.startRequest(NewConsentRequest("Bank $bankId (FI)", 2, at, at.plusSeconds(900), digest.toString().repeat(64), null))
+            storage.consents.consumeAnswer(digest.toString().repeat(64), at)
+            storage.consents.replaceConsent(started.id, granted("session-$bankId").copy(bankId = bankId))
+        }
+        fun SlussenStorage.closeAll() { main.close(); device.close(); journal.close() }
+
+        val first = SlussenStorage.open(DeviceFiles.context, clock)
+        val aurora = first.connections.bankNamed("Aurora Bank").id
+        val vesta = first.connections.bankNamed("Vesta Sparbank").id
+        grant(first, aurora, 'a')
+        grant(first, vesta, 'b')
+        first.offered.replaceOffered(2, aurora, listOf(offered("acct-aurora", aurora)))
+        first.offered.replaceOffered(2, vesta, listOf(offered("acct-vesta", vesta)))
+        first.closeAll()
+
+        val ordinary = SlussenStorage.open(DeviceFiles.context, clock)
+        assertEquals(listOf(aurora, vesta), ordinary.consents.bankConsents().map { it.bankId })
+        assertEquals(2, ordinary.consents.bankSessions().size)
+        assertEquals(listOf("acct-aurora", "acct-vesta"), ordinary.offered.offered().map { it.providerReference })
+        // slussen.db as a copy made before Vesta Sparbank was created would hold it: without the Bank, its key free again.
+        ordinary.main.openHelper.writableDatabase.apply {
+            execSQL("DELETE FROM bank WHERE id = $vesta")
+            execSQL("UPDATE sqlite_sequence SET seq = $aurora WHERE name = 'bank'")
+        }
+        ordinary.closeAll()
+
+        val after = SlussenStorage.open(DeviceFiles.context, clock)
+        try {
+            assertEquals(listOf(aurora), after.consents.bankConsents().map { it.bankId })
+            assertEquals(after.consents.bankConsents().map { it.id }, after.consents.bankSessions().map { it.bankConsentId })
+            assertEquals(listOf("acct-aurora"), after.offered.offered().map { it.providerReference })
+            val nordlys = after.connections.bankNamed("Nordlys Bank").id
+            assertEquals(vesta, nordlys, "the new Bank is given the key of the one that is gone")
+            assertTrue(after.importStatus.bankConsents().none { it.bankId == nordlys })
+        } finally {
+            after.closeAll()
+        }
+        device = SlussenDatabases.openDevice(DeviceFiles.context)
+    }
 }

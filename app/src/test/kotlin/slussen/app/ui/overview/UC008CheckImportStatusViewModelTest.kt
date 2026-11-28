@@ -545,6 +545,49 @@ class UC008CheckImportStatusViewModelTest {
     }
 
     @Test
+    @UseCase(id = "UC-008", scenario = "A6: Operator Takes the Remedy", businessRules = ["BR-006"])
+    @DisplayName("BR-006 (UC-001 A9 step 3): a Bank Consent the Bank refused before its expiry is shown as expired, with the time and that the Bank refused it; an ordinary expiry is not said to be a refusal")
+    fun aRefusedBankConsentSaysTheBankRefusedIt() {
+        household()
+        val refusedAt = slice.clock.instant().minus(Duration.ofHours(3))
+        runBlocking {
+            slice.credentials.enter(slice.openBankingKey, slice.input("setupKey" to ExampleData.SETUP_KEY))
+            val aurora = slice.connectionStore.bankNamed("Aurora Bank").id
+            val current = slice.connectionStore.budgets().flatMap { it.budgetAccounts }.single { it.name == "Current" }.id
+            val added = slice.connectionStore.addBankAccount(
+                NewBankAccount(
+                    generatedIdentifier = "00000000-0000-4000-8000-000000000502",
+                    bank = BankChoice.Named("Aurora Bank"),
+                    providerBankId = aurora,
+                    dataProviderId = slice.openBankingId,
+                    fileFormatId = null,
+                    balanceDataProviderId = null,
+                    balanceProviderReference = null,
+                    name = "Aurora Current",
+                    currency = EUR,
+                    type = BankAccountType.Checking,
+                    providerReference = "aurora-current",
+                    bankAccountFingerprint = null,
+                    identifiedAt = slice.clock.instant(),
+                    startDate = null,
+                    budgetAccountId = current,
+                ),
+            )
+            assertTrue(added is AddOutcome.Added)
+            slice.importStatusStore.consents += StoredBankConsent(1, aurora, slice.openBankingId, refusedAt.minus(Duration.ofDays(9)), slice.clock.instant().plus(Duration.ofDays(100)), refusedAt)
+        }
+
+        val refused = BudgetViewModel(fixture.services, budgetId("Summer House")).also { it.load() }.state.value!!.bankAccounts.single().blocked.single().text
+        slice.importStatusStore.consents.replaceAll { it.copy(expiresAt = refusedAt, refusedAt = null) }
+        val expired = BudgetViewModel(fixture.services, budgetId("Summer House")).also { it.load() }.state.value!!.bankAccounts.single().blocked.single().text
+
+        assertTrue(refused.contains("Bank Consent expired: the Bank refused it"), refused)
+        assertTrue(refused.contains(fixture.services.formats.dateTime(refusedAt)), refused)
+        assertTrue(expired.contains("Bank Consent expired") && !expired.contains("refused"), expired)
+        assertFalse(listOf(refused, expired).any { it.contains("Aurora Open Banking") }, "no Data Provider's name")
+    }
+
+    @Test
     @UseCase(id = "UC-008", scenario = "Main Success Scenario", businessRules = ["BR-002"])
     @DisplayName("Step 2 (P9-13): an expiring Bank Consent is shown with the plain note that Bank Consents are not in this build, so it cannot be renewed here")
     fun expiringBankConsentSaysWhatThisBuildDoes() {

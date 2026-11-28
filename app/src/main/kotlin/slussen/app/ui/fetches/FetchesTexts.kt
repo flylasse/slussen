@@ -99,7 +99,7 @@ object FetchesTexts {
 
     /** A Blocked Reason that asks something now, in words: what is blocked, why, and what to do. */
     fun asks(blocked: Blocked, formats: Formats, now: Instant): String {
-        val reason = Texts.blockedReason(blocked.reason, blocked.dataProviderName)
+        val reason = Texts.blockedReason(blocked)
         val at = blocked.at?.let { " (${formats.moment(it, now)})" }.orEmpty()
         return "${blocked.subject}, $reason$at" + (action(blocked)?.let { ": $it" } ?: "")
     }
@@ -107,7 +107,7 @@ object FetchesTexts {
     /** A Blocked Reason that only waits for a time, in words. */
     fun waits(blocked: Blocked, formats: Formats, now: Instant): String {
         val until = blocked.at?.let { " until ${formats.moment(it, now)}" }.orEmpty()
-        return "${blocked.subject}, ${Texts.blockedReason(blocked.reason, blocked.dataProviderName)}$until"
+        return "${blocked.subject}, ${Texts.blockedReason(blocked)}$until"
     }
 
     /** The line that says whether the Fetch asks something now, and what is current or past about it. */

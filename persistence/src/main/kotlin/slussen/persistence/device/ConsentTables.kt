@@ -112,6 +112,9 @@ abstract class ConsentDao {
     @Query("SELECT * FROM consent_request WHERE bank_reference = :bankReference AND data_provider_id = :dataProviderId ORDER BY id")
     abstract suspend fun requestsOf(bankReference: String, dataProviderId: Long): List<ConsentRequestEntity>
 
+    @Query("SELECT * FROM consent_request WHERE bank_reference = :bankReference ORDER BY id")
+    abstract suspend fun requestsOfBank(bankReference: String): List<ConsentRequestEntity>
+
     @Query("SELECT * FROM consent_request_correlation WHERE state_digest = :stateDigest")
     abstract suspend fun correlationWithDigest(stateDigest: String): ConsentRequestCorrelationEntity?
 
@@ -227,6 +230,45 @@ abstract class ConsentDao {
             deleteSessionOf(consent.id)
             deleteConsent(consent.id)
         }
-        requestsOf(bankReference, dataProviderId).forEach { deleteRequestWithCorrelation(it.id) }
+        // UC-007 BR-007: Revoking deletes the Bank Consent, its Bank Session and every Consent Request of the Bank, whichever Data Provider it was started with.
+        requestsOfBank(bankReference).forEach { deleteRequestWithCorrelation(it.id) }
     }
 }
+
+/**
+ * The rows of `device.db` that name a Bank of `slussen.db` by its key (ADR-002 §2): `bank_consent.bank_id` with each
+ * Bank Consent's Bank Session, and `offered_bank_account.bank_id`. [removeAllNamingBanksOtherThan] is one transaction.
+ */
+@Dao
+abstract class DeviceBanksDao {
+    @Query("SELECT id, bank_id FROM bank_consent ORDER BY id")
+    abstract suspend fun consentBanks(): List<IdAndBank>
+
+    @Query("SELECT id, bank_id FROM offered_bank_account WHERE bank_id IS NOT NULL ORDER BY id")
+    abstract suspend fun offeredBanks(): List<IdAndBank>
+
+    @Query("DELETE FROM bank_session WHERE bank_consent_id = :consentId")
+    abstract suspend fun deleteSessionOf(consentId: Long)
+
+    @Query("DELETE FROM bank_consent WHERE id = :consentId")
+    abstract suspend fun deleteConsent(consentId: Long)
+
+    @Query("DELETE FROM offered_bank_account WHERE id = :offeredId")
+    abstract suspend fun deleteOffered(offeredId: Long)
+
+    /** Every Bank Consent with its Bank Session and every Offered Bank Account of a Bank not among [heldBankIds], all or nothing. */
+    @Transaction
+    open suspend fun removeAllNamingBanksOtherThan(heldBankIds: Set<Long>): Int {
+        val consents = consentBanks().filter { it.bankId !in heldBankIds }
+        consents.forEach {
+            deleteSessionOf(it.id)
+            deleteConsent(it.id)
+        }
+        val offered = offeredBanks().filter { it.bankId !in heldBankIds }
+        offered.forEach { deleteOffered(it.id) }
+        return consents.size + offered.size
+    }
+}
+
+/** A row's key with the Bank it names. */
+data class IdAndBank(@ColumnInfo(name = "id") val id: Long, @ColumnInfo(name = "bank_id") val bankId: Long)

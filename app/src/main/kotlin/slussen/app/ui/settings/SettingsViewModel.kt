@@ -372,7 +372,11 @@ class SettingsViewModel(private val services: UiServices) : ViewModel() {
             is EntryStatus.BudgetsServed -> if (shown.count == 0) "Connected" else Texts.count(shown.count, "Budget", "Budgets")
             is EntryStatus.NothingOffered -> if (shown.needsBankConsent) "No Bank Consent yet" else "Nothing offered yet"
             is EntryStatus.Imported -> "${shown.imported} of ${shown.of} imported"
-            is EntryStatus.BankConsentExpires -> "A Bank Consent expires ${formats.date(shown.expiresAt)}"
+            is EntryStatus.BankConsentExpires -> if (shown.refusedByBank) {
+                "A Bank Consent expired: the Bank refused it ${formats.date(shown.expiresAt)}"
+            } else {
+                "A Bank Consent expires ${formats.date(shown.expiresAt)}"
+            }
             is EntryStatus.FileFormatBankAccounts ->
                 if (shown.count == 0) "No Bank Account" else Texts.count(shown.count, "Bank Account", "Bank Accounts")
         }

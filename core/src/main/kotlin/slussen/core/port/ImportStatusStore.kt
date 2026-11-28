@@ -67,8 +67,11 @@ data class StoredBankConsent(
     /** `refused_at`: the time the Data Provider first reported that the Bank no longer accepts it, null until then (UC-001 A9). */
     val refusedAt: Instant? = null,
 ) {
+    /** True when the Bank refused it before its reported expiry (UC-001 A9): it then counts as expired from [refusedAt]. */
+    val refusedByBank: Boolean get() = refusedAt != null && refusedAt.isBefore(expiresAt)
+
     /** The time from which it counts as expired: its refusal, when the Bank refused it before its reported expiry (entity model). */
-    val expiredFrom: Instant get() = refusedAt?.takeIf { it.isBefore(expiresAt) } ?: expiresAt
+    val expiredFrom: Instant get() = if (refusedByBank) refusedAt!! else expiresAt
 }
 
 /** The `Values:` of `BACK_OFF.cause`. */
