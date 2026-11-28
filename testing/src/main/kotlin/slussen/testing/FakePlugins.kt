@@ -167,6 +167,8 @@ class FakeDataProvider(
         RequestKind.Other,
         CredentialCheck.Accepted(Secret(ExampleData.EXCHANGED_ACCESS_CREDENTIAL)),
     ),
+    /** The Bank Consent operations, given exactly when [profile] needs a Bank Consent (ADR-001 §4.1). */
+    override val bankConsent: BankConsentCapability? = null,
 ) : DataProvider {
     /** How often [fetch] was called, whether or not the gate let its request out. */
     var fetches = 0
@@ -184,8 +186,6 @@ class FakeDataProvider(
 
     /** Runs after the gate admitted the request and before [fetchAnswer]: a test can hold the Fetch here while it looks at the screen. */
     var beforeAnswer: suspend () -> Unit = {}
-
-    override val bankConsent: BankConsentCapability? = null
 
     override suspend fun fetch(request: FetchRequest, context: RequestContext): FetchResponse {
         fetches++

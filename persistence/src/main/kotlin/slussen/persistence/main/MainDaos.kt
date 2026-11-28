@@ -295,6 +295,17 @@ abstract class ConnectionDao : StateVersionDao {
     @Query("SELECT * FROM bank WHERE name = :name")
     abstract suspend fun bankByName(name: String): BankEntity?
 
+    /**
+     * Deletes the Bank [id] when no Bank Account (by `bank_id` or `provider_bank_id`) and no Back-off names it, in one
+     * statement; returns how many it deleted (ADR-002 §3 O-10, the Bank of a Bank Consent that was not stored).
+     */
+    @Query(
+        "DELETE FROM bank WHERE id = :id " +
+            "AND NOT EXISTS (SELECT 1 FROM bank_account WHERE bank_id = :id OR provider_bank_id = :id) " +
+            "AND NOT EXISTS (SELECT 1 FROM back_off WHERE bank_id = :id)",
+    )
+    abstract suspend fun deleteBankIfUnreferenced(id: Long): Int
+
     @Query(
         "SELECT ba.id AS bankAccountId, ba.name AS bankAccountName, bu.budget_id AS budgetId FROM account_mapping am " +
             "JOIN bank_account ba ON ba.id = am.bank_account_id " +

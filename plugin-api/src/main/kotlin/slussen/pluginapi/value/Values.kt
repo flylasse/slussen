@@ -1,5 +1,7 @@
 package slussen.pluginapi.value
 
+import java.security.MessageDigest
+
 /**
  * Marks the functions that reveal a credential or session value (ADR-006 §2). Only plug-in modules and
  * `:persistence` may opt in (Konsist L-04), and bytecode rule B-06 checks who calls them.
@@ -33,6 +35,13 @@ public class Secret(private val value: String) {
     public fun reveal(): String = value
 
     override fun toString(): String = MASK
+
+    /**
+     * The SHA-256 digest of the value as UTF-8, a one-way value from which the value cannot be read. It lets the core
+     * digest the `state` of a Consent Request that a plug-in read from an answer (ADR-001 §4.1) without revealing it,
+     * which only plug-in modules and `:persistence` may do (ADR-006 L-04, ADR-001 §6.3 B-06).
+     */
+    public fun sha256(): ByteArray = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
 
     public companion object {
         public const val MASK: String = "Secret(****)"

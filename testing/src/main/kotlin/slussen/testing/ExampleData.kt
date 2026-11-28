@@ -22,6 +22,9 @@ object ExampleData {
     const val SETUP_KEY = "PLANTED-SETUP-KEY-51d0e2"
     const val EXCHANGED_ACCESS_CREDENTIAL = "PLANTED-ACCESS-CREDENTIAL-88b4f1"
 
+    /** The application's own return address of an invented application id, `<application id>://consent` (UC-007 BR-011). */
+    const val CONSENT_RETURN_ADDRESS = "example.slussen.test://consent"
+
     /** Where the invented Data Provider Kestrel Feeds publishes its Request Limit. */
     const val FEEDS_LIMIT_SOURCE = "Kestrel Feeds developer guide, an invented source"
 

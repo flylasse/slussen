@@ -287,6 +287,8 @@ class RoomConnectionStore(private val dao: ConnectionDao) : ConnectionStore {
 
     override suspend fun bankNamed(name: String): StoredBank = dao.bankNamed(name).let { StoredBank(it.id, it.name, it.country) }
 
+    override suspend fun removeBankIfUnreferenced(bankId: Long): Boolean = dao.deleteBankIfUnreferenced(bankId) > 0
+
     override suspend fun leftOutBankAccounts(): List<StoredLeftOutBankAccount> = dao.leftOut().map { it.stored() }
 
     override suspend fun leaveOut(leftOut: List<NewLeftOutBankAccount>): Boolean = dao.leaveOut(

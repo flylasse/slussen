@@ -187,6 +187,14 @@ interface ConnectionStore {
     /** The Bank named [name], stored when it is new (`BANK.name` is unique). */
     suspend fun bankNamed(name: String): StoredBank
 
+    /**
+     * Deletes the Bank [bankId] in one transaction of `slussen.db`, only when no Bank Account names it (by `bank_id` or
+     * `provider_bank_id`) and no Back-off does; returns whether it deleted it. The rows of `device.db` that name a Bank
+     * (a Bank Consent, an Offered Bank Account) are checked by the core before (ADR-002 §2), so that an attempt to grant
+     * a Bank Consent that did not store one leaves no Bank behind (ADR-002 §3 O-10, UC-007 A1-A4, A8).
+     */
+    suspend fun removeBankIfUnreferenced(bankId: Long): Boolean
+
     /** The Left-Out Bank Accounts of every Data Provider (UC-013 BR-011). */
     suspend fun leftOutBankAccounts(): List<StoredLeftOutBankAccount>
 

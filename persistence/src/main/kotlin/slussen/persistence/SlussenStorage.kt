@@ -3,6 +3,7 @@ package slussen.persistence
 import android.content.Context
 import androidx.room.withTransaction
 import slussen.core.connection.BanksOfDeviceData
+import slussen.core.consent.LeftBehindBanks
 import slussen.core.port.BackOffCause
 import slussen.core.port.BackupSizeMonitor
 import slussen.core.port.BankAccountType
@@ -204,5 +205,8 @@ class SlussenStorage private constructor(
         // Bank, device.db keeps nothing of a Bank slussen.db does not hold (after a last good copy, a restored backup or
         // an empty slussen.db), so that no Bank created later under the same key inherits it.
         BanksOfDeviceData(connections, RoomDeviceBankReferences(device.banks())).run()
+        // ADR-002 §3 O-10: a Bank an attempt to grant a Bank Consent created and then could not store a Bank Consent
+        // for, because the process ended in between, is removed when nothing refers to it.
+        LeftBehindBanks(connections, consents, offered).run()
     }
 }

@@ -33,6 +33,16 @@ class InMemoryConsentStore(val consents: MutableList<StoredBankConsent> = mutabl
     private var lastSessionId = 0L
     private var lastRequestId = 0L
 
+    /** Makes O-10 replace fail before it changes anything, as a `device.db` that cannot be written would. */
+    var failsToReplace: Boolean = false
+
+    /** Makes O-10 start fail before it changes anything, as a `device.db` that cannot be written would. */
+    var failsToStart: Boolean = false
+
+    private fun failing(fails: Boolean) {
+        if (fails) throw IllegalStateException("The invented storage of this test cannot be written.")
+    }
+
     override suspend fun bankConsents(): List<StoredBankConsent> = lock.withLock { consents.sortedBy { it.id } }
 
     override suspend fun bankSessions(): List<StoredBankSession> = lock.withLock { sessions.toList() }
@@ -52,6 +62,7 @@ class InMemoryConsentStore(val consents: MutableList<StoredBankConsent> = mutabl
     private fun consentOf(bankId: Long, dataProviderId: Long) = consents.firstOrNull { it.bankId == bankId && it.dataProviderId == dataProviderId }
 
     override suspend fun startRequest(request: NewConsentRequest): StoredConsentRequest = lock.withLock {
+        failing(failsToStart)
         require(correlations.none { it.stateDigest == request.stateDigest }) { "A Consent Request with this state digest is already stored." }
         requestsOf(request.bankReference, request.dataProviderId).forEach { deleteRequestWithCorrelation(it.id) }
         lastRequestId = maxOf(lastRequestId, requests.maxOfOrNull { it.id } ?: 0) + 1
@@ -78,6 +89,7 @@ class InMemoryConsentStore(val consents: MutableList<StoredBankConsent> = mutabl
     }
 
     override suspend fun replaceConsent(requestId: Long, granted: GrantedBankConsent): ReplacedConsent = lock.withLock {
+        failing(failsToReplace)
         val request = requests.firstOrNull { it.id == requestId } ?: return@withLock ReplacedConsent.Refused(ReplaceRefusal.NoSuchRequest)
         if (newerExists(request)) return@withLock ReplacedConsent.Refused(ReplaceRefusal.NewerRequestExists)
         if (!request.answered) return@withLock ReplacedConsent.Refused(ReplaceRefusal.NotAnswered)

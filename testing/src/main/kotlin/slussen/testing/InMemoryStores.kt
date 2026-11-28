@@ -915,6 +915,14 @@ class InMemoryConnectionStore(val stateVersion: InMemoryStateVersion = InMemoryS
     override suspend fun bankNamed(name: String): StoredBank =
         bankList.firstOrNull { it.name == name } ?: StoredBank(nextId++, name, country = null).also { bankList += it }
 
+    override suspend fun removeBankIfUnreferenced(bankId: Long): Boolean {
+        storing()
+        val named = bankAccountList.any { it.bankId == bankId || it.providerBankId == bankId } ||
+            transactionStore?.backOffList.orEmpty().any { it.bankId == bankId }
+        if (named) return false
+        return bankList.removeAll { it.id == bankId }
+    }
+
     /** Makes the read of the Left-Out Bank Accounts fail, as a storage that cannot be read would. */
     var failsToReadLeftOut: Boolean = false
 

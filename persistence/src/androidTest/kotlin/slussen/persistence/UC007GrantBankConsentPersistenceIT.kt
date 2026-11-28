@@ -162,4 +162,35 @@ class UC007GrantBankConsentPersistenceIT {
         }
         device = SlussenDatabases.openDevice(DeviceFiles.context)
     }
+
+    @Test
+    @UseCase(id = "UC-007", scenario = "Main Success Scenario")
+    @DisplayName("ADR-002 §3 (O-10): at a start after a process that ended between creating the Bank and storing its Bank Consent, the Bank nothing refers to is removed from slussen.db; a Bank with a Bank Consent stays")
+    fun aBankLeftBehindIsRemovedAtTheNextStart() = runBlocking {
+        device.close()
+        val clock = java.time.Clock.fixed(at, java.time.ZoneOffset.UTC)
+        fun SlussenStorage.closeAll() { main.close(); device.close(); journal.close() }
+
+        val first = SlussenStorage.open(DeviceFiles.context, clock)
+        // Granted: its Bank has a Bank Consent.
+        val granted = first.consents.startRequest(NewConsentRequest("Aurora Bank (FI)", 2, at, at.plusSeconds(900), "a".repeat(64), null))
+        first.consents.consumeAnswer("a".repeat(64), at)
+        val aurora = first.connections.bankNamed("Aurora Bank (FI)").id
+        first.consents.replaceConsent(granted.id, granted("session-aurora").copy(bankId = aurora))
+        // Cut off: the answer was taken and the Bank created, and the process ended before the Bank Consent was stored.
+        first.consents.startRequest(NewConsentRequest("Vesta Sparbank (SE)", 2, at, at.plusSeconds(900), "b".repeat(64), null))
+        first.consents.consumeAnswer("b".repeat(64), at)
+        val vesta = first.connections.bankNamed("Vesta Sparbank (SE)").id
+        first.closeAll()
+
+        val after = SlussenStorage.open(DeviceFiles.context, clock)
+        try {
+            assertEquals(listOf(aurora), after.connections.banks().map { it.id })
+            assertFalse(after.connections.removeBankIfUnreferenced(vesta), "it is gone already")
+            assertEquals(listOf(aurora), after.consents.bankConsents().map { it.bankId })
+        } finally {
+            after.closeAll()
+        }
+        device = SlussenDatabases.openDevice(DeviceFiles.context)
+    }
 }

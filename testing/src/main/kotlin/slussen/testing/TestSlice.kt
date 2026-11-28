@@ -4,6 +4,8 @@ import kotlinx.coroutines.runBlocking
 import slussen.core.comparison.Comparison
 import slussen.core.comparison.ComparisonNotices
 import slussen.core.connection.BudgetsAndBankAccounts
+import slussen.core.consent.BankConsents
+import slussen.core.consent.LeftBehindBanks
 import slussen.core.credential.CredentialRefusals
 import slussen.core.credential.ServiceCredentials
 import slussen.core.fetch.FetchNotices
@@ -59,7 +61,9 @@ class TestSlice(
     val clock = MutableClock()
     val budgetApp = FakeBudgetApp()
     val feeds = FakeDataProvider(ExampleData.feedsProfile)
-    val openBanking = FakeDataProvider(ExampleData.openBankingProfile)
+    /** The Bank Consent operations of [openBanking], the Data Provider of the slice that needs a Bank Consent (UC-007). */
+    val bankConsent = ScriptedBankConsent()
+    val openBanking = FakeDataProvider(ExampleData.openBankingProfile, bankConsent = bankConsent)
     val wren = FakeDataProvider(ExampleData.wrenProfile)
     val fileFormat = FakeFilePreprocessor()
     private val registeredFilePreprocessor: slussen.pluginapi.fileformat.FilePreprocessor = filePreprocessor ?: fileFormat
@@ -136,6 +140,17 @@ class TestSlice(
     val transferDecisions = TransferDecisions(
         connectionStore, copyStore.transferStore, copyStore, comparison, settings, journal, clock, plugins.budgetApp.profile.matchingDateWindowDays,
     )
+    /** The log the Bank Consent operations write to, kept for tests that search it (UC-007 BR-006). */
+    val consentLog = RecordingSlussenLog(detailedLogging = true)
+
+    /** UC-007: Grant Bank Consent, with the return address of an invented application id (BR-011). */
+    val bankConsents = BankConsents(
+        plugins, credentials, consentStore, connectionStore, offeredStore, importStatusStore, providerRequests, coordinator,
+        settings, clock, random, ExampleData.CONSENT_RETURN_ADDRESS, consentLog,
+    )
+
+    /** The removal at a start of the Banks an attempt to grant a Bank Consent left behind (ADR-002 §3 O-10). */
+    val leftBehindBanks = LeftBehindBanks(connectionStore, consentStore, offeredStore)
     val mappings = AccountMappings(plugins, connectionStore, connectionStore, offeredStore, coordinator, journal, comparison, clock)
     val status = ImportStatus(
         budgetAppName = plugins.budgetApp.profile.name,

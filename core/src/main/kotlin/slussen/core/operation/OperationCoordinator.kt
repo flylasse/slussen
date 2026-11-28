@@ -47,6 +47,13 @@ enum class OperationKind {
      * with the lane free, so that no decision waits for them.
      */
     JournalExport,
+
+    /**
+     * Listing the Banks of a Data Provider, starting, answering, abandoning or revoking a Consent Request or Bank Consent
+     * (UC-007): admitted only in Normal (ADR-007 §2). Each is one operation on the lane, holding it only for its own
+     * requests and storage: never while the Operator is at the Bank's Strong Customer Authentication.
+     */
+    BankConsent,
 }
 
 /** Why the coordinator refused an operation (ADR-007 §2): a typed reason the screen shows. */
