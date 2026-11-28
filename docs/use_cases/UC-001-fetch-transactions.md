@@ -87,10 +87,10 @@
 **Trigger:** In a Fetch the Operator started, the Data Provider does not answer within the time limit of NFR-016, is unavailable, or gives an answer Slussen cannot read (step 5)  
 **Flow:**
 
-1. Slussen keeps the previously stored Bank Transactions and Account Balances unchanged.
-2. Slussen records the Fetch with outcome Failed and shows the failure with its time as the Source Health of the Data Provider.
+1. Slussen keeps the previously stored Bank Transactions and Account Balances unchanged, except, through a Data Provider that needs a Bank Consent, of the Bank Accounts the Fetch read completely before the failure, which are stored as steps 6 to 9 describe; each Bank Account not read yet gets the outcome Failed with that reason and is not contacted.
+2. Slussen records the Fetch with outcome Failed when it read no Bank Account, and shows the failure with its time as the Source Health of the Data Provider.
 3. Slussen starts no Back-off: the Operator can start a Fetch again at any time (BR-005).
-4. Use case ends.
+4. Use case ends, or continues at step 10 when a Bank Account was read.
 
 ### A7: Data Provider Refuses Slussen's Credentials
 

@@ -249,8 +249,11 @@ enum class RefusalScope { BankAccount, Bank, Source }  // Source = the whole Dat
 - **Timeout and cancellation.** The plug-in gives each request a call timeout equal to `timeout` (OkHttp
   `callTimeout`) and cancels the underlying call when the calling coroutine is cancelled
   (`suspendCancellableCoroutine` with `invokeOnCancellation { call.cancel() }`). A request that times out or is
-  cancelled ends as `TransientFailure(Timeout)` for a read and as `Unknown` for every item of a write (UC-006 A8). The
-  contract tests of §4.4 prove both against a test server that never answers.
+  cancelled ends as `TransientFailure(Timeout)` for a read and as `Unknown` for every item of a write (UC-006 A8). In a
+  Fetch through a Data Provider that needs a Bank Consent, which reads Bank Account by Bank Account, such a failure, and a
+  lost connection below, keeps what the Fetch read completely before it, and every Bank Account not read yet is `Failed`
+  with that kind and not contacted (§4.1.1, S-B-55). The contract tests of §4.4 prove both against a test server that
+  never answers.
 - **A request the device cannot send (S-36, NFR-004).** A request that fails before or while it is sent for a reason
   the device gives (no connection, an address that does not resolve, network access the device refuses) ends as a
   lost connection: `TransientFailure(ConnectionLost)` for a read and a credential check, `Unknown` for every item of a
@@ -509,7 +512,8 @@ that has already ended, is `NotConfirmed`.
 **The Operator's presence (S-B-46; C-006, UC-001 BR-012).** A request counts at the Bank as made with the Operator
 present only when it carries a PSU header, and a Bank that declares `required_psu_headers` accepts either all of them
 or none (FAQ, "What are the PSU headers … used for?", `PSU_HEADER_NOT_PROVIDED`). The headers Slussen can give truly
-are `Psu-User-Agent` (the application id and version name) and `Psu-Accept-Language` (the device's language). It
+are `Psu-User-Agent` (the application's name, `Slussen`: a plug-in is given neither the application id nor the version, §5;
+S-B-55) and `Psu-Accept-Language` (the device's language). It
 never sends `Psu-Ip-Address`: the device does not know the address the Bank would see without asking a third party,
 which Slussen does not do, since that would tell a third party each time the Operator fetches, and the address it
 has on its own network is not that one.
@@ -525,7 +529,8 @@ session, and nothing at all when no Bank Account is selected. For each selected 
 its `ConsentSession` holds, `GET /accounts/{uid}/balances` when the balance is to be read and `GET
 /accounts/{uid}/transactions` with `date_from` and `date_to` the fetch period (dates in UTC, as Enable Banking assumes)
 and no `transaction_status` filter, when the transactions are to be read. A selected Bank Account whose reference the
-session does not hold is `Failed(UnreadableAnswer)`. It sends no `GET /sessions/{session_id}` and no request for an entry's details:
+session does not hold is `Failed(UnreadableAnswer)`, or `Failed(NotHeldByBankSession)` when the session could not keep
+every Bank Account of its Bank (S-B-55). It sends no `GET /sessions/{session_id}` and no request for an entry's details:
 whether those contact the Bank is not documented. Each page of the transactions is a request through the gate:
 while the answer has a `continuation_key`, also with an empty page, it asks again with that key and the same other
 parameters (FAQ, continuation key), as kind Other (§4.0); a page the gate refuses, a `WRONG_CONTINUATION_KEY`, or a
@@ -567,7 +572,18 @@ answer 429 is `SourceOutcome.AskedToWait` with no end. `EXPIRED_SESSION`, `REVOK
 `AUTHORIZATION_NOT_PROVIDED` are `SourceOutcome.CredentialsRefused`. `ASPSP_ERROR` and `ASPSP_TIMEOUT` are
 `Failed(ServiceUnavailable)` for that Bank Account, with no Back-off and no retry (UC-001 BR-005). Any other error,
 `PSU_HEADER_NOT_PROVIDED` and `PSU_HEADER_INVALID` included, is `Failed(UnreadableAnswer)` for the Bank Account the
-request read. A timeout or a lost connection is a `TransientFailure` as §4.0 says.
+request read. `WRONG_TRANSACTIONS_PERIOD` is `Failed(PeriodNotGiven)` for that Bank Account: the Bank does not give the
+fetch period asked for, and nothing is asked again with another period (S-B-55). The status that asks to wait, 429 as the
+reference gives it, decides whatever code comes with it: with `ASPSP_RATE_LIMIT_EXCEEDED` it is that Bank's request to wait, with any other code or none the whole
+Data Provider's. A code names a failure also with a status of the 500s; such an answer without a readable code is the
+Data Provider's own failing. A failure of the balances request that concerns only that Bank Account (a code above that
+fails one Bank Account, or an answer without a code that cannot be read) gives no balance, and its transactions are still
+read; one of the Bank or of the whole Data Provider keeps its meaning (S-B-55).
+
+**A failure in transit (S-B-55).** What a Fetch read completely is delivered, whatever stops the rest. A request that got
+no answer at all (a timeout, a lost connection, a request the device refuses) or the Data Provider's own failing ends the
+Fetch for every Bank Account not read yet: each is `Failed` with that kind, `sourceOutcome` is that `TransientFailure`, and
+nothing more is sent. A failure the Data Provider names for one Bank or one Bank Account stops only that one (above).
 
 #### 4.2 Budget App (`slussen.pluginapi.budgetapp`)
 
