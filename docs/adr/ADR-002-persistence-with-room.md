@@ -275,16 +275,18 @@ safe by its order and by the start intent of §6, not by a transaction. In this 
    deleted yet. A Data Provider that cannot be reached, that refuses, whose credentials are missing or refused, or whose
    gate holds the request back does not stop Start Over; its Bank is named in the result.
 2. **Record the obligation.** `slussen.start-intent` is written as §6 step 3 writes it (a temporary file, flushed,
-   renamed, the directory flushed), with the cause New Installation on its first line and `Start Over` on its second.
-   From then on every start resumes from it (§6 step 1). When it cannot be written, nothing is deleted and Start Over is
-   answered as not done.
-3. **End the process's own state.** The Fetch Schedule's work is cancelled and removed from WorkManager's own records,
-   the New Transaction Notification is removed, and the process ends without releasing the lane, so that nothing runs
-   on the old data again and nothing of it stays in memory (screens, the answers of Consent Requests, an import's state,
-   the Decision Journal's queue). The app is started again at once. The names of the Banks of step 1 go to the new process
-   in the intent that starts the app, are held in its memory until the Operator closes them, and are never written to a
-   file; a process that ends before he has seen them loses them. When the app cannot be started again, the lane stays
-   held and the screen asks the Operator to close Slussen and open it again.
+   renamed, the directory flushed), with the cause New Installation on its first line, `Start Over` on its second, the
+   number of Banks of step 1 on its third, and one line for each of them, in the same write: why its Bank Consent was
+   not confirmed as ended, its Data Provider's name and its name, each within the length the entity model gives it. A
+   Bank whose names do not fit that form is left out, still counted. From then on every start resumes from it (§6
+   step 1). When it cannot be written, nothing is deleted and Start Over is answered as not done.
+3. **End the process.** From the record on, every screen shows only that Slussen is starting over and closes and opens
+   again. The Fetch Schedule's work is cancelled and removed from WorkManager's own records, and the New Transaction
+   Notification is removed. While the app is in the foreground it asks a small activity of its own in a separate
+   process to open it again once this process has ended. Then the process ends in every case, without releasing the
+   lane, so that nothing runs on the old data again and nothing of it stays in memory (screens, the answers of Consent
+   Requests, an import's state, the Decision Journal's queue). Nothing of the result travels in an intent: whether the
+   app opens itself again or the Operator opens it, the next start finishes the deletion and shows the result.
 4. **Delete, at the next start, before Room opens anything.** The start sequence, resuming from an intent that carries
    `Start Over`, deletes in this order: `slussen.lastgood.db` and its temporary file, so that no later start can bring
    the old data back (§8 step 3); `slussen.db` with its rollback journal, any `-wal` and `-shm`, and every original of it
@@ -296,8 +298,17 @@ safe by its order and by the start intent of §6, not by a transaction. In this 
 5. **Start as a new installation.** The sequence goes on at §6 step 4 with the cause New Installation: a new
    `installation.id`; Room creates the three databases with a new installation's content (the default
    `operator_settings`, the default Transfer Descriptions, and through O-11 the Data Providers and File Formats of the
-   build); O-12 opens a First Upload Matching with cause New Installation; the intent is deleted (§6 step 6). The app then
-   cancels any work step 3 left and sets the Fetch Schedule's work as a first start does (UC-001 BR-013).
+   build); O-12 opens a First Upload Matching with cause New Installation; the intent is deleted and the directory
+   flushed (§6 step 6). An intent that cannot be deleted stops the start as a file that cannot be deleted does, so that
+   no installation goes on with it. The app then cancels any work step 3 left and sets the Fetch Schedule's work as a
+   first start does (UC-001 BR-013).
+6. **Show the result.** The start that deletes reads the Banks of step 2 from the intent before it is deleted, and only
+   that process shows them, until the Operator closes them; a later start shows nothing. Only the exact first two lines
+   delete: an intent whose first line is not the cause New Installation deletes nothing, and one with the first line
+   alone is an ordinary new installation's. A list that is damaged or shorter than its number still deletes, and the
+   result then says that the list is not known or not complete. A start that stops (a file or the intent that cannot be
+   deleted) shows a screen that says Slussen could not finish starting over, that nothing can be used until it has,
+   and that the Operator can open Slussen again or, if it stays, remove the app's data in the device's settings.
 
 What an ended process leaves: before step 2, everything as it was, and no Start Over (a Bank Consent already ended at
 its Data Provider is refused at the next Fetch, UC-001 A9, and the Operator can start over again); from step 2 on, an

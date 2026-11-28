@@ -522,7 +522,7 @@
 <div class="screen-title">Settings</div>
 <p class="screen-sub">Operator Settings</p>
 <div class="body">
-<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">Version</span></div><div class="cfg-row"><span class="nm">Start over…</span></div></div><div style="height:380px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:30px;margin:0"><h4>Start over?</h4><p>Slussen deletes everything it stores and starts as newly installed. This cannot be undone.</p><p><b>Deleted:</b> the chosen Budgets and their Budget Accounts; the <b>6 Bank Accounts</b> with their Account Mappings and Start Dates; the Left-Out Bank Accounts; the <b>1,284 Bank Transactions</b> with their Review Decisions and Transfer Decisions; the Sent Record; the credentials of YNAB and every Data Provider; the Bank Consents; the Operator Settings; the Decision Journal.</p><p>First Slussen asks Enable Banking to end the Bank Consents of <b>Aurora Sparbank (FI)</b> and <b>Nordvik Bank (SE)</b>. A Bank Consent it cannot end stays at the Bank until it expires; you can end it at the Bank.</p><p>Afterwards, as after a new installation, nothing is uploaded until First Upload Matching is confirmed.</p><div class="actions"><a class="c" href="#list-2">Cancel</a> <a class="x" href="#start-over-running">Delete everything</a></div></div>
+<div class="ghost"><div class="card"><div class="cfg-row"><span class="nm">Version</span></div><div class="cfg-row"><span class="nm">Start over…</span></div></div><div style="height:380px"></div></div><div class="scrim"></div><div class="dialog" style="position:absolute;left:12px;right:12px;top:30px;margin:0"><h4>Start over?</h4><p>Slussen deletes everything it stores and starts as newly installed. This cannot be undone.</p><p><b>Deleted:</b> the chosen Budgets and their Budget Accounts; the <b>6 Bank Accounts</b> with their Account Mappings and Start Dates; the Left-Out Bank Accounts; the <b>1,284 Bank Transactions</b> with their Review Decisions and Transfer Decisions; the Sent Record; the credentials of the Budget App and every Data Provider; the Bank Consents; the Operator Settings; the Decision Journal.</p><p>First Slussen asks Enable Banking to end the Bank Consents of <b>Aurora Sparbank (FI)</b> and <b>Nordvik Bank (SE)</b>. A Bank Consent it cannot end stays at the Bank until it expires; you can end it at the Bank.</p><p>Afterwards, as after a new installation, nothing is uploaded until First Upload Matching is confirmed.</p><div class="actions"><a class="c" href="#list-2">Cancel</a> <a class="x" href="#start-over-running">Delete everything</a></div></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
@@ -550,18 +550,18 @@
 </div>
 </div>
 <div class="state" id="start-over-failed">
-<div class="step-label"><span class="n">UC-010 A12 · NFR-023</span><p><b>Not done.</b> The stored data could not be read for the statement, or Slussen could not record that it starts over: nothing was deleted, and a Bank Consent already ended stays ended. When Slussen could not start again by itself, it asks to be opened again and finishes then.</p></div>
+<div class="step-label"><span class="n">UC-010 A12 · NFR-023</span><p><b>Not done.</b> The stored data could not be read, or Slussen could not record that it starts over: nothing was deleted, and a Bank Consent already ended stays ended. The answer names the Banks already asked and how each went.</p></div>
 <div class="phone">
 <div class="screen-title">Settings</div>
 <p class="screen-sub">Operator Settings</p>
 <div class="body">
-<div class="sec-t">This app</div><div class="card"><div class="cfg-row"><span class="nm">Version <span class="hint">The version name of this build</span></span> <span class="val ">0.1.1</span></div><a class="cfg-row" href="#start-over"><span class="nm" style="color:var(--app-red)">Start over… <span class="hint">Delete everything Slussen stores and start as newly installed</span></span></a><p class="note"><b>Not started over: it could not be recorded.</b> Nothing was deleted. The Bank Consents Slussen asked Enable Banking to end are no longer usable: grant them again, or start over again.</p><p class="note dim">Other answer: "Everything is ready to be deleted: close Slussen and open it again to finish starting over."</p></div>
+<div class="sec-t">This app</div><div class="card"><div class="cfg-row"><span class="nm">Version <span class="hint">The version name of this build</span></span> <span class="val ">0.1.1</span></div><a class="cfg-row" href="#start-over"><span class="nm" style="color:var(--app-red)">Start over… <span class="hint">Delete everything Slussen stores and start as newly installed</span></span></a><p class="note"><b>Not started over: it could not be recorded.</b> Nothing was deleted. The Bank Consents Slussen asked to end are no longer usable: grant them again, or start over again.</p><p class="note dim">Other answer: "Not started over: the stored data could not be read. Nothing was deleted. Already asked: Aurora Sparbank (FI), ended. The Bank Consents Slussen asked to end are no longer usable: grant them again, or start over again."</p></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html"><span class="ic">◎</span> Overview</a> <a class="tab" href="budget.html#household"><span class="cur">USD</span> Household<span class="bdg ">9</span></a> <a class="tab" href="budget.html#summer-house"><span class="cur">EUR</span> Summer House<span class="bdg warn">!</span></a> <a class="tab" href="budget.html#care-fund"><span class="cur">USD</span> Care Fund</a> <a class="tab on" href="settings.html#list"><span class="ic">⚙</span> Settings</a></div>
 </div>
 </div>
 <div class="state" id="started-over">
-<div class="step-label"><span class="n">UC-010 A12 4 · UC-006 BR-017</span><p><b>Started over.</b> Slussen opens again on Settings as newly installed, with the Overview of a first run behind it (<a href="overview.html#new-installation">Overview</a>) and a First Upload Matching open. The card names each Bank whose Bank Consent was not confirmed as ended, also one not contacted; it is shown until OK and not kept.</p></div>
+<div class="step-label"><span class="n">UC-010 A12 4 · UC-006 BR-017</span><p><b>Started over.</b> Slussen opens again on Settings as newly installed, the Banks read from the record of Start Over by the start that deleted, with the Overview of a first run behind it (<a href="overview.html#new-installation">Overview</a>) and a First Upload Matching open. The card names each Bank whose Bank Consent was not confirmed as ended, also one not contacted; it is shown until OK, and no later start shows it.</p></div>
 <div class="phone">
 <div class="screen-title">Settings</div>
 <p class="screen-sub">Set up Slussen from the top</p>
@@ -569,6 +569,24 @@
 <div class="card amber"><b>Slussen started over.</b> <span class="muted">Everything it stored was deleted.</span><div class="hair"></div><span class="small">Not confirmed as ended at the Bank: <b>Nordvik Bank (SE)</b> (Enable Banking did not confirm it). Not contacted: <b>Aurora Sparbank (FI)</b> (Enable Banking's credentials were missing). Each stays at its Bank until it expires; you can end it at the Bank.</span><a class="btn" href="#first-run">OK</a></div><div class="sec-t">Services and Account Mappings</div><div class="card"><a class="svc next" href="connections.html#ynab-token"><span class="nm">YNAB <span class="hint">Budget App</span></span> <span class="st">Not set up · next: enter YNAB credentials</span> <span class="go">›</span></a><a class="svc" href="connections.html#simplefin-token"><span class="nm">SimpleFIN <span class="hint">Data Provider · US Banks</span></span> <span class="st">Not set up</span> <span class="go">›</span></a><a class="svc" href="connections.html#enable-banking-token"><span class="nm">Enable Banking <span class="hint">Data Provider · European Banks</span></span> <span class="st">Not set up</span> <span class="go">›</span></a><div class="svc off"><span class="nm">Account Mappings <span class="hint">Bank Accounts → Budget Accounts</span></span> <span class="st">Not yet: choose a Budget in YNAB first</span></div></div>
 </div>
 <div class="nav"><a class="tab" href="overview.html#new-installation"><span class="ic">◎</span> Overview</a> <a class="tab on" href="settings.html#started-over"><span class="ic">⚙</span> Settings</a></div>
+</div>
+</div>
+<div class="state" id="starting-over">
+<div class="step-label"><span class="n">UC-010 A12 4 · ADR-002 §3 O-17 3</span><p><b>Starting over, on every screen.</b> From the moment Slussen has recorded that it starts over until its process ends, every screen shows only this; no other control can be reached. It closes and opens again by itself; when it does not, opening it finishes starting over.</p></div>
+<div class="phone">
+<div class="screen-title">Slussen</div>
+<div class="body">
+<div class="card amber"><b>Slussen is starting over.</b> <span class="muted">It closes and opens again by itself, then deletes everything it stored and starts as newly installed. If it does not open again, open Slussen: it finishes starting over then.</span></div>
+</div>
+</div>
+</div>
+<div class="state" id="start-over-not-finished">
+<div class="step-label"><span class="n">UC-010 A12 4 · ADR-002 §3 O-17 6</span><p><b>A start that could not finish.</b> A file of the old data, or the record of Start Over, could not be deleted: the start stops before any stored data is opened, and says what the Operator can do. Nothing else is shown.</p></div>
+<div class="phone">
+<div class="screen-title">Slussen</div>
+<div class="body">
+<div class="card red"><b>Slussen could not finish starting over.</b> <span class="muted">Nothing can be used until it has. Open Slussen again; if this stays, remove Slussen's data in the device's settings for the app.</span></div>
+</div>
 </div>
 </div>
 </div>
