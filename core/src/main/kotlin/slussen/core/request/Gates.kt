@@ -84,7 +84,9 @@ class FetchReads(val bankAccountIds: Map<String, Long>, val scheduled: Boolean)
 /**
  * The gate of a Data Provider request (ADR-001 §4.0): it refuses with scope Source while a Back-off holds for the whole
  * Data Provider after it asked Slussen to wait, stores the Provider Request durably before it answers `Allowed`, and
- * refuses with scope Source once the Data Provider's Request Limit is reached in the preceding 24 hours. A credential
+ * refuses with scope Source once the Data Provider's Request Limit is reached in the preceding 24 hours; in a Scheduled
+ * Fetch through a Data Provider that needs a Bank Consent, it refuses with scope BankAccount a read of a Bank Account's
+ * transactions or balance that reached the Unattended Access limit ([UnattendedAccesses]), before storing it. A credential
  * check is counted as request kind Other with the Operator present (ADR-001 §4.5).
  */
 class DataProviderGate(
@@ -113,13 +115,25 @@ class DataProviderGate(
             unattended = unattended,
             sentAt = now,
         )
-        // The place of UC-001 A13 (phase E6): in a Scheduled Fetch, a read of a Bank Account through a Data Provider that needs a Bank Consent that would exceed the Unattended Access limit is refused here with scope BankAccount, before it is stored.
+        // UC-001 BR-012: A Scheduled Fetch reads the transactions of a Bank Account at most 4 times and its balance at most 4 times in any 24 hours, through a Data Provider that needs a Bank Consent; a Fetch the Operator starts is never refused by this count.
+        if (limitsUnattendedAccess(stored)) {
+            val bankAccountId = stored.bankAccountId!!
+            // A13 of UC-001: refused with scope BankAccount before it is stored, so nothing is sent for that read; a further page (kind Other) is no further access.
+            if (UnattendedAccesses.of(requests, dataProvider.id, now).reached(bankAccountId, stored.kind)) {
+                return Admission.Refused(RefusalScope.BankAccount, RefusalReason.UnattendedAccessLimitReached)
+            }
+        }
         // UC-001 BR-007: Slussen sends a Data Provider at most its Request Limit in any rolling 24 hours.
         if (!requests.admitWithinLimit(stored, now.minus(REQUEST_LIMIT_WINDOW), dataProvider.requestLimit)) {
             return Admission.Refused(RefusalScope.Source, RefusalReason.RequestLimitReached)
         }
         return Admission.Allowed
     }
+
+    /** A read of one Bank Account's transactions or balance in a Scheduled Fetch through a Data Provider that needs a Bank Consent. */
+    private fun limitsUnattendedAccess(request: NewProviderRequest): Boolean =
+        reads?.scheduled == true && dataProvider.needsBankConsent && request.unattended && request.bankAccountId != null &&
+            request.kind != ProviderRequestKind.Other
 
     private fun kindOf(kind: RequestKind): ProviderRequestKind = when (kind) {
         RequestKind.Transactions -> ProviderRequestKind.Transactions

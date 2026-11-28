@@ -29,6 +29,7 @@ import slussen.pluginapi.provider.ReadKind
 import slussen.pluginapi.provider.SourceOutcome
 import slussen.pluginapi.request.Admission
 import slussen.pluginapi.request.RequestContext
+import slussen.pluginapi.request.RequestGate
 import slussen.pluginapi.request.RequestKind
 import slussen.pluginapi.request.RequestSummary
 import slussen.pluginapi.value.Secret
@@ -191,10 +192,18 @@ class FakeDataProvider(
     /** Runs after the gate admitted the request and before [fetchAnswer]: a test can hold the Fetch here while it looks at the screen. */
     var beforeAnswer: suspend () -> Unit = {}
 
+    /**
+     * When set, the fake reads as a part that needs a Bank Consent does (ADR-001 §4.1.1): it sends no request of its own
+     * and answers what this reader answers, which asks the gate before each request itself, Bank Account by Bank Account
+     * and page by page. [fetchAnswer] is then not used.
+     */
+    var readsEachBankAccount: (suspend (FetchRequest, RequestGate) -> FetchResponse)? = null
+
     override suspend fun fetch(request: FetchRequest, context: RequestContext): FetchResponse {
         fetches++
         fetchRequests += request
         fetchContexts += context
+        readsEachBankAccount?.let { return it(request, context.gate) }
         val admission = context.gate.admit(
             RequestSummary(kindOf(request), null, readsOne(request), unattended = request.presence == OperatorPresence.Unattended || !showsPresence),
         )

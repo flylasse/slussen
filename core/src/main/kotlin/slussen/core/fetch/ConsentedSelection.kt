@@ -13,8 +13,8 @@ import slussen.core.port.StoredBackOff
 import slussen.core.port.StoredBankAccount
 import slussen.core.port.StoredBankConsent
 import slussen.core.port.StoredOfferedBankAccount
-import slussen.core.request.REQUEST_LIMIT_WINDOW
 import slussen.core.request.UNATTENDED_ACCESS_LIMIT
+import slussen.core.request.UnattendedAccesses
 import slussen.pluginapi.provider.BankAccountToRead
 import slussen.pluginapi.provider.BankConsentCapability
 import slussen.pluginapi.provider.ConsentSession
@@ -79,25 +79,30 @@ internal class ConsentedSelection(
 
     /**
      * A22: the Banks of [toRead] whose requests cannot show that the Operator is present ([capability]), each with the
-     * Unattended Accesses its Bank Accounts used in the preceding 24 hours (BR-012), counted from the Provider Requests.
+     * Unattended Accesses its Bank Accounts used through the Data Provider [dataProviderId] in the preceding 24 hours
+     * (BR-012), counted by [UnattendedAccesses], the count the limit of A13 uses.
      */
     suspend fun unattendedBanks(
         toRead: List<BankAccountToRead>,
         capability: BankConsentCapability,
+        dataProviderId: Long,
         requests: ProviderRequestStore,
         now: Instant,
     ): List<UnattendedBank> {
         val references = toRead.map { it.providerReference }.toSet()
         val reads = readable.filter { it.read.providerReference in references && !capability.showsPresence(it.session) }
         if (reads.isEmpty()) return emptyList()
-        val sent = requests.sentSince(now.minus(REQUEST_LIMIT_WINDOW)).filter { it.unattended }
         // UC-001 BR-012: one Unattended Access is one read of a Bank Account's transactions or of its balance; further pages are of kind Other.
-        fun used(bankAccountId: Long, kind: ProviderRequestKind) = sent.count { it.bankAccountId == bankAccountId && it.kind == kind }
+        val accesses = UnattendedAccesses.of(requests, dataProviderId, now)
         return reads.groupBy { it.bankName }.map { (bank, ofBank) ->
             UnattendedBank(
                 bank,
                 ofBank.map {
-                    UnattendedUse(it.bankAccount.name, used(it.bankAccount.id, ProviderRequestKind.Transactions), used(it.bankAccount.id, ProviderRequestKind.Balance))
+                    UnattendedUse(
+                        it.bankAccount.name,
+                        accesses.used(it.bankAccount.id, ProviderRequestKind.Transactions),
+                        accesses.used(it.bankAccount.id, ProviderRequestKind.Balance),
+                    )
                 },
             )
         }

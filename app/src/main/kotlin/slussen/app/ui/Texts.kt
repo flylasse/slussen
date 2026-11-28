@@ -20,6 +20,7 @@ import slussen.core.port.TransactionFileOutcome
 import slussen.core.settings.NextThing
 import slussen.core.settings.ServiceStatus
 import slussen.core.status.Blocked
+import slussen.core.request.UNATTENDED_ACCESS_LIMIT
 import slussen.core.status.BlockedReason
 import slussen.core.status.Remedy
 import slussen.core.status.SourceHealth
@@ -394,6 +395,11 @@ object Texts {
                 "$provider cannot read this Bank until you sign in to it again there; its Bank Transactions and Account " +
                     "Balance are kept unchanged. Sign in to the Bank of ${blocked.subject} again at $provider, then fetch " +
                     "again. Your $provider credentials in Slussen stay as they are."
+            // UC-001 BR-012: A Fetch the Operator starts is never refused by this count; only Scheduled Fetches are held back by it.
+            BlockedReason.AccessLimitReached ->
+                "PSD2 allows $UNATTENDED_ACCESS_LIMIT reads of its transactions and $UNATTENDED_ACCESS_LIMIT of its balance in " +
+                    "24 hours without you present; until then Scheduled Fetches leave out the reads that reached it, and its " +
+                    "stored data stays unchanged. A Fetch you start is not held back by this; the Bank may still refuse it."
             else -> null
         }
     }

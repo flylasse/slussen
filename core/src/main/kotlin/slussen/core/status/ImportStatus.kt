@@ -17,6 +17,7 @@ import slussen.core.port.JournalEventKind
 import slussen.core.port.OperatorSettings
 import slussen.core.port.OperatorSettingsStore
 import slussen.core.port.ProviderRequestKind
+import slussen.core.request.UnattendedAccesses
 import slussen.core.port.ProviderRequestStore
 import slussen.core.port.ServiceKey
 import slussen.core.port.StartState
@@ -480,6 +481,8 @@ class ImportStatus(
             }
                 .maxByOrNull { it.endsAt }
                 ?.let { add(Blocked(BlockedReason.WaitingForProvider, Remedy.WaitUntilItEnds, it.endsAt, subject)) }
+            // UC-008 BR-006: A reached access limit is shown with the time the limit frees up, while it holds.
+            accessFreesUpAt(bankAccount, readers, snapshot)?.let { add(Blocked(BlockedReason.AccessLimitReached, Remedy.WaitUntilItEnds, it, subject)) }
             if (provider != null) {
                 lastResult(bankAccount, snapshot)?.let { (fetch, result) ->
                     resultBlocked(result.outcome, fetch, bankAccount, provider, snapshot)?.takeIf { found -> none { it.reason == found.reason } }?.let { add(it) }
@@ -515,27 +518,31 @@ class ImportStatus(
         FetchResultOutcome.NotRecognised, FetchResultOutcome.AmbiguousBankAccount ->
             Blocked(BlockedReason.UnrecognisedBankAccount, Remedy.IdentifyBankAccount, fetch.startedAt, bankAccount.name)
         FetchResultOutcome.Failed -> Blocked(BlockedReason.FailedFetch, Remedy.FetchAgain, fetch.startedAt, bankAccount.name)
-        // UC-008 BR-006: A reached access limit is shown with the time the limit frees up.
-        FetchResultOutcome.AccessLimitReached -> Blocked(
-            BlockedReason.AccessLimitReached,
-            Remedy.WaitUntilItEnds,
-            accessFreesUpAt(bankAccount, snapshot),
-            bankAccount.name,
-        )
         // UC-008 BR-006: Not delivered by the Data Provider is shown with the time of the Fetch and the action that fetches again (UC-001 A19).
         FetchResultOutcome.NotDelivered ->
             Blocked(BlockedReason.NotDelivered, Remedy.FetchAgain, fetch.startedAt, bankAccount.name, provider.name)
         // UC-008 BR-006: The Bank's sign-in at the Data Provider is shown with the action to sign in there again and fetch again (UC-001 A20).
         FetchResultOutcome.SignInNeeded ->
             Blocked(BlockedReason.SignInNeeded, Remedy.SignInAtDataProvider, null, bankAccount.name, provider.name)
-        FetchResultOutcome.Fetched, FetchResultOutcome.NotConsented -> null
+        // A reached access limit is shown while it holds, from the stored Provider Requests (bankAccountBlocked), not from the Fetch Result that recorded it.
+        FetchResultOutcome.Fetched, FetchResultOutcome.NotConsented, FetchResultOutcome.AccessLimitReached -> null
     }
 
-    /** The time the Unattended Access limit of C-006 frees up again for every kind of read that reached it. */
-    private fun accessFreesUpAt(bankAccount: StoredBankAccount, snapshot: Snapshot): Instant? =
-        listOf(ProviderRequestKind.Transactions, ProviderRequestKind.Balance).mapNotNull { kind ->
-            val sent = snapshot.requests.filter { it.bankAccountId == bankAccount.id && it.unattended && it.kind == kind }
-            freesUpAt(sent.map { it.sentAt }, UNATTENDED_ACCESS_LIMIT)
+    /**
+     * UC-001 A13, BR-012: when the reads of [bankAccount] that reached the Unattended Access limit through the Data
+     * Providers that need a Bank Consent among [readers] are all free again, by the count the Scheduled Fetch uses
+     * ([UnattendedAccesses]): its transactions and its balance through the Data Provider that reads them, only its
+     * balance through the one that reads only that (UC-001 BR-011); null while none of them reached the limit.
+     */
+    private fun accessFreesUpAt(bankAccount: StoredBankAccount, readers: List<StoredDataProvider>, snapshot: Snapshot): Instant? =
+        readers.filter { it.needsBankConsent }.flatMap { reader ->
+            val accesses = UnattendedAccesses.of(snapshot.requests, reader.id, snapshot.now)
+            val kinds = if (reader.id == bankAccount.dataProviderId) {
+                listOf(ProviderRequestKind.Transactions, ProviderRequestKind.Balance)
+            } else {
+                listOf(ProviderRequestKind.Balance)
+            }
+            kinds.mapNotNull { accesses.freesUpAt(bankAccount.id, it) }
         }.maxOrNull()
 
     private fun backupWarning(snapshot: Snapshot): BackupWarning? {
@@ -560,8 +567,5 @@ class ImportStatus(
          * own limits and PSD2 use (NFR-018, C-006); not a Slussen choice.
          */
         val LIMIT_WINDOW: Duration = Duration.ofHours(24)
-
-        /** At most four accesses per Bank Account in any 24 hours without the holder present, per kind of read (C-006). */
-        const val UNATTENDED_ACCESS_LIMIT = 4
     }
 }

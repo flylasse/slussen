@@ -9,6 +9,8 @@ import slussen.core.port.BackOffCause
 import slussen.core.port.BankAccountType
 import slussen.core.port.FetchOutcome
 import slussen.core.port.FetchResultOutcome
+import slussen.core.port.ProviderRequestKind
+import slussen.core.port.StoredProviderRequest
 import slussen.core.port.StartedBy
 import slussen.core.port.StoredBackOff
 import slussen.core.port.StoredFetch
@@ -422,10 +424,14 @@ class UC008RecentFetchesTest {
     @DisplayName("A9, UC-008 BR-006: a Bank Account that reached its access limit, a wait that has not ended, asks nothing of the Operator, and the Fetch lists the wait among what is current")
     fun accessLimitIsAWaitNotAnAsk() = runTest {
         accounts()
-        val fetchId = fetch(ago(20), FetchOutcome.Fetched, "Kestrel Reserve" to FetchResultOutcome.AccessLimitReached)
+        // E6: Access Limit Reached is recorded only through a Data Provider that needs a Bank Consent, and its Blocked Reason holds while the stored Provider Requests reach the limit (UC-001 BR-012).
+        val reserve = slice.connectionStore.bankAccountList.indexOfFirst { it.name == "Kestrel Reserve" }
+        slice.connectionStore.bankAccountList[reserve] = slice.connectionStore.bankAccountList[reserve].copy(dataProviderId = slice.openBankingId)
+        repeat(4) { slice.providerRequests.requests += StoredProviderRequest(slice.openBankingId, id("Kestrel Reserve"), ProviderRequestKind.Transactions, true, ago(60L + it)) }
+        val fetchId = fetch(ago(20), FetchOutcome.Fetched, "Kestrel Reserve" to FetchResultOutcome.AccessLimitReached, providerId = slice.openBankingId, startedBy = StartedBy.Schedule)
 
         val entry = recent(fetchId)
-        val current = blockedOf("Kestrel Reserve").single()
+        val current = blockedOf("Kestrel Reserve").single { it.reason == BlockedReason.AccessLimitReached }
 
         assertEquals(Remedy.WaitUntilItEnds, current.remedy)
         assertEquals(AccountNeed.Still(current), entry.line("Kestrel Reserve").need)

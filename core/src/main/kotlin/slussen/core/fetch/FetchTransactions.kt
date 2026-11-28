@@ -43,6 +43,8 @@ import slussen.core.consent.bankWaitUntil
 import slussen.core.port.ConsentStore
 import slussen.core.request.BankBackOffGate
 import slussen.core.request.FetchReads
+import slussen.core.request.UnattendedAccesses
+import slussen.core.port.ProviderRequestKind
 import slussen.core.request.ServiceRequestContext
 import slussen.core.request.requestLimitFreesUpAt
 import slussen.core.request.requestLimitWarningAt
@@ -256,17 +258,109 @@ class FetchTransactions(
         // UC-001 BR-012: Before a Fetch the Operator starts reads a Bank whose requests cannot show that he is present, Slussen says so, with the Unattended Accesses used, and asks (A22).
         if (consented != null && startedBy == StartedBy.Operator && !confirmedUnattended) {
             val capability = provider.plugin.bankConsent
-            val unattended = capability?.let { consented.unattendedBanks(toRead.map { it.read }, it, providerRequests, startedAt) }.orEmpty()
+            val unattended = capability?.let { consented.unattendedBanks(toRead.map { it.read }, it, stored.id, providerRequests, startedAt) }.orEmpty()
             if (unattended.isNotEmpty()) return FetchReport.UnattendedToConfirm(key, name, unattended, warningConfirmed = warning != null)
         }
+        // UC-001 BR-012: A Scheduled Fetch reads the transactions of a Bank Account at most 4 times and its balance at most 4 times in any 24 hours, through a Data Provider that needs a Bank Consent, each counted apart; a Fetch the Operator starts is never refused by this count.
+        val limit = if (consented != null && startedBy == StartedBy.Schedule) {
+            accessLimitOf(toRead, UnattendedAccesses.of(providerRequests, stored.id, startedAt))
+        } else {
+            null
+        }
+        // A13 of UC-001: when no read is left, the Data Provider is not contacted at all.
+        if (limit != null && limit.reading.isEmpty()) return heldByAccessLimit(provider, consented!!, limit, startedAt, startedBy, cooldown)
+        val reading = limit?.reading ?: toRead
         // UC-001 BR-013: Every request a Scheduled Fetch sends is kept as an unattended Provider Request, with the Bank Account it reads when it reads one.
-        val reads = FetchReads(toRead.associate { it.read.providerReference to it.bankAccount.id }, scheduled = startedBy == StartedBy.Schedule)
+        val reads = FetchReads(reading.associate { it.read.providerReference to it.bankAccount.id }, scheduled = startedBy == StartedBy.Schedule)
         val context = credentials.context(key, permit, credential, reads).let { base ->
             // UC-001 BR-004: a Back-off of one Bank, also one it asks for during this Fetch, holds for every request to that Bank.
             if (consented == null) base else ServiceRequestContext(BankBackOffGate(base.gate, stored.id, consented.bankIds, fetches, clock), base.timeout, base.credential)
         }
-        val response = provider.plugin.fetch(request(toRead, startedAt, startedBy, consented), context)
-        return answered(provider, response, toRead, startedAt, cooldown, backOffs, startedBy, consented)
+        val response = provider.plugin.fetch(request(reading, startedAt, startedBy, consented), context)
+        return answered(provider, response, reading, startedAt, cooldown, backOffs, startedBy, consented, limit)
+    }
+
+    /**
+     * A13, BR-012: what a Scheduled Fetch reads of [toRead] under the Unattended Access limit. [reading] holds each Bank
+     * Account with what is still to be read of it (its balance only when its transactions reached the limit, its
+     * transactions only when its balance did); [leftOut] the Bank Accounts of which nothing is read; [transactionsHeld] the
+     * Bank Accounts whose transactions are held back while their balance is read; [held] what the report names.
+     */
+    private class AccessLimit(
+        val reading: List<Selected>,
+        val leftOut: List<StoredBankAccount>,
+        val transactionsHeld: Set<Long>,
+        val held: List<AccessLimitHeld>,
+    )
+
+    private fun accessLimitOf(toRead: List<Selected>, accesses: UnattendedAccesses): AccessLimit {
+        val reading = mutableListOf<Selected>()
+        val leftOut = mutableListOf<StoredBankAccount>()
+        val transactionsHeld = mutableSetOf<Long>()
+        val held = mutableListOf<AccessLimitHeld>()
+        toRead.forEach { selected ->
+            val bankAccount = selected.bankAccount
+            val asked = selected.read.read
+            // UC-001 BR-012: the transactions and the balance of a Bank Account are counted apart, from the stored Provider Requests.
+            val transactionsFreeAt = if (asked != ReadKind.Balance) accesses.freesUpAt(bankAccount.id, ProviderRequestKind.Transactions) else null
+            val balanceFreeAt = if (asked != ReadKind.Transactions) accesses.freesUpAt(bankAccount.id, ProviderRequestKind.Balance) else null
+            if (transactionsFreeAt == null && balanceFreeAt == null) {
+                reading += selected
+                return@forEach
+            }
+            held += AccessLimitHeld(bankAccount.name, transactionsFreeAt, balanceFreeAt)
+            val readsTransactions = asked != ReadKind.Balance && transactionsFreeAt == null
+            val readsBalance = asked != ReadKind.Transactions && balanceFreeAt == null
+            when {
+                // A13 step 1: the Bank Account is left out without contacting its Bank.
+                !readsTransactions && !readsBalance -> leftOut += bankAccount
+                // A13, BR-012: the refusal of one read leaves the other.
+                readsTransactions -> reading += selected.copy(read = selected.read.copy(read = ReadKind.Transactions))
+                else -> {
+                    reading += selected.copy(read = selected.read.copy(read = ReadKind.Balance))
+                    transactionsHeld += bankAccount.id
+                }
+            }
+        }
+        return AccessLimit(reading, leftOut, transactionsHeld, held)
+    }
+
+    /**
+     * A13 step 4: a Scheduled Fetch in which the Unattended Access limit left every selected Bank Account out sends
+     * nothing. The Fetch is recorded as served from the Fetch Cooldown within it, otherwise as Waiting For Back-off when
+     * only waits held its Bank Accounts back (as A1 for one Bank), else as Not Consented, with Access Limit Reached for
+     * each Bank Account the limit left out and the outcome of each one left out before.
+     */
+    private suspend fun heldByAccessLimit(
+        provider: RegisteredDataProvider,
+        consented: ConsentedSelection,
+        limit: AccessLimit,
+        startedAt: Instant,
+        startedBy: StartedBy,
+        cooldown: Cooldown?,
+    ): FetchReport {
+        val stored = provider.stored
+        val onlyWaiting = consented.missingConsent.isEmpty() && consented.notRecognised.isEmpty()
+        val outcome = when {
+            cooldown != null -> FetchOutcome.ServedFromFetchCooldown
+            onlyWaiting -> FetchOutcome.WaitingForBackOff
+            else -> FetchOutcome.NotConsented
+        }
+        val fetchId = record(stored, startedAt, outcome, startedBy)
+        consented.leftOutResults(fetchId).forEach { fetches.storeBankAccountDelivery(it) }
+        // A13 step 3: the outcome Access Limit Reached for each Bank Account left out; nothing of it changes.
+        limit.leftOut.forEach { fetches.storeBankAccountDelivery(BankAccountDelivery(fetchId, it.id, FetchResultOutcome.AccessLimitReached, 0, balance = null)) }
+        if (cooldown != null) {
+            return FetchReport.ServedFromFetchCooldown(provider.key, stored.name, cooldown.lastFetchAt, cooldown.endsAt, read = null, requestLimitFreesUpAt = null)
+        }
+        return FetchReport.NothingToRead(
+            provider.key,
+            stored.name,
+            missingConsent = consented.missingConsent.map { it.name },
+            notRecognised = consented.notRecognised.map { it.name },
+            banksWaiting = consented.waiting,
+            accessLimitReached = limit.held,
+        )
     }
 
     /**
@@ -364,8 +458,9 @@ class FetchTransactions(
         backOffs: List<StoredBackOff>,
         startedBy: StartedBy,
         consented: ConsentedSelection?,
+        limit: AccessLimit?,
     ): FetchReport {
-        if (consented != null) return answeredThroughBankSessions(provider, response, toRead, startedAt, cooldown, backOffs, startedBy, consented)
+        if (consented != null) return answeredThroughBankSessions(provider, response, toRead, startedAt, cooldown, backOffs, startedBy, consented, limit)
         val key = provider.key
         val stored = provider.stored
         val name = stored.name
@@ -432,6 +527,7 @@ class FetchTransactions(
         backOffs: List<StoredBackOff>,
         startedBy: StartedBy,
         consented: ConsentedSelection,
+        limit: AccessLimit?,
     ): FetchReport {
         val key = provider.key
         val stored = provider.stored
@@ -474,9 +570,13 @@ class FetchTransactions(
             fetchId, stored, usable, shared, toRead, startedAt, answeredAt, waiting = waitingUntil != null,
             // A9 step 2: the Bank Accounts of a Bank that refused its Bank Consent, not read, record Not Consented.
             notConsented = { bankAccount -> consented.bankOf(bankAccount) in refusedBanks },
+            accessLimited = limit?.transactionsHeld.orEmpty(),
+            gateRefusalIsAccessLimit = limit != null,
         )
         // A4, A10: the Bank Accounts left out before anything was sent, each with its outcome; nothing of them changes.
         consented.leftOutResults(fetchId).forEach { fetches.storeBankAccountDelivery(it) }
+        // A13 step 3: the Bank Accounts the Unattended Access limit left out record Access Limit Reached; nothing of them changes.
+        limit?.leftOut?.forEach { fetches.storeBankAccountDelivery(BankAccountDelivery(fetchId, it.id, FetchResultOutcome.AccessLimitReached, 0, balance = null)) }
         val failedKinds = usable.mapNotNull { one -> (one.result as? BankAccountResult.Failed)?.let { one.providerReference to it.kind } }.toMap()
         val fetched = kept.copy(
             notDelivered = outcomes.notDelivered,
@@ -490,6 +590,7 @@ class FetchTransactions(
             stoppedByGate = (outcome as? SourceOutcome.StoppedByGate)?.reason,
             requestLimitFreesUpAt = (outcome as? SourceOutcome.StoppedByGate)?.takeIf { it.reason == RefusalReason.RequestLimitReached }
                 ?.let { requestLimitFreesUpAt(providerRequests, stored, clock.instant()) },
+            accessLimitReached = limit?.held.orEmpty(),
         )
         return when (recorded) {
             FetchOutcome.CredentialsRefused -> FetchReport.CredentialsRefused(key, name)
@@ -644,6 +745,10 @@ class FetchTransactions(
         answeredAt: Instant,
         waiting: Boolean,
         notConsented: (StoredBankAccount) -> Boolean = { false },
+        /** A13: the Bank Accounts whose transactions the Unattended Access limit held back while their balance was read. */
+        accessLimited: Set<Long> = emptySet(),
+        /** A13: in a Scheduled Fetch, a refusal of the gate for one Bank Account is the Unattended Access limit (ADR-001 §4.0). */
+        gateRefusalIsAccessLimit: Boolean = false,
     ): DeliveryOutcomes {
         val byReference = delivered.associateBy { it.providerReference }
         val notDelivered = mutableListOf<String>()
@@ -665,7 +770,10 @@ class FetchTransactions(
                     BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.NotDelivered, 0, balance = null)
                 }
                 else -> when (val result = one.result) {
-                    is BankAccountResult.Read -> readDelivery(fetchId, stored, selected, one, result, startedAt, answeredAt, otherCurrency)
+                    is BankAccountResult.Read -> readDelivery(fetchId, stored, selected, one, result, startedAt, answeredAt, otherCurrency).let {
+                        // A13 step 3: its balance is stored, its transactions stay unchanged, and it records Access Limit Reached.
+                        if (bankAccount.id in accessLimited) it.copy(outcome = FetchResultOutcome.AccessLimitReached) else it
+                    }
                     // A8: a failure for one Bank Account keeps its stored data and records the outcome Failed.
                     is BankAccountResult.Failed -> BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.Failed, 0, balance = null)
                     // A20: the Bank's sign-in at the Data Provider is needed: its stored data stays unchanged and no Back-off starts.
@@ -674,8 +782,13 @@ class FetchTransactions(
                         BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.SignInNeeded, 0, balance = null)
                     }
                     // A9 step 2: a Bank Account of a Bank that refused its Bank Consent keeps its stored data and records Not Consented.
-                    is BankAccountResult.NotRead ->
-                        if (notConsented(bankAccount)) BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.NotConsented, 0, balance = null) else null
+                    is BankAccountResult.NotRead -> when {
+                        notConsented(bankAccount) -> BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.NotConsented, 0, balance = null)
+                        // A13 step 3: the gate refused its read for the Unattended Access limit; nothing of it changes.
+                        gateRefusalIsAccessLimit && result.cause == NotReadCause.RefusedByGate ->
+                            BankAccountDelivery(fetchId, bankAccount.id, FetchResultOutcome.AccessLimitReached, 0, balance = null)
+                        else -> null
+                    }
                 }
             }
             // UC-001 BR-010: A failure of one Bank Account leaves the others' storage unaffected: each is its own storage operation.

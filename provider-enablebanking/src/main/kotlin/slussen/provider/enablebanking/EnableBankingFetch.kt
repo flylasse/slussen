@@ -297,8 +297,8 @@ internal class EnableBankingFetch(
             override fun outcome(bank: String, laterPage: Boolean): AccountOutcome {
                 val incomplete = failed(FailureKind.Incomplete)
                 return when (admission.scope) {
+                    // A13 of UC-001: a refusal for a reached Unattended Access limit arrives with scope BankAccount; the core records it as Access Limit Reached.
                     RefusalScope.BankAccount -> AccountOutcome.Done(if (laterPage) incomplete else BankAccountResult.NotRead(NotReadCause.RefusedByGate))
-                    // The place of UC-001 A13 (phase E6): a refusal for a reached Unattended Access limit arrives here with scope BankAccount.
                     RefusalScope.Bank -> AccountOutcome.BankStopped(
                         BankOutcome.StoppedByGate(bank, admission.reason),
                         if (laterPage) incomplete else BankAccountResult.NotRead(NotReadCause.StoppedWithItsBank),

@@ -34,6 +34,8 @@ sealed interface FetchReport {
      * their Bank Consent during this Fetch (A9), and [banksWaiting] the Banks that asked to wait, before or during it
      * (A1, A5). [stoppedByGate] is set when the request gate stopped the rest of the Fetch after part of it was read,
      * [requestLimitFreesUpAt] when that was the Request Limit (BR-007), so the Bank Accounts not read yet keep their data.
+     * [accessLimitReached] names, in a Scheduled Fetch, the Bank Accounts whose read of their transactions or of their
+     * balance was left out for the Unattended Access limit (A13, BR-012), without contacting their Bank for it.
      */
     data class Fetched(
         override val service: ServiceKey,
@@ -56,6 +58,7 @@ sealed interface FetchReport {
         val banksWaiting: List<BankWaiting> = emptyList(),
         val stoppedByGate: RefusalReason? = null,
         val requestLimitFreesUpAt: Instant? = null,
+        val accessLimitReached: List<AccessLimitHeld> = emptyList(),
     ) : FetchReport
 
     /**
@@ -128,6 +131,8 @@ sealed interface FetchReport {
         val banksWaiting: List<BankWaiting> = emptyList(),
         /** S-B-55: a Bank Consent of this Data Provider is valid, but none of the Bank Accounts it covers is added yet. */
         val bankConsentGranted: Boolean = false,
+        /** A13: in a Scheduled Fetch, the Bank Accounts left out for the Unattended Access limit, nothing of them read. */
+        val accessLimitReached: List<AccessLimitHeld> = emptyList(),
     ) : FetchReport
 
     /**
@@ -150,6 +155,13 @@ sealed interface FetchReport {
         val reason: RefusalReason,
     ) : FetchReport
 }
+
+/**
+ * UC-001 A13: a Bank Account whose read a Scheduled Fetch left out for the Unattended Access limit (BR-012, C-006), each
+ * kind of read apart: [transactionsFreeAt] when its transactions can be read unattended again, null when they were not
+ * held back; [balanceFreeAt] the same for its balance. Both come from the stored Provider Requests.
+ */
+data class AccessLimitHeld(val bankAccountName: String, val transactionsFreeAt: Instant?, val balanceFreeAt: Instant?)
 
 /**
  * A Request Limit warning of a Data Provider (UC-001 A15, A16, BR-015): when it warned, and when the Request Limit
